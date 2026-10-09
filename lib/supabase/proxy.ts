@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./database.types";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/basic-calculator"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
