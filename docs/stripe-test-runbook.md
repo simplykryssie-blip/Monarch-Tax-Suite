@@ -33,7 +33,7 @@ Built-in safety net: the webhook rejects (HTTP 400) any event whose live/test fl
 
 Tick each before continuing.
 
-1. [ ] Node 20+ and `npm` installed; repo cloned; on branch `claude/launch-readiness-hardening` (or `main` after review). `npm ci` completes.
+1. [ ] Node 20+ and `npm` installed; repo cloned; on branch `claude/launch-readiness-hardening` (the review branch; do not merge it for this). `npm ci` completes.
 2. [ ] [Stripe CLI](https://docs.stripe.com/stripe-cli) installed. Run `stripe login` and choose the Monarch Stripe account. (This grants the CLI a test-mode key. It does not change anything.)
 3. [ ] Stripe Dashboard → **Test mode ON** (toggle top right). Keep it on for the whole runbook.
 4. [ ] Supabase CLI or `psql` available (only needed for step 2).
@@ -43,33 +43,27 @@ Tick each before continuing.
 
 ## 2. Create the throwaway test database
 
-Why: the app needs a database, and the repo's migrations alone cannot build one from scratch (the original foundation migration for the `calculator_*` tables is not in the repo). We therefore copy the **structure only (no data)** of production.
+The original foundation migration (`20261008224443`, the five `calculator_*` tables) was never committed to the repo, but it is recorded verbatim in production's migration history. It is now saved as `supabase/test-env/00_foundation.sql`.
 
-> Read-only against production: a schema-only dump reads table definitions. It does not change production and copies no customer data. If you are uncomfortable, skip step 2.2 and ask for help instead.
+**How this was verified (read-only against production, no customer data read):** the foundation + every repo migration was replayed on a scratch local Postgres 16. Its tables, columns, constraints, indexes, row-level-security flags and triggers were then compared (by checksum) with production's schema metadata, and all match. The only difference is `rls_auto_enable()`, a helper Supabase creates itself in every project. Not covered: Supabase-specific objects (the `auth`/`storage` schemas and roles) were stubbed locally, so the first run in a real test project is still a real test. If it fails, nothing in production is affected.
 
-1. In Supabase, create a **new project** named `monarch-test-throwaway` (free tier is fine). Do **not** use the Monarch production project or the Verexa project. Save its URL, publishable key and service-role key in your scratch file.
-2. Dump production structure (schema only):
-   ```
-   supabase db dump --db-url "<production DB connection string>" --schema public -f /tmp/monarch-schema.sql
-   ```
-   Confirm the file contains `CREATE TABLE` statements and **no** `INSERT`/`COPY` data lines.
-3. Load it into the **test** project only. Double-check the connection string host is the *test* project, not `ftthniovwzxztkwtregz`:
-   ```
-   psql "<TEST DB connection string>" -f /tmp/monarch-schema.sql
-   ```
-4. Apply the two repo migrations production does not have yet, in order, to the **test** project (SQL editor is fine):
-   - `supabase/migrations/20261009180000_remove_lead_storage.sql`
-   - `supabase/migrations/20261009200000_rate_limit_counters.sql`
+Steps:
 
-   (This also rehearses the pending rate-limit migration. See section 9.)
-5. Create a test admin: in the test project, Authentication → Add user (use any email/password you choose and keep). Then in the SQL editor of the **test** project:
+1. In Supabase create a **new, empty project** named `monarch-test-throwaway`. Not the Monarch project (`ftthniovwzxztkwtregz`) and not the Verexa project (`daxpavvsotvsyqqntddc`). Save its URL, publishable key, service-role key and database connection string in your scratch file.
+2. Run the script, which builds the schema in the test project only:
+   ```
+   TEST_DB_URL='postgresql://postgres:<password>@db.<TEST-ref>.supabase.co:5432/postgres' ./supabase/test-env/apply.sh
+   ```
+   It refuses if the URL contains the production or Verexa project ref, refuses if the database already has Monarch tables, prints the target host, and waits for you to type `TEST`. It then applies `00_foundation.sql` and all files in `supabase/migrations/` in order, each in its own transaction. This includes the pending rate-limit migration, which is how you rehearse it.
+   (No `psql`? Instead paste each file into the test project's SQL editor in the same order. Check the project name at the top first.)
+3. Create a test admin: Authentication → Add user (any email/password you choose). Then in the **test** project's SQL editor:
    ```sql
    insert into public.admin_users (user_id)
    select id from auth.users where email = '<the email you just created>';
    ```
-6. Sanity check in the test project: `select count(*) from public.orders;` returns `0`.
+4. Sanity check in the test project: `select count(*) from public.orders;` returns `0`; `select public.hit_rate_limit('x', now());` returns `1`.
 
-**Not verified:** this dump-and-load path was designed from the code and could not be executed from the authoring environment. If any statement errors in the *test* project, that's safe: delete the test project and retry. Do not "fix" it by pointing at production.
+Notes: the test database has no `calculator_leads` table (the lead-storage removal is included), which production still has until you approve that migration. The old CRM pages under `app/(app)/` (clients, engagements, tasks) use tables that do not exist in Monarch's production project either; don't open them.
 
 ---
 
@@ -109,6 +103,18 @@ It must show the test project ref, never `ftthniovwzxztkwtregz`.
 
 Also confirm the key is a test key without printing it: `grep -c '^STRIPE_SECRET_KEY=sk_test_' .env.local` → prints `1`.
 
+Before starting, run these **three safety checks** (they print no secrets):
+
+```
+# 1. Only .env.local (and .env.local.example) should exist. Any other .env* file could override it.
+ls -a | grep '^\.env'
+# 2. Your terminal must not already hold production values (Next.js lets real environment variables win over .env.local).
+env | grep -E '^(NEXT_PUBLIC_SUPABASE_URL|SUPABASE_|STRIPE_|MONARCH_)' | sed 's/=.*/=<set>/'
+# 3. The Supabase URL must be the TEST project.
+grep -c 'ftthniovwzxztkwtregz' .env.local
+```
+Expected: (1) only `.env.local` and `.env.local.example`; (2) **nothing printed**. If anything prints, run `unset NAME` for each, or open a fresh terminal. Never run `vercel env pull` or `vercel dev` for this runbook, because they bring production values onto your computer; (3) prints `0`.
+
 Start the app: `npm run dev`. Leave it running.
 
 ---
@@ -119,7 +125,7 @@ In a second terminal:
 ```
 stripe listen --forward-to localhost:3000/api/stripe/webhook
 ```
-It prints `Ready! Your webhook signing secret is whsec_…`. Put that value in `.env.local` as `STRIPE_WEBHOOK_SECRET`, then restart `npm run dev` (env is read at start). Keep `stripe listen` running; it shows each event and the HTTP status your app returned.
+The CLI uses **test mode by default**. **Never add `--live`** to any `stripe` command in this runbook, and never pass a `sk_live_` key with `--api-key`. It prints `Ready! Your webhook signing secret is whsec_…`. Put that value in `.env.local` as `STRIPE_WEBHOOK_SECRET`, then restart `npm run dev` (env is read at start). Keep `stripe listen` running; it shows each event and the HTTP status your app returned.
 
 This secret is for the CLI only. It is **not** the live endpoint's secret and nothing in Stripe or Vercel is modified.
 
@@ -133,7 +139,8 @@ This secret is for the CLI only. It is **not** the live endpoint's secret and no
    - `Stripe price ID` = the **test** `price_…`,
    - `checkout_url` metadata = the `https://buy.stripe.com/test_…` Payment Link (https only),
    - then Publish. If publish is blocked, the page lists what is missing. Fix those items.
-   (This edits only the throwaway test database.)
+   (This edits only the throwaway test database. The two seeded products in a fresh database carry the **live** product IDs copied from the original setup; replace them with the test IDs as above. A "Verify with Stripe" check against live IDs just says "not found" in test mode and is harmless.)
+   **Do not click any "Sync to Stripe"/create-price button in the admin for this runbook.** Those buttons create or update Stripe products and prices using whatever `STRIPE_SECRET_KEY` is loaded. With the `sk_test_` key that only touches test mode, but this runbook never needs them, so skip them.
 3. Visit `http://localhost:3000/shop`, open the product, click buy. You land on Stripe's hosted checkout (test banner).
 4. Pay with `4242 4242 4242 4242`, any future expiry, any CVC, any ZIP, any email you control.
 5. Watch the `stripe listen` terminal.
@@ -162,7 +169,7 @@ Pass criteria: exactly **one** order and **one** license after one payment.
 
 Stripe retries and you can replay. The app must not create a second order or license.
 
-1. `stripe events resend <evt_id>` for the `checkout.session.completed` event from Test A (get the id from `stripe listen` output or Dashboard → Events). Or Dashboard → the event → **Resend** (if shown for CLI endpoints), or `stripe events list --limit 5`.
+1. Take the `evt_…` id of the `checkout.session.completed` event from Test A (shown in the `stripe listen` output, or Dashboard → Events) and run `stripe events resend evt_…`. Per Stripe's docs this resends the event to the CLI's local listener (test mode by default; do not add `--live`). Stripe only resends events from the last 30 days.
 2. Expected: `stripe listen` shows `[200]`; response body says it was already processed/duplicate.
 3. Re-check counts: `orders` still 1, `licenses` still 1, `stripe_events` has no duplicate id.
 
@@ -209,7 +216,7 @@ What it does: adds one new table (`rate_limit_counters`) and one function (`hit_
 Current behavior if it is *not* applied: the code fails **open** (requests are allowed, a warning is logged), so production keeps working.
 
 Safe order:
-1. Rehearse in the **test** project (done in step 2.4). Confirm it succeeds and that `select public.hit_rate_limit('x', now());` returns `1` then `2`.
+1. Rehearse in the **test** project (done by `apply.sh` in step 2). Confirm it succeeds and that `select public.hit_rate_limit('x', now());` returns `1` then `2`.
 2. Review the SQL once yourself (about 40 lines).
 3. **Owner approval required** before production. When approved: apply to production *after* the branch is merged and deployed (or before; both orders are safe because of fail-open), then check `/api/license/validate` still answers and the table exists.
 4. Rollback if ever needed: `drop function public.hit_rate_limit(text, timestamptz); drop table public.rate_limit_counters;` (safe because nothing else depends on them). Not destructive to business data.
@@ -264,3 +271,28 @@ Stop and ask before continuing if:
 ## 13. Cleanup
 
 Stop `npm run dev` and `stripe listen`. Delete `.env.local` when done. Pause or delete the `monarch-test-throwaway` Supabase project (it only ever contained test data). Test-mode Stripe objects can stay.
+
+---
+
+## 14. Production-safety review of every step
+
+Reviewed line by line. "Touches" means what the command can reach.
+
+| Step | Command / action | Touches | Production risk and guard |
+|---|---|---|---|
+| 1 | `stripe login` | Stripe account (authorizes the CLI) | None by itself. Default mode is test. |
+| 2.1 | Create new Supabase project | New project only | None. Never reuse `ftthniovwzxztkwtregz` or `daxpavvsotvsyqqntddc`. |
+| 2.2 | `apply.sh` | Only `TEST_DB_URL` | Script refuses both production refs, refuses a non-empty database, shows the host, requires typing `TEST`. Residual risk: pasting the production password with a differently-hosted URL (e.g., a pooler hostname not containing the ref). Check the project name in the Supabase dashboard where you copied the URL from. |
+| 2.3-2.4 | SQL in the test project's SQL editor | Whichever project the editor is open on | Confirm the project name at the top of the editor says `monarch-test-throwaway`. |
+| 3 | Dashboard, Test mode ON | Stripe test data | Confirm the orange Test mode banner before creating anything. |
+| 4 | `.env.local` + three checks | Local files | Checks catch other `.env*` files, shell variables holding production values, and the production Supabase URL fallback. Never run `vercel env pull` / `vercel dev`. |
+| 5 | `stripe listen` | Local forwarding, test events | Never add `--live`. The webhook secret is local only. |
+| 6-9 | Browser at `localhost:3000`, test card | Test DB + Stripe test mode | A live key (`sk_live_`) in `.env.local` would be caught by check 3 of section 4 only for the URL; verify the key with `grep -c '^STRIPE_SECRET_KEY=sk_test_' .env.local` (prints `1`). Also the webhook returns 400 for any live-mode event under a test key. |
+| 7 | `stripe events resend` | Local listener | Never add `--live`. |
+| 8 | `curl localhost:3000/...` | Local only | None. |
+| 10a | Production migration | **Production DB** | **Not part of the test.** Requires your explicit approval; additive; rollback listed. |
+| 10b | Production env var | **Production Vercel** | **Not part of the test.** Requires your explicit approval; generate locally; never paste into chat. |
+| 13 | Cleanup | Local, test project | Deleting the test project is safe only if its name is `monarch-test-throwaway`. |
+
+Result: no step in sections 1-9 connects to production when the checks in sections 2 and 4 pass. Sections 10a/10b are the only production changes and are not executed by this runbook.
+
