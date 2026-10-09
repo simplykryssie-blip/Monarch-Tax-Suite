@@ -13,7 +13,7 @@ export default async function LoginPage({
     <div className="flex min-h-screen flex-1 items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-xl font-semibold">Full Service CRM</h1>
+          <h1 className="text-xl font-semibold">Monarch Tax Suite</h1>
           <p className="mt-1 text-sm text-muted">Sign in to your workspace</p>
         </div>
 
