@@ -9,7 +9,7 @@ This is a standalone frontend backed by the existing **Verexa Tax Office v2** Su
 ## Stack
 
 - Next.js 16 (App Router) + TypeScript + Tailwind CSS
-- Supabase (`@supabase/ssr`) for auth and data, against project `daxpavvsotvsyqqntddc`
+- Supabase (`@supabase/ssr`) for auth and data. The project is chosen by `NEXT_PUBLIC_SUPABASE_URL` (Monarch's own project in production; a separate throwaway project for testing, see `docs/stripe-test-runbook.md`)
 - No component library dependency — a small hand-built set of UI primitives in `components/ui/`
 
 ## Getting started
