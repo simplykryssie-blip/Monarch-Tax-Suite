@@ -7,16 +7,27 @@ type Filing = "single" | "married" | "head" | "separate";
 type FieldProps = { label: string; value: string; onChange: (value: string) => void; hint?: string };
 const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number.isFinite(value) ? value : 0);
 const filingLabels: Record<Filing, string> = { single: "Single", married: "Married filing jointly", head: "Head of household", separate: "Married filing separately" };
-// Tax year 2026 (returns filed in 2027) — IRS Rev. Proc. 2025-32, as amended by P.L. 119-21.
-const TAX_YEAR = 2026;
-const standardDeduction: Record<Filing, number> = { single: 16100, married: 32200, head: 24150, separate: 16100 };
+type TaxYear = "2025" | "2026";
+// 2025: Rev. Proc. 2024-40 as amended by P.L. 119-21. 2026: Rev. Proc. 2025-32.
+const standardDeductions: Record<TaxYear, Record<Filing, number>> = {
+  "2025": { single: 15750, married: 31500, head: 23625, separate: 15750 },
+  "2026": { single: 16100, married: 32200, head: 24150, separate: 16100 },
+};
 // Upper limit of each bracket; the last bracket is unbounded.
 const RATES = [.10, .12, .22, .24, .32, .35, .37];
-const bracketLimits: Record<Filing, number[]> = {
-  single: [12400, 50400, 105700, 201775, 256225, 640600, Infinity],
-  married: [24800, 100800, 211400, 403550, 512450, 768700, Infinity],
-  head: [17700, 67450, 105700, 201750, 256200, 640600, Infinity],
-  separate: [12400, 50400, 105700, 201775, 256225, 384350, Infinity],
+const bracketLimits: Record<TaxYear, Record<Filing, number[]>> = {
+  "2025": {
+    single: [11925, 48475, 103350, 197300, 250525, 626350, Infinity],
+    married: [23850, 96950, 206700, 394600, 501050, 751600, Infinity],
+    head: [17000, 64850, 103350, 197300, 250500, 626350, Infinity],
+    separate: [11925, 48475, 103350, 197300, 250525, 375800, Infinity],
+  },
+  "2026": {
+    single: [12400, 50400, 105700, 201775, 256225, 640600, Infinity],
+    married: [24800, 100800, 211400, 403550, 512450, 768700, Infinity],
+    head: [17700, 67450, 105700, 201750, 256200, 640600, Infinity],
+    separate: [12400, 50400, 105700, 201775, 256225, 384350, Infinity],
+  },
 };
 // Child Tax Credit: $2,200 per qualifying child, up to $1,700 refundable (ACTC),
 // reduced $50 per $1,000 of income over $400,000 (MFJ) / $200,000 (all others).
@@ -24,9 +35,10 @@ const CTC_PER_CHILD = 2200;
 const ACTC_PER_CHILD = 1700;
 const ctcPhaseoutStart = (filing: Filing) => (filing === "married" ? 400000 : 200000);
 function Field({label,value,onChange,hint,prefix="$"}:FieldProps&{prefix?:string}){return <label className="mt-field"><span>{label}</span><div className="mt-input-wrap">{prefix&&<span>{prefix}</span>}<input inputMode="decimal" value={value} onChange={e=>onChange(e.target.value.replace(/[^0-9.]/g,""))} placeholder="0" /></div>{hint&&<small>{hint}</small>}</label>}
-function taxFromBrackets(taxable:number, filing:Filing){let tax=0,prior=0;for(let i=0;i<RATES.length;i++){const limit=bracketLimits[filing][i];if(taxable<=prior)break;tax+=(Math.min(taxable,limit)-prior)*RATES[i];prior=limit;}return tax;}
-function marginalRate(taxable:number, filing:Filing){const i=bracketLimits[filing].findIndex(limit=>taxable<=limit);return RATES[i<0?RATES.length-1:i];}
+function taxFromBrackets(taxable:number, filing:Filing, year:TaxYear){let tax=0,prior=0;for(let i=0;i<RATES.length;i++){const limit=bracketLimits[year][filing][i];if(taxable<=prior)break;tax+=(Math.min(taxable,limit)-prior)*RATES[i];prior=limit;}return tax;}
+function marginalRate(taxable:number, filing:Filing, year:TaxYear){const i=bracketLimits[year][filing].findIndex(limit=>taxable<=limit);return RATES[i<0?RATES.length-1:i];}
 export default function BasicCalculatorPage(){
+ const [year,setYear]=useState<TaxYear>("2026");
  const [filing,setFiling]=useState<Filing>("single");
  const [income,setIncome]=useState("65000");
  const [otherIncome,setOtherIncome]=useState("0");
@@ -38,9 +50,9 @@ export default function BasicCalculatorPage(){
  const result=useMemo(()=>{
   const n=(s:string)=>Math.max(0,Number(s)||0);
   const gross=n(income)+n(otherIncome);
-  const deduction=useStandard?standardDeduction[filing]:n(deductions);
+  const deduction=useStandard?standardDeductions[year][filing]:n(deductions);
   const taxable=Math.max(0,gross-deduction);
-  const estimatedTax=taxFromBrackets(taxable,filing);
+  const estimatedTax=taxFromBrackets(taxable,filing,year);
   const childCount=Math.min(20,Math.floor(n(children)));
   const ctcReduction=Math.ceil(Math.max(0,gross-ctcPhaseoutStart(filing))/1000)*50;
   const ctcTotal=Math.max(0,childCount*CTC_PER_CHILD-ctcReduction);
@@ -50,18 +62,18 @@ export default function BasicCalculatorPage(){
   const ctcRefundable=Math.min(ctcTotal-ctcNonrefundable,childCount*ACTC_PER_CHILD,Math.max(0,(n(income)-2500)*.15));
   const totalTax=taxAfterCredits-ctcRefundable;
   const balance=n(withholding)-totalTax;
-  return {gross,deduction,taxable,estimatedTax,ctcNonrefundable,ctcRefundable,otherCredits,taxAfterCredits,totalTax,balance,childCount,marginal:marginalRate(taxable,filing)};
- },[income,otherIncome,deductions,withholding,credits,filing,useStandard,children]);
- const reset=()=>{setFiling("single");setIncome("65000");setOtherIncome("0");setDeductions("0");setWithholding("8500");setCredits("0");setUseStandard(true);setChildren("0");};
+  return {gross,deduction,taxable,estimatedTax,ctcNonrefundable,ctcRefundable,otherCredits,taxAfterCredits,totalTax,balance,childCount,marginal:marginalRate(taxable,filing,year)};
+ },[income,otherIncome,deductions,withholding,credits,filing,useStandard,children,year]);
+ const reset=()=>{setYear("2026");setFiling("single");setIncome("65000");setOtherIncome("0");setDeductions("0");setWithholding("8500");setCredits("0");setUseStandard(true);setChildren("0");};
  return <main className="mt-shell">
   <header className="mt-header"><Link className="mt-brand" href="/" aria-label="Monarch Tax Suite"><span className="mt-crown">♛</span><span><b>MONARCH</b><small>TAX SUITE</small></span></Link><span className="mt-product-tag">BASIC TAX CALCULATOR</span></header>
-  <section className="mt-hero"><div className="mt-eyebrow">A CLEARER STARTING POINT</div><h1>Estimate your federal<br/><em>tax picture.</em></h1><p>Explore an approximate federal income tax outcome using your income, deduction, credits, and withholding.</p><div className="mt-year">TAX YEAR {TAX_YEAR} <span>·</span> FILED IN {TAX_YEAR+1} <span>·</span> FEDERAL ESTIMATE</div></section>
+  <section className="mt-hero"><div className="mt-eyebrow">A CLEARER STARTING POINT</div><h1>Estimate your federal<br/><em>tax picture.</em></h1><p>Explore an approximate federal income tax outcome using your income, deduction, credits, and withholding.</p><div className="mt-year">TAX YEAR {year} <span>·</span> FILED IN {Number(year)+1} <span>·</span> FEDERAL ESTIMATE</div></section>
   <div className="mt-layout">
    <section className="mt-form-card"><div className="mt-card-head"><div><span className="mt-step">YOUR DETAILS</span><h2>Build your estimate</h2></div><button className="mt-reset" onClick={reset}>Reset ↺</button></div>
-    <label className="mt-field"><span>Filing status</span><select value={filing} onChange={e=>setFiling(e.target.value as Filing)}>{Object.entries(filingLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
+    <div className="mt-two"><label className="mt-field"><span>Tax year</span><select value={year} onChange={e=>setYear(e.target.value as TaxYear)}><option value="2026">2026 (filed in 2027)</option><option value="2025">2025 (filed in 2026)</option></select></label><label className="mt-field"><span>Filing status</span><select value={filing} onChange={e=>setFiling(e.target.value as Filing)}>{Object.entries(filingLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label></div>
     <div className="mt-two"><Field label="Wages and earned income" value={income} onChange={setIncome} hint="Total taxable wages / earned income"/><Field label="Other taxable income" value={otherIncome} onChange={setOtherIncome} hint="Interest or other taxable income"/></div>
     <div className="mt-deduction-head"><span className="mt-section-label">DEDUCTION</span><div className="mt-toggle"><button className={useStandard?"selected":""} onClick={()=>setUseStandard(true)}>Standard</button><button className={!useStandard?"selected":""} onClick={()=>setUseStandard(false)}>Other amount</button></div></div>
-    {useStandard?<div className="mt-standard"><span>{TAX_YEAR} standard deduction</span><b>{money(standardDeduction[filing])}</b></div>:<Field label="Deduction amount" value={deductions} onChange={setDeductions} hint="Enter the deduction amount you expect to claim"/>}
+    {useStandard?<div className="mt-standard"><span>{year} standard deduction</span><b>{money(standardDeductions[year][filing])}</b></div>:<Field label="Deduction amount" value={deductions} onChange={setDeductions} hint="Enter the deduction amount you expect to claim"/>}
     <div className="mt-two"><Field label="Federal income tax withheld" value={withholding} onChange={setWithholding} hint="Year-to-date / expected total"/><Field label="Qualifying children under 17" value={children} onChange={setChildren} prefix="" hint={`Child Tax Credit up to ${money(CTC_PER_CHILD)} per child`}/></div>
     <Field label="Other estimated tax credits" value={credits} onChange={setCredits} hint="Other nonrefundable credits you reasonably expect to qualify for (e.g. education, dependent care)"/>
     <div className="mt-info"><span>ⓘ</span><p>This basic estimator uses federal ordinary-income brackets and a deduction amount. The Child Tax Credit includes the income phaseout and refundable limit; other credits are entered manually and their eligibility is not verified.</p></div>
@@ -71,8 +83,8 @@ export default function BasicCalculatorPage(){
     <div className="mt-result-foot"><span>Effective tax rate</span><b>{result.gross>0?((Math.max(0,result.totalTax)/result.gross)*100).toFixed(1):"0.0"}%</b></div><div className="mt-result-foot mt-result-foot-sub"><span>Marginal tax bracket</span><b>{Math.round(result.marginal*100)}%</b></div>
    </aside>
   </div>
-  <section className="mt-disclaimer"><b>IMPORTANT — ESTIMATE ONLY</b><p>This is an educational estimate, not tax advice, tax preparation, or a guarantee of a refund. It uses 2026 federal ordinary-income tax brackets, standard deduction amounts, and a simplified Child Tax Credit, and does not fully calculate filing eligibility, dependent qualification, earned income credit, the new tips/overtime/senior/car-loan deductions, self-employment tax, Social Security/Medicare taxes, capital gains, AMT, itemized deduction limits, additional deductions, state/local taxes, penalties, or other special rules. Actual results can differ materially. Verify against current IRS instructions or consult a qualified tax professional before making decisions. Do not enter Social Security numbers or other sensitive personal information.</p><a href="https://www.irs.gov/filing/federal-income-tax-rates-and-brackets" target="_blank" rel="noreferrer">Review IRS tax-rate guidance ↗</a></section>
-  <footer className="mt-footer"><span>MONARCH TAX SUITE</span><span>STRATEGY · GROWTH · LEGACY</span><span>Basic Calculator · v2 · TY {TAX_YEAR}</span></footer>
+  <section className="mt-disclaimer"><b>IMPORTANT — ESTIMATE ONLY</b><p>This is an educational estimate, not tax advice, tax preparation, or a guarantee of a refund. It uses the selected year’s (2025 or 2026) federal ordinary-income tax brackets, standard deduction amounts, and a simplified Child Tax Credit, and does not fully calculate filing eligibility, dependent qualification, earned income credit, the new tips/overtime/senior/car-loan deductions, self-employment tax, Social Security/Medicare taxes, capital gains, AMT, itemized deduction limits, additional deductions, state/local taxes, penalties, or other special rules. Actual results can differ materially. Verify against current IRS instructions or consult a qualified tax professional before making decisions. Do not enter Social Security numbers or other sensitive personal information.</p><a href="https://www.irs.gov/filing/federal-income-tax-rates-and-brackets" target="_blank" rel="noreferrer">Review IRS tax-rate guidance ↗</a></section>
+  <footer className="mt-footer"><span>MONARCH TAX SUITE</span><span>STRATEGY · GROWTH · LEGACY</span><span>Basic Calculator · v2</span></footer>
   <style jsx global>{`
   .mt-shell{min-height:100vh;background:#f6f4ee;color:#211f19;font-family:Arial,Helvetica,sans-serif}
   .mt-header{height:78px;padding:0 clamp(20px,6vw,88px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e3dfd4;background:#11110f;color:#f5f0e3}
