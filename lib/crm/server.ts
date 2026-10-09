@@ -7,11 +7,13 @@ import { ValidationError } from "../commerce/validation.ts";
 import type { License } from "../commerce/types.ts";
 import { CrmSecrets } from "./crypto.ts";
 import { HttpHighLevelApi } from "./highlevel.ts";
+import { mailerFromEnv } from "./mailer.ts";
 import { SupabaseCrmRepo } from "./supabase-repo.ts";
 import type { CrmDeps } from "./connection.ts";
 
 // Server-only configuration (never NEXT_PUBLIC_*; nothing here reaches the browser).
 //   MONARCH_ENCRYPTION_KEY                          32 random bytes, base64 (required for any lead destination)
+//   RESEND_API_KEY + LEAD_NOTIFY_FROM               optional: email a notification for each lead (sender on a verified domain)
 //   HIGHLEVEL_CLIENT_ID / HIGHLEVEL_CLIENT_SECRET   HighLevel Marketplace app (optional; enables GoHighLevel connections)
 //   HIGHLEVEL_REDIRECT_URI (optional)               defaults to <app origin>/api/integrations/crm/callback
 
@@ -19,6 +21,7 @@ export function crmConfigStatus() {
   return {
     highlevel: Boolean(process.env.HIGHLEVEL_CLIENT_ID && process.env.HIGHLEVEL_CLIENT_SECRET),
     encryption: CrmSecrets.fromBase64(process.env.MONARCH_ENCRYPTION_KEY) !== null,
+    email: mailerFromEnv(process.env) !== null,
   };
 }
 
@@ -31,6 +34,7 @@ export function crmDeps(): CrmDeps {
     commerce: new SupabaseCommerceRepo(db),
     api: id && secret ? new HttpHighLevelApi(id, secret) : null,
     secrets: CrmSecrets.fromBase64(process.env.MONARCH_ENCRYPTION_KEY),
+    mailer: mailerFromEnv(process.env),
   };
 }
 

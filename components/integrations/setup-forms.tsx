@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { connectHighLevelAction, disconnectAction, lookupAction, saveSettingsAction, setWebhookAction, testAction, type SetupState } from "@/app/integrations/actions";
 
 // Every form sends the license key typed on this page; nothing is remembered after the page closes.
-export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean }) {
+export function SetupForms({ highlevelAvailable, emailAvailable }: { highlevelAvailable: boolean; emailAvailable: boolean }) {
   const [key, setKey] = useState("");
   const [state, setState] = useState<SetupState>({});
   const wrap = (fn: (p: SetupState, f: FormData) => Promise<SetupState>) => async (prev: SetupState, f: FormData) => {
@@ -59,6 +59,8 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
               <label className="monarch-check is-wide"><input type="checkbox" name="enabled" defaultChecked={v.settings.enabled} /> Show the lead form on my calculator</label>
               <label>Business name (shown to visitors)<input name="business_name" maxLength={120} defaultValue={v.settings.business_name} /></label>
               <label>Lead source<input name="lead_source" maxLength={80} defaultValue={v.settings.lead_source} /></label>
+              <label className="is-wide">Notification email (optional)<input name="notification_email" type="email" maxLength={254} autoComplete="off" defaultValue={v.settings.notification_email} disabled={!emailAvailable} placeholder={emailAvailable ? "you@yourbusiness.com" : "Not available yet"} /></label>
+              <p className="is-wide monarch-muted">{emailAvailable ? "Each delivered lead is also emailed to this address with the contact details and the calculated results. The lead still goes to your CRM first; the email is a copy." : "Email notifications are not switched on yet. You can email results from your CRM workflow instead (see the setup guide)."}</p>
               <label className="is-wide">Tags (comma separated)<input name="tags" maxLength={500} defaultValue={v.settings.tags} /></label>
               <label className="monarch-check is-wide"><input type="checkbox" name="include_summary" defaultChecked={v.settings.include_summary} /> Include the estimate summary (tax year, filing status, estimated refund or amount owed); visitors are told before submitting</label>
               <label className="monarch-check is-wide"><input type="checkbox" name="update_existing" defaultChecked={v.settings.update_existing} /> GoHighLevel: update a matching existing contact (otherwise existing contacts are left unchanged)</label>

@@ -4,6 +4,7 @@ import type { CommerceRepo } from "../commerce/types.ts";
 import { randomToken, type CrmSecrets } from "./crypto.ts";
 import { HighLevelError, type HighLevelApi } from "./highlevel.ts";
 import { parseWebhookUrl, sendWebhook, type WebhookSender } from "./webhook.ts";
+import type { Mailer } from "./mailer.ts";
 import type { CrmConnection, CrmRepo } from "./types.ts";
 
 // Buyer-owned CRM destinations. Every function takes a license id that the
@@ -18,6 +19,8 @@ export type CrmDeps = {
   /** Server encryption/signing keys; null until MONARCH_ENCRYPTION_KEY is configured. */
   secrets: CrmSecrets | null;
   webhook?: WebhookSender;
+  /** Sends the optional new-lead notification email; null/absent when no email provider is configured. */
+  mailer?: Mailer | null;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
 };

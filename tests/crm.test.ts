@@ -63,7 +63,7 @@ async function connectGhl(deps: CrmDeps, api: FakeHighLevel, licenseId: string, 
 }
 
 async function enable(deps: CrmDeps, licenseId: string, over = {}) {
-  await deps.repo.saveLeadSettings({ license_id: licenseId, enabled: true, business_name: "Biz", lead_source: "Monarch Tax Calculator", tags: ["calc-lead"], update_existing: false, include_summary: true, ...over });
+  await deps.repo.saveLeadSettings({ license_id: licenseId, enabled: true, business_name: "Biz", lead_source: "Monarch Tax Calculator", tags: ["calc-lead"], update_existing: false, include_summary: true, notification_email: null, ...over });
 }
 
 const lead = (deps: CrmDeps, licenseId: string, host: string | null, over: Partial<LeadSubmission> = {}): LeadSubmission => ({
