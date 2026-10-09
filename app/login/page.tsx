@@ -22,7 +22,7 @@ export default async function LoginPage({
 
           <div>
             <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" autoComplete="email" required />
+            <Input id="email" name="email" type="email" autoComplete="email" defaultValue="info@monarchtaxsuite.com" required />
           </div>
 
           <div>
