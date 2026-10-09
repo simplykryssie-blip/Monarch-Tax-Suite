@@ -29,8 +29,9 @@ export default function PrivacyPage() {
         <p>
           If a customer turns on the optional lead form, what a visitor enters (name, email and/or phone, consent, and optionally tax year, filing status and an estimated
           result) is sent during that request to the destination the customer configured, such as their CRM or webhook. Monarch does not store this information and does not write
-          it to its logs; it is held in memory only while the request is processed. The customer is responsible for how they use it and for their own privacy notice. If delivery
-          fails the visitor is asked to try again, and nothing is saved by Monarch.
+          it to its logs; it is held in memory only while the request is processed. The figures typed into the calculator are used on Monarch&apos;s server only to calculate the results that are sent
+          along with the contact details; the figures themselves are not forwarded, stored or logged. The customer is responsible for how they use what they receive and for their own
+          privacy notice. If delivery fails the visitor is asked to try again, and nothing is saved by Monarch.
         </p>
       </Section>
       <Section heading="5. Abuse-prevention data">

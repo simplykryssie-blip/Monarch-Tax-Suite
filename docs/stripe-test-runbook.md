@@ -87,7 +87,7 @@ All of these must pass before anything is written:
 
 Test and live Stripe data are completely separate: different products, prices, customers, payments. A test product has **different** `prod_` and `price_` IDs from the live one. That is expected. Never copy test IDs into production or live IDs into the test database.
 
-Do **not** use a Vercel preview or production for this test. The Preview-scoped `STRIPE_SECRET_KEY`'s mode has not been checked, preview has no webhook secret, and previews use the production database unless overridden.
+Do **not** use a Vercel preview or production for this test. The Preview-scoped `STRIPE_SECRET_KEY`'s mode has not been checked, preview has no webhook secret. With this release a preview that has no database settings shows a "not configured" page and can no longer fall back to the production database, but a preview still must not be pointed at production or at live Stripe keys.
 
 ---
 
@@ -307,13 +307,10 @@ Adds one table and one function; touches nothing existing. If it is not applied,
 
 `20261009180000_remove_lead_storage.sql` drops lead storage (0 rows in production, but still a drop). Separate approval.
 
-### `MONARCH_ENCRYPTION_KEY`
-A secret of exactly 32 random bytes, base64-encoded. Currently missing everywhere, so CRM connections are off and rate-limit hashing uses plain SHA-256. No existing data is encrypted with any key, so adding it loses nothing.
+### `MONARCH_ENCRYPTION_KEY` (already set in Production, 2026-10-09)
+A secret of exactly 32 random bytes, base64-encoded. It is now in Vercel Production as a Sensitive variable, so lead destinations can be saved. Do not change, rotate or delete it once a destination has been saved: saved destinations would become unreadable and would have to be entered again.
 
-1. Generate it on your own computer: `openssl rand -base64 32`. Store it in a password manager. Never paste it in chat.
-2. For this test use a **different throwaway** value (or leave it unset).
-3. Production, with your approval: Vercel → Project → Settings → Environment Variables → add as **Sensitive**, **Production** scope, redeploy, then confirm by name and scope only.
-4. Never change or delete it once CRM connections exist unless those connections are re-created.
+For this test, leave it unset or use a **different throwaway** value generated on your own computer (`openssl rand -base64 32`). Never reuse the production value, and never paste any key in chat.
 
 ---
 
