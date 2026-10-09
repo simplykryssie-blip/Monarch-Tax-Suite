@@ -1,0 +1,57 @@
+# Monarch commerce CRM: products, orders, licenses, installations
+
+The admin workspace at `/` (Products, Customers, Orders, Licenses, Installations)
+reads and writes the Monarch Supabase project only. The public storefront
+(monarchtaxsuite.com) and the public calculator (`/basic-calculator`) are not
+changed by this module.
+
+## Architecture
+
+- `lib/commerce/` — framework-free domain logic (catalog lifecycle, Stripe
+  fulfillment, reconciliation, license keys, installation workflow) behind a
+  `CommerceRepo` interface. `supabase-repo.ts` is the production store.
+- `lib/admin.ts` — `requireAdmin()` (Supabase session + `admin_users` lookup with
+  the service role) and the server-only service-role and Stripe clients.
+- `app/(admin)/` — admin pages and server actions. Every page and action calls
+  `requireAdmin()` itself; layouts are not relied on for authorization.
+- `app/api/stripe/webhook/route.ts` — signature-verified Stripe webhook.
+
+## Security model
+
+- RLS is enabled on every commerce table and `anon`/`authenticated` have no
+  grants. Only server code using the service role touches these tables.
+- License keys (`MTS-XXXXX-XXXXX-XXXXX-XXXXX`) are shown once when issued; only a
+  SHA-256 hash and a display prefix are stored.
+- Paid access is granted only by a signature-verified Stripe event, or by an
+  administrator reconciling a payment they verified (live Stripe lookup when
+  `STRIPE_SECRET_KEY` is set; otherwise an explicit attestation is required and
+  recorded as `admin_manual`).
+- Webhook processing is idempotent: `stripe_events` records each event id, and
+  unique keys on payment intent, order → license and order → installation
+  prevent duplicates even across different events for the same payment.
+
+## Setup
+
+1. **Database.** Apply `supabase/migrations/20261009120000_monarch_commerce_licensing.sql`
+   to the Monarch project (`ftthniovwzxztkwtregz`) — Supabase SQL editor or
+   `supabase db push`. It is re-runnable, extends the existing `calculator_*`
+   tables without dropping anything, and aborts (changing nothing) if an
+   existing table is incompatible. It seeds `info@monarchtaxsuite.com` as the
+   administrator and the Basic Tax Calculator product as a draft.
+2. **Environment (Vercel, server-only):**
+   - `SUPABASE_SERVICE_ROLE_KEY` (already provided by the Supabase integration)
+   - `STRIPE_SECRET_KEY` — use a test-mode key first
+   - `STRIPE_WEBHOOK_SECRET` — from the webhook endpoint below
+3. **Stripe webhook.** Endpoint `https://<domain>/api/stripe/webhook`, events:
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+   `checkout.session.async_payment_failed`, `checkout.session.expired`,
+   `payment_intent.succeeded`, `payment_intent.payment_failed`,
+   `payment_intent.canceled`, `charge.refunded`, `charge.dispute.created`.
+   Checkouts are matched to catalog products by Stripe product id. Set checkout
+   metadata `installation_type=done_for_you` to record a Done For You purchase;
+   otherwise self-service is recorded and can be changed on the installation.
+
+## Tests
+
+`npm test` runs `tests/*.test.ts` with Node's built-in runner against an
+in-memory store that enforces the same unique constraints as the migration.

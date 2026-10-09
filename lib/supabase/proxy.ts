@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./database.types";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 
-const PUBLIC_PATHS = ["/login", "/basic-calculator"];
+// The Stripe webhook authenticates by signature, not session.
+const PUBLIC_PATHS = ["/login", "/basic-calculator", "/api/stripe/webhook"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -39,8 +40,10 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (user && request.nextUrl.pathname === "/login") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+  // Signed-in users skip the login page unless it is showing an access error
+  // (e.g. a non-administrator account), which would otherwise loop.
+  if (user && request.nextUrl.pathname === "/login" && !request.nextUrl.searchParams.has("error")) {
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return response;

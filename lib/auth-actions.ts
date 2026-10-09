@@ -6,7 +6,9 @@ import { createClient } from "./supabase/server";
 export async function signIn(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "/dashboard");
+  const requested = String(formData.get("next") ?? "/");
+  // Only allow same-site relative paths to prevent open redirects.
+  const next = requested.startsWith("/") && !requested.startsWith("//") ? requested : "/";
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });

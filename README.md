@@ -1,5 +1,7 @@
 # Full Service CRM
 
+> **Monarch admin CRM:** products, orders, Stripe fulfillment, licenses and installations are documented in [docs/monarch-commerce.md](docs/monarch-commerce.md). The workspace pages described below are legacy and not linked from the Monarch admin.
+
 A CRM and tax-workflow foundation for tax professionals: client management and case (engagement) tracking today, with bookkeeping, payroll, and business services designed to attach later without a schema redesign.
 
 This is a standalone frontend backed by the existing **Verexa Tax Office v2** Supabase project. It is intentionally separate from the VerexaHQ app — same database, different product, no "Service" package concept required to open a case.
