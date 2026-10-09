@@ -6,7 +6,7 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 // The Stripe webhook authenticates by signature, not session. /shop lists
 // published products only. /integrations authorizes each action with the buyer's license key; the
 // lead endpoint authorizes with a signed embed token.
-const PUBLIC_PATHS = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads"];
+const PUBLIC_PATHS = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads", "/terms", "/privacy", "/refunds"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
