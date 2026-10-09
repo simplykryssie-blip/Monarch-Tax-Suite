@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { BasicCalculator } from "@/components/calculator/basic-calculator";
+import { FullCalculator } from "@/components/calculator/full-calculator";
+import { FULL_TAX_YEAR } from "@/lib/calculator/full";
 import { EMBED_MESSAGES, hostFromHeader } from "@/lib/commerce/embed.ts";
 import { loadEmbed } from "@/lib/embed-server";
 import { issueEmbedToken, leadCaptureActive } from "@/lib/crm/leads.ts";
@@ -36,14 +37,14 @@ export default async function EmbeddedCalculatorPage({ searchParams }: { searchP
       </main>
     );
   }
-  if (years.length === 0) {
+  if (!years.includes(FULL_TAX_YEAR)) {
     return (
       <main style={{ padding: 24, fontFamily: "Arial, Helvetica, sans-serif", color: "#3a3830", background: "#f6f4ee" }}>
-        <p style={{ margin: 0, fontSize: 14 }}>This license does not include a tax year available in this calculator. Please contact Monarch Tax Suite.</p>
+        <p style={{ margin: 0, fontSize: 14 }}>This license does not include the 2026 tax year. Please contact Monarch Tax Suite.</p>
       </main>
     );
   }
   // Only the tax years this license has paid for (its version and earlier) are offered.
   const leadCapture = licenseId ? await leadCaptureFor(licenseId, host) : undefined;
-  return <BasicCalculator embedded maxTaxYear={years[0]} leadCapture={leadCapture} />;
+  return <FullCalculator leadCapture={leadCapture} />;
 }

@@ -1,0 +1,549 @@
+<body><div class="min-h-screen" style="background:#ffffff"><main><section class="">
+<!-- BASIC TAX REFUND CALCULATOR
+     Tax Year: 2026 | Filing Season: 2027
+     Original fuller version — ABC Firm
+-->
+<div id="abcRefundEstimator"></div>
+
+<style>
+#abcRefundEstimator {
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  color: #111;
+  background: #fff;
+}
+#abcRefundEstimator * { box-sizing: border-box; }
+#abcRefundEstimator .abc-wrap {
+  max-width: 1040px; margin: 0 auto; padding: 16px;
+}
+#abcRefundEstimator .abc-grid {
+  display: grid; grid-template-columns: 1.25fr .75fr; gap: 16px;
+}
+#abcRefundEstimator .abc-card {
+  border: 1px solid #ddd; border-radius: 14px; padding: 18px;
+  background: #fff; min-width: 0;
+}
+#abcRefundEstimator h3 {
+  margin: 0 0 14px; font-size: 14px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .2px;
+}
+#abcRefundEstimator .abc-row {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; margin-top: 12px;
+}
+#abcRefundEstimator .abc-label {
+  display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px;
+}
+#abcRefundEstimator .abc-input,
+#abcRefundEstimator .abc-select {
+  width: 100%; min-height: 44px; padding: 11px 12px;
+  border: 1px solid #cfcfcf; border-radius: 9px;
+  background: #fff; color: #111; font-size: 16px;
+}
+#abcRefundEstimator .abc-input:focus,
+#abcRefundEstimator .abc-select:focus {
+  border-color: #000; outline: 2px solid #000;
+}
+#abcRefundEstimator .abc-help {
+  margin-top: 5px; font-size: 11px; line-height: 1.4; color: #666;
+}
+#abcRefundEstimator .abc-actions { margin-top: 16px; }
+#abcRefundEstimator .abc-btn {
+  width: 100%; min-height: 46px; border: 1px solid #000;
+  border-radius: 9px; background: #000; color: #fff;
+  font-weight: 800; font-size: 14px; cursor: pointer; padding: 11px 14px;
+}
+#abcRefundEstimator .abc-warn {
+  display: none; margin-top: 12px; padding: 10px 12px;
+  border: 1px solid #e3bcbc; background: #fff5f5; color: #a00000;
+  border-radius: 9px; font-size: 12px; line-height: 1.4;
+}
+#abcRefundEstimator .abc-result-label {
+  font-size: 12px; font-weight: 700; color: #555;
+  text-transform: uppercase; letter-spacing: .2px;
+}
+#abcRefundEstimator .abc-big {
+  font-size: 30px; font-weight: 900; margin-top: 8px; line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+#abcRefundEstimator .abc-pills {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px;
+}
+#abcRefundEstimator .abc-pill {
+  border: 1px solid #ddd; border-radius: 10px; padding: 12px; min-width: 0;
+}
+#abcRefundEstimator .abc-pill-label { font-size: 11px; color: #666; margin-bottom: 5px; }
+#abcRefundEstimator .abc-pill-val { font-size: 16px; font-weight: 900; overflow-wrap: anywhere; }
+#abcRefundEstimator .abc-breakdown {
+  margin-top: 16px; border-top: 1px solid #ddd; padding-top: 12px;
+  display: grid; gap: 9px;
+}
+#abcRefundEstimator .abc-line {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px;
+}
+#abcRefundEstimator .abc-line strong { text-align: right; }
+#abcRefundEstimator .abc-note {
+  margin-top: 14px; padding: 11px 12px; border: 1px solid #ddd;
+  border-radius: 9px; font-size: 11px; line-height: 1.5; color: #444;
+}
+#abcRefundEstimator .abc-section {
+  margin-top: 18px; padding-top: 16px; border-top: 1px solid #ddd;
+}
+#abcRefundEstimator .abc-section-title { font-size: 13px; font-weight: 800; margin-bottom: 4px; }
+#abcRefundEstimator .abc-check {
+  display: flex; gap: 8px; align-items: flex-start;
+  font-size: 12px; font-weight: 600; line-height: 1.4; margin-top: 8px;
+}
+#abcRefundEstimator .abc-check input { margin-top: 3px; width: auto; min-height: auto; }
+#abcRefundEstimator .abc-version { font-size: 11px; color: #666; margin-top: 5px; }
+#abcRefundEstimator .abc-error { border-color: #a00000 !important; }
+@media(max-width:900px) {
+  #abcRefundEstimator .abc-grid { grid-template-columns: 1fr; }
+}
+@media(max-width:560px) {
+  #abcRefundEstimator .abc-row,
+  #abcRefundEstimator .abc-pills { grid-template-columns: 1fr; }
+}
+</style>
+
+<script>
+(function () {
+  function initABCRefundEstimator() {
+    const root = document.getElementById("abcRefundEstimator");
+    if (!root || root.dataset.initialized === "true") return;
+    root.dataset.initialized = "true";
+
+    const BUSINESS_NAME = "ABC Firm";
+
+    // 2026 federal tax parameters used by this estimate.
+    const STD_DED_2026 = {
+      single: 16100, hoh: 24150, mfj: 32200, mfs: 16100
+    };
+
+    const BRACKETS_2026 = {
+      single: [
+        {upto:12400,rate:.10},{upto:50400,rate:.12},
+        {upto:105700,rate:.22},{upto:201775,rate:.24},
+        {upto:256225,rate:.32},{upto:640600,rate:.35},
+        {upto:Infinity,rate:.37}
+      ],
+      hoh: [
+        {upto:17700,rate:.10},{upto:67450,rate:.12},
+        {upto:105700,rate:.22},{upto:201750,rate:.24},
+        {upto:256200,rate:.32},{upto:640600,rate:.35},
+        {upto:Infinity,rate:.37}
+      ],
+      mfj: [
+        {upto:24800,rate:.10},{upto:100800,rate:.12},
+        {upto:211400,rate:.22},{upto:403550,rate:.24},
+        {upto:512450,rate:.32},{upto:768700,rate:.35},
+        {upto:Infinity,rate:.37}
+      ],
+      mfs: [
+        {upto:12400,rate:.10},{upto:50400,rate:.12},
+        {upto:105700,rate:.22},{upto:201775,rate:.24},
+        {upto:256225,rate:.32},{upto:384350,rate:.35},
+        {upto:Infinity,rate:.37}
+      ]
+    };
+
+    const CTC_PHASEOUT = {
+      single:200000, hoh:200000, mfs:200000, mfj:400000
+    };
+    const CTC_PER_CHILD = 2200;
+    const ACTC_MAX_PER_CHILD = 1700;
+    const ACTC_EARNED_THRESHOLD = 2500;
+    const ACTC_RATE = .15;
+    const SS_WAGE_BASE = 184500;
+
+    const EITC = {
+      investmentIncomeLimit:12200,
+      0:{earnedIncomeAmount:8680,maxCredit:664,thOther:10860,endOther:19540,thMFJ:18140,endMFJ:26820},
+      1:{earnedIncomeAmount:13020,maxCredit:4427,thOther:23890,endOther:51593,thMFJ:31160,endMFJ:58863},
+      2:{earnedIncomeAmount:18290,maxCredit:7316,thOther:23890,endOther:58629,thMFJ:31160,endMFJ:65899},
+      3:{earnedIncomeAmount:18290,maxCredit:8231,thOther:23890,endOther:62974,thMFJ:31160,endMFJ:70244}
+    };
+
+    root.innerHTML = `
+      <div class="abc-wrap">
+        <div class="abc-grid">
+          <div class="abc-card">
+            <h3>${BUSINESS_NAME} Refund Calculator</h3>
+            <div class="abc-version">2026 Tax Year • 2027 Filing Season</div>
+
+            <div class="abc-section" style="margin-top:14px;padding-top:0;border-top:0">
+              <div class="abc-section-title">Contact Information</div>
+              <div class="abc-row">
+                <div><label class="abc-label" for="abc_first">First Name</label><input class="abc-input" id="abc_first" type="text" placeholder="First name"></div>
+                <div><label class="abc-label" for="abc_last">Last Name</label><input class="abc-input" id="abc_last" type="text" placeholder="Last name"></div>
+              </div>
+              <div class="abc-row">
+                <div><label class="abc-label" for="abc_email">Email</label><input class="abc-input" id="abc_email" type="email" placeholder="name@email.com"></div>
+                <div><label class="abc-label" for="abc_phone">Mobile Phone</label><input class="abc-input" id="abc_phone" type="tel" inputmode="tel" placeholder="Phone number"></div>
+              </div>
+            </div>
+
+            <div class="abc-section">
+              <div class="abc-section-title">Income & Filing Information</div>
+              <div class="abc-row">
+                <div>
+                  <label class="abc-label" for="abc_status">Filing Status</label>
+                  <select class="abc-select" id="abc_status">
+                    <option value="single">Single</option>
+                    <option value="hoh">Head of Household</option>
+                    <option value="mfj">Married Filing Jointly</option>
+                    <option value="mfs">Married Filing Separately</option>
+                  </select>
+                </div>
+                <div><label class="abc-label" for="abc_wages">W-2 Wages ($)</label><input class="abc-input" id="abc_wages" type="number" min="0" step="1" value="0"></div>
+              </div>
+              <div class="abc-row">
+                <div><label class="abc-label" for="abc_wh">Federal Income Tax Withheld ($)</label><input class="abc-input" id="abc_wh" type="number" min="0" step="1" value="0"></div>
+                <div><label class="abc-label" for="abc_senet">Self-Employment Net Profit ($)</label><input class="abc-input" id="abc_senet" type="number" min="0" step="1" value="0"></div>
+              </div>
+              <div class="abc-row">
+                <div><label class="abc-label" for="abc_inv">Investment Income ($)</label><input class="abc-input" id="abc_inv" type="number" min="0" step="1" value="0"></div>
+                <div><label class="abc-label" for="abc_kids">Qualifying Children Under 17</label><input class="abc-input" id="abc_kids" type="number" min="0" step="1" value="0"></div>
+              </div>
+
+              <div id="abc_nochild_wrap" class="abc-section" style="margin-top:14px">
+                <div class="abc-section-title">EITC — No Qualifying Child</div>
+                <div class="abc-row">
+                  <div>
+                    <label class="abc-label" for="abc_eic_age">Age 25–64 at year end?</label>
+                    <select class="abc-select" id="abc_eic_age">
+                      <option value="">Select</option><option>Yes</option><option>No</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="abc-label" for="abc_eic_us">Lived in the U.S. more than half the year?</label>
+                    <select class="abc-select" id="abc_eic_us">
+                      <option value="">Select</option><option>Yes</option><option>No</option>
+                    </select>
+                  </div>
+                </div>
+                <label class="abc-check"><input id="abc_eic_dep" type="checkbox"> I can be claimed as a dependent by another taxpayer.</label>
+                <div id="abc_mfs_wrap" style="display:none;margin-top:8px">
+                  <label class="abc-check"><input id="abc_eic_mfs_apart" type="checkbox"> If filing MFS, I lived apart from my spouse for the last 6 months of 2026.</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="abc-section">
+              <div class="abc-section-title">2026 Additional Deductions</div>
+              <div class="abc-help">These deductions may be available when the taxpayer meets the applicable IRS requirements.</div>
+              <div class="abc-row">
+                <div>
+                  <label class="abc-label" for="abc_tips">Qualified Tips ($)</label>
+                  <input class="abc-input" id="abc_tips" type="number" min="0" value="0">
+                  <div class="abc-help">Up to $25,000 may qualify, subject to eligibility and income limits.</div>
+                </div>
+                <div>
+                  <label class="abc-label" for="abc_overtime">Qualified Overtime Compensation ($)</label>
+                  <input class="abc-input" id="abc_overtime" type="number" min="0" value="0">
+                  <div class="abc-help">Up to $12,500, or $25,000 for MFJ, may qualify.</div>
+                </div>
+              </div>
+              <div class="abc-row">
+                <div>
+                  <label class="abc-label" for="abc_vehicle_interest">Qualified Vehicle Loan Interest ($)</label>
+                  <input class="abc-input" id="abc_vehicle_interest" type="number" min="0" value="0">
+                  <div class="abc-help">Up to $10,000 may qualify for an eligible vehicle.</div>
+                </div>
+                <div>
+                  <label class="abc-label">Senior Deduction</label>
+                  <label class="abc-check"><input id="abc_senior_self" type="checkbox"> Taxpayer was born before Jan. 2, 1962.</label>
+                  <label class="abc-check"><input id="abc_senior_spouse" type="checkbox"> Spouse was born before Jan. 2, 1962 (MFJ only).</label>
+                </div>
+              </div>
+              <div class="abc-row">
+                <div>
+                  <label class="abc-label" for="abc_tips_qualified">Tips qualify?</label>
+                  <select class="abc-select" id="abc_tips_qualified"><option value="Yes">Yes</option><option value="No">No</option></select>
+                </div>
+                <div>
+                  <label class="abc-label" for="abc_overtime_qualified">Overtime qualifies?</label>
+                  <select class="abc-select" id="abc_overtime_qualified"><option value="Yes">Yes</option><option value="No">No</option></select>
+                </div>
+              </div>
+              <div class="abc-row">
+                <div>
+                  <label class="abc-label" for="abc_vehicle_qualified">Vehicle loan qualifies?</label>
+                  <select class="abc-select" id="abc_vehicle_qualified"><option value="Yes">Yes</option><option value="No">No</option></select>
+                </div>
+                <div>
+                  <label class="abc-label" for="abc_other_deductions">Other Adjustments / Deductions ($)</label>
+                  <input class="abc-input" id="abc_other_deductions" type="number" min="0" value="0">
+                </div>
+              </div>
+            </div>
+
+            <div class="abc-actions">
+              <button class="abc-btn" id="abc_calc" type="button">Calculate My Estimated Refund</button>
+            </div>
+            <div class="abc-warn" id="abc_warn" aria-live="polite"></div>
+          </div>
+
+          <div class="abc-card" id="abc_results">
+            <div class="abc-result-label">2026 Tax Year • 2027 Filing Season</div>
+            <div class="abc-big" id="abc_refund_big">Enter your information</div>
+            <div class="abc-pills">
+              <div class="abc-pill"><div class="abc-pill-label">Estimated Federal Tax</div><div class="abc-pill-val" id="abc_tax_pill">$0</div></div>
+              <div class="abc-pill"><div class="abc-pill-label">Withholding + Refundable Credits</div><div class="abc-pill-val" id="abc_payments_pill">$0</div></div>
+            </div>
+            <div class="abc-breakdown" id="abc_breakdown">
+              <div class="abc-line"><span>Federal income tax</span><strong>$0</strong></div>
+              <div class="abc-line"><span>Self-employment tax</span><strong>$0</strong></div>
+              <div class="abc-line"><span>EITC</span><strong>$0</strong></div>
+              <div class="abc-line"><span>ACTC</span><strong>$0</strong></div>
+              <div class="abc-line"><span>Schedule 1-A deductions</span><strong>$0</strong></div>
+            </div>
+            <div class="abc-note">This is a preliminary federal tax estimate, not a completed tax return. Final results depend on all income, deductions, credits, filing information, and IRS eligibility requirements.</div>
+          </div>
+        </div>
+      </div>`;
+
+    const $ = id => root.querySelector('#' + id);
+    const num = value => {
+      const result = Number(value);
+      return Number.isFinite(result) ? Math.max(0, result) : 0;
+    };
+    const money = value => new Intl.NumberFormat('en-US', {
+      style:'currency', currency:'USD', maximumFractionDigits:0
+    }).format(Number(value) || 0);
+    const round = value => Math.max(0, Math.round(Number(value) || 0));
+
+    function progressiveTax(taxable, brackets) {
+      let tax = 0, previous = 0;
+      for (const bracket of brackets) {
+        const amount = Math.max(0, Math.min(taxable, bracket.upto) - previous);
+        tax += amount * bracket.rate;
+        previous = bracket.upto;
+        if (taxable <= bracket.upto) break;
+      }
+      return tax;
+    }
+
+    function estimateSETax(netProfit, wages) {
+      if (netProfit <= 0) return 0;
+      const net = netProfit * .9235;
+      const remainingSSWages = Math.max(0, SS_WAGE_BASE - Math.max(0, wages));
+      return Math.min(net, remainingSSWages) * .124 + net * .029;
+    }
+
+    function estimateAdditionalMedicareTax(status, wages, netProfit) {
+      const threshold = status === 'mfj' ? 250000 :
+        (status === 'mfs' ? 125000 : 200000);
+      const combined = Math.max(0, wages) + Math.max(0, netProfit * .9235);
+      return Math.max(0, combined - threshold) * .009;
+    }
+
+    function phaseout(amount, magi, threshold, rate) {
+      if (magi <= threshold) return Math.max(0, amount);
+      return Math.max(0, amount - (magi - threshold) * rate);
+    }
+
+    function schedule1A(data) {
+      const joint = data.status === 'mfj';
+      const tips = data.tipsQualified ? Math.min(data.tips, 25000) : 0;
+      const overtime = data.overtimeQualified
+        ? Math.min(data.overtime, joint ? 25000 : 12500) : 0;
+      const vehicle = data.vehicleQualified ? Math.min(data.vehicleInterest, 10000) : 0;
+
+      const tipsDeduction = phaseout(tips, data.magi, joint ? 300000 : 150000, .06);
+      const overtimeDeduction = phaseout(overtime, data.magi, joint ? 300000 : 150000, .06);
+      const vehicleDeduction = phaseout(vehicle, data.magi, joint ? 200000 : 100000, .20);
+      const seniorBase = phaseout(6000, data.magi, joint ? 150000 : 75000, .06);
+      const senior = (data.seniorSelf ? seniorBase : 0) +
+        (joint && data.seniorSpouse ? seniorBase : 0);
+
+      return {
+        tips:round(tipsDeduction),
+        overtime:round(overtimeDeduction),
+        vehicleInterest:round(vehicleDeduction),
+        senior:round(senior),
+        total:round(tipsDeduction + overtimeDeduction + vehicleDeduction + senior)
+      };
+    }
+
+    function computeEITC(data) {
+      const kids = Math.min(3, Math.max(0, Math.floor(data.kids)));
+      const parameters = EITC[kids];
+      if (!parameters || data.investment > EITC.investmentIncomeLimit) return 0;
+      if (data.status === 'mfs' && !data.mfsApart) return 0;
+      if (kids === 0 && !data.noChildOk) return 0;
+      if (data.earned <= 0) return 0;
+
+      const threshold = data.status === 'mfj' ? parameters.thMFJ : parameters.thOther;
+      const end = data.status === 'mfj' ? parameters.endMFJ : parameters.endOther;
+      const maxByIncome = Math.min(parameters.maxCredit,
+        data.earned * (parameters.maxCredit / parameters.earnedIncomeAmount));
+      const base = Math.max(data.agi, data.earned);
+      if (base >= end) return 0;
+
+      let credit = maxByIncome;
+      if (base > threshold) {
+        credit -= (base - threshold) * (parameters.maxCredit / (end - threshold));
+      }
+      return round(Math.max(0, credit));
+    }
+
+    function computeCTC(data) {
+      const kids = Math.max(0, Math.floor(data.kids));
+      const threshold = CTC_PHASEOUT[data.status] || 200000;
+      const reduction = Math.ceil(Math.max(0, data.agi - threshold) / 1000) * 50;
+      const perChild = Math.max(0, CTC_PER_CHILD - reduction);
+      const total = kids * perChild;
+      const nonrefundable = Math.min(Math.max(0, data.incomeTax), total);
+      const remaining = Math.max(0, total - nonrefundable);
+      const refundable = Math.min(
+        remaining,
+        Math.max(0, (data.earned - ACTC_EARNED_THRESHOLD) * ACTC_RATE),
+        kids * ACTC_MAX_PER_CHILD
+      );
+      return {
+        nonrefundable:round(nonrefundable),
+        refundable:round(refundable),
+        total:round(total)
+      };
+    }
+
+    function clearErrors() {
+      root.querySelectorAll('.abc-error').forEach(el => el.classList.remove('abc-error'));
+    }
+
+    function warn(message) {
+      $('abc_warn').textContent = message || '';
+      $('abc_warn').style.display = message ? 'block' : 'none';
+    }
+
+    function mark(id) {
+      const element = $(id);
+      if (element) element.classList.add('abc-error');
+    }
+
+    function sync() {
+      const status = $('abc_status').value;
+      const kids = Math.floor(num($('abc_kids').value));
+      $('abc_nochild_wrap').style.display = kids === 0 ? 'block' : 'none';
+      $('abc_mfs_wrap').style.display = status === 'mfs' ? 'block' : 'none';
+      $('abc_senior_spouse').disabled = status !== 'mfj';
+      $('abc_senior_spouse').style.opacity = status === 'mfj' ? '1' : '.55';
+      if (status !== 'mfj') $('abc_senior_spouse').checked = false;
+    }
+
+    function calculate() {
+      clearErrors();
+      warn('');
+
+      const status = $('abc_status').value;
+      const wages = num($('abc_wages').value);
+      const withholding = num($('abc_wh').value);
+      const kids = Math.floor(num($('abc_kids').value));
+      const netProfit = num($('abc_senet').value);
+      const investment = num($('abc_inv').value);
+
+      if (!wages && !netProfit) {
+        mark('abc_wages');
+        mark('abc_senet');
+        warn('Enter W-2 wages and/or self-employment net profit to calculate an estimate.');
+        return;
+      }
+
+      const tips = num($('abc_tips').value);
+      const overtime = num($('abc_overtime').value);
+      const vehicleInterest = num($('abc_vehicle_interest').value);
+      const otherAdjustments = num($('abc_other_deductions').value);
+      const seniorSelf = $('abc_senior_self').checked;
+      const seniorSpouse = $('abc_senior_spouse').checked && status === 'mfj';
+
+      const seTax = estimateSETax(netProfit, wages);
+      const halfSETax = seTax / 2;
+      const baseAGI = Math.max(0, wages + netProfit - halfSETax);
+
+      const deductions = schedule1A({
+        status,
+        magi:baseAGI,
+        tips,
+        overtime,
+        vehicleInterest,
+        seniorSelf,
+        seniorSpouse,
+        tipsQualified:$('abc_tips_qualified').value === 'Yes',
+        overtimeQualified:$('abc_overtime_qualified').value === 'Yes',
+        vehicleQualified:$('abc_vehicle_qualified').value === 'Yes'
+      });
+
+      const agi = Math.max(0, baseAGI - deductions.total - otherAdjustments);
+      const standardDeduction = STD_DED_2026[status] || STD_DED_2026.single;
+      const taxableIncome = Math.max(0, agi - standardDeduction);
+      const incomeTaxBeforeCredits = progressiveTax(taxableIncome, BRACKETS_2026[status]);
+      const earnedIncome = wages + netProfit * .9235;
+
+      const ageOK = $('abc_eic_age').value === 'Yes';
+      const usOK = $('abc_eic_us').value === 'Yes';
+      const notClaimable = !$('abc_eic_dep').checked;
+      const noChildEligible = kids > 0 || (ageOK && usOK && notClaimable);
+      const mfsApart = $('abc_eic_mfs_apart').checked;
+
+      const eitc = computeEITC({
+        status, kids, earned:earnedIncome, agi,
+        investment, noChildOk:noChildEligible, mfsApart
+      });
+
+      const childCredit = computeCTC({
+        kids, incomeTax:incomeTaxBeforeCredits, earned:earnedIncome, status, agi
+      });
+
+      const incomeTaxAfterCredits = Math.max(0,
+        incomeTaxBeforeCredits - childCredit.nonrefundable);
+      const additionalMedicare = estimateAdditionalMedicareTax(status, wages, netProfit);
+      const totalTax = Math.max(0, incomeTaxAfterCredits + seTax + additionalMedicare);
+      const payments = Math.max(0, withholding + eitc + childCredit.refundable);
+      const difference = payments - totalTax;
+
+      $('abc_refund_big').textContent = difference >= 0
+        ? 'Estimated Refund: ' + money(difference)
+        : 'Estimated Balance Due: ' + money(Math.abs(difference));
+      $('abc_tax_pill').textContent = money(totalTax);
+      $('abc_payments_pill').textContent = money(payments);
+
+      $('abc_breakdown').innerHTML = `
+        <div class="abc-line"><span>Federal income tax after child tax credit</span><strong>${money(incomeTaxAfterCredits)}</strong></div>
+        <div class="abc-line"><span>Self-employment tax</span><strong>${money(seTax)}</strong></div>
+        <div class="abc-line"><span>Additional Medicare tax</span><strong>${money(additionalMedicare)}</strong></div>
+        <div class="abc-line"><span>Earned Income Tax Credit (EITC)</span><strong>${money(eitc)}</strong></div>
+        <div class="abc-line"><span>Refundable Additional Child Tax Credit</span><strong>${money(childCredit.refundable)}</strong></div>
+        <div class="abc-line"><span>Schedule 1-A deductions entered</span><strong>${money(deductions.total)}</strong></div>
+        <div class="abc-line"><span>Standard deduction used</span><strong>${money(standardDeduction)}</strong></div>
+        <div class="abc-line"><span>Adjusted gross income (estimate)</span><strong>${money(agi)}</strong></div>
+        <div class="abc-line"><span>Taxable income (estimate)</span><strong>${money(taxableIncome)}</strong></div>`;
+
+      $('abc_results').scrollIntoView({behavior:'smooth', block:'start'});
+    }
+
+    $('abc_status').addEventListener('change', sync);
+    $('abc_kids').addEventListener('input', sync);
+    $('abc_calc').addEventListener('click', calculate);
+    sync();
+  }
+
+  // Initialize now, or after the page builder finishes rendering.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initABCRefundEstimator);
+  } else {
+    initABCRefundEstimator();
+  }
+
+  // Handles builders that inject the code before the element is ready.
+  let attempts = 0;
+  const retry = setInterval(function () {
+    attempts++;
+    initABCRefundEstimator();
+    if (document.getElementById('abcRefundEstimator')?.dataset.initialized === 'true' || attempts >= 20) {
+      clearInterval(retry);
+    }
+  }, 250);
+})();
+</script>
+</section>
