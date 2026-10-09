@@ -260,3 +260,49 @@ All four tables have RLS on and service-role access only.
   uses their own account. Whether a non-agency developer account can publish
   the app for other agencies is set by HighLevel's Marketplace rules; verify
   before relying on it.
+
+## Stripe verification and annual update prices
+
+Migration `20261009185026_stripe_verification` (applied, additive) adds
+`stripe_verification` snapshots on `products` and `product_versions`, and the
+`update_checkout_sessions` table.
+
+- **Verify with Stripe** (Products → product → Stripe):
+  - reads the configured Stripe product and price on the server;
+  - records what Stripe reports (name, amount, currency, active,
+    one-time/recurring, live/test mode) or the exact problems found. Problems
+    include: not found, wrong product, wrong mode, archived, subscription,
+    amount differs, invalid key, no permission, Stripe unreachable.
+
+  Configured ids are never changed by verification. The panel shows whether
+  the key is configured and its mode (live/test) without revealing it.
+- **Annual version prices** (Products → calculator → versions):
+  1. Add a draft version: tax year, label, release date, price.
+  2. **Check Stripe price** verifies the linked price, or lists active
+     one-time USD prices with the same amount on the single catalog product
+     of category "annual software update" (`prod_VPRuMH3pwJVMiY`). It never
+     links anything by itself.
+  3. If exactly one matches, confirm to **link** it. If several match, review
+     them and link the right one; nothing is guessed. If none matches, confirm
+     to **create** one new price on that same product (never a new product),
+     with an idempotency key per version and amount.
+  4. **Publish** requires a Stripe-verified linked price that still matches
+     the catalog price, plus a confirmation checkbox. Editing a version's price
+     clears its verification.
+- **Update checkout:**
+  - The browser sends only the license key. The license, version, price and
+    metadata are set by the server.
+  - The linked price is re-verified live (product, active, one-time, USD,
+    amount, mode) before every checkout; if Stripe cannot confirm it, checkout
+    is refused.
+  - An open session for the same license and tax year is reused; a completed
+    one refuses a new charge. Concurrent clicks share a Stripe idempotency
+    key.
+  - Only active licenses may buy updates.
+- **Webhook guards for updates:** the update is not applied, and the order
+  gets a "Review: …" note for the admin, if:
+  - the paid line item is not the Annual Update product;
+  - a second, separate payment for an update the license already paid for
+    (refund);
+  - the amount, currency or tax year is wrong;
+  - the license has been revoked.

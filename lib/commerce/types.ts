@@ -63,6 +63,8 @@ export type Product = {
   stripe_sync_status: "synced" | "failed" | null;
   stripe_synced_at: string | null;
   stripe_sync_error: string | null;
+  /** Last server-side Stripe check of this product's ids; null = never verified. */
+  stripe_verification?: StripeVerification | null;
   created_at: string;
   updated_at: string;
 };
@@ -101,8 +103,37 @@ export type ProductVersion = {
   /** One-time price to upgrade an existing license to this version. */
   update_price_cents: number;
   stripe_update_price_id: string | null;
+  /** Last server-side Stripe check of the update price (see stripe-verify.ts); null = never verified. */
+  stripe_verification?: StripeVerification | null;
   created_at: string;
   updated_at: string;
+};
+
+/** Facts read from Stripe for one price (never entered by hand). */
+export type StripePriceFacts = {
+  id: string;
+  product_id: string;
+  product_name: string | null;
+  product_active: boolean | null;
+  active: boolean;
+  currency: string;
+  unit_amount: number | null;
+  type: "one_time" | "recurring";
+  interval: string | null;
+  livemode: boolean;
+};
+
+/** Snapshot of the last Stripe verification of a product mapping or version price. */
+export type StripeVerification = {
+  checked_at: string;
+  mode: "live" | "test";
+  ok: boolean;
+  /** For versions: what the price lookup concluded. */
+  state?: "linked_verified" | "linked_invalid" | "reuse_candidate" | "create_required" | "ambiguous" | "product_invalid";
+  issues: string[];
+  price?: StripePriceFacts | null;
+  candidates?: StripePriceFacts[];
+  product?: { id: string; name: string | null; active: boolean; livemode: boolean } | null;
 };
 
 /** Changelog entry: the release itself, or an included maintenance fix. */
@@ -271,6 +302,9 @@ export interface CommerceRepo {
   updateCustomer(id: string, patch: Partial<Pick<Customer, "full_name" | "status" | "stripe_customer_id">>): Promise<Customer>;
 
   listOrders(): Promise<Order[]>;
+  /** Most recent recorded update Checkout Session for a license and tax year that has not expired. */
+  findOpenUpdateCheckout(licenseId: string, taxYear: number, now: string): Promise<{ stripe_session_id: string; expires_at: string } | null>;
+  recordUpdateCheckout(input: { license_id: string; tax_year: number; stripe_session_id: string; expires_at: string }): Promise<void>;
   getOrder(id: string): Promise<Order | null>;
   findOrderByPaymentIntent(paymentIntentId: string): Promise<Order | null>;
   /** Inserts unless an order with the same payment intent exists; returns the existing one then. */

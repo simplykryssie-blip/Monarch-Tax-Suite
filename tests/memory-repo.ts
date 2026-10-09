@@ -97,6 +97,15 @@ export class MemoryRepo implements CommerceRepo {
   async updateCustomer(id: string, patch: Partial<Customer>) { return this.patch(this.customers, id, patch); }
 
   async listOrders() { return this.clone(this.orders); }
+  checkouts: { license_id: string; tax_year: number; stripe_session_id: string; expires_at: string; created_at: string }[] = [];
+  async findOpenUpdateCheckout(licenseId: string, taxYear: number, now: string) {
+    const open = this.checkouts.filter((c) => c.license_id === licenseId && c.tax_year === taxYear && c.expires_at > now).at(-1);
+    return open ? { stripe_session_id: open.stripe_session_id, expires_at: open.expires_at } : null;
+  }
+  async recordUpdateCheckout(input: { license_id: string; tax_year: number; stripe_session_id: string; expires_at: string }) {
+    if (this.checkouts.some((c) => c.stripe_session_id === input.stripe_session_id)) throw new Error("duplicate session");
+    this.checkouts.push({ ...input, created_at: this.ts() });
+  }
   async getOrder(id: string) { return this.clone(this.orders.find((o) => o.id === id) ?? null); }
   async findOrderByPaymentIntent(pi: string) { return this.clone(this.orders.find((o) => o.provider_payment_intent_id === pi) ?? null); }
   async createOrder(input: Omit<Order, "id" | "order_number" | "created_at" | "updated_at">) {

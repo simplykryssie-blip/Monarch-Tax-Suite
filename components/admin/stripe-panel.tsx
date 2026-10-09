@@ -1,4 +1,5 @@
-import { createStripePriceAction, createStripeProductAction, syncStripeProductInfoAction } from "@/app/(admin)/product-actions";
+import { createStripePriceAction, createStripeProductAction, syncStripeProductInfoAction, verifyStripeMappingAction } from "@/app/(admin)/product-actions";
+import { StripeConfigLine, VerificationBlock, type StripeConfigView } from "./stripe-facts";
 import { priceSyncState } from "@/lib/commerce/stripe-sync.ts";
 import type { Product } from "@/lib/commerce/types.ts";
 import { money, when } from "./ui";
@@ -20,7 +21,7 @@ function Action({ action, id, label, confirm, disabled }: { action: (f: FormData
 }
 
 /** Explicit Stripe operations, each a separate button with its result recorded. */
-export function StripePanel({ product, stripeConfigured }: { product: Product; stripeConfigured: boolean }) {
+export function StripePanel({ product, stripeConfigured, config }: { product: Product; stripeConfigured: boolean; config: StripeConfigView }) {
   const state = priceSyncState(product);
   const archived = product.status === "archived";
   const off = !stripeConfigured || archived;
@@ -31,6 +32,13 @@ export function StripePanel({ product, stripeConfigured }: { product: Product; s
         Saving the product never changes Stripe. These actions run only when clicked. Stripe prices cannot be edited: a price change creates a
         new price, and existing prices, payment links and completed payments stay as they are. Order history is never rewritten.
       </p>
+      <StripeConfigLine config={config} />
+      <VerificationBlock v={product.stripe_verification} />
+      <form action={verifyStripeMappingAction} className="monarch-inline-actions">
+        <input type="hidden" name="product_id" value={product.id} />
+        <button className="monarch-primary" type="submit" disabled={!stripeConfigured}>Verify with Stripe</button>
+        <span className="monarch-muted">Reads the product and price from Stripe; never changes the ids above.</span>
+      </form>
       {!stripeConfigured && <div className="monarch-notice"><b>STRIPE NOT CONNECTED</b> STRIPE_SECRET_KEY is not configured on the server, so Stripe actions are disabled.</div>}
       <dl className="monarch-dl">
         <dt>Stripe product</dt><dd>{product.stripe_product_id ? <code>{product.stripe_product_id}</code> : "Not linked"}</dd>

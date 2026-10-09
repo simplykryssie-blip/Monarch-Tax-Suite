@@ -8,6 +8,8 @@ import { createProduct, duplicateProduct, editProduct, setProductStatus } from "
 import { removeProductImage, setPrimaryImage, updateImageAlt, uploadProductImage } from "@/lib/commerce/images.ts";
 import { createStripePrice, createStripeProduct, syncStripeProductInfo, type StripePort, type SyncResult } from "@/lib/commerce/stripe-sync.ts";
 import { parseProductForm, ValidationError } from "@/lib/commerce/validation.ts";
+import { checkVersionPrice, createVersionPrice, linkVersionPrice, verifyCatalogProduct, type StripeCatalogPort } from "@/lib/commerce/stripe-verify.ts";
+import { stripeCatalogPort } from "@/lib/stripe-catalog";
 
 // Product editor, image and Stripe actions. Every action re-checks
 // administrator access server-side before touching data or storage.
@@ -174,4 +176,69 @@ export async function createStripeProductAction(form: FormData) {
 
 export async function createStripePriceAction(form: FormData) {
   await stripeAction(form, (port, productId) => createStripePrice(commerceRepo(), port, productId));
+}
+
+// ------------------------------------------------------- Stripe verification
+
+async function verifyAction(form: FormData, run: (port: StripeCatalogPort, productId: string) => Promise<string>) {
+  await requireAdmin();
+  const productId = uuid(form, "product_id");
+  const back = `/products/${productId}`;
+  const port = stripeCatalogPort();
+  let target: string;
+  if (!port) {
+    target = notice(back, "error", process.env.STRIPE_SECRET_KEY
+      ? "STRIPE_SECRET_KEY is set but is not a Stripe secret (sk_) or restricted (rk_) key, so nothing was checked."
+      : "Stripe is not connected: STRIPE_SECRET_KEY is not configured on the server, so nothing was checked.");
+  } else {
+    try {
+      target = notice(back, "notice", await run(port, productId));
+    } catch (error) {
+      if (!(error instanceof ValidationError)) throw error;
+      target = notice(back, "error", error.message);
+    }
+  }
+  revalidatePath("/", "layout");
+  redirect(target);
+}
+
+/** Reads the product's configured Stripe product and price and records what Stripe reports. Changes no ids. */
+export async function verifyStripeMappingAction(form: FormData) {
+  await verifyAction(form, async (port, productId) => {
+    const v = await verifyCatalogProduct(commerceRepo(), port, productId);
+    if (!v.ok) throw new ValidationError(`Stripe verification found problems (${port.mode} mode): ${v.issues.join(" ")}`);
+    return `Verified in Stripe (${port.mode} mode): ${v.product?.name ?? "product"} · ${v.price?.id} · $${((v.price?.unit_amount ?? 0) / 100).toFixed(2)} ${v.price?.currency.toUpperCase()} ${v.price?.type === "one_time" ? "one-time" : "recurring"}.`;
+  });
+}
+
+/** Verifies a version's linked price, or finds matching prices on the Annual Update product. Links nothing. */
+export async function checkVersionPriceAction(form: FormData) {
+  await verifyAction(form, async (port) => {
+    const v = await checkVersionPrice(commerceRepo(), port, uuid(form, "id"));
+    const messages: Record<string, string> = {
+      linked_verified: "The linked Stripe price is verified.",
+      linked_invalid: "The linked Stripe price does not match. See the issues below.",
+      reuse_candidate: "One matching Stripe price was found. Review it and confirm to link it.",
+      create_required: "No matching Stripe price exists. You can create one after confirming.",
+      ambiguous: "Several matching Stripe prices exist. Review them and link the correct one.",
+      product_invalid: "The Annual Update product in Stripe is not usable. See the issues below.",
+    };
+    if (!v.state) throw new ValidationError(v.issues.join(" ") || "Stripe check failed.");
+    return messages[v.state];
+  });
+}
+
+export async function linkVersionPriceAction(form: FormData) {
+  await verifyAction(form, async (port) => {
+    const priceId = String(form.get("price_id") ?? "");
+    await linkVersionPrice(commerceRepo(), port, uuid(form, "id"), priceId, form.get("confirm") === "on");
+    return `Stripe price ${priceId} verified and linked to this version.`;
+  });
+}
+
+export async function createVersionPriceAction(form: FormData) {
+  await verifyAction(form, async (port) => {
+    const v = await createVersionPrice(commerceRepo(), port, uuid(form, "id"), form.get("confirm") === "on");
+    return `New one-time Stripe price ${v.stripe_update_price_id} created on the Annual Update product and linked.`;
+  });
 }

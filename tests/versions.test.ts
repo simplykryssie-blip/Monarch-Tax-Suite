@@ -57,9 +57,12 @@ const updateEvent = (id: string, pi: string, licenseId: string, taxYear: number,
 async function setup({ release2027 = true } = {}) {
   const repo = new MemoryRepo();
   const product = await createProduct(repo, PRODUCT);
+  // The separate Annual Tax-Year Update catalog product (its Stripe product is what update checkouts charge).
+  await createProduct(repo, { ...PRODUCT, slug: "monarch-basic-tax-calculator-annual-update", name: "Annual Tax-Year Update", category: "software_update", stripe_product_id: "prod_UPDATEPROD1", price_cents: 5000 });
   const v2026 = await createVersion(repo, { product_id: product.id, tax_year: 2026, label: null, release_date: null, update_price_cents: 5000, stripe_update_price_id: null });
   await setVersionStatus(repo, v2026.id, "available", "admin");
-  const deps: FulfillmentDeps = { repo, listCheckoutProductIds: async () => ["prod_TESTCALC123"] };
+  // Purchases contain the calculator product; update checkouts (session ids cs_evt_up…, cs_evt_…) contain the update product.
+  const deps: FulfillmentDeps = { repo, listCheckoutProductIds: async (sid) => (sid.startsWith("cs_evt_buy") ? ["prod_TESTCALC123"] : ["prod_UPDATEPROD1"]) };
   await handleStripeEvent(deps, purchaseEvent("evt_buy", "pi_BUY0000001"));
   const licenseId = repo.licenses[0].id;
   const { key } = await issueLicenseKey(repo, licenseId, "admin");
@@ -282,7 +285,6 @@ describe("annual update verification (edge cases)", () => {
 
   test("buying the update product directly (e.g. a payment link, no license metadata) never creates a base license", async () => {
     const { repo } = await setup();
-    await createProduct(repo, { ...PRODUCT, slug: "monarch-basic-tax-calculator-annual-update", category: "software_update", stripe_product_id: "prod_UPDATEPROD1", price_cents: 5000 });
     const direct: FulfillmentDeps = { repo, listCheckoutProductIds: async () => ["prod_UPDATEPROD1"] };
     const outcome = await handleStripeEvent(direct, purchaseEvent("evt_direct", "pi_DIRECTUPD1"));
     assert.equal(outcome.status, "ignored");

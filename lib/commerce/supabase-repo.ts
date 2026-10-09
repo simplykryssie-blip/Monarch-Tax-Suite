@@ -143,6 +143,14 @@ export class SupabaseCommerceRepo implements CommerceRepo {
   updateCustomer(id: string, patch: Partial<Customer>) { return this.patch<Customer>("calculator_customers", id, patch); }
 
   listOrders() { return this.all<Order>("orders"); }
+  async findOpenUpdateCheckout(licenseId: string, taxYear: number, now: string) {
+    return unwrap(
+      await this.db.from("update_checkout_sessions").select("stripe_session_id, expires_at").eq("license_id", licenseId).eq("tax_year", taxYear).gt("expires_at", now).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    ) as { stripe_session_id: string; expires_at: string } | null;
+  }
+  async recordUpdateCheckout(input: { license_id: string; tax_year: number; stripe_session_id: string; expires_at: string }) {
+    unwrap(await this.db.from("update_checkout_sessions").insert(input));
+  }
   getOrder(id: string) { return this.one<Order>("orders", "id", id); }
   findOrderByPaymentIntent(pi: string) { return this.one<Order>("orders", "provider_payment_intent_id", pi); }
   async createOrder(input: NewOrder) {

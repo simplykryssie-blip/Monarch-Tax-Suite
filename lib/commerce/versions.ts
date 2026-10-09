@@ -28,7 +28,7 @@ export function updateOffer(license: License, versions: ProductVersion[]): Updat
   const latest = latestAvailable(versions);
   const current = license.licensed_tax_year;
   if (!latest) return { eligible: false, currentYear: current, latestYear: null, reason: "no_release" };
-  if (license.status !== "active" && license.status !== "suspended") return { eligible: false, currentYear: current, latestYear: latest.tax_year, reason: "license_inactive" };
+  if (license.status !== "active") return { eligible: false, currentYear: current, latestYear: latest.tax_year, reason: "license_inactive" };
   if (current === null || latest.tax_year <= current) return { eligible: false, currentYear: current, latestYear: latest.tax_year, reason: "up_to_date" };
   return { eligible: true, currentYear: current, version: latest, priceCents: latest.update_price_cents };
 }
@@ -67,7 +67,10 @@ export async function editVersion(
 ) {
   const version = await repo.getVersion(versionId);
   if (!version) throw new ValidationError("Version not found.");
-  return repo.updateVersion(version.id, patch);
+  // A changed price or price id is no longer Stripe-verified: it must be checked again before publishing or selling.
+  const changed = (patch.update_price_cents !== undefined && patch.update_price_cents !== version.update_price_cents) ||
+    (patch.stripe_update_price_id !== undefined && patch.stripe_update_price_id !== version.stripe_update_price_id);
+  return repo.updateVersion(version.id, changed ? { ...patch, stripe_verification: null } : patch);
 }
 
 /**

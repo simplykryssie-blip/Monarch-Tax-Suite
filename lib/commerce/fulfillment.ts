@@ -245,6 +245,14 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
   const priceMismatch = !version || amount !== version.update_price_cents || (session.currency ?? "").toLowerCase() !== "usd";
   // A license revoked between checkout and payment is never upgraded; the payment is flagged for a refund.
   const revoked = license.status === "revoked";
+  // The paid line item must be the catalog's Annual Update product.
+  const updateProductIds = (await repo.listProducts()).filter((p) => p.category === "software_update" && p.stripe_product_id).map((p) => p.stripe_product_id!);
+  const paidProductIds = await deps.listCheckoutProductIds(session.id);
+  const wrongProduct = !paidProductIds.some((id) => updateProductIds.includes(id));
+  // A second, separate payment for an update this license already received is flagged for a refund.
+  const priorPaid = (await repo.listOrders()).find(
+    (o) => o.order_type === "annual_update" && o.license_id === license.id && o.tax_year === taxYear && o.provider_payment_intent_id !== paymentIntentId && o.payment_status === "paid",
+  );
 
   const { order } = await repo.createOrder({
     order_type: "annual_update",
@@ -266,6 +274,10 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
     verified_at: at,
     notes: revoked
       ? "Review: the license is revoked; update not applied. Refund the customer."
+      : priorPaid
+        ? `Review: duplicate payment; this license already paid for the ${taxYear} update (order ${priorPaid.id}). Refund the customer.`
+      : wrongProduct
+        ? "Review: the paid item is not the Annual Tax-Year Update product; update not applied automatically."
       : priceMismatch
         ? `Review: paid ${amount} ${session.currency ?? ""} does not match the ${taxYear} update price; update not applied automatically.`
         : null,
@@ -275,7 +287,7 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
   if (order.license_id !== license.id) throw new Error(`Payment intent ${paymentIntentId} is already recorded for another order.`);
   let current = order;
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
-  if (current.payment_status === "paid" && !priceMismatch && !revoked) await applyPaidUpdate(repo, current, null);
+  if (current.payment_status === "paid" && !current.notes?.startsWith("Review:")) await applyPaidUpdate(repo, current, null);
   return { status: "processed", detail: `Update order ${current.id} is ${current.payment_status}.` };
 }
 

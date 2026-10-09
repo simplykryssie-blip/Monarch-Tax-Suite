@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { commerceRepo, imageStore, requireAdmin } from "@/lib/admin";
 import { MAX_IMAGES_PER_PRODUCT } from "@/lib/commerce/images.ts";
+import { stripeConfig } from "@/lib/stripe-catalog";
 import { publishBlockers } from "@/lib/commerce/validation.ts";
 import { orderedImages, toStorefrontImages } from "@/lib/storefront";
 import { setProductStatusAction } from "../../actions";
@@ -78,8 +79,8 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
           <ProductEditor key={product.updated_at} product={product} images={toStorefrontImages(images)} hasVersions={versions.length > 0} />
         </section>
       )}
-      <StripePanel product={product} stripeConfigured={Boolean(process.env.STRIPE_SECRET_KEY)} />
-      <VersionsPanel productId={product.id} versions={versions} changes={changes} />
+      <StripePanel product={product} stripeConfigured={stripeConfig().keyModeRecognized} config={stripeConfig()} />
+      <VersionsPanel productId={product.id} versions={versions} changes={changes} stripeReady={stripeConfig().keyModeRecognized} />
     </>
   );
 }

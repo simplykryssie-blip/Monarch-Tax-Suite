@@ -16,10 +16,10 @@ import {
 } from "@/lib/commerce/fulfillment.ts";
 import { disconnect as disconnectCrm } from "@/lib/crm/connection.ts";
 import { crmDeps } from "@/lib/crm/server";
+import { publishBlockersForVersion } from "@/lib/commerce/stripe-verify.ts";
 import { createVersion, editVersion, parseTaxYear, recordChange, setVersionStatus } from "@/lib/commerce/versions.ts";
 import {
   cleanNote,
-  optionalStripeId,
   normalizeDomain,
   normalizeEmail,
   normalizeWebsiteUrl,
@@ -227,9 +227,9 @@ export async function createVersionAction(form: FormData) {
       label: cleanNote(str(form, "label"), 80),
       release_date: optionalDate(form, "release_date"),
       update_price_cents: str(form, "update_price") ? parsePriceToCents(str(form, "update_price")) : null,
-      stripe_update_price_id: optionalStripeId(str(form, "stripe_update_price_id"), "price", "Stripe update price ID"),
+      stripe_update_price_id: null, // linked only through the verified Stripe price flow
     });
-    return { notice: `${version.label} created as a draft.` };
+    return { notice: `${version.label} created as a draft. Next: Check Stripe price.` };
   });
 }
 
@@ -243,7 +243,6 @@ export async function updateVersionAction(form: FormData) {
       label: cleanNote(str(form, "label"), 80) ?? undefined,
       release_date: optionalDate(form, "release_date"),
       update_price_cents: price,
-      stripe_update_price_id: optionalStripeId(str(form, "stripe_update_price_id"), "price", "Stripe update price ID"),
     });
     return { notice: "Version saved." };
   });
@@ -255,6 +254,13 @@ export async function setVersionStatusAction(form: FormData) {
   await mutate(`/products/${productId}`, async () => {
     const status = str(form, "status");
     if (status !== "available" && status !== "retired" && status !== "draft") throw new ValidationError("Invalid version status.");
+    if (status === "available") {
+      const current = await commerceRepo().getVersion(id(form));
+      if (!current) throw new ValidationError("Version not found.");
+      const blockers = publishBlockersForVersion(current);
+      if (blockers.length && current.status !== "available") throw new ValidationError(`Not published: ${blockers.join(" ")}`);
+      if (form.get("confirm") !== "on") throw new ValidationError("Confirm the verified price and version before publishing.");
+    }
     const version = await setVersionStatus(commerceRepo(), id(form), status, admin.userId);
     return { notice: `${version.label} is now ${version.status}.` };
   });

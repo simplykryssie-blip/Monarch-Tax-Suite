@@ -219,3 +219,10 @@ a{color:inherit}
 .intg-section{border-top:1px solid var(--line);padding-top:14px;margin-top:6px}
 .intg-section h2{font-size:18px;margin:0 0 8px}.intg-section h3{font-size:15px;margin:0 0 8px}
 .intg-error{color:#9b362f;font-size:12px}
+/* ---- Stripe verification ---- */
+.sv-ok,.sv-bad{font-size:12px;line-height:1.7;border-radius:4px;padding:9px 12px;margin:10px 0}
+.sv-ok{background:#eef8f2;border:1px solid #cfe6d8;color:#1f5e40}
+.sv-bad{background:#fdf1ef;border:1px solid #f0cdc9;color:#7c2f29}
+.sv-bad ul{margin:4px 0 0;padding-left:18px}
+.sv-flow{border:1px solid var(--line);border-radius:4px;padding:10px 12px;margin:10px 0;font-size:12px}
+.sv-flow form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
