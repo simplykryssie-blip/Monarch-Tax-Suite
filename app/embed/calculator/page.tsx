@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { BasicCalculator } from "@/components/calculator/basic-calculator";
-import { EMBED_MESSAGES, hostFromHeader } from "@/lib/commerce/embed.ts";
+import { EMBED_MESSAGES, hostFromHeader, isTopLevelNavigation } from "@/lib/commerce/embed.ts";
 import { loadEmbed } from "@/lib/embed-server";
 import { issueEmbedToken, leadCaptureActive } from "@/lib/crm/leads.ts";
 import { crmDeps } from "@/lib/crm/server";
@@ -25,6 +25,14 @@ export default async function EmbeddedCalculatorPage({ searchParams }: { searchP
   const { id } = await searchParams;
   const h = await headers();
   const host = hostFromHeader(h.get("referer"));
+  // The licensed calculator is shown only inside an authorized site's frame, not when the embed URL is opened directly.
+  if (isTopLevelNavigation(h.get("sec-fetch-dest"))) {
+    return (
+      <main style={{ padding: 24, fontFamily: "Arial, Helvetica, sans-serif", color: "#3a3830", background: "#f6f4ee" }}>
+        <p style={{ margin: 0, fontSize: 14 }}>This calculator can only be displayed on its authorized website.</p>
+      </main>
+    );
+  }
   const { decision, years, licenseId } = await loadEmbed(id ?? null, host);
   if (!decision.ok) {
     return (
