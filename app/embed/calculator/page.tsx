@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { BasicCalculator } from "@/components/calculator/basic-calculator";
 import { EMBED_MESSAGES, hostFromHeader, isTopLevelNavigation } from "@/lib/commerce/embed.ts";
@@ -17,6 +18,8 @@ async function leadCaptureFor(licenseId: string, host: string | null): Promise<L
     return undefined;
   }
 }
+
+export const metadata: Metadata = { title: "Tax Calculator", description: "Estimate your federal income tax.", robots: { index: false, follow: false } };
 
 // Licensed, embeddable calculator. The proxy sets a per-license
 // Content-Security-Policy frame-ancestors header so browsers only render this
