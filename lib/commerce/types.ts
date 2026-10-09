@@ -6,7 +6,8 @@ export const PRODUCT_TYPES = ["software", "digital_download", "course", "members
 export const ACCESS_TYPES = ["license", "instant_download", "course_access", "manual"] as const;
 export const PRODUCT_STATUSES = ["draft", "published", "unpublished", "archived"] as const;
 export const INSTALLATION_TYPES = ["self_service", "done_for_you"] as const;
-export const PLATFORMS = ["gohighlevel", "website", "jotform", "other"] as const;
+export const PLATFORMS = ["gohighlevel", "shopify", "wix", "jotform", "custom_html", "other"] as const;
+export const INSTALLATION_METHODS = ["iframe_embed", "ghl_custom_code", "shopify_custom_liquid", "wix_embed_site", "wix_html_embed", "jotform_iframe_widget", "other"] as const;
 export const INSTALLATION_STATUSES = ["requested", "in_progress", "blocked", "active", "removed"] as const;
 export const PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded", "partially_refunded", "canceled", "disputed"] as const;
 // past_due and expired exist in the original licensing schema (subscriptions); this CRM sets the other four.
@@ -18,6 +19,7 @@ export type AccessType = (typeof ACCESS_TYPES)[number];
 export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
 export type InstallationType = (typeof INSTALLATION_TYPES)[number];
 export type Platform = (typeof PLATFORMS)[number];
+export type InstallationMethod = (typeof INSTALLATION_METHODS)[number];
 export type InstallationStatus = (typeof INSTALLATION_STATUSES)[number];
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export type LicenseStatus = (typeof LICENSE_STATUSES)[number];
@@ -80,6 +82,8 @@ export type License = {
   product_id: string;
   key_hash: string | null;
   key_prefix: string | null;
+  /** Public, non-secret identifier used in embed code. */
+  embed_id: string | null;
   status: LicenseStatus;
   max_domains: number;
   issued_at: string | null;
@@ -106,9 +110,20 @@ export type Installation = {
   product_id: string;
   installation_type: InstallationType;
   platform: Platform;
+  /** Free-text platform name when platform is "other". */
+  platform_other: string | null;
+  installation_method: InstallationMethod;
+  /** Page or funnel URL where the calculator is installed. */
+  website_url: string | null;
+  /** Domain where the calculator will operate. */
   target_location: string | null;
+  /** Technical instructions or requirements for this installation. */
+  requirements: string | null;
   status: InstallationStatus;
   internal_notes: string | null;
+  intake_token_hash: string | null;
+  intake_expires_at: string | null;
+  intake_submitted_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -169,6 +184,7 @@ export interface CommerceRepo {
   listLicenses(): Promise<License[]>;
   getLicense(id: string): Promise<License | null>;
   findLicenseByOrder(orderId: string): Promise<License | null>;
+  findLicenseByEmbedId(embedId: string): Promise<License | null>;
   createLicense(input: NewLicense): Promise<{ license: License; created: boolean }>;
   updateLicense(id: string, patch: Partial<NewLicense>): Promise<License>;
   addLicenseEvent(input: Omit<LicenseEvent, "id" | "created_at">): Promise<void>;
@@ -179,6 +195,7 @@ export interface CommerceRepo {
   listInstallations(): Promise<Installation[]>;
   getInstallation(id: string): Promise<Installation | null>;
   findInstallationByOrder(orderId: string): Promise<Installation | null>;
+  findInstallationByIntakeTokenHash(hash: string): Promise<Installation | null>;
   createInstallation(input: NewInstallation): Promise<{ installation: Installation; created: boolean }>;
   updateInstallation(id: string, patch: Partial<NewInstallation>): Promise<Installation>;
   addInstallationEvent(input: Omit<InstallationEvent, "id" | "created_at">): Promise<void>;

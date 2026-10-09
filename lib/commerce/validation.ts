@@ -1,11 +1,13 @@
 import {
   ACCESS_TYPES,
   INSTALLATION_STATUSES,
+  INSTALLATION_METHODS,
   INSTALLATION_TYPES,
   PLATFORMS,
   PRODUCT_STATUSES,
   PRODUCT_TYPES,
   type AccessType,
+  type InstallationMethod,
   type InstallationStatus,
   type InstallationType,
   type NewProduct,
@@ -63,6 +65,22 @@ export function normalizeDomain(input: string): string {
   return host;
 }
 
+/** Accepts https URLs (a missing scheme is assumed https) and returns a normalized URL. */
+export function normalizeWebsiteUrl(input: string): string {
+  const raw = input.trim();
+  if (!raw) throw new ValidationError("Enter the website or funnel URL.");
+  let url: URL;
+  try {
+    url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+  } catch {
+    throw new ValidationError("Enter a valid website URL such as https://example.com/page.");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new ValidationError("Website URL must start with https://.");
+  normalizeDomain(url.hostname);
+  url.hash = "";
+  return url.toString().slice(0, 500);
+}
+
 const STRIPE_ID = /^[a-z]{2,5}_[A-Za-z0-9]{6,255}$/;
 export function optionalStripeId(value: string, prefix: string, label: string): string | null {
   if (!value) return null;
@@ -106,6 +124,10 @@ export function parseInstallationStatus(value: unknown): InstallationStatus {
 
 export function parseInstallationType(value: unknown): InstallationType {
   return oneOf<InstallationType>(INSTALLATION_TYPES, value, "installation type");
+}
+
+export function parseInstallationMethod(value: unknown): InstallationMethod {
+  return oneOf<InstallationMethod>(INSTALLATION_METHODS, value, "installation method");
 }
 
 export function parsePlatform(value: unknown): Platform {

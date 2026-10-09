@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { commerceRepo, requireAdmin, stripeClient } from "@/lib/admin";
+import { appOrigin, commerceRepo, requireAdmin, stripeClient } from "@/lib/admin";
 import { createProduct, editProduct, setProductStatus } from "@/lib/commerce/catalog.ts";
 import {
   authorizeDomain,
+  createIntakeLink,
   issueLicenseKey,
   reconcilePurchase,
   removeDomain,
@@ -15,7 +16,10 @@ import {
 } from "@/lib/commerce/fulfillment.ts";
 import {
   cleanNote,
+  normalizeDomain,
   normalizeEmail,
+  normalizeWebsiteUrl,
+  parseInstallationMethod,
   parseInstallationStatus,
   parseInstallationType,
   parsePlatform,
@@ -115,7 +119,9 @@ export async function reconcilePurchaseAction(form: FormData) {
       product_id: id(form, "product_id"),
       installation_type: parseInstallationType(str(form, "installation_type")),
       platform: parsePlatform(str(form, "platform")),
-      target_location: cleanNote(str(form, "target_location"), 500),
+      platform_other: cleanNote(str(form, "platform_other"), 80),
+      website_url: str(form, "website_url") ? normalizeWebsiteUrl(str(form, "website_url")) : null,
+      target_location: str(form, "target_location") ? normalizeDomain(str(form, "target_location")) : null,
       notes: cleanNote(str(form, "notes")),
       admin_id: admin.userId,
       stripe_payment: /^pi_/.test(paymentIntentId) ? await lookupStripePayment(paymentIntentId) : null,
@@ -185,7 +191,11 @@ export async function updateInstallationAction(form: FormData) {
         status: parseInstallationStatus(str(form, "status")),
         installation_type: parseInstallationType(str(form, "installation_type")),
         platform: parsePlatform(str(form, "platform")),
-        target_location: cleanNote(str(form, "target_location"), 500),
+        platform_other: cleanNote(str(form, "platform_other"), 80),
+        installation_method: parseInstallationMethod(str(form, "installation_method")),
+        website_url: str(form, "website_url") ? normalizeWebsiteUrl(str(form, "website_url")) : null,
+        target_location: str(form, "target_location") ? normalizeDomain(str(form, "target_location")) : null,
+        requirements: cleanNote(str(form, "requirements")),
         internal_notes: cleanNote(str(form, "internal_notes")),
         note: cleanNote(str(form, "note"), 1000),
       },
@@ -193,4 +203,19 @@ export async function updateInstallationAction(form: FormData) {
     );
     return { notice: "Installation updated." };
   });
+}
+
+export type IntakeLinkState = { url?: string; error?: string };
+
+/** Creates a one-time customer link to collect platform, website and domain. Shown once. */
+export async function createIntakeLinkAction(_prev: IntakeLinkState, form: FormData): Promise<IntakeLinkState> {
+  const admin = await requireAdmin();
+  try {
+    const { token } = await createIntakeLink(commerceRepo(), id(form), admin.userId);
+    revalidatePath("/", "layout");
+    return { url: `${await appOrigin()}/install/${token}` };
+  } catch (error) {
+    if (error instanceof ValidationError) return { error: error.message };
+    throw error;
+  }
 }

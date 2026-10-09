@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { commerceRepo, requireAdmin } from "@/lib/admin";
+import { appOrigin, commerceRepo, requireAdmin } from "@/lib/admin";
+import { IntakeLinkButton } from "@/components/admin/intake-link";
+import { embedSnippet, embedUrl, METHOD_LABELS, PLATFORM_GUIDES, PLATFORM_ORDER, SUPPORT_LABELS } from "@/lib/commerce/platforms.ts";
 import { updateInstallationAction } from "../../actions";
 import { Badge, EmptyRow, Flash, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 
@@ -11,18 +13,23 @@ export default async function InstallationPage({ params, searchParams }: { param
   const result = await load(async () => {
     const installation = await repo.getInstallation(id);
     if (!installation) return null;
-    const [customer, order, product, license, events] = await Promise.all([
+    const [customer, order, product, license, events, domains] = await Promise.all([
       repo.getCustomer(installation.customer_id),
       repo.getOrder(installation.order_id),
       repo.getProduct(installation.product_id),
       installation.license_id ? repo.getLicense(installation.license_id) : Promise.resolve(null),
       repo.listInstallationEvents(installation.id),
+      installation.license_id ? repo.listDomains(installation.license_id) : Promise.resolve([]),
     ]);
-    return { installation, customer, order, product, license, events };
+    return { installation, customer, order, product, license, events, domains };
   });
   if (!result.ok) return <SetupRequired message={result.message} />;
   if (!result.data) notFound();
-  const { installation: i, customer, order, product, license, events } = result.data;
+  const { installation: i, customer, order, product, license, events, domains } = result.data;
+  const guide = PLATFORM_GUIDES[i.platform];
+  const activeDomains = domains.filter((d) => d.status === "active").map((d) => d.domain);
+  const origin = await appOrigin();
+  const canEmbed = license?.status === "active" && license.embed_id && activeDomains.length > 0;
 
   return (
     <>
@@ -40,6 +47,12 @@ export default async function InstallationPage({ params, searchParams }: { param
             <dt>Verified by</dt><dd>{label(order?.verification_method)} · {when(order?.verified_at ?? null)}</dd>
             <dt>Stripe reference</dt><dd><code>{order?.provider_payment_intent_id ?? "—"}</code></dd>
             <dt>License</dt><dd>{license ? <Link href={`/licenses/${license.id}`}><Badge value={license.status} /> {license.key_prefix ? `${license.key_prefix}…` : "key not issued"}</Link> : "—"}</dd>
+            <dt>Platform</dt><dd>{guide.label}{i.platform === "other" && i.platform_other ? ` — ${i.platform_other}` : ""}</dd>
+            <dt>Method</dt><dd>{METHOD_LABELS[i.installation_method]}</dd>
+            <dt>Website URL</dt><dd>{i.website_url ? <a href={i.website_url} target="_blank" rel="noreferrer">{i.website_url}</a> : "Not provided"}</dd>
+            <dt>Domain</dt><dd>{i.target_location ?? "Not provided"}</dd>
+            <dt>Authorized domains</dt><dd>{activeDomains.length ? activeDomains.join(", ") : "None yet"}</dd>
+            <dt>Customer details</dt><dd>{i.intake_submitted_at ? `Submitted ${when(i.intake_submitted_at)}` : i.intake_expires_at ? `Link sent, expires ${when(i.intake_expires_at)}` : "Not requested"}</dd>
             <dt>Created</dt><dd>{when(i.created_at)}</dd>
             <dt>Updated</dt><dd>{when(i.updated_at)}</dd>
           </dl>
@@ -63,21 +76,41 @@ export default async function InstallationPage({ params, searchParams }: { param
                 <option value="self_service">Self-service</option>
               </select>
             </label>
-            <label>Target platform
+            <label>Platform
               <select name="platform" required defaultValue={i.platform}>
-                <option value="gohighlevel">GoHighLevel</option>
-                <option value="website">Website</option>
-                <option value="jotform">Jotform</option>
-                <option value="other">Other (not confirmed yet)</option>
+                {PLATFORM_ORDER.map((p) => <option key={p} value={p}>{PLATFORM_GUIDES[p].label}</option>)}
               </select>
             </label>
-            <label>Installation domain or location<input name="target_location" maxLength={500} defaultValue={i.target_location ?? ""} /></label>
+            <label>Platform name (if Other)<input name="platform_other" maxLength={80} defaultValue={i.platform_other ?? ""} /></label>
+            <label>Installation method
+              <select name="installation_method" required defaultValue={i.installation_method}>
+                {Object.entries(METHOD_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </label>
+            <label>Website or funnel URL<input name="website_url" maxLength={500} defaultValue={i.website_url ?? ""} placeholder="https://…" /></label>
+            <label>Domain where it will run<input name="target_location" maxLength={253} defaultValue={i.target_location ?? ""} placeholder="example.com" /></label>
+            <label className="is-wide">Technical instructions / requirements<textarea name="requirements" rows={3} maxLength={4000} defaultValue={i.requirements ?? ""} /></label>
             <label className="is-wide">Internal notes<textarea name="internal_notes" rows={4} maxLength={4000} defaultValue={i.internal_notes ?? ""} /></label>
             <label className="is-wide">Add to history (optional)<input name="note" maxLength={1000} placeholder="e.g. Received GHL sub-account access" /></label>
             <div className="is-wide"><button className="monarch-primary" type="submit">Save</button></div>
           </form>
         </section>
       </div>
+      <section className="monarch-panel monarch-pad monarch-snippet">
+        <h2 className="monarch-h2">Installation guide — {guide.label} <span className={"monarch-badge " + guide.support.replace(/_/g, "-")}>{SUPPORT_LABELS[guide.support]}</span></h2>
+        <p className="monarch-muted">{guide.supportNote}</p>
+        <ol>{guide.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+        {guide.limitations.length > 0 && <ul className="monarch-muted">{guide.limitations.map((l) => <li key={l}>{l}</li>)}</ul>}
+        {canEmbed ? (
+          <>
+            <label>Embed code (contains only the public embed ID, never the license key)<textarea readOnly rows={3} value={embedSnippet(origin, license!.embed_id!)} /></label>
+            <label>Calculator URL (for platforms that only accept a URL)<input readOnly value={embedUrl(origin, license!.embed_id!)} /></label>
+          </>
+        ) : (
+          <p className="monarch-alert">Embed code appears here once the license is active (key issued) and at least one domain is authorized on the license.</p>
+        )}
+        <IntakeLinkButton installationId={i.id} submittedAt={i.intake_submitted_at} />
+      </section>
       <section className="monarch-panel">
         <div className="monarch-panel-head"><h2>History</h2></div>
         <div className="monarch-table-wrap">

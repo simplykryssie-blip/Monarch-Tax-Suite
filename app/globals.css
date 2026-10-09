@@ -101,3 +101,13 @@ a{color:inherit}
 .monarch-badge.failed,.monarch-badge.refunded,.monarch-badge.revoked,.monarch-badge.blocked,.monarch-badge.disputed,.monarch-badge.canceled{background:#fae6e4;color:#a03d37}
 .monarch-badge.suspended,.monarch-badge.unpublished,.monarch-badge.archived,.monarch-badge.removed{background:#ecebe6;color:#5e5b52}
 @media(max-width:680px){.monarch-form{grid-template-columns:1fr}.monarch-dl{grid-template-columns:1fr}.monarch-dl dt{margin-top:6px}.monarch-inline-form,.monarch-revoke{flex-wrap:wrap}.monarch-topbar-title{display:none}}
+.monarch-public{min-height:100vh;background:var(--paper);display:flex;justify-content:center;padding:40px 16px}
+.monarch-public-card{width:min(720px,100%);background:#fff;border:1px solid var(--line);border-radius:7px;padding:28px}
+.monarch-public-card h1{font-family:"Playfair Display",Georgia,serif;font-size:32px;margin:8px 0 10px}
+.monarch-public-card>p{color:#5f5c54;font-size:14px;line-height:1.6}
+.monarch-form-done textarea,.monarch-form-done input,.monarch-snippet textarea,.monarch-snippet input{width:100%;font-family:ui-monospace,monospace;font-size:12px;padding:10px;border:1px solid #dcd9d0;border-radius:4px;background:#faf9f6}
+.monarch-form-done label,.monarch-snippet label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;margin-top:12px}
+.monarch-form-done ol,.monarch-snippet ol{font-size:13px;line-height:1.7;padding-left:20px}
+.monarch-badge.verified{background:#e2f2e8;color:#206745}
+.monarch-badge.generic-embed{background:#fff1cf;color:#86611c}
+.monarch-badge.awaiting-testing{background:#ecebe6;color:#5e5b52}

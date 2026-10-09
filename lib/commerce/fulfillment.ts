@@ -1,11 +1,15 @@
+import { createHash, randomBytes } from "node:crypto";
+import { generateEmbedId } from "./embed.ts";
 import { generateLicenseKey, hashLicenseKey, licenseKeyPrefix } from "./license-keys.ts";
-import { normalizeDomain, normalizeEmail, ValidationError } from "./validation.ts";
+import { PLATFORM_GUIDES } from "./platforms.ts";
+import { normalizeDomain, normalizeEmail, normalizeWebsiteUrl, ValidationError } from "./validation.ts";
 import {
   INSTALLATION_TYPES,
   PLATFORMS,
   type CommerceRepo,
   type Customer,
   type Installation,
+  type InstallationMethod,
   type InstallationStatus,
   type InstallationType,
   type License,
@@ -57,9 +61,23 @@ function installationTypeFrom(metadata: Record<string, string> | null, product: 
   return product.installation_options.includes("self_service") ? "self_service" : product.installation_options[0] ?? "self_service";
 }
 
-function platformFrom(metadata: Record<string, string> | null): Platform | null {
+/** Optional installation details passed as Checkout metadata; invalid values are ignored. */
+function detailsFromMetadata(metadata: Record<string, string> | null): InstallationDetails {
   const value = metadata?.platform;
-  return value && (PLATFORMS as readonly string[]).includes(value) ? (value as Platform) : null;
+  const platform = value && (PLATFORMS as readonly string[]).includes(value) ? (value as Platform) : null;
+  const safe = <T>(fn: () => T): T | null => {
+    try {
+      return fn();
+    } catch {
+      return null;
+    }
+  };
+  return {
+    platform,
+    platform_other: platform === "other" ? metadata?.platform_other?.slice(0, 80) || null : null,
+    website_url: metadata?.website_url ? safe(() => normalizeWebsiteUrl(metadata.website_url)) : null,
+    target_location: metadata?.domain ? safe(() => normalizeDomain(metadata.domain)) : null,
+  };
 }
 
 async function findOrCreateCustomer(repo: CommerceRepo, email: string, fullName: string | null, stripeCustomerId: string | null): Promise<Customer> {
@@ -77,7 +95,9 @@ async function findOrCreateCustomer(repo: CommerceRepo, email: string, fullName:
  * Creates the pending license and the installation request for a paid order.
  * Safe to call repeatedly: both records are unique per order.
  */
-export async function ensureFulfillment(repo: CommerceRepo, order: Order, product: Product, actorId: string | null, details?: { platform?: Platform | null; target_location?: string | null }) {
+export type InstallationDetails = { platform?: Platform | null; platform_other?: string | null; website_url?: string | null; target_location?: string | null };
+
+export async function ensureFulfillment(repo: CommerceRepo, order: Order, product: Product, actorId: string | null, details?: InstallationDetails) {
   if (order.payment_status !== "paid") throw new ValidationError("Only paid orders can be fulfilled.");
   let license: License | null = null;
   if (product.access_type === "license") {
@@ -87,6 +107,7 @@ export async function ensureFulfillment(repo: CommerceRepo, order: Order, produc
       product_id: product.id,
       key_hash: null,
       key_prefix: null,
+      embed_id: null,
       status: "pending",
       max_domains: 1,
       issued_at: null,
@@ -107,13 +128,22 @@ export async function ensureFulfillment(repo: CommerceRepo, order: Order, produc
       product_id: product.id,
       installation_type: order.installation_type,
       platform: details?.platform ?? "other",
+      platform_other: details?.platform_other ?? null,
+      installation_method: PLATFORM_GUIDES[details?.platform ?? "other"].defaultMethod,
+      website_url: details?.website_url ?? null,
       target_location: details?.target_location ?? null,
+      requirements: null,
       status: "requested",
       internal_notes: null,
+      intake_token_hash: null,
+      intake_expires_at: null,
+      intake_submitted_at: null,
     });
     installation = result.installation;
     if (result.created) {
-      const note = details?.platform ? "Created from verified order." : "Created from verified order. Platform was not specified; confirm it with the customer.";
+      const note = details?.platform
+        ? "Created from verified order."
+        : "Created from verified order. Platform, website and domain were not provided; send the customer an installation details link.";
       await repo.addInstallationEvent({ installation_id: installation.id, from_status: null, to_status: "requested", note, actor_id: actorId });
     }
   }
@@ -175,7 +205,7 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
 
   let current = order;
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
-  if (current.payment_status === "paid") await ensureFulfillment(repo, current, product, null, { platform: platformFrom(session.metadata) });
+  if (current.payment_status === "paid") await ensureFulfillment(repo, current, product, null, detailsFromMetadata(session.metadata));
   return { status: "processed", detail: `Order ${current.id} is ${current.payment_status}.` };
 }
 
@@ -279,6 +309,8 @@ export type ReconcileInput = {
   product_id: string;
   installation_type: InstallationType;
   platform: Platform;
+  platform_other: string | null;
+  website_url: string | null;
   target_location: string | null;
   notes: string | null;
   admin_id: string;
@@ -334,7 +366,12 @@ export async function reconcilePurchase(repo: CommerceRepo, input: ReconcileInpu
     refunded_at: null,
   });
   if (order.payment_status !== "paid") throw new ValidationError(`This order is ${order.payment_status}; it cannot be fulfilled.`);
-  const fulfillment = await ensureFulfillment(repo, order, product, input.admin_id, { platform: input.platform, target_location: input.target_location });
+  const fulfillment = await ensureFulfillment(repo, order, product, input.admin_id, {
+    platform: input.platform,
+    platform_other: input.platform === "other" ? input.platform_other : null,
+    website_url: input.website_url,
+    target_location: input.target_location,
+  });
   return { customer, order, created, ...fulfillment };
 }
 
@@ -354,6 +391,7 @@ export async function issueLicenseKey(repo: CommerceRepo, licenseId: string, act
   const updated = await repo.updateLicense(license.id, {
     key_hash: hashLicenseKey(key),
     key_prefix: licenseKeyPrefix(key),
+    embed_id: license.embed_id ?? generateEmbedId(),
     status: license.status === "pending" ? "active" : license.status,
     issued_at: now ? now() : new Date().toISOString(),
   });
@@ -402,7 +440,11 @@ export type InstallationUpdate = {
   status?: InstallationStatus;
   installation_type?: InstallationType;
   platform?: Platform;
+  platform_other?: string | null;
+  installation_method?: InstallationMethod;
+  website_url?: string | null;
   target_location?: string | null;
+  requirements?: string | null;
   internal_notes?: string | null;
   note?: string | null;
 };
@@ -416,6 +458,11 @@ export async function updateInstallation(repo: CommerceRepo, installationId: str
     const order = await repo.getOrder(installation.order_id);
     if (order?.payment_status !== "paid") throw new ValidationError("The order is not paid.");
   }
+  const platform = update.platform ?? installation.platform;
+  if (update.installation_method && !PLATFORM_GUIDES[platform].methods.includes(update.installation_method)) {
+    throw new ValidationError("That installation method is not available for this platform.");
+  }
+  if (update.platform && update.platform !== "other") update.platform_other = null;
   const { note, ...fields } = update;
   const patch = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)) as Partial<Installation>;
   const updated = Object.keys(patch).length ? await repo.updateInstallation(installation.id, patch) : installation;
@@ -430,6 +477,99 @@ export async function updateInstallation(repo: CommerceRepo, installationId: str
     });
   }
   return updated;
+}
+
+// ---------------------------------------------------------------------------
+// Customer installation intake: a one-time, expiring link that lets the
+// customer tell us their platform, website and domain. Only a hash of the
+// token is stored.
+// ---------------------------------------------------------------------------
+
+const INTAKE_TTL_DAYS = 14;
+export const hashIntakeToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+export async function createIntakeLink(repo: CommerceRepo, installationId: string, actorId: string, now?: () => string) {
+  const installation = await repo.getInstallation(installationId);
+  if (!installation) throw new ValidationError("Installation not found.");
+  if (installation.status === "removed") throw new ValidationError("This installation was removed.");
+  const order = await repo.getOrder(installation.order_id);
+  if (order?.payment_status !== "paid") throw new ValidationError("The order is not paid.");
+  const token = randomBytes(24).toString("base64url");
+  const nowMs = Date.parse(now ? now() : new Date().toISOString());
+  await repo.updateInstallation(installation.id, {
+    intake_token_hash: hashIntakeToken(token),
+    intake_expires_at: new Date(nowMs + INTAKE_TTL_DAYS * 86_400_000).toISOString(),
+  });
+  await repo.addInstallationEvent({ installation_id: installation.id, from_status: null, to_status: null, note: "Customer installation details link created.", actor_id: actorId });
+  return { token };
+}
+
+export async function getIntake(repo: CommerceRepo, token: string, now?: () => string) {
+  if (!/^[A-Za-z0-9_-]{32}$/.test(token)) return null;
+  const installation = await repo.findInstallationByIntakeTokenHash(hashIntakeToken(token));
+  if (!installation || !installation.intake_expires_at) return null;
+  if (Date.parse(installation.intake_expires_at) < Date.parse(now ? now() : new Date().toISOString())) return null;
+  return installation;
+}
+
+export type IntakeInput = {
+  platform: Platform;
+  platform_other: string | null;
+  website_url: string;
+  domain: string;
+  installation_type: InstallationType;
+};
+
+/** Customer-submitted details. Single use: the link stops working after submission. */
+export async function submitIntake(repo: CommerceRepo, token: string, input: IntakeInput, now?: () => string) {
+  const installation = await getIntake(repo, token, now);
+  if (!installation) throw new ValidationError("This link is invalid or has expired. Please contact Monarch Tax Suite for a new one.");
+  const product = await repo.getProduct(installation.product_id);
+  if (!product?.installation_options.includes(input.installation_type)) throw new ValidationError("That installation option is not available for this product.");
+  if (input.platform === "other" && !input.platform_other) throw new ValidationError("Tell us which platform you use.");
+  const website = normalizeWebsiteUrl(input.website_url);
+  const domain = normalizeDomain(input.domain);
+  const at = now ? now() : new Date().toISOString();
+  const order = await repo.getOrder(installation.order_id);
+
+  const updated = await repo.updateInstallation(installation.id, {
+    platform: input.platform,
+    platform_other: input.platform === "other" ? input.platform_other : null,
+    installation_method: PLATFORM_GUIDES[input.platform].defaultMethod,
+    website_url: website,
+    target_location: domain,
+    installation_type: input.installation_type,
+    intake_token_hash: null,
+    intake_expires_at: null,
+    intake_submitted_at: at,
+  });
+  const mismatch = order && order.installation_type !== input.installation_type
+    ? ` Customer chose ${input.installation_type === "done_for_you" ? "Done For You" : "Self-service"}, but the order was purchased as ${order.installation_type === "done_for_you" ? "Done For You" : "Self-service"}; confirm before proceeding.`
+    : "";
+  await repo.addInstallationEvent({
+    installation_id: installation.id,
+    from_status: null,
+    to_status: null,
+    note: `Customer submitted installation details: ${PLATFORM_GUIDES[input.platform].label}${input.platform === "other" ? ` (${input.platform_other})` : ""}, ${website}, domain ${domain}.${mismatch}`,
+    actor_id: null,
+  });
+
+  // Self-service customers with an active license get their domain authorized
+  // so the embed works immediately; everything else waits for an administrator.
+  let domainAuthorized = false;
+  const license = installation.license_id ? await repo.getLicense(installation.license_id) : null;
+  if (license?.status === "active" && input.installation_type === "self_service" && !mismatch) {
+    const domains = await repo.listDomains(license.id);
+    const active = domains.filter((d) => d.status === "active");
+    if (active.some((d) => d.domain === domain)) domainAuthorized = true;
+    else if (active.length < license.max_domains) {
+      await repo.upsertDomain(license.id, domain, "active");
+      if (!license.activated_at) await repo.updateLicense(license.id, { activated_at: at });
+      await repo.addLicenseEvent({ license_id: license.id, event_type: "domain_authorized", detail: { domain, via: "customer_intake" }, actor_id: null });
+      domainAuthorized = true;
+    }
+  }
+  return { installation: updated, license: license ? await repo.getLicense(license.id) : null, domainAuthorized };
 }
 
 // ---------------------------------------------------------------------------

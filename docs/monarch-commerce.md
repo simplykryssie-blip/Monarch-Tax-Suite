@@ -55,3 +55,41 @@ changed by this module.
 
 `npm test` runs `tests/*.test.ts` with Node's built-in runner against an
 in-memory store that enforces the same unique constraints as the migration.
+
+## Multi-platform installation
+
+The calculator installs the same way everywhere: an `<iframe>` pointing at
+`/embed/calculator?id=<embed id>`. The embed id is public (it is in page HTML);
+the license key is never used in browser code.
+
+- **Licensing is platform-neutral.** `proxy.ts` looks up the embed id and sets
+  `Content-Security-Policy: frame-ancestors https://<authorized domains>`, so
+  browsers render the calculator only on the license's authorized domains (and
+  their www/apex variants). Inactive, unknown or domain-less licenses get
+  `frame-ancestors 'none'`. The page also re-checks the Referer host.
+- **`GET /api/license/validate?id=<embed id>&domain=<host>`** returns
+  `{ valid: true }` or `{ valid: false, reason }` for any embedding method. It
+  returns no customer or license details. (Not rate-limited yet.)
+- **Customer intake:** from an installation, an administrator creates a
+  one-time link (`/install/<token>`, 14 days, only its hash is stored). The
+  customer picks a platform, gives the page URL, domain and Self-Service / Done
+  For You. Self-service customers with an active license get their domain
+  authorized and their platform instructions + embed code immediately; Done For
+  You requests stay "Requested" for the team. Installations are never marked
+  Active automatically.
+- **Checkout metadata** (optional): `installation_type`, `platform`
+  (`gohighlevel|shopify|wix|jotform|custom_html|other`), `platform_other`,
+  `website_url`, `domain`.
+
+| Platform | Method | Status |
+|---|---|---|
+| GoHighLevel | Custom Code element with iframe | Generic embed — not yet verified on a live funnel |
+| Shopify | Custom Liquid section with iframe | Awaiting compatibility testing (no native app) |
+| Wix | Embed a Site (URL) | Awaiting testing; "Embed HTML" nests a Wix frame and is expected to be blocked by domain binding |
+| Jotform | Iframe Embed widget (URL) | Awaiting testing; shared Jotform domains weaken domain binding; results are not form fields |
+| Custom HTML | iframe | Generic embed — browser enforcement tested in Chromium; first live install pending |
+| Other | iframe or URL | Generic embed, confirmed per installation |
+
+Database values: `calculator_installations.platform` keeps the original
+`ghl`/`website` values (`website` = custom HTML) and adds `shopify`, `wix`
+(migration `20261009122229`).

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { commerceRepo, requireAdmin } from "@/lib/admin";
 import { Badge, EmptyRow, label, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { PLATFORM_GUIDES } from "@/lib/commerce/platforms.ts";
 
 export default async function InstallationsPage() {
   await requireAdmin();
@@ -36,8 +37,8 @@ export default async function InstallationsPage() {
                         <td>{result.data.products.get(i.product_id)?.name}</td>
                         <td>#{order?.order_number} · <Badge value={order?.payment_status ?? "pending"} /></td>
                         <td>{label(i.installation_type)}</td>
-                        <td>{label(i.platform)}</td>
-                        <td>{i.target_location ?? "—"}</td>
+                        <td>{PLATFORM_GUIDES[i.platform].label}{i.platform === "other" && i.platform_other ? ` — ${i.platform_other}` : ""}</td>
+                        <td>{i.target_location ?? i.website_url ?? "—"}</td>
                         <td><Badge value={i.status} /></td>
                         <td>{when(i.updated_at)}</td>
                       </tr>

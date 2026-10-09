@@ -127,7 +127,7 @@ describe("stripe fulfillment", () => {
     const { repo, deps } = await setup();
     await handleStripeEvent(deps, checkoutCompleted("evt_1"));
     assert.equal(repo.installations[0].platform, "other");
-    assert.match(repo.installationEvents[0].note ?? "", /Platform was not specified/);
+    assert.match(repo.installationEvents[0].note ?? "", /were not provided; send the customer an installation details link/);
     await handleStripeEvent(deps, checkoutCompleted("evt_2", "pi_TEST000005", { metadata: { installation_type: "done_for_you", platform: "gohighlevel" } }));
     assert.equal(repo.installations[1].platform, "gohighlevel");
   });
@@ -211,6 +211,8 @@ describe("manual reconciliation", () => {
     currency: "usd",
     installation_type: "done_for_you" as const,
     platform: "gohighlevel" as const,
+    platform_other: null,
+    website_url: null,
     target_location: null,
     notes: null,
     admin_id: "admin-1",

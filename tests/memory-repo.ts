@@ -74,6 +74,7 @@ export class MemoryRepo implements CommerceRepo {
   async listLicenses() { return this.clone(this.licenses); }
   async getLicense(id: string) { return this.clone(this.licenses.find((l) => l.id === id) ?? null); }
   async findLicenseByOrder(orderId: string) { return this.clone(this.licenses.find((l) => l.order_id === orderId) ?? null); }
+  async findLicenseByEmbedId(embedId: string) { return this.clone(this.licenses.find((l) => l.embed_id === embedId) ?? null); }
   async createLicense(input: Omit<License, "id" | "created_at" | "updated_at">) {
     const existing = this.licenses.find((l) => l.order_id === input.order_id);
     if (existing) return { license: this.clone(existing), created: false };
@@ -96,6 +97,7 @@ export class MemoryRepo implements CommerceRepo {
   async listInstallations() { return this.clone(this.installations); }
   async getInstallation(id: string) { return this.clone(this.installations.find((i) => i.id === id) ?? null); }
   async findInstallationByOrder(orderId: string) { return this.clone(this.installations.find((i) => i.order_id === orderId) ?? null); }
+  async findInstallationByIntakeTokenHash(hash: string) { return this.clone(this.installations.find((i) => i.intake_token_hash === hash) ?? null); }
   async createInstallation(input: Omit<Installation, "id" | "created_at" | "updated_at">) {
     const existing = this.installations.find((i) => i.order_id === input.order_id);
     if (existing) return { installation: this.clone(existing), created: false };

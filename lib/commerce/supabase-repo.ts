@@ -48,8 +48,9 @@ function licenseToRow(patch: Partial<NewLicense>): Row {
   return key_hash === undefined ? rest : { ...rest, license_key_hash: key_hash };
 }
 
-const PLATFORM_TO_DB: Record<string, string> = { gohighlevel: "ghl", website: "website", jotform: "jotform", other: "other" };
-const PLATFORM_FROM_DB: Record<string, string> = { ghl: "gohighlevel", website: "website", jotform: "jotform", other: "other" };
+// Existing values 'ghl' and 'website' are kept; 'website' is a custom HTML site.
+const PLATFORM_TO_DB: Record<string, string> = { gohighlevel: "ghl", shopify: "shopify", wix: "wix", jotform: "jotform", custom_html: "website", other: "other" };
+const PLATFORM_FROM_DB: Record<string, string> = { ghl: "gohighlevel", shopify: "shopify", wix: "wix", jotform: "jotform", website: "custom_html", other: "other" };
 function installationFromRow(row: Row | null): Installation | null {
   if (!row) return null;
   const { domain, notes, platform, ...rest } = row;
@@ -139,6 +140,7 @@ export class SupabaseCommerceRepo implements CommerceRepo {
   async listLicenses() { return (await this.all<Row>("calculator_licenses")).map((r) => licenseFromRow(r)!); }
   async getLicense(id: string) { return licenseFromRow(await this.one<Row>("calculator_licenses", "id", id)); }
   async findLicenseByOrder(orderId: string) { return licenseFromRow(await this.one<Row>("calculator_licenses", "order_id", orderId)); }
+  async findLicenseByEmbedId(embedId: string) { return licenseFromRow(await this.one<Row>("calculator_licenses", "embed_id", embedId)); }
   async createLicense(input: NewLicense) {
     const { row, created } = await this.insertOrGet<Row>("calculator_licenses", licenseToRow(input), "order_id", input.order_id);
     return { license: licenseFromRow(row)!, created };
@@ -166,6 +168,7 @@ export class SupabaseCommerceRepo implements CommerceRepo {
   async listInstallations() { return (await this.all<Row>("calculator_installations", "updated_at")).map((r) => installationFromRow(r)!); }
   async getInstallation(id: string) { return installationFromRow(await this.one<Row>("calculator_installations", "id", id)); }
   async findInstallationByOrder(orderId: string) { return installationFromRow(await this.one<Row>("calculator_installations", "order_id", orderId)); }
+  async findInstallationByIntakeTokenHash(hash: string) { return installationFromRow(await this.one<Row>("calculator_installations", "intake_token_hash", hash)); }
   async createInstallation(input: NewInstallation) {
     const { row, created } = await this.insertOrGet<Row>("calculator_installations", installationToRow(input), "order_id", input.order_id);
     return { installation: installationFromRow(row)!, created };

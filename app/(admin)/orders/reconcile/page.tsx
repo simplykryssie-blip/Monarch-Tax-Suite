@@ -1,5 +1,6 @@
 import { commerceRepo, requireAdmin, stripeClient } from "@/lib/admin";
 import { reconcilePurchaseAction } from "../../actions";
+import { PLATFORM_GUIDES, PLATFORM_ORDER } from "@/lib/commerce/platforms.ts";
 import { Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
 
 export default async function ReconcilePage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -39,16 +40,15 @@ export default async function ReconcilePage({ searchParams }: { searchParams: Pr
                 <option value="self_service">Self-service</option>
               </select>
             </label>
-            <label>Target platform
+            <label>Platform
               <select name="platform" required defaultValue="">
                 <option value="" disabled>Choose a platform</option>
-                <option value="gohighlevel">GoHighLevel</option>
-                <option value="website">Website</option>
-                <option value="jotform">Jotform</option>
-                <option value="other">Other (not confirmed yet)</option>
+                {PLATFORM_ORDER.map((p) => <option key={p} value={p}>{PLATFORM_GUIDES[p].label}</option>)}
               </select>
             </label>
-            <label className="is-wide">Installation domain or location (if known)<input name="target_location" maxLength={500} /></label>
+            <label>Platform name (if Other)<input name="platform_other" maxLength={80} /></label>
+            <label>Website or funnel URL (if known)<input name="website_url" maxLength={500} placeholder="https://…" /></label>
+            <label>Domain where it will run (if known)<input name="target_location" maxLength={253} placeholder="example.com" /></label>
             <label className="is-wide">Internal notes<textarea name="notes" rows={3} maxLength={4000} /></label>
             {!stripeConfigured && (
               <label className="monarch-check is-wide">

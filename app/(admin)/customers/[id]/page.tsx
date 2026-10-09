@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { commerceRepo, requireAdmin } from "@/lib/admin";
 import { Badge, EmptyRow, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { PLATFORM_GUIDES } from "@/lib/commerce/platforms.ts";
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
@@ -77,7 +78,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                 {installations.length === 0 ? <EmptyRow colSpan={3}>No installations.</EmptyRow> : installations.map((i) => (
                   <tr key={i.id}>
                     <td><Link href={`/installations/${i.id}`}><b>{label(i.installation_type)}</b></Link></td>
-                    <td>{label(i.platform)}</td>
+                    <td>{PLATFORM_GUIDES[i.platform].label}</td>
                     <td><Badge value={i.status} /></td>
                   </tr>
                 ))}

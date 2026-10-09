@@ -39,6 +39,7 @@ export default async function LicensePage({ params, searchParams }: { params: Pr
             <dt>Status</dt><dd><Badge value={license.status} /></dd>
             <dt>Order</dt><dd>#{order?.order_number} · {order && money(order.amount_cents, order.currency)} · <Badge value={order?.payment_status ?? "pending"} /></dd>
             <dt>Key</dt><dd>{license.key_prefix ? `${license.key_prefix}… (only a hash is stored)` : "Not issued"}</dd>
+            <dt>Embed ID (public)</dt><dd>{license.embed_id ? <code>{license.embed_id}</code> : "Assigned when the key is issued"}</dd>
             <dt>Issued</dt><dd>{when(license.issued_at)}</dd>
             <dt>First activation</dt><dd>{when(license.activated_at)}</dd>
             <dt>Domains allowed</dt><dd>{license.max_domains}</dd>

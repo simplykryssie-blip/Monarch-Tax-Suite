@@ -1,19 +1,14 @@
 import "server-only";
 import { cache } from "react";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import { createClient } from "./supabase/server";
-import { SUPABASE_URL } from "./supabase/config";
+import { serviceClient } from "./supabase/service";
 import { decideAdmin } from "./commerce/authz.ts";
 import { SupabaseCommerceRepo } from "./commerce/supabase-repo.ts";
 
-/** Service-role Supabase client. Bypasses RLS: only use after requireAdmin() or webhook signature checks. */
-export function serviceClient() {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
-  if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured.");
-  return createServiceClient(SUPABASE_URL, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
+export { serviceClient };
 
 export function commerceRepo() {
   return new SupabaseCommerceRepo(serviceClient());
@@ -58,3 +53,12 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
   }
   return { userId: decision.userId, email: user?.email ?? "" };
 });
+
+/** Public origin of this deployment (for embed and intake links). */
+export async function appOrigin(): Promise<string> {
+  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  if (configured) return configured.replace(/\/$/, "");
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "monarch-tax-suite.vercel.app";
+  return `https://${host}`;
+}
