@@ -1,4 +1,5 @@
 import { allowedHosts } from "../commerce/embed.ts";
+import { computeFull, fullEstimateForLead, fullEstimateText, FULL_TAX_YEAR, NEEDS_INCOME_MESSAGE, sanitizeFullInputs } from "../calculator/full.ts";
 import { licensedYears } from "../commerce/versions.ts";
 import { ValidationError } from "../commerce/validation.ts";
 import { HighLevelError } from "./highlevel.ts";
@@ -50,6 +51,8 @@ export type LeadSubmission = {
   consent: unknown;
   website?: unknown; // honeypot
   summary?: { taxYear?: unknown; filingStatus?: unknown; result?: unknown; amount?: unknown } | null;
+  /** Full calculator: the visitor's entries. Used only to recompute the results on the server; never forwarded or stored. */
+  inputs?: unknown;
 };
 
 /** Validates visitor input; keeps only what the visitor typed (and the disclosed estimate summary, when enabled). */
@@ -73,10 +76,19 @@ export function parseLead(input: LeadSubmission, opts: { years: number[]; includ
       summary = { taxYear, filingStatus: s.filingStatus, result: s.result, amount: Math.round(amount) };
     }
   }
-  return { submissionId: input.submissionId.toLowerCase(), firstName, lastName: clean(input.lastName, 60) || null, email, phone, summary, submittedAt: opts.now.toISOString() };
+  let estimate: LeadPayload["estimate"] = null;
+  if (opts.includeSummary && input.inputs && opts.years.includes(FULL_TAX_YEAR)) {
+    const inputs = sanitizeFullInputs(input.inputs);
+    if (!inputs) throw new ValidationError("Check the calculator entries and try again.");
+    const result = computeFull(inputs);
+    if (!result) throw new ValidationError(NEEDS_INCOME_MESSAGE);
+    estimate = fullEstimateForLead(result, inputs.status);
+  }
+  return { submissionId: input.submissionId.toLowerCase(), firstName, lastName: clean(input.lastName, 60) || null, email, phone, summary, estimate, submittedAt: opts.now.toISOString() };
 }
 
 function noteText(p: LeadPayload, host: string | null): string {
+  if (p.estimate) return [`Tax calculator estimate (submitted ${p.submittedAt.slice(0, 10)})`, fullEstimateText(p.estimate), host ? `Submitted on: ${host}` : null].filter(Boolean).join("\n");
   const s = p.summary!;
   const amount = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(s.amount);
   return [
@@ -98,7 +110,7 @@ export function webhookBody(p: LeadPayload, settings: LeadSettings, host: string
     website: host,
     tags: settings.tags,
     contact: { first_name: p.firstName, last_name: p.lastName, email: p.email, phone: p.phone },
-    estimate: p.summary ? { tax_year: p.summary.taxYear, filing_status: p.summary.filingStatus, result: p.summary.result, amount: p.summary.amount, currency: "USD" } : null,
+    estimate: p.estimate ? { ...p.estimate, text: fullEstimateText(p.estimate) } : p.summary ? { tax_year: p.summary.taxYear, filing_status: p.summary.filingStatus, result: p.summary.result, amount: p.summary.amount, currency: "USD" } : null,
     consent: { contact: true, text_shown: `Agreed to be contacted by ${settings.business_name} about this estimate.` },
   };
 }
@@ -119,7 +131,7 @@ async function toHighLevel(deps: CrmDeps, connection: CrmConnection, settings: L
       if (!id) id = await api.createContact(token, contact);
     }
     if (settings.tags.length) await api.addTags(token, id, settings.tags); // adds; never replaces existing tags
-    if (settings.include_summary && p.summary) await api.addNote(token, id, noteText(p, host));
+    if (settings.include_summary && (p.estimate || p.summary)) await api.addNote(token, id, noteText(p, host));
   });
 }
 

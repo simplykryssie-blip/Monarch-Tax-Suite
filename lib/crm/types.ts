@@ -71,6 +71,8 @@ export type LeadPayload = {
   email: string | null;
   phone: string | null;
   summary: { taxYear: number; filingStatus: string; result: "refund" | "owed"; amount: number } | null;
+  /** Full-calculator results, recomputed on the server from the visitor's inputs (the inputs themselves are not forwarded). */
+  estimate: import("../calculator/full.ts").FullLeadEstimate | null;
   submittedAt: string;
 };
 

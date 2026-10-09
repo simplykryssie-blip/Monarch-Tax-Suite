@@ -212,6 +212,22 @@ within the same request.
   or the buyer's own server.
   - Body: `{event:"calculator.lead", id, submitted_at, source, website, tags,
     contact:{first_name,last_name,email,phone}, estimate|null, consent}`.
+  - **Full calculator estimate.** The licensed embed serves the full 2026
+    refund calculator (the one demonstrated to customers). When the form is on
+    and "include estimate" is enabled, the body's `estimate` is the results
+    computed on Monarch's server from the visitor's entries (the entries
+    themselves are never forwarded or stored): `headline` (e.g. "Estimated
+    Refund: $2,880"), `result` (`refund`|`owed`), `amount`,
+    `estimated_federal_tax`, `withholding_plus_refundable_credits`, a
+    `breakdown` object (income tax after child credit, self-employment tax,
+    additional Medicare tax, EITC, refundable ACTC, Schedule 1-A deductions,
+    standard deduction, AGI, taxable income; whole dollars), and `text`, a
+    ready-to-email plain-text summary.
+  - **Emailing results from GoHighLevel.** Create a workflow with the
+    "Inbound Webhook" trigger, send one test lead, map `contact.*` and
+    `estimate.*` fields, then add a "Send Email" action (to the visitor, to
+    staff, or both) using the mapped values or `estimate.text`. Monarch does
+    not send email itself.
   - Headers: `Idempotency-Key`, `X-Monarch-Timestamp`, and
     `X-Monarch-Signature: v1=HMAC_SHA256(secret, "<timestamp>.<body>")`.
   - Only public HTTPS hosts on port 443 are allowed (private and internal IPs
