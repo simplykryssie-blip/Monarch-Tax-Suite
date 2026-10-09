@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { commerceRepo, requireAdmin } from "@/lib/admin";
+import { isInternalOrder } from "@/lib/commerce/fulfillment.ts";
 import { Badge, EmptyRow, Flash, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -19,7 +20,10 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         <>
           <div className="monarch-page-actions">
             <span>{result.data.orders.length} orders · new Stripe purchases are recorded automatically by the webhook</span>
-            <Link className="monarch-primary" href="/orders/reconcile">Reconcile a past purchase</Link>
+            <span className="monarch-inline-actions">
+              <Link className="monarch-secondary" href="/orders/internal">New internal license (no payment)</Link>
+              <Link className="monarch-primary" href="/orders/reconcile">Reconcile a past purchase</Link>
+            </span>
           </div>
           <section className="monarch-panel">
             <div className="monarch-table-wrap">
@@ -37,7 +41,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                           <td>{o.order_type === "annual_update" ? `Update → ${o.tax_year}` : "Purchase"}</td>
                           <td><Link href={`/customers/${o.customer_id}`}><b>{c?.full_name ?? c?.email}</b></Link><small className="monarch-subcell">{c?.email}</small></td>
                           <td>{result.data.products.get(o.product_id)?.name}</td>
-                          <td><b>{money(o.amount_cents, o.currency)}</b></td>
+                          <td><b>{money(o.amount_cents, o.currency)}</b>{isInternalOrder(o) && <small className="monarch-subcell">Internal · no payment</small>}</td>
                           <td><Badge value={o.payment_status} /></td>
                           <td>{o.installation_type ? label(o.installation_type) : "—"}</td>
                           <td>{label(o.verification_method)}</td>

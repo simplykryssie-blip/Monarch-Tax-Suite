@@ -6,6 +6,7 @@ import { appOrigin, commerceRepo, requireAdmin, stripeClient } from "@/lib/admin
 import { setProductStatus } from "@/lib/commerce/catalog.ts";
 import {
   authorizeDomain,
+  createInternalLicense,
   createIntakeLink,
   issueLicenseKey,
   reconcilePurchase,
@@ -117,6 +118,35 @@ export async function reconcilePurchaseAction(form: FormData) {
     });
     const target = result.installation ? `/installations/${result.installation.id}` : `/customers/${result.customer.id}`;
     return { to: target, notice: result.created ? "Purchase reconciled. Order, license and installation records created." : "This payment was already recorded; existing records shown." };
+  });
+}
+
+/**
+ * A $0 internal (complimentary) license for the owner's own sites. Records no payment.
+ * It creates a pending license; the key is issued and the domain authorized from the license page.
+ */
+export async function createInternalLicenseAction(form: FormData) {
+  const admin = await requireAdmin();
+  await mutate("/orders/internal", async () => {
+    const result = await createInternalLicense(commerceRepo(), {
+      email: normalizeEmail(str(form, "email")),
+      full_name: str(form, "full_name"),
+      phone: str(form, "phone") || null,
+      product_id: id(form, "product_id"),
+      platform: parsePlatform(str(form, "platform")),
+      website_url: str(form, "website_url") ? normalizeWebsiteUrl(str(form, "website_url")) : null,
+      domain: str(form, "domain"),
+      reason: str(form, "reason"),
+      admin_id: admin.userId,
+      confirmed: form.get("confirm") === "on",
+    });
+    const to = result.license ? `/licenses/${result.license.id}` : `/customers/${result.customer.id}`;
+    return {
+      to,
+      notice: result.created
+        ? `Internal $0 license created for ${result.customer.email}. Now issue the key and authorize ${result.domain}.`
+        : "This internal license already exists; showing it. Issue the key and authorize the domain from here if you have not.",
+    };
   });
 }
 
