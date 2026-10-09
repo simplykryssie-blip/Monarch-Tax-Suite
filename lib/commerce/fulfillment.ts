@@ -243,6 +243,8 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
   const version = (await repo.listVersions(license.product_id)).find((v) => v.tax_year === taxYear) ?? null;
   const amount = session.amount_total ?? 0;
   const priceMismatch = !version || amount !== version.update_price_cents || (session.currency ?? "").toLowerCase() !== "usd";
+  // A license revoked between checkout and payment is never upgraded; the payment is flagged for a refund.
+  const revoked = license.status === "revoked";
 
   const { order } = await repo.createOrder({
     order_type: "annual_update",
@@ -262,14 +264,18 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
     verification_method: "stripe_webhook",
     verified_by: null,
     verified_at: at,
-    notes: priceMismatch ? `Review: paid ${amount} ${session.currency ?? ""} does not match the ${taxYear} update price; update not applied automatically.` : null,
+    notes: revoked
+      ? "Review: the license is revoked; update not applied. Refund the customer."
+      : priceMismatch
+        ? `Review: paid ${amount} ${session.currency ?? ""} does not match the ${taxYear} update price; update not applied automatically.`
+        : null,
     paid_at: paid ? at : null,
     refunded_at: null,
   });
   if (order.license_id !== license.id) throw new Error(`Payment intent ${paymentIntentId} is already recorded for another order.`);
   let current = order;
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
-  if (current.payment_status === "paid" && !priceMismatch) await applyPaidUpdate(repo, current, null);
+  if (current.payment_status === "paid" && !priceMismatch && !revoked) await applyPaidUpdate(repo, current, null);
   return { status: "processed", detail: `Update order ${current.id} is ${current.payment_status}.` };
 }
 

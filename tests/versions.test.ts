@@ -232,3 +232,73 @@ describe("ownership and billing safety", () => {
     assert.equal(repo.installations[0].status, "requested");
   });
 });
+
+describe("annual update verification (edge cases)", () => {
+  test("delayed (async) payment: pending first, upgraded only when Stripe confirms", async () => {
+    const { repo, deps, licenseId } = await setup();
+    await handleStripeEvent(deps, updateEvent("evt_pend", "pi_UPDASYNC01", licenseId, 2027, { paid: false }));
+    assert.equal(repo.orders.find((o) => o.order_type === "annual_update")?.payment_status, "pending");
+    assert.equal((await repo.getLicense(licenseId))?.licensed_tax_year, 2026);
+    await handleStripeEvent(deps, updateEvent("evt_async_ok", "pi_UPDASYNC01", licenseId, 2027, { type: "checkout.session.async_payment_succeeded" }));
+    assert.equal((await repo.getLicense(licenseId))?.licensed_tax_year, 2027);
+    assert.equal(repo.orders.filter((o) => o.order_type === "annual_update").length, 1);
+  });
+
+  test("an abandoned (expired) or asynchronously failed checkout never upgrades", async () => {
+    const { repo, deps, licenseId } = await setup();
+    await handleStripeEvent(deps, updateEvent("evt_open", "pi_UPDEXPIRE1", licenseId, 2027, { paid: false }));
+    await handleStripeEvent(deps, updateEvent("evt_exp", "pi_UPDEXPIRE1", licenseId, 2027, { type: "checkout.session.expired", paid: false }));
+    assert.equal(repo.orders.find((o) => o.order_type === "annual_update")?.payment_status, "canceled");
+    // A late success event for a canceled order is not applied either.
+    await handleStripeEvent(deps, { id: "evt_late", type: "payment_intent.succeeded", data: { object: { id: "pi_UPDEXPIRE1" } } });
+    assert.equal((await repo.getLicense(licenseId))?.licensed_tax_year, 2026);
+
+    const other = await setup();
+    await handleStripeEvent(other.deps, updateEvent("evt_open2", "pi_UPDASFAIL1", other.licenseId, 2027, { paid: false }));
+    await handleStripeEvent(other.deps, updateEvent("evt_fail2", "pi_UPDASFAIL1", other.licenseId, 2027, { type: "checkout.session.async_payment_failed", paid: false }));
+    assert.equal(other.repo.orders.find((o) => o.order_type === "annual_update")?.payment_status, "failed");
+    assert.equal((await other.repo.getLicense(other.licenseId))?.licensed_tax_year, 2026);
+  });
+
+  test("an update for an unknown tax year or license is never applied and never creates a license", async () => {
+    const { repo, deps, licenseId } = await setup();
+    await handleStripeEvent(deps, updateEvent("evt_2030", "pi_UPD2030001", licenseId, 2030));
+    assert.equal((await repo.getLicense(licenseId))?.licensed_tax_year, 2026);
+    assert.match(repo.orders.find((o) => o.order_type === "annual_update")?.notes ?? "", /^Review:/);
+    await assert.rejects(handleStripeEvent(deps, updateEvent("evt_nolic", "pi_UPDNOLIC01", "00000000-0000-4000-8000-000000000000", 2027)));
+    assert.equal(repo.licenses.length, 1);
+  });
+
+  test("a paid update for a revoked license is flagged for refund, not applied", async () => {
+    const { repo, deps, licenseId } = await setup();
+    await repo.updateLicense(licenseId, { status: "revoked" });
+    await handleStripeEvent(deps, updateEvent("evt_rev", "pi_UPDREVOK01", licenseId, 2027));
+    const order = repo.orders.find((o) => o.order_type === "annual_update")!;
+    assert.equal(order.payment_status, "paid");
+    assert.match(order.notes ?? "", /revoked.*Refund/);
+    assert.equal((await repo.getLicense(licenseId))?.licensed_tax_year, 2026);
+    assert.equal((await repo.getLicense(licenseId))?.status, "revoked");
+  });
+
+  test("buying the update product directly (e.g. a payment link, no license metadata) never creates a base license", async () => {
+    const { repo, deps } = await setup();
+    await createProduct(repo, { ...PRODUCT, slug: "monarch-basic-tax-calculator-annual-update", category: "software_update", stripe_product_id: "prod_UPDATEPROD1", price_cents: 5000 });
+    const direct: FulfillmentDeps = { repo, listCheckoutProductIds: async () => ["prod_UPDATEPROD1"] };
+    const outcome = await handleStripeEvent(direct, purchaseEvent("evt_direct", "pi_DIRECTUPD1"));
+    assert.equal(outcome.status, "ignored");
+    assert.equal(repo.licenses.length, 1);
+    assert.equal(repo.orders.length, 1, "only the original purchase");
+  });
+
+  test("checkout is refused unless the version has a linked one-time $50 Stripe price", async () => {
+    const { repo, key } = await setup();
+    const { offer } = await lookupUpdate(repo, key);
+    assert.equal(offer.eligible, true);
+    if (offer.eligible) {
+      assert.equal(offer.version.tax_year, 2027);
+      assert.equal(offer.version.stripe_update_price_id, "price_UPDATE2027");
+      assert.throws(() => assertOneTimeUpdatePrice({ active: true, type: "one_time", unit_amount: 7500, currency: "usd", recurring: null }, offer.version), /does not match/);
+      assert.doesNotThrow(() => assertOneTimeUpdatePrice({ active: true, type: "one_time", unit_amount: 5000, currency: "usd", recurring: null }, offer.version));
+    }
+  });
+});
