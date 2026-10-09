@@ -183,6 +183,11 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
     if (product) break;
   }
   if (!product) return { status: "ignored", detail: "No catalog product matches this checkout." };
+  // Update products upgrade an existing license via the /update checkout; a
+  // bare purchase of one must never create a new full license.
+  if (product.category === "software_update") {
+    return { status: "ignored", detail: "Annual update products are applied only through the license update checkout (/update)." };
+  }
 
   const paymentIntentId = idOf(session.payment_intent);
   if (!paymentIntentId) return { status: "ignored", detail: "Checkout has no payment intent (not a one-time payment)." };

@@ -136,3 +136,44 @@ are active, one-time, USD prices matching the version's configured price.
    versions).
 4. Add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in Vercel and subscribe
    the webhook to the events listed under Setup.
+
+## Product management, images and preview
+
+Migration `20261009132816_product_management_images` (applied to Monarch on
+2026-10-09) adds product content fields (category, features, terms,
+disclaimer, payment type, settings), Stripe sync tracking, the
+`product_images` table and the `product-images` Storage bucket. Existing
+product ids, Stripe ids and prices were preserved.
+
+- **Products list** (`/products`): search by name, identifier or Stripe ID;
+  filter by status and category; thumbnail, price, status, last updated; Edit,
+  Preview and Duplicate.
+- **Editor** (`/products/[id]`): all fields with a live desktop/mobile
+  storefront preview, an unsaved-changes warning, the same validation as the
+  server, and Save draft / Save & publish. Archive keeps orders, licenses and
+  installations. Duplicate creates a draft without Stripe links.
+- **Images:** JPG, PNG or WebP up to 4 MB (the hosting request limit is
+  4.5 MB), at most 8 per product, with one primary image. The type is verified
+  from the file bytes. Files are stored in Supabase Storage at
+  `products/<product id>/<random uuid>.<ext>`, and the database holds only the
+  path and metadata. The bucket is public-read. There are no `storage.objects`
+  policies, so only server actions (service role, after `requireAdmin`) can
+  upload, replace or delete.
+- **Preview** (`/preview/product/[id]`): administrators only, `noindex`, with
+  the purchase button disabled. It never publishes, creates orders or charges.
+- **Storefront** (`/shop`, `/shop/[slug]`): published products only. Drafts,
+  unpublished and archived products return 404. The purchase button uses the
+  product setting `checkout_url` (https only) or falls back to a contact link.
+- **Stripe sync is explicit.** Saving never calls Stripe. The Stripe panel
+  has separate buttons:
+  - **Update Stripe product info:** name, description, primary image and
+    active flag. Prices are not touched.
+  - **Create Stripe product:** refused if a product is already linked.
+  - **Create Stripe price:** creates a new price and leaves the old one as it
+    is; refused when the linked price already charges the catalog amount.
+
+  Each result is recorded (`stripe_sync_status`, `stripe_synced_at`,
+  `stripe_sync_error`) and shown. Idempotency keys prevent duplicates on
+  double-submit. Orders are never rewritten.
+- Products in category `software_update` are never fulfilled as a new
+  license by the webhook. Annual updates go through `/update`.

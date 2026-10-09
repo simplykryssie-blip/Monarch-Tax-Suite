@@ -1,6 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
+  ImageStore,
+  ImageType,
   AuthorizedDomain,
   CommerceRepo,
   Customer,
@@ -15,6 +17,7 @@ import type {
   NewProductVersion,
   Order,
   Product,
+  ProductImage,
   ProductVersion,
   VersionChange,
 } from "./types.ts";
@@ -110,6 +113,15 @@ export class SupabaseCommerceRepo implements CommerceRepo {
   createProduct(input: NewProduct) { return this.insert<Product>("products", input); }
   updateProduct(id: string, patch: Partial<NewProduct>) { return this.patch<Product>("products", id, patch); }
 
+  async listProductImages(productIds: string[]) {
+    if (productIds.length === 0) return [];
+    return unwrap(await this.db.from("product_images").select("*").in("product_id", productIds).order("sort_order", { ascending: true })) as ProductImage[];
+  }
+  getProductImage(id: string) { return this.one<ProductImage>("product_images", "id", id); }
+  addProductImage(input: Omit<ProductImage, "id" | "created_at">) { return this.insert<ProductImage>("product_images", input); }
+  updateProductImage(id: string, patch: Partial<Pick<ProductImage, "is_primary" | "sort_order" | "alt_text">>) { return this.patch<ProductImage>("product_images", id, patch); }
+  async deleteProductImage(id: string) { unwrap(await this.db.from("product_images").delete().eq("id", id)); }
+
   async listVersions(productId: string) {
     return unwrap(await this.db.from("product_versions").select("*").eq("product_id", productId).order("tax_year", { ascending: false })) as ProductVersion[];
   }
@@ -195,4 +207,26 @@ export class SupabaseCommerceRepo implements CommerceRepo {
   async listInstallationEvents(id: string) {
     return unwrap(await this.db.from("installation_events").select("*").eq("installation_id", id).order("created_at", { ascending: true })) as InstallationEvent[];
   }
+}
+
+export const PRODUCT_IMAGE_BUCKET = "product-images";
+
+/** Supabase Storage for product images; service-role client only (server-side). */
+export class SupabaseImageStore implements ImageStore {
+  constructor(private db: SupabaseClient) {}
+  private bucket() { return this.db.storage.from(PRODUCT_IMAGE_BUCKET); }
+  async put(path: string, bytes: Uint8Array, contentType: ImageType) {
+    const { error } = await this.bucket().upload(path, bytes, { contentType, upsert: false, cacheControl: "31536000" });
+    if (error) throw new Error(`Image upload failed: ${error.message}`);
+  }
+  async remove(paths: string[]) {
+    if (paths.length === 0) return;
+    const { error } = await this.bucket().remove(paths);
+    if (error) throw new Error(`Image removal failed: ${error.message}`);
+  }
+  async copy(from: string, to: string) {
+    const { error } = await this.bucket().copy(from, to);
+    if (error) throw new Error(`Image copy failed: ${error.message}`);
+  }
+  publicUrl(path: string) { return this.bucket().getPublicUrl(path).data.publicUrl; }
 }

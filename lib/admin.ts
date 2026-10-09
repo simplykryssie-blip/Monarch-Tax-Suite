@@ -6,12 +6,17 @@ import Stripe from "stripe";
 import { createClient } from "./supabase/server";
 import { serviceClient } from "./supabase/service";
 import { decideAdmin } from "./commerce/authz.ts";
-import { SupabaseCommerceRepo } from "./commerce/supabase-repo.ts";
+import { SupabaseCommerceRepo, SupabaseImageStore } from "./commerce/supabase-repo.ts";
 
 export { serviceClient };
 
 export function commerceRepo() {
   return new SupabaseCommerceRepo(serviceClient());
+}
+
+/** Product image storage (service role; call only after requireAdmin for writes). */
+export function imageStore() {
+  return new SupabaseImageStore(serviceClient());
 }
 
 /** Stripe client, or null when STRIPE_SECRET_KEY is not configured. */

@@ -82,7 +82,7 @@ describe("products", () => {
     assert.equal((await setProductStatus(repo, product.id, "archived")).status, "archived");
     await assert.rejects(setProductStatus(repo, product.id, "published"), ValidationError);
 
-    const unpriced = await createProduct(repo, { ...CALCULATOR, slug: "unpriced", price_cents: null });
+    const unpriced = await createProduct(repo, { ...CALCULATOR, slug: "unpriced", price_cents: null, stripe_product_id: "prod_UNPRICED01" });
     await assert.rejects(setProductStatus(repo, unpriced.id, "published"), /verified price/);
   });
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { appOrigin, commerceRepo, requireAdmin, stripeClient } from "@/lib/admin";
-import { createProduct, editProduct, setProductStatus } from "@/lib/commerce/catalog.ts";
+import { setProductStatus } from "@/lib/commerce/catalog.ts";
 import {
   authorizeDomain,
   createIntakeLink,
@@ -26,7 +26,6 @@ import {
   parseInstallationType,
   parsePlatform,
   parsePriceToCents,
-  parseProductForm,
   parseProductStatus,
   ValidationError,
 } from "@/lib/commerce/validation.ts";
@@ -65,23 +64,6 @@ async function mutate(back: string, fn: () => Promise<{ to?: string; notice: str
 }
 
 // ----------------------------------------------------------------- products
-
-export async function createProductAction(form: FormData) {
-  await requireAdmin();
-  await mutate("/products/new", async () => {
-    const product = await createProduct(commerceRepo(), parseProductForm(form));
-    return { to: `/products/${product.id}`, notice: "Product created as a draft." };
-  });
-}
-
-export async function updateProductAction(form: FormData) {
-  await requireAdmin();
-  const productId = id(form);
-  await mutate(`/products/${productId}`, async () => {
-    await editProduct(commerceRepo(), productId, parseProductForm(form));
-    return { notice: "Product saved." };
-  });
-}
 
 export async function setProductStatusAction(form: FormData) {
   await requireAdmin();

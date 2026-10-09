@@ -4,6 +4,9 @@
 
 export const PRODUCT_TYPES = ["software", "digital_download", "course", "membership", "service"] as const;
 export const ACCESS_TYPES = ["license", "instant_download", "course_access", "manual"] as const;
+export const PRODUCT_CATEGORIES = ["tax_software", "service_bureau", "digital_product", "course", "software_update", "other"] as const;
+export const PAYMENT_TYPES = ["one_time", "recurring"] as const;
+export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 export const PRODUCT_STATUSES = ["draft", "published", "unpublished", "archived"] as const;
 export const INSTALLATION_TYPES = ["self_service", "done_for_you"] as const;
 export const PLATFORMS = ["gohighlevel", "shopify", "wix", "jotform", "custom_html", "other"] as const;
@@ -19,6 +22,9 @@ export const VERIFICATION_METHODS = ["stripe_webhook", "stripe_api", "admin_manu
 
 export type ProductType = (typeof PRODUCT_TYPES)[number];
 export type AccessType = (typeof ACCESS_TYPES)[number];
+export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
+export type PaymentType = (typeof PAYMENT_TYPES)[number];
+export type ImageType = (typeof IMAGE_TYPES)[number];
 export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
 export type InstallationType = (typeof INSTALLATION_TYPES)[number];
 export type Platform = (typeof PLATFORMS)[number];
@@ -44,9 +50,45 @@ export type Product = {
   stripe_product_id: string | null;
   stripe_price_id: string | null;
   status: ProductStatus;
+  category: ProductCategory;
+  /** Customer-facing feature / included-item bullets. */
+  features: string[];
+  terms: string | null;
+  disclaimer: string | null;
+  payment_type: PaymentType;
+  billing_interval: "month" | "year" | null;
+  metadata: Record<string, string>;
+  /** Amount of stripe_price_id as last created or verified through Stripe sync. */
+  stripe_price_cents: number | null;
+  stripe_sync_status: "synced" | "failed" | null;
+  stripe_synced_at: string | null;
+  stripe_sync_error: string | null;
   created_at: string;
   updated_at: string;
 };
+
+export type ProductImage = {
+  id: string;
+  product_id: string;
+  storage_path: string;
+  content_type: ImageType;
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
+  alt_text: string | null;
+  is_primary: boolean;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+};
+
+/** File storage for product images (Supabase Storage in production). */
+export interface ImageStore {
+  put(path: string, bytes: Uint8Array, contentType: ImageType): Promise<void>;
+  remove(paths: string[]): Promise<void>;
+  copy(from: string, to: string): Promise<void>;
+  publicUrl(path: string): string;
+}
 
 /** A tax-year version of a product (e.g. the 2027 calculator). */
 export type ProductVersion = {
@@ -188,7 +230,11 @@ export type InstallationEvent = {
 };
 
 export type NewProductVersion = Omit<ProductVersion, "id" | "created_at" | "updated_at">;
-export type NewProduct = Omit<Product, "id" | "created_at" | "updated_at">;
+type ProductContentDefaults = "category" | "features" | "terms" | "disclaimer" | "payment_type" | "billing_interval" | "metadata";
+type ProductSyncFields = "stripe_price_cents" | "stripe_sync_status" | "stripe_synced_at" | "stripe_sync_error";
+/** Content fields default in the database (category other, one-time, empty lists). */
+export type NewProduct = Omit<Product, "id" | "created_at" | "updated_at" | ProductSyncFields | ProductContentDefaults>
+  & Partial<Pick<Product, ProductSyncFields | ProductContentDefaults>>;
 export type NewOrder = Omit<Order, "id" | "order_number" | "created_at" | "updated_at">;
 export type NewLicense = Omit<License, "id" | "created_at" | "updated_at">;
 export type NewInstallation = Omit<Installation, "id" | "created_at" | "updated_at">;
@@ -204,6 +250,12 @@ export interface CommerceRepo {
   getProductByStripeProductId(stripeProductId: string): Promise<Product | null>;
   createProduct(input: NewProduct): Promise<Product>;
   updateProduct(id: string, patch: Partial<NewProduct>): Promise<Product>;
+
+  listProductImages(productIds: string[]): Promise<ProductImage[]>;
+  getProductImage(id: string): Promise<ProductImage | null>;
+  addProductImage(input: Omit<ProductImage, "id" | "created_at">): Promise<ProductImage>;
+  updateProductImage(id: string, patch: Partial<Pick<ProductImage, "is_primary" | "sort_order" | "alt_text">>): Promise<ProductImage>;
+  deleteProductImage(id: string): Promise<void>;
 
   listVersions(productId: string): Promise<ProductVersion[]>;
   getVersion(id: string): Promise<ProductVersion | null>;

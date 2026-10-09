@@ -8,7 +8,10 @@ import type {
   License,
   LicenseEvent,
   Order,
+  ImageStore,
+  ImageType,
   Product,
+  ProductImage,
   ProductVersion,
   VersionChange,
 } from "../lib/commerce/types.ts";
@@ -17,6 +20,7 @@ import type {
 // migration, so idempotency behavior is tested the way production stores it.
 export class MemoryRepo implements CommerceRepo {
   products: Product[] = [];
+  images: ProductImage[] = [];
   versions: ProductVersion[] = [];
   versionChanges: VersionChange[] = [];
   customers: Customer[] = [];
@@ -34,13 +38,36 @@ export class MemoryRepo implements CommerceRepo {
   async listProducts() { return this.clone(this.products); }
   async getProduct(id: string) { return this.clone(this.products.find((p) => p.id === id) ?? null); }
   async getProductByStripeProductId(id: string) { return this.clone(this.products.find((p) => p.stripe_product_id === id) ?? null); }
-  async createProduct(input: Omit<Product, "id" | "created_at" | "updated_at">) {
+  async createProduct(input: Partial<Product> & Pick<Product, "slug">) {
     if (this.products.some((p) => p.slug === input.slug)) throw new Error("duplicate slug");
-    const row = { ...input, id: randomUUID(), created_at: this.ts(), updated_at: this.ts() };
+    if (input.stripe_product_id && this.products.some((p) => p.stripe_product_id === input.stripe_product_id)) throw new Error("duplicate stripe product");
+    const row = {
+      category: "other", features: [], terms: null, disclaimer: null, payment_type: "one_time", billing_interval: null, metadata: {},
+      stripe_price_cents: null, stripe_sync_status: null, stripe_synced_at: null, stripe_sync_error: null,
+      ...input, id: randomUUID(), created_at: this.ts(), updated_at: this.ts(),
+    } as Product;
     this.products.push(row);
     return this.clone(row);
   }
   async updateProduct(id: string, patch: Partial<Product>) { return this.patch(this.products, id, patch); }
+
+  async listProductImages(productIds: string[]) { return this.clone(this.images.filter((i) => productIds.includes(i.product_id)).sort((a, b) => a.sort_order - b.sort_order)); }
+  async getProductImage(id: string) { return this.clone(this.images.find((i) => i.id === id) ?? null); }
+  async addProductImage(input: Omit<ProductImage, "id" | "created_at">) {
+    if (this.images.some((i) => i.storage_path === input.storage_path)) throw new Error("duplicate path");
+    if (input.is_primary && this.images.some((i) => i.product_id === input.product_id && i.is_primary)) throw new Error("two primary images");
+    const row = { ...input, id: randomUUID(), created_at: this.ts() };
+    this.images.push(row);
+    return this.clone(row);
+  }
+  async updateProductImage(id: string, patch: Partial<ProductImage>) {
+    const row = this.images.find((i) => i.id === id);
+    if (!row) throw new Error("not found");
+    if (patch.is_primary && this.images.some((i) => i.product_id === row.product_id && i.is_primary && i.id !== id)) throw new Error("two primary images");
+    Object.assign(row, patch);
+    return this.clone(row);
+  }
+  async deleteProductImage(id: string) { this.images = this.images.filter((i) => i.id !== id); }
 
   async listVersions(productId: string) { return this.clone(this.versions.filter((v) => v.product_id === productId).sort((a, b) => b.tax_year - a.tax_year)); }
   async getVersion(id: string) { return this.clone(this.versions.find((v) => v.id === id) ?? null); }
@@ -136,4 +163,20 @@ export class MemoryRepo implements CommerceRepo {
     Object.assign(row, patch, "updated_at" in row ? { updated_at: this.ts() } : {});
     return this.clone(row);
   }
+}
+
+/** In-memory object store standing in for Supabase Storage. */
+export class MemoryImageStore implements ImageStore {
+  files = new Map<string, { bytes: Uint8Array; type: ImageType }>();
+  async put(path: string, bytes: Uint8Array, type: ImageType) {
+    if (this.files.has(path)) throw new Error("exists");
+    this.files.set(path, { bytes, type });
+  }
+  async remove(paths: string[]) { for (const p of paths) this.files.delete(p); }
+  async copy(from: string, to: string) {
+    const f = this.files.get(from);
+    if (!f) throw new Error("missing source");
+    this.files.set(to, { ...f });
+  }
+  publicUrl(path: string) { return `https://storage.test/product-images/${path}`; }
 }

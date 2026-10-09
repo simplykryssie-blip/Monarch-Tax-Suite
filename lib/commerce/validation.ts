@@ -2,12 +2,16 @@ import {
   ACCESS_TYPES,
   INSTALLATION_STATUSES,
   INSTALLATION_METHODS,
+  PAYMENT_TYPES,
+  PRODUCT_CATEGORIES,
   INSTALLATION_TYPES,
   PLATFORMS,
   PRODUCT_STATUSES,
   PRODUCT_TYPES,
   type AccessType,
   type InstallationMethod,
+  type PaymentType,
+  type ProductCategory,
   type InstallationStatus,
   type InstallationType,
   type NewProduct,
@@ -88,6 +92,43 @@ export function optionalStripeId(value: string, prefix: string, label: string): 
   return value;
 }
 
+/** Multi-line text: keeps line breaks, trims, caps length. */
+function longText(form: FormLike, name: string, max: number): string | null {
+  const value = form.get(name);
+  if (typeof value !== "string") return null;
+  const cleaned = value.replace(/\r\n?/g, "\n").replace(/[^\S\n]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  if (cleaned.length > max) throw new ValidationError(`${name.replace(/_/g, " ")} must be ${max} characters or fewer.`);
+  return cleaned || null;
+}
+
+/** One feature per line; blank lines dropped. */
+export function parseFeatures(raw: string | null): string[] {
+  const items = (raw ?? "").split("\n").map((l) => l.replace(/^[-*•\s]+/, "").trim()).filter(Boolean);
+  if (items.length > 25) throw new ValidationError("List at most 25 features.");
+  if (items.some((i) => i.length > 200)) throw new ValidationError("Each feature must be 200 characters or fewer.");
+  return items;
+}
+
+/** "key: value" per line into a flat string map. */
+export function parseMetadata(raw: string | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of (raw ?? "").split("\n").map((l) => l.trim()).filter(Boolean)) {
+    const at = line.indexOf(":");
+    if (at < 1) throw new ValidationError(`Settings line "${line.slice(0, 40)}" must look like key: value.`);
+    const key = line.slice(0, at).trim().toLowerCase().replace(/[\s-]+/g, "_");
+    const value = line.slice(at + 1).trim();
+    if (!/^[a-z0-9_]{1,40}$/.test(key)) throw new ValidationError(`Setting name "${key}" may only use letters, numbers and underscores.`);
+    if (value.length > 500) throw new ValidationError(`Setting "${key}" is too long.`);
+    out[key] = value;
+  }
+  if (Object.keys(out).length > 30) throw new ValidationError("Use at most 30 settings.");
+  return out;
+}
+
+export function metadataToText(metadata: Record<string, string>): string {
+  return Object.entries(metadata).map(([k, v]) => `${k}: ${v}`).join("\n");
+}
+
 export function parseProductForm(form: FormLike): NewProduct {
   const name = text(form, "name", 120);
   if (name.length < 2) throw new ValidationError("Product name is required.");
@@ -99,10 +140,11 @@ export function parseProductForm(form: FormLike): NewProduct {
     .map((v) => oneOf<InstallationType>(INSTALLATION_TYPES, v, "installation option"));
   const currency = (text(form, "currency", 3) || "usd").toLowerCase();
   if (!/^[a-z]{3}$/.test(currency)) throw new ValidationError("Currency must be a 3-letter code.");
+  const paymentType = oneOf<PaymentType>(PAYMENT_TYPES, form.get("payment_type") ?? "one_time", "payment type");
   return {
     name,
     slug,
-    description: text(form, "description", 2000) || null,
+    description: longText(form, "description", 4000),
     product_type: oneOf<ProductType>(PRODUCT_TYPES, form.get("product_type"), "product type"),
     access_type: oneOf<AccessType>(ACCESS_TYPES, form.get("access_type"), "access type"),
     installation_options: [...new Set(installationOptions)],
@@ -111,6 +153,13 @@ export function parseProductForm(form: FormLike): NewProduct {
     stripe_product_id: optionalStripeId(text(form, "stripe_product_id", 255), "prod", "Stripe product ID"),
     stripe_price_id: optionalStripeId(text(form, "stripe_price_id", 255), "price", "Stripe price ID"),
     status: "draft",
+    category: oneOf<ProductCategory>(PRODUCT_CATEGORIES, form.get("category") ?? "other", "category"),
+    features: parseFeatures(longText(form, "features", 6000)),
+    terms: longText(form, "terms", 5000),
+    disclaimer: longText(form, "disclaimer", 5000),
+    payment_type: paymentType,
+    billing_interval: paymentType === "recurring" ? oneOf<"month" | "year">(["month", "year"], form.get("billing_interval"), "billing interval") : null,
+    metadata: parseMetadata(longText(form, "metadata", 8000)),
   };
 }
 
