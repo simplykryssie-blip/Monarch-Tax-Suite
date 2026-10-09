@@ -212,3 +212,10 @@ a{color:inherit}
 .portal-error{color:#9b362f}
 .portal-card .monarch-dl{font-size:13px}
 .portal-card details summary{cursor:pointer;color:#805e23}
+/* ---- Calculator lead destination setup ---- */
+.intg-card{width:min(860px,100%)}
+.intg-key{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.intg-key label{flex:1;min-width:240px}
+.intg-section{border-top:1px solid var(--line);padding-top:14px;margin-top:6px}
+.intg-section h2{font-size:18px;margin:0 0 8px}.intg-section h3{font-size:15px;margin:0 0 8px}
+.intg-error{color:#9b362f;font-size:12px}

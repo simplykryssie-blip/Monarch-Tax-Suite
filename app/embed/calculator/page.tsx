@@ -10,7 +10,7 @@ import type { LeadCaptureConfig } from "@/components/calculator/lead-form";
 async function leadCaptureFor(licenseId: string, host: string | null): Promise<LeadCaptureConfig | undefined> {
   try {
     const deps = crmDeps();
-    const settings = await leadCaptureActive(deps, licenseId);
+    const settings = (await leadCaptureActive(deps, licenseId))?.settings;
     if (!settings?.business_name) return undefined;
     return { token: issueEmbedToken(deps, licenseId, host), businessName: settings.business_name, includeSummary: settings.include_summary };
   } catch {

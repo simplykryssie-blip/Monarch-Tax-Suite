@@ -3,11 +3,11 @@ import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, ti
 // Server-side secrets for the CRM integration, all derived from one 32-byte
 // master key (MONARCH_ENCRYPTION_KEY). Subkeys are separated by purpose so a
 // value signed or encrypted for one purpose can never be used for another.
-//  - Tokens and lead details: AES-256-GCM with associated data naming the row
+//  - Buyer CRM credentials (OAuth tokens, webhook URLs and secrets): AES-256-GCM with associated data naming the row
 //    and field, so ciphertext cannot be moved between tenants or fields.
-//  - Portal sessions, OAuth state cookies and embed lead tokens: HMAC-SHA256.
+//  - Embed lead tokens: HMAC-SHA256. Visitor IPs: keyed hash for rate limiting only.
 
-type Purpose = "encryption" | "portal-session" | "embed-token" | "ip-hash" | "oauth-state";
+type Purpose = "encryption" | "embed-token" | "ip-hash";
 
 export class CrmSecrets {
   private keys = new Map<Purpose, Buffer>();

@@ -178,86 +178,85 @@ product ids, Stripe ids and prices were preserved.
 - Products in category `software_update` are never fulfilled as a new
   license by the webhook. Annual updates go through `/update`.
 
-## Buyer-specific GoHighLevel lead delivery
+## Calculator leads: direct to the buyer's own CRM (Monarch stores none)
 
-Migration `20261009134819_crm_lead_integration` (applied to Monarch on
-2026-10-09) adds `crm_oauth_states`, `crm_connections`, `crm_lead_settings`,
-`calculator_leads` and three service-role-only SQL functions. RLS is on, and
-anon/authenticated have no grants.
+Monarch sells, licenses and updates the calculator. It does not run a CRM,
+lead inbox, email service, customer portal or lead history.
 
-**How it works**
-- **Buyer portal `/portal`.** The buyer signs in with their license key, the
-  same proof of ownership as `/update`. The session is a signed HttpOnly cookie
-  bound to the license and its key: it lasts 8 hours and ends if the key is
-  rotated or the license revoked. From the portal the buyer can:
-  - connect GoHighLevel through HighLevel's official OAuth location chooser and
-    pick their sub-account;
-  - test the connection, reconnect or change location, and disconnect;
-  - set lead capture (business name, source, tags, estimate note, update
-    existing contacts);
-  - see delivery history and retry failed leads.
-- **Tenant isolation.** Each license has at most one live connection, and
-  OAuth state is single-use, expires in 10 minutes, and is bound to both the
-  license and the browser (cookie). Only sub-account (Location) tokens are
-  accepted, and the location is read back before the portal shows
-  "Connected". Lead submissions can only reach the license named in a signed
-  embed token, using that license's saved connection. No browser-supplied
-  license, customer or location id is trusted.
-- **Secrets.** HighLevel access and refresh tokens are encrypted with
-  AES-256-GCM. The key is derived from `MONARCH_ENCRYPTION_KEY`, and the
-  ciphertext is bound to its license and location. Tokens never reach the
-  browser or logs. Refresh tokens are used under a database lock, so
-  concurrent requests never spend one twice. A failed refresh marks the
-  connection "Reauthorization required".
-- **Lead form.** It appears in `/embed/calculator` only when the license is
-  active, the buyer turned lead capture on, and the connection works. Fields
-  are first name, last name, email and/or phone, plus required consent naming
-  the buyer's business. A hidden honeypot field catches bots. Rate limits:
-  5 per visitor IP (stored only as a keyed hash) per 10 minutes and 300 per
-  license per hour. It is not a tax return intake: no SSNs and no income
-  figures. With the buyer's opt-in, a note records the tax year, filing status
-  and estimated refund or amount owed, and the form discloses this.
-- **Contacts and duplicates.**
-  - **Default:** look for a duplicate contact by email, then by phone. If one
-    exists it is left unchanged; otherwise a contact is created.
-  - **"Update existing" on:** HighLevel upsert, which follows the location's
-    "Allow Duplicate Contact" setting.
-  - **Tags** use the add-tags endpoint, because upsert would overwrite existing
-    tags.
-  - **Retries** reuse the contact already found or created.
-- **Delivery and retries.** Leads are delivered right after the visitor's
-  response. On 429, 5xx or network failure they retry with backoff (1m, 5m,
-  15m, 1h, 4h, 12h, 24h; 8 attempts), then are marked "Delivery failed".
-  Expired authorization holds leads until the buyer reconnects. Disconnecting
-  deletes stored credentials, turns the form off, and marks pending leads
-  failed. Statuses: Lead received, Sent successfully, Retry pending,
-  Reauthorization required, Delivery failed.
-- **Retention.** Contact details are deleted once delivered, and after 30 days
-  if never delivered. Until then the buyer can view their own undelivered
-  leads in the portal. Lead history (status and masked email) is deleted after
-  365 days. A daily cron (`/api/cron/crm`, needs `CRON_SECRET`) runs retries
-  and purges. Retries also run whenever a new lead arrives, when the buyer
-  opens the portal, and on "Retry".
-- **Platforms.** Delivery is server-side, so it is the same on every platform
-  that can show the iframe embed (see the platform table). The form appears
-  only on authorized domains.
+**Flow.** When a licensed calculator's buyer turns on the optional lead form,
+a visitor's submission goes `browser → POST /api/leads → buyer's destination`
+within the same request.
+- **Processed:** first and last name, email and/or phone, consent, and
+  (optional, disclosed on the form) tax year, filing status and estimated
+  refund or amount owed.
+- **Where and for how long:** in memory of one Vercel serverless invocation
+  (iad1), for the duration of the request (at most about 30 s). It is never
+  written to the database or to logs; request bodies are not logged.
+- **If delivery fails:** the visitor sees "Nothing was saved, please try
+  again". Their typed details stay in their own browser form. A retry reuses
+  the same submission id: it is the webhook's `Idempotency-Key`, and
+  HighLevel's duplicate check finds the contact created on the first attempt.
+  There are no background retries.
 
-**Setup required (not done yet)**
-1. In the HighLevel Marketplace (marketplace.gohighlevel.com, developer
-   account), create an app:
-   - Distribution: Sub-Account.
-   - Scopes: `contacts.readonly`, `contacts.write`, `locations.readonly`.
-   - Redirect URL:
-     `https://monarch-tax-suite.vercel.app/api/integrations/crm/callback`
-     (or your custom domain + the same path).
-   - Copy the Client ID and Client Secret.
-2. In Vercel (project monarch-tax-suite → Settings → Environment Variables,
-   Production, "Sensitive"):
-   - `HIGHLEVEL_CLIENT_ID`, `HIGHLEVEL_CLIENT_SECRET`;
-   - `MONARCH_ENCRYPTION_KEY` (generate with `openssl rand -base64 32`; keep a
-     secure copy, because losing it means every buyer must reconnect);
-   - `CRON_SECRET` (any long random string);
-   - optional `HIGHLEVEL_REDIRECT_URI` if you use a custom domain.
+**Destinations (buyer-owned, one per license).**
+- **Webhook (available now).** Any HTTPS endpoint that accepts JSON: a CRM's
+  inbound webhook, Zapier, Make, n8n, GoHighLevel workflow "Inbound Webhook",
+  or the buyer's own server.
+  - Body: `{event:"calculator.lead", id, submitted_at, source, website, tags,
+    contact:{first_name,last_name,email,phone}, estimate|null, consent}`.
+  - Headers: `Idempotency-Key`, `X-Monarch-Timestamp`, and
+    `X-Monarch-Signature: v1=HMAC_SHA256(secret, "<timestamp>.<body>")`.
+  - Only public HTTPS hosts on port 443 are allowed (private and internal IPs
+    are blocked after DNS resolution), redirects are not followed, and there
+    is a 10 s timeout.
+  - Tested with automated tests (signature, payload, isolation, failures). Not
+    yet tested against a live Zapier, Make, n8n or GoHighLevel webhook.
+- **GoHighLevel (OAuth, optional).** Off until a HighLevel Marketplace app is
+  configured. The buyer authorizes their own sub-account.
+  - By default an existing contact is found and left unchanged, else one is
+    created; tags are added; an optional note is added.
+  - Tokens are encrypted and refreshed under a DB lock.
+  - Not tested against a real HighLevel account.
 
-   Then redeploy.
-3. Test with two HighLevel test sub-accounts before inviting buyers.
+**Buyer setup without a portal.** At `/integrations` the buyer enters their
+license key; each action re-checks it, and there is no account, session or
+dashboard. From there they can:
+- see their destination status;
+- connect GoHighLevel or save a webhook (its signing secret is shown once);
+- test or disconnect;
+- configure the form (business name shown in the consent text, source, tags,
+  estimate summary).
+
+**What Monarch stores.**
+- `crm_connections`: destination type, HighLevel location, webhook host.
+  Credentials (tokens, webhook URL, signing secret) are stored as AES-256-GCM
+  ciphertext bound to the license; the key is in `MONARCH_ENCRYPTION_KEY`.
+- `crm_lead_settings`: form settings.
+- `crm_oauth_states`: single-use, 10-minute OAuth states.
+- `lead_delivery_log`: license, outcome, reason code, HTTP status and
+  duration, with no personal data. A keyed IP hash is kept for rate limiting
+  (5 per visitor per 10 min, 300 per license per hour) and cleared after
+  24 h; rows are deleted after 30 days. This cleanup runs during normal
+  requests, so no scheduled job exists.
+
+All four tables have RLS on and service-role access only.
+
+**Migrations.**
+- `20261009174017_crm_direct_delivery`: applied.
+- `20261009180000_remove_lead_storage`: drops the empty `calculator_leads`
+  table, with a safeguard that refuses if any row exists. Pending the
+  owner's confirmation; the app no longer uses that table.
+
+**Setup and cost (no paid services added).**
+- `MONARCH_ENCRYPTION_KEY` in Vercel (free; generate with
+  `openssl rand -base64 32`). This is required for any lead destination.
+- Optional, for GoHighLevel OAuth:
+  - a HighLevel Marketplace developer app (Sub-Account distribution);
+  - scopes `contacts.readonly contacts.write locations.readonly`;
+  - redirect `https://monarch-tax-suite.vercel.app/api/integrations/crm/callback`;
+  - `HIGHLEVEL_CLIENT_ID` / `HIGHLEVEL_CLIENT_SECRET` in Vercel.
+
+  Monarch does not need its own HighLevel subscription for this; each buyer
+  uses their own account. Whether a non-agency developer account can publish
+  the app for other agencies is set by HighLevel's Marketplace rules; verify
+  before relying on it.

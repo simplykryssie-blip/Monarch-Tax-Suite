@@ -1,30 +1,32 @@
 import { randomUUID } from "node:crypto";
 import { HighLevelError, type ContactInput, type HighLevelApi, type TokenSet } from "../lib/crm/highlevel.ts";
-import type { CalculatorLead, CrmConnection, CrmRepo, LeadPatch, LeadSettings, LeadStatus, NewConnection, NewLead } from "../lib/crm/types.ts";
+import type { CrmConnection, CrmRepo, DeliveryLogEntry, LeadSettings, NewConnection } from "../lib/crm/types.ts";
 
 // In-memory CrmRepo enforcing the migration's rules: one live connection per
-// license, unique (license, submission), single-use OAuth states.
+// license, single-use OAuth states, credentials cleared on disconnect.
 export class MemoryCrmRepo implements CrmRepo {
   states: { state_hash: string; license_id: string; expires_at: string; used_at: string | null }[] = [];
   connections: CrmConnection[] = [];
   settings: LeadSettings[] = [];
-  leads: CalculatorLead[] = [];
+  log: DeliveryLogEntry[] = [];
   private clone = <T>(v: T): T => structuredClone(v);
   private ts = () => new Date().toISOString();
 
   async createOAuthState(input: { state_hash: string; license_id: string; expires_at: string }) { this.states.push({ ...input, used_at: null }); }
-  async consumeOAuthState(hash: string, licenseId: string, now: string) {
-    const s = this.states.find((x) => x.state_hash === hash && x.license_id === licenseId && !x.used_at && x.expires_at > now);
-    if (!s) return false;
+  async consumeOAuthState(hash: string, now: string) {
+    const s = this.states.find((x) => x.state_hash === hash && !x.used_at && x.expires_at > now);
+    if (!s) return null;
     s.used_at = now;
-    return true;
+    return s.license_id;
   }
   async getLiveConnection(licenseId: string) { return this.clone(this.connections.find((c) => c.license_id === licenseId && c.status !== "disconnected") ?? null); }
   async getConnection(id: string) { return this.clone(this.connections.find((c) => c.id === id) ?? null); }
   async insertConnection(input: NewConnection) {
     if (this.connections.some((c) => c.license_id === input.license_id && c.status !== "disconnected")) throw new Error("unique violation: one live connection");
     const row: CrmConnection = {
-      ...input, id: randomUUID(), provider: "highlevel", refresh_lock_until: null, last_refresh_at: null, last_success_at: null, last_error: null, last_error_at: null,
+      location_id: null, location_name: null, company_id: null, scopes: [], access_token_enc: null, refresh_token_enc: null, token_expires_at: null,
+      webhook_url_enc: null, webhook_host: null, signing_secret_enc: null, last_checked_at: null,
+      ...input, id: randomUUID(), refresh_lock_until: null, last_refresh_at: null, last_success_at: null, last_error: null, last_error_at: null,
       connected_at: this.ts(), disconnected_at: null, created_at: this.ts(), updated_at: this.ts(),
     };
     this.connections.push(row);
@@ -33,7 +35,7 @@ export class MemoryCrmRepo implements CrmRepo {
   async updateConnection(id: string, patch: Partial<CrmConnection>) {
     const row = this.connections.find((c) => c.id === id)!;
     Object.assign(row, patch, { updated_at: this.ts() });
-    if (row.status === "disconnected" && (row.access_token_enc || row.refresh_token_enc)) throw new Error("check violation: tokens on disconnected");
+    if (row.status === "disconnected" && (row.access_token_enc || row.refresh_token_enc || row.webhook_url_enc || row.signing_secret_enc)) throw new Error("check violation: credentials on disconnected");
     return this.clone(row);
   }
   async claimRefreshLock(id: string, until: string, now: string) {
@@ -49,51 +51,14 @@ export class MemoryCrmRepo implements CrmRepo {
     this.settings.push(row);
     return this.clone(row);
   }
-  async insertLead(input: NewLead) {
-    const existing = this.leads.find((l) => l.license_id === input.license_id && l.submission_id === input.submission_id);
-    if (existing) return { lead: this.clone(existing), created: false };
-    const row: CalculatorLead = {
-      ...input, id: randomUUID(), attempts: 0, lock_until: null, last_error: null, ghl_contact_id: null, contact_created: null, tags_applied: false, note_added: false,
-      delivered_at: null, payload_purged_at: null, created_at: this.ts(), updated_at: this.ts(),
-    };
-    this.leads.push(row);
-    return { lead: this.clone(row), created: true };
+  async logDelivery(entry: Omit<DeliveryLogEntry, "id" | "created_at">) { this.log.push({ ...entry, id: randomUUID(), created_at: this.ts() }); }
+  async countDeliveries(filter: { license_id?: string; ip_hash?: string }, since: string) {
+    return this.log.filter((l) => l.created_at >= since && (!filter.license_id || l.license_id === filter.license_id) && (!filter.ip_hash || l.ip_hash === filter.ip_hash)).length;
   }
-  async getLead(id: string) { return this.clone(this.leads.find((l) => l.id === id) ?? null); }
-  async updateLead(id: string, patch: LeadPatch) {
-    const row = this.leads.find((l) => l.id === id)!;
-    Object.assign(row, patch, { updated_at: this.ts() });
-    return this.clone(row);
-  }
-  private due(l: CalculatorLead, now: string) {
-    return ((l.status === "received" || l.status === "retry_pending") && (l.next_attempt_at ?? "") <= now) || (l.status === "sending" && (l.lock_until ?? "") < now);
-  }
-  async claimLead(id: string, lockUntil: string, now: string) {
-    const row = this.leads.find((l) => l.id === id);
-    if (!row || !this.due(row, now)) return null;
-    Object.assign(row, { status: "sending", lock_until: lockUntil });
-    return this.clone(row);
-  }
-  async listDueLeadIds(now: string, limit: number, licenseId?: string) {
-    return this.leads.filter((l) => (!licenseId || l.license_id === licenseId) && this.due(l, now)).slice(0, limit).map((l) => l.id);
-  }
-  async listLeads(licenseId: string, limit: number) { return this.clone(this.leads.filter((l) => l.license_id === licenseId).slice(-limit).reverse()); }
-  async listLeadsByStatus(licenseId: string, statuses: LeadStatus[]) { return this.clone(this.leads.filter((l) => l.license_id === licenseId && statuses.includes(l.status))); }
-  async countLeadsSince(filter: { license_id?: string; ip_hash?: string }, since: string) {
-    return this.leads.filter((l) => l.created_at >= since && (!filter.license_id || l.license_id === filter.license_id) && (!filter.ip_hash || l.ip_hash === filter.ip_hash)).length;
-  }
-  async leadCounts(licenseId: string) {
-    const counts = { received: 0, sending: 0, sent: 0, retry_pending: 0, reauth_required: 0, failed: 0 } as Record<LeadStatus, number>;
-    for (const l of this.leads) if (l.license_id === licenseId) counts[l.status]++;
-    return counts;
-  }
-  async listPurgeableLeadIds(olderThan: string, limit: number) {
-    return this.leads.filter((l) => l.created_at < olderThan && (l.payload_enc || l.ip_hash)).slice(0, limit).map((l) => l.id);
-  }
-  async deleteLeadsBefore(before: string) {
-    const n = this.leads.length;
-    this.leads = this.leads.filter((l) => l.created_at >= before);
-    return n - this.leads.length;
+  async listDeliveries(licenseId: string, limit: number) { return this.clone(this.log.filter((l) => l.license_id === licenseId).slice(-limit).reverse()); }
+  async pruneDeliveryLog(ipBefore: string, deleteBefore: string) {
+    for (const l of this.log) if (l.created_at < ipBefore) l.ip_hash = null;
+    this.log = this.log.filter((l) => l.created_at >= deleteBefore);
   }
 }
 
