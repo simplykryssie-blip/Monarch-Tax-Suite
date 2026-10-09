@@ -45,13 +45,13 @@ export function BasicCalculator({embedded=false,maxTaxYear,leadCapture}:{embedde
  const newest=years[0]??"2025";
  const [year,setYear]=useState<TaxYear>(newest);
  const [filing,setFiling]=useState<Filing>("single");
- const [income,setIncome]=useState("65000");
- const [otherIncome,setOtherIncome]=useState("0");
- const [deductions,setDeductions]=useState("0");
- const [withholding,setWithholding]=useState("8500");
- const [credits,setCredits]=useState("0");
+ const [income,setIncome]=useState("");
+ const [otherIncome,setOtherIncome]=useState("");
+ const [deductions,setDeductions]=useState("");
+ const [withholding,setWithholding]=useState("");
+ const [credits,setCredits]=useState("");
  const [useStandard,setUseStandard]=useState(true);
- const [children,setChildren]=useState("0");
+ const [children,setChildren]=useState("");
  const result=useMemo(()=>{
   const n=(s:string)=>Math.max(0,Number(s)||0);
   const gross=n(income)+n(otherIncome);
@@ -69,7 +69,7 @@ export function BasicCalculator({embedded=false,maxTaxYear,leadCapture}:{embedde
   const balance=n(withholding)-totalTax;
   return {gross,deduction,taxable,estimatedTax,ctcNonrefundable,ctcRefundable,otherCredits,taxAfterCredits,totalTax,balance,childCount,marginal:marginalRate(taxable,filing,year)};
  },[income,otherIncome,deductions,withholding,credits,filing,useStandard,children,year]);
- const reset=()=>{setYear(newest);setFiling("single");setIncome("65000");setOtherIncome("0");setDeductions("0");setWithholding("8500");setCredits("0");setUseStandard(true);setChildren("0");};
+ const reset=()=>{setYear(newest);setFiling("single");setIncome("");setOtherIncome("");setDeductions("");setWithholding("");setCredits("");setUseStandard(true);setChildren("");};
  // In an iframe, report content height so host pages that listen can resize the frame.
  useEffect(()=>{if(!embedded||typeof window==="undefined"||window.parent===window)return;const send=()=>window.parent.postMessage({type:"monarch-calculator:height",height:document.documentElement.scrollHeight},"*");send();const ro=new ResizeObserver(send);ro.observe(document.body);return()=>ro.disconnect();},[embedded]);
  return <main className={"mt-shell"+(embedded?" mt-embedded":"")}>
