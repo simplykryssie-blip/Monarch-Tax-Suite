@@ -281,7 +281,7 @@ describe("annual update verification (edge cases)", () => {
   });
 
   test("buying the update product directly (e.g. a payment link, no license metadata) never creates a base license", async () => {
-    const { repo, deps } = await setup();
+    const { repo } = await setup();
     await createProduct(repo, { ...PRODUCT, slug: "monarch-basic-tax-calculator-annual-update", category: "software_update", stripe_product_id: "prod_UPDATEPROD1", price_cents: 5000 });
     const direct: FulfillmentDeps = { repo, listCheckoutProductIds: async () => ["prod_UPDATEPROD1"] };
     const outcome = await handleStripeEvent(direct, purchaseEvent("evt_direct", "pi_DIRECTUPD1"));
