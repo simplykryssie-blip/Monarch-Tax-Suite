@@ -10,10 +10,10 @@ export async function loadEmbedDecision(embedId: string | null, requestHost: str
 }
 
 /** Decision plus the tax years the license may use (its licensed version and earlier). */
-export async function loadEmbed(embedId: string | null, requestHost: string | null): Promise<{ decision: EmbedDecision; years: number[] }> {
-  if (!embedId || !EMBED_ID_PATTERN.test(embedId)) return { decision: decideEmbed(null, [], requestHost), years: [] };
+export async function loadEmbed(embedId: string | null, requestHost: string | null): Promise<{ decision: EmbedDecision; years: number[]; licenseId: string | null }> {
+  if (!embedId || !EMBED_ID_PATTERN.test(embedId)) return { decision: decideEmbed(null, [], requestHost), years: [], licenseId: null };
   const repo = new SupabaseCommerceRepo(serviceClient());
   const license = await repo.findLicenseByEmbedId(embedId);
   const domains = license ? await repo.listDomains(license.id) : [];
-  return { decision: decideEmbed(license, domains, requestHost), years: license ? licensedYears(license) : [] };
+  return { decision: decideEmbed(license, domains, requestHost), years: license ? licensedYears(license) : [], licenseId: license?.id ?? null };
 }

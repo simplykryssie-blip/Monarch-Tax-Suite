@@ -2,6 +2,21 @@ import { headers } from "next/headers";
 import { BasicCalculator } from "@/components/calculator/basic-calculator";
 import { EMBED_MESSAGES, hostFromHeader } from "@/lib/commerce/embed.ts";
 import { loadEmbed } from "@/lib/embed-server";
+import { issueEmbedToken, leadCaptureActive } from "@/lib/crm/leads.ts";
+import { crmDeps } from "@/lib/crm/server";
+import type { LeadCaptureConfig } from "@/components/calculator/lead-form";
+
+/** The buyer's lead form, when they turned it on with a working GoHighLevel connection. Fails closed (no form). */
+async function leadCaptureFor(licenseId: string, host: string | null): Promise<LeadCaptureConfig | undefined> {
+  try {
+    const deps = crmDeps();
+    const settings = await leadCaptureActive(deps, licenseId);
+    if (!settings?.business_name) return undefined;
+    return { token: issueEmbedToken(deps, licenseId, host), businessName: settings.business_name, includeSummary: settings.include_summary };
+  } catch {
+    return undefined;
+  }
+}
 
 // Licensed, embeddable calculator. The proxy sets a per-license
 // Content-Security-Policy frame-ancestors header so browsers only render this
@@ -9,7 +24,8 @@ import { loadEmbed } from "@/lib/embed-server";
 export default async function EmbeddedCalculatorPage({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
   const { id } = await searchParams;
   const h = await headers();
-  const { decision, years } = await loadEmbed(id ?? null, hostFromHeader(h.get("referer")));
+  const host = hostFromHeader(h.get("referer"));
+  const { decision, years, licenseId } = await loadEmbed(id ?? null, host);
   if (!decision.ok) {
     return (
       <main style={{ padding: 24, fontFamily: "Arial, Helvetica, sans-serif", color: "#3a3830", background: "#f6f4ee" }}>
@@ -25,5 +41,6 @@ export default async function EmbeddedCalculatorPage({ searchParams }: { searchP
     );
   }
   // Only the tax years this license has paid for (its version and earlier) are offered.
-  return <BasicCalculator embedded maxTaxYear={years[0]} />;
+  const leadCapture = licenseId ? await leadCaptureFor(licenseId, host) : undefined;
+  return <BasicCalculator embedded maxTaxYear={years[0]} leadCapture={leadCapture} />;
 }

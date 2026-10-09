@@ -202,3 +202,13 @@ a{color:inherit}
 .pl-actions a{text-decoration:none;padding:6px 9px}
 .pl-actions button{padding:6px 9px}
 .monarch-subcell.is-error{color:#9b362f}
+/* ---- Customer portal ---- */
+.portal-card{width:min(920px,100%)}
+.portal-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.portal-section{border-top:1px solid var(--line);margin-top:22px;padding-top:18px}
+.portal-section h2{font-size:18px;margin:0 0 10px}
+.portal-steps{font-size:13px;line-height:1.6;background:#faf7ef;border:1px solid #ece3cc;border-radius:4px;padding:10px 14px;margin:12px 0}
+.portal-steps ol{margin:6px 0 0;padding-left:20px}
+.portal-error{color:#9b362f}
+.portal-card .monarch-dl{font-size:13px}
+.portal-card details summary{cursor:pointer;color:#805e23}

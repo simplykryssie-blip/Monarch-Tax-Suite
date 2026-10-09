@@ -28,7 +28,7 @@ export class SetupRequiredError extends Error {}
 
 type Result<T> = { data: T | null; error: { code?: string; message: string } | null };
 
-function unwrap<T>({ data, error }: Result<T>): T {
+export function unwrap<T>({ data, error }: Result<T>): T {
   if (error) {
     if (error.code === "42P01" || error.code === "PGRST205" || error.code === "42703") throw new SetupRequiredError(error.message);
     throw new Error(error.message);
@@ -36,7 +36,7 @@ function unwrap<T>({ data, error }: Result<T>): T {
   return data as T;
 }
 
-const isUniqueViolation = (error: { code?: string } | null) => error?.code === "23505";
+export const isUniqueViolation = (error: { code?: string } | null) => error?.code === "23505";
 
 // ---------------------------------------------------------------------------
 // Column mapping onto the original licensing schema (migration

@@ -4,8 +4,9 @@ import type { Database } from "./database.types";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 
 // The Stripe webhook authenticates by signature, not session. /shop lists
-// published products only.
-const PUBLIC_PATHS = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop"];
+// published products only. /portal authenticates buyers by license key; the
+// lead and cron endpoints authorize themselves (signed embed token / CRON_SECRET).
+const PUBLIC_PATHS = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop", "/portal", "/api/integrations/crm/", "/api/leads", "/api/cron/"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

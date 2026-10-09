@@ -14,6 +14,8 @@ import {
   updateInstallation,
   type StripePaymentCheck,
 } from "@/lib/commerce/fulfillment.ts";
+import { disconnect as disconnectCrm } from "@/lib/crm/connection.ts";
+import { crmDeps } from "@/lib/crm/server";
 import { createVersion, editVersion, parseTaxYear, recordChange, setVersionStatus } from "@/lib/commerce/versions.ts";
 import {
   cleanNote,
@@ -92,6 +94,7 @@ export async function reconcilePurchaseAction(form: FormData) {
   const admin = await requireAdmin();
   await mutate("/orders/reconcile", async () => {
     const paymentIntentId = str(form, "payment_intent_id");
+    const legacyAccount = form.get("legacy_account") === "on";
     const amount = parsePriceToCents(str(form, "amount"));
     if (amount === null) throw new ValidationError("Enter the paid amount.");
     const result = await reconcilePurchase(commerceRepo(), {
@@ -106,9 +109,10 @@ export async function reconcilePurchaseAction(form: FormData) {
       platform_other: cleanNote(str(form, "platform_other"), 80),
       website_url: str(form, "website_url") ? normalizeWebsiteUrl(str(form, "website_url")) : null,
       target_location: str(form, "target_location") ? normalizeDomain(str(form, "target_location")) : null,
-      notes: cleanNote(str(form, "notes")),
+      notes: cleanNote(legacyAccount ? `Paid in a previous Stripe account (not Monarch's current account); verified manually by an administrator. ${str(form, "notes")}`.trim() : str(form, "notes")),
       admin_id: admin.userId,
-      stripe_payment: /^pi_/.test(paymentIntentId) ? await lookupStripePayment(paymentIntentId) : null,
+      // A payment taken in a previous Stripe account cannot be looked up with Monarch's current key.
+      stripe_payment: legacyAccount ? null : /^pi_/.test(paymentIntentId) ? await lookupStripePayment(paymentIntentId) : null,
       admin_attested: form.get("attest") === "on",
     });
     const target = result.installation ? `/installations/${result.installation.id}` : `/customers/${result.customer.id}`;
@@ -263,5 +267,16 @@ export async function recordVersionChangeAction(form: FormData) {
     const kind = str(form, "kind") === "release" ? "release" : "maintenance";
     await recordChange(commerceRepo(), id(form), kind, str(form, "summary"), admin.userId);
     return { notice: kind === "maintenance" ? "Maintenance change recorded (included, no charge)." : "Release note recorded." };
+  });
+}
+
+// ------------------------------------------------------------- CRM (HighLevel)
+
+export async function adminDisconnectCrmAction(form: FormData) {
+  await requireAdmin();
+  const licenseId = id(form, "license_id");
+  await mutate(`/licenses/${licenseId}`, async () => {
+    const done = await disconnectCrm(crmDeps(), licenseId);
+    return { notice: done ? "GoHighLevel disconnected for this license; stored credentials were deleted." : "This license had no GoHighLevel connection." };
   });
 }
