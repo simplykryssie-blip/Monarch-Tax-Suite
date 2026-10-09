@@ -123,6 +123,15 @@ describe("stripe fulfillment", () => {
     assert.equal(repo.installations[0].status, "requested");
   });
 
+  test("missing checkout platform is recorded as other with a follow-up note", async () => {
+    const { repo, deps } = await setup();
+    await handleStripeEvent(deps, checkoutCompleted("evt_1"));
+    assert.equal(repo.installations[0].platform, "other");
+    assert.match(repo.installationEvents[0].note ?? "", /Platform was not specified/);
+    await handleStripeEvent(deps, checkoutCompleted("evt_2", "pi_TEST000005", { metadata: { installation_type: "done_for_you", platform: "gohighlevel" } }));
+    assert.equal(repo.installations[1].platform, "gohighlevel");
+  });
+
   test("duplicate deliveries and replays never duplicate records", async () => {
     const { repo, deps } = await setup();
     await handleStripeEvent(deps, checkoutCompleted("evt_1"));

@@ -40,12 +40,12 @@ export default async function ReconcilePage({ searchParams }: { searchParams: Pr
               </select>
             </label>
             <label>Target platform
-              <select name="platform" defaultValue="">
-                <option value="">Not known yet</option>
+              <select name="platform" required defaultValue="">
+                <option value="" disabled>Choose a platform</option>
                 <option value="gohighlevel">GoHighLevel</option>
                 <option value="website">Website</option>
                 <option value="jotform">Jotform</option>
-                <option value="other">Other</option>
+                <option value="other">Other (not confirmed yet)</option>
               </select>
             </label>
             <label className="is-wide">Installation domain or location (if known)<input name="target_location" maxLength={500} /></label>

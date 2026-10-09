@@ -1,31 +1,47 @@
--- Monarch Tax Suite: product catalog, orders, Stripe fulfillment, licensing and
--- installation tracking.
+-- Monarch Tax Suite: product catalog, orders, Stripe fulfillment, administrator
+-- access, and the CRM fields the existing licensing tables were missing.
 --
--- Safe to re-run: every object is created with IF NOT EXISTS, existing
--- calculator_* tables are only extended (never dropped or rewritten), and the
--- whole migration aborts if an existing table has a shape this code cannot use.
+-- Builds on 20261008224443_create_monarch_calculator_licensing_foundation and
+-- keeps its tables, column names, check constraints and data unchanged. This
+-- migration only ADDS tables, nullable/defaulted columns, indexes, triggers and
+-- grants. Safe to re-run (IF NOT EXISTS everywhere). It aborts, changing
+-- nothing, if the existing tables do not have the shape the application maps to.
 --
--- Access model: RLS is enabled on every table and anon/authenticated have no
--- grants. The CRM reads and writes only from server code using the service role
--- after verifying the signed-in user is listed in admin_users.
-
-begin;
+-- Column mapping used by lib/commerce/supabase-repo.ts:
+--   calculator_licenses.license_key_hash         <- license key hash
+--   calculator_installations.domain / notes      <- installation location / internal notes
+--   calculator_installations.platform 'ghl'      <- GoHighLevel
+--   calculator_authorized_domains.verification_status verified/rejected <- authorized/removed
+--   calculator_license_events.details / source   <- event detail / actor kind
+--
+-- Access model: RLS on every table, no anon/authenticated grants. The CRM uses
+-- the service role from server code only, after checking admin_users.
 
 -- ---------------------------------------------------------------------------
--- Preflight: existing calculator_* tables must use uuid primary keys.
+-- Preflight: the foundation tables must exist with the columns we map to.
 -- ---------------------------------------------------------------------------
+-- Fail fast instead of queueing behind live traffic (e.g. Auth) for a lock.
+set local lock_timeout = '10s';
+
 do $$
 declare
-  t text;
-  id_type text;
+  missing text;
 begin
-  foreach t in array array['calculator_customers','calculator_licenses','calculator_authorized_domains','calculator_installations','calculator_license_events'] loop
-    select data_type into id_type from information_schema.columns
-     where table_schema = 'public' and table_name = t and column_name = 'id';
-    if id_type is not null and id_type <> 'uuid' then
-      raise exception 'public.%.id is %, expected uuid. Review this table before applying the Monarch commerce migration.', t, id_type;
-    end if;
-  end loop;
+  select string_agg(t.tbl || '.' || t.col, ', ') into missing
+  from (values
+    ('calculator_customers', 'id'), ('calculator_customers', 'email'), ('calculator_customers', 'full_name'), ('calculator_customers', 'stripe_customer_id'),
+    ('calculator_licenses', 'id'), ('calculator_licenses', 'customer_id'), ('calculator_licenses', 'license_key_hash'), ('calculator_licenses', 'status'), ('calculator_licenses', 'revoked_at'),
+    ('calculator_authorized_domains', 'license_id'), ('calculator_authorized_domains', 'domain'), ('calculator_authorized_domains', 'verification_status'), ('calculator_authorized_domains', 'verified_at'),
+    ('calculator_installations', 'license_id'), ('calculator_installations', 'installation_type'), ('calculator_installations', 'platform'), ('calculator_installations', 'domain'), ('calculator_installations', 'status'), ('calculator_installations', 'notes'),
+    ('calculator_license_events', 'license_id'), ('calculator_license_events', 'event_type'), ('calculator_license_events', 'source'), ('calculator_license_events', 'details')
+  ) as t(tbl, col)
+  where not exists (
+    select 1 from information_schema.columns c
+    where c.table_schema = 'public' and c.table_name = t.tbl and c.column_name = t.col
+  );
+  if missing is not null then
+    raise exception 'Monarch licensing foundation is missing expected columns: %. Apply 20261008224443 first or review the schema.', missing;
+  end if;
 end $$;
 
 create or replace function public.set_updated_at() returns trigger
@@ -66,19 +82,10 @@ create table if not exists public.products (
 );
 
 -- ---------------------------------------------------------------------------
--- Customers (existing licensing table, extended)
+-- Customers: add CRM account status and case-insensitive email uniqueness.
 -- ---------------------------------------------------------------------------
-create table if not exists public.calculator_customers (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now()
-);
 alter table public.calculator_customers
-  add column if not exists email text,
-  add column if not exists full_name text,
-  add column if not exists status text not null default 'active' check (status in ('active','inactive','blocked')),
-  add column if not exists stripe_customer_id text,
-  add column if not exists created_at timestamptz not null default now(),
-  add column if not exists updated_at timestamptz not null default now();
+  add column if not exists status text not null default 'active' check (status in ('active','inactive','blocked'));
 create unique index if not exists calculator_customers_email_key on public.calculator_customers (lower(email));
 
 -- ---------------------------------------------------------------------------
@@ -118,72 +125,30 @@ create table if not exists public.stripe_events (
 );
 
 -- ---------------------------------------------------------------------------
--- Licenses (existing tables, extended)
+-- Licenses: link to order/product and track key issuance and activation.
+-- (license_key_hash, status, revoked_at already exist.)
 -- ---------------------------------------------------------------------------
-create table if not exists public.calculator_licenses (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now()
-);
 alter table public.calculator_licenses
-  add column if not exists customer_id uuid references public.calculator_customers (id) on delete restrict,
   add column if not exists order_id uuid references public.orders (id) on delete restrict,
   add column if not exists product_id uuid references public.products (id) on delete restrict,
-  add column if not exists key_hash text,
   add column if not exists key_prefix text,
-  add column if not exists status text not null default 'pending' check (status in ('pending','active','suspended','revoked')),
   add column if not exists max_domains integer not null default 1 check (max_domains between 1 and 100),
   add column if not exists issued_at timestamptz,
   add column if not exists activated_at timestamptz,
-  add column if not exists revoked_at timestamptz,
-  add column if not exists revoke_reason text,
-  add column if not exists created_at timestamptz not null default now(),
-  add column if not exists updated_at timestamptz not null default now();
+  add column if not exists revoke_reason text;
 create unique index if not exists calculator_licenses_order_id_key on public.calculator_licenses (order_id);
-create unique index if not exists calculator_licenses_key_hash_key on public.calculator_licenses (key_hash);
-create index if not exists calculator_licenses_customer_id_idx on public.calculator_licenses (customer_id);
 
-create table if not exists public.calculator_authorized_domains (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now()
-);
-alter table public.calculator_authorized_domains
-  add column if not exists license_id uuid references public.calculator_licenses (id) on delete cascade,
-  add column if not exists domain text,
-  add column if not exists status text not null default 'active' check (status in ('active','removed')),
-  add column if not exists created_at timestamptz not null default now();
-create unique index if not exists calculator_authorized_domains_license_domain_key on public.calculator_authorized_domains (license_id, domain);
-
-create table if not exists public.calculator_license_events (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now()
-);
+-- License events: record which administrator acted.
 alter table public.calculator_license_events
-  add column if not exists license_id uuid references public.calculator_licenses (id) on delete cascade,
-  add column if not exists event_type text,
-  add column if not exists detail jsonb not null default '{}'::jsonb,
-  add column if not exists actor_id uuid references auth.users (id) on delete set null,
-  add column if not exists created_at timestamptz not null default now();
-create index if not exists calculator_license_events_license_id_idx on public.calculator_license_events (license_id, created_at);
+  add column if not exists actor_id uuid references auth.users (id) on delete set null;
 
 -- ---------------------------------------------------------------------------
--- Installations (existing table, extended) and their history
+-- Installations: link to customer/order/product, plus status history.
 -- ---------------------------------------------------------------------------
-create table if not exists public.calculator_installations (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now()
-);
 alter table public.calculator_installations
   add column if not exists customer_id uuid references public.calculator_customers (id) on delete restrict,
   add column if not exists order_id uuid references public.orders (id) on delete restrict,
-  add column if not exists license_id uuid references public.calculator_licenses (id) on delete set null,
-  add column if not exists product_id uuid references public.products (id) on delete restrict,
-  add column if not exists installation_type text check (installation_type in ('self_service','done_for_you')),
-  add column if not exists platform text check (platform in ('gohighlevel','website','jotform','other')),
-  add column if not exists target_location text,
-  add column if not exists status text not null default 'requested' check (status in ('requested','in_progress','blocked','active','removed')),
-  add column if not exists internal_notes text,
-  add column if not exists created_at timestamptz not null default now(),
-  add column if not exists updated_at timestamptz not null default now();
+  add column if not exists product_id uuid references public.products (id) on delete restrict;
 create unique index if not exists calculator_installations_order_id_key on public.calculator_installations (order_id);
 create index if not exists calculator_installations_customer_id_idx on public.calculator_installations (customer_id);
 
@@ -198,14 +163,13 @@ create table if not exists public.installation_events (
 );
 create index if not exists installation_events_installation_id_idx on public.installation_events (installation_id, created_at);
 
--- updated_at triggers
+-- updated_at maintenance
 do $$
 declare
   t text;
 begin
   foreach t in array array['products','orders','calculator_customers','calculator_licenses','calculator_installations'] loop
-    execute format('drop trigger if exists set_updated_at on public.%I', t);
-    execute format('create trigger set_updated_at before update on public.%I for each row execute function public.set_updated_at()', t);
+    execute format('create or replace trigger set_updated_at before update on public.%I for each row execute function public.set_updated_at()', t);
   end loop;
 end $$;
 
@@ -226,8 +190,8 @@ revoke all on sequence public.orders_order_number_seq from anon, authenticated;
 grant usage, select on sequence public.orders_order_number_seq to service_role;
 revoke execute on function public.set_updated_at() from public, anon, authenticated;
 
--- Harden the pre-existing SECURITY DEFINER helper, if present: it must not be
--- callable by browser roles.
+-- The pre-existing SECURITY DEFINER event-trigger function must not be
+-- executable by browser roles (the event trigger itself keeps working).
 do $$
 begin
   if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'rls_auto_enable') then
@@ -236,9 +200,9 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Seed: the administrator account and the existing Basic Tax Calculator offer.
--- Price and Stripe product come from the verified Stripe order (prod_VMBCU4J5IZb61R,
--- $75.00 USD). It stays a draft until an administrator publishes it.
+-- Seed: the administrator account (only if it already exists in Auth) and the
+-- Basic Tax Calculator as an unpublished draft. Price and Stripe product come
+-- from the verified Stripe order (prod_VMBCU4J5IZb61R, $75.00 USD).
 -- ---------------------------------------------------------------------------
 insert into public.admin_users (user_id)
 select id from auth.users where lower(email) = 'info@monarchtaxsuite.com'
@@ -260,9 +224,8 @@ values (
 on conflict (slug) do nothing;
 
 -- ---------------------------------------------------------------------------
--- Compatibility check: write one full purchase chain inside a sub-transaction
--- and roll it back. Any mismatch with pre-existing tables (required columns,
--- different status values, types) aborts the whole migration here.
+-- Compatibility check: write the exact rows the application writes, inside a
+-- sub-transaction that is always rolled back. Any mismatch aborts everything.
 -- ---------------------------------------------------------------------------
 do $$
 declare
@@ -270,18 +233,20 @@ declare
 begin
   begin
     select id into p from public.products where slug = 'monarch-basic-tax-calculator';
-    insert into public.calculator_customers (email, full_name, status) values ('migration-check@invalid.local', 'Migration check', 'active') returning id into c;
+    insert into public.calculator_customers (email, full_name, status, stripe_customer_id) values ('migration-check@invalid.local', 'Migration check', 'active', null) returning id into c;
     insert into public.orders (customer_id, product_id, amount_cents, currency, payment_status, provider_payment_intent_id, installation_type, verification_method)
       values (c, p, 0, 'usd', 'paid', 'pi_migrationcheck0000', 'done_for_you', 'admin_manual') returning id into o;
-    insert into public.calculator_licenses (customer_id, order_id, product_id, status, max_domains) values (c, o, p, 'pending', 1) returning id into l;
-    update public.calculator_licenses set status = 'active', key_hash = repeat('0', 64), key_prefix = 'MTS-00000', issued_at = now(), activated_at = now() where id = l;
+    insert into public.calculator_licenses (customer_id, order_id, product_id, license_key_hash, key_prefix, status, max_domains, issued_at, activated_at, revoked_at, revoke_reason)
+      values (c, o, p, null, null, 'pending', 1, null, null, null, null) returning id into l;
+    update public.calculator_licenses set status = 'active', license_key_hash = repeat('0', 64), key_prefix = 'MTS-00000', issued_at = now(), activated_at = now() where id = l;
     update public.calculator_licenses set status = 'suspended' where id = l;
     update public.calculator_licenses set status = 'revoked', revoked_at = now(), revoke_reason = 'check' where id = l;
-    insert into public.calculator_authorized_domains (license_id, domain, status) values (l, 'example.com', 'active');
-    insert into public.calculator_license_events (license_id, event_type, detail) values (l, 'created', '{}'::jsonb);
-    insert into public.calculator_installations (customer_id, order_id, license_id, product_id, installation_type, platform, target_location, status)
-      values (c, o, l, p, 'done_for_you', 'gohighlevel', 'check', 'requested') returning id into i;
-    update public.calculator_installations set status = 'in_progress' where id = i;
+    insert into public.calculator_authorized_domains (license_id, domain, verification_status, verified_at) values (l, 'example.com', 'verified', now())
+      on conflict (license_id, domain) do update set verification_status = 'rejected';
+    insert into public.calculator_license_events (license_id, event_type, details, actor_id, source) values (l, 'created', '{}'::jsonb, null, 'stripe');
+    insert into public.calculator_installations (customer_id, order_id, license_id, product_id, installation_type, platform, domain, status, notes)
+      values (c, o, l, p, 'done_for_you', 'ghl', 'check', 'requested', null) returning id into i;
+    update public.calculator_installations set status = 'in_progress', platform = 'other' where id = i;
     insert into public.installation_events (installation_id, from_status, to_status, note) values (i, 'requested', 'in_progress', 'check');
     insert into public.stripe_events (id, type, status) values ('evt_migrationcheck', 'check', 'processed');
     raise exception 'monarch_compat_ok';
@@ -291,5 +256,3 @@ begin
     end if;
   end;
 end $$;
-
-commit;

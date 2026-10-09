@@ -9,7 +9,8 @@ export const INSTALLATION_TYPES = ["self_service", "done_for_you"] as const;
 export const PLATFORMS = ["gohighlevel", "website", "jotform", "other"] as const;
 export const INSTALLATION_STATUSES = ["requested", "in_progress", "blocked", "active", "removed"] as const;
 export const PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded", "partially_refunded", "canceled", "disputed"] as const;
-export const LICENSE_STATUSES = ["pending", "active", "suspended", "revoked"] as const;
+// past_due and expired exist in the original licensing schema (subscriptions); this CRM sets the other four.
+export const LICENSE_STATUSES = ["pending", "active", "suspended", "revoked", "past_due", "expired"] as const;
 export const VERIFICATION_METHODS = ["stripe_webhook", "stripe_api", "admin_manual"] as const;
 
 export type ProductType = (typeof PRODUCT_TYPES)[number];
@@ -104,7 +105,7 @@ export type Installation = {
   license_id: string | null;
   product_id: string;
   installation_type: InstallationType;
-  platform: Platform | null;
+  platform: Platform;
   target_location: string | null;
   status: InstallationStatus;
   internal_notes: string | null;

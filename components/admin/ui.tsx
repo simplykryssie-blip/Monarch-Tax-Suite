@@ -53,7 +53,7 @@ export function SetupRequired({ message }: { message: string }) {
   return (
     <div className="monarch-notice">
       <b>DATABASE SETUP REQUIRED</b> The Monarch commerce tables are not available yet. Apply
-      <code> supabase/migrations/20261009120000_monarch_commerce_licensing.sql </code>
+      <code> supabase/migrations/20261009044133_monarch_commerce_licensing.sql </code>
       to the Monarch Supabase project, then reload. <small>({message})</small>
     </div>
   );

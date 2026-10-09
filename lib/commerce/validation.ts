@@ -108,8 +108,8 @@ export function parseInstallationType(value: unknown): InstallationType {
   return oneOf<InstallationType>(INSTALLATION_TYPES, value, "installation type");
 }
 
-export function parsePlatform(value: unknown): Platform | null {
-  if (value === "" || value === null || value === undefined) return null;
+export function parsePlatform(value: unknown): Platform {
+  if (value === "" || value === null || value === undefined) throw new ValidationError("Choose the installation platform (use Other if it is not known yet).");
   return oneOf<Platform>(PLATFORMS, value, "platform");
 }
 

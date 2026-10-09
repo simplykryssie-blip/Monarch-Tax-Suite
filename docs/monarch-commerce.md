@@ -32,7 +32,7 @@ changed by this module.
 
 ## Setup
 
-1. **Database.** Apply `supabase/migrations/20261009120000_monarch_commerce_licensing.sql`
+1. **Database.** (Applied to Monarch on 2026-10-09 as version 20261009044133.) `supabase/migrations/20261009044133_monarch_commerce_licensing.sql`
    to the Monarch project (`ftthniovwzxztkwtregz`) — Supabase SQL editor or
    `supabase db push`. It is re-runnable, extends the existing `calculator_*`
    tables without dropping anything, and aborts (changing nothing) if an

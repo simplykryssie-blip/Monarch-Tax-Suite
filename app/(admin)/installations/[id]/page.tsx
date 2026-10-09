@@ -64,12 +64,11 @@ export default async function InstallationPage({ params, searchParams }: { param
               </select>
             </label>
             <label>Target platform
-              <select name="platform" defaultValue={i.platform ?? ""}>
-                <option value="">Not known yet</option>
+              <select name="platform" required defaultValue={i.platform}>
                 <option value="gohighlevel">GoHighLevel</option>
                 <option value="website">Website</option>
                 <option value="jotform">Jotform</option>
-                <option value="other">Other</option>
+                <option value="other">Other (not confirmed yet)</option>
               </select>
             </label>
             <label>Installation domain or location<input name="target_location" maxLength={500} defaultValue={i.target_location ?? ""} /></label>

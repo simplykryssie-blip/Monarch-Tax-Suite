@@ -32,6 +32,48 @@ function unwrap<T>({ data, error }: Result<T>): T {
 
 const isUniqueViolation = (error: { code?: string } | null) => error?.code === "23505";
 
+// ---------------------------------------------------------------------------
+// Column mapping onto the original licensing schema (migration
+// 20261008224443): those tables keep their existing column names and values.
+// ---------------------------------------------------------------------------
+type Row = Record<string, unknown>;
+
+function licenseFromRow(row: Row | null): License | null {
+  if (!row) return null;
+  const { license_key_hash, ...rest } = row;
+  return { ...rest, key_hash: license_key_hash ?? null } as License;
+}
+function licenseToRow(patch: Partial<NewLicense>): Row {
+  const { key_hash, ...rest } = patch;
+  return key_hash === undefined ? rest : { ...rest, license_key_hash: key_hash };
+}
+
+const PLATFORM_TO_DB: Record<string, string> = { gohighlevel: "ghl", website: "website", jotform: "jotform", other: "other" };
+const PLATFORM_FROM_DB: Record<string, string> = { ghl: "gohighlevel", website: "website", jotform: "jotform", other: "other" };
+function installationFromRow(row: Row | null): Installation | null {
+  if (!row) return null;
+  const { domain, notes, platform, ...rest } = row;
+  return { ...rest, target_location: domain ?? null, internal_notes: notes ?? null, platform: PLATFORM_FROM_DB[String(platform)] ?? "other" } as Installation;
+}
+function installationToRow(patch: Partial<NewInstallation>): Row {
+  const { target_location, internal_notes, platform, ...rest } = patch;
+  const row: Row = { ...rest };
+  if (target_location !== undefined) row.domain = target_location;
+  if (internal_notes !== undefined) row.notes = internal_notes;
+  if (platform !== undefined) row.platform = PLATFORM_TO_DB[platform];
+  return row;
+}
+
+function domainFromRow(row: Row): AuthorizedDomain {
+  const { verification_status, ...rest } = row;
+  return { ...rest, status: verification_status === "verified" ? "active" : "removed" } as AuthorizedDomain;
+}
+
+function licenseEventFromRow(row: Row): LicenseEvent {
+  const { details, ...rest } = row;
+  return { ...rest, detail: (details as Record<string, unknown>) ?? {} } as LicenseEvent;
+}
+
 /** CommerceRepo backed by Supabase. Must be constructed with a service-role client, server-side only. */
 export class SupabaseCommerceRepo implements CommerceRepo {
   constructor(private db: SupabaseClient) {}
@@ -94,35 +136,43 @@ export class SupabaseCommerceRepo implements CommerceRepo {
     unwrap(await this.db.from("stripe_events").update({ status, error: error ?? null, processed_at: new Date().toISOString() }).eq("id", id));
   }
 
-  listLicenses() { return this.all<License>("calculator_licenses"); }
-  getLicense(id: string) { return this.one<License>("calculator_licenses", "id", id); }
-  findLicenseByOrder(orderId: string) { return this.one<License>("calculator_licenses", "order_id", orderId); }
+  async listLicenses() { return (await this.all<Row>("calculator_licenses")).map((r) => licenseFromRow(r)!); }
+  async getLicense(id: string) { return licenseFromRow(await this.one<Row>("calculator_licenses", "id", id)); }
+  async findLicenseByOrder(orderId: string) { return licenseFromRow(await this.one<Row>("calculator_licenses", "order_id", orderId)); }
   async createLicense(input: NewLicense) {
-    const { row, created } = await this.insertOrGet<License>("calculator_licenses", input, "order_id", input.order_id);
-    return { license: row, created };
+    const { row, created } = await this.insertOrGet<Row>("calculator_licenses", licenseToRow(input), "order_id", input.order_id);
+    return { license: licenseFromRow(row)!, created };
   }
-  updateLicense(id: string, patch: Partial<NewLicense>) { return this.patch<License>("calculator_licenses", id, patch); }
-  async addLicenseEvent(input: Omit<LicenseEvent, "id" | "created_at">) { unwrap(await this.db.from("calculator_license_events").insert(input)); }
+  async updateLicense(id: string, patch: Partial<NewLicense>) { return licenseFromRow(await this.patch<Row>("calculator_licenses", id, licenseToRow(patch)))!; }
+  async addLicenseEvent(input: Omit<LicenseEvent, "id" | "created_at">) {
+    const { detail, ...rest } = input;
+    unwrap(await this.db.from("calculator_license_events").insert({ ...rest, details: detail, source: input.actor_id ? "admin" : "stripe" }));
+  }
   async listLicenseEvents(licenseId: string) {
-    return unwrap(await this.db.from("calculator_license_events").select("*").eq("license_id", licenseId).order("created_at", { ascending: true })) as LicenseEvent[];
+    const rows = unwrap(await this.db.from("calculator_license_events").select("*").eq("license_id", licenseId).order("created_at", { ascending: true })) as Row[];
+    return rows.map(licenseEventFromRow);
   }
   async listDomains(licenseId: string) {
-    return unwrap(await this.db.from("calculator_authorized_domains").select("*").eq("license_id", licenseId).order("created_at")) as AuthorizedDomain[];
+    const rows = unwrap(await this.db.from("calculator_authorized_domains").select("*").eq("license_id", licenseId).order("created_at")) as Row[];
+    return rows.map(domainFromRow);
   }
   async upsertDomain(licenseId: string, domain: string, status: AuthorizedDomain["status"]) {
-    return unwrap(
-      await this.db.from("calculator_authorized_domains").upsert({ license_id: licenseId, domain, status }, { onConflict: "license_id,domain" }).select("*").single(),
-    ) as AuthorizedDomain;
+    // Administrator-authorized domains are recorded as verified; removed ones as rejected.
+    const row: Row = { license_id: licenseId, domain, verification_status: status === "active" ? "verified" : "rejected" };
+    if (status === "active") row.verified_at = new Date().toISOString();
+    return domainFromRow(unwrap(await this.db.from("calculator_authorized_domains").upsert(row, { onConflict: "license_id,domain" }).select("*").single()) as Row);
   }
 
-  listInstallations() { return this.all<Installation>("calculator_installations", "updated_at"); }
-  getInstallation(id: string) { return this.one<Installation>("calculator_installations", "id", id); }
-  findInstallationByOrder(orderId: string) { return this.one<Installation>("calculator_installations", "order_id", orderId); }
+  async listInstallations() { return (await this.all<Row>("calculator_installations", "updated_at")).map((r) => installationFromRow(r)!); }
+  async getInstallation(id: string) { return installationFromRow(await this.one<Row>("calculator_installations", "id", id)); }
+  async findInstallationByOrder(orderId: string) { return installationFromRow(await this.one<Row>("calculator_installations", "order_id", orderId)); }
   async createInstallation(input: NewInstallation) {
-    const { row, created } = await this.insertOrGet<Installation>("calculator_installations", input, "order_id", input.order_id);
-    return { installation: row, created };
+    const { row, created } = await this.insertOrGet<Row>("calculator_installations", installationToRow(input), "order_id", input.order_id);
+    return { installation: installationFromRow(row)!, created };
   }
-  updateInstallation(id: string, patch: Partial<NewInstallation>) { return this.patch<Installation>("calculator_installations", id, patch); }
+  async updateInstallation(id: string, patch: Partial<NewInstallation>) {
+    return installationFromRow(await this.patch<Row>("calculator_installations", id, installationToRow(patch)))!;
+  }
   async addInstallationEvent(input: Omit<InstallationEvent, "id" | "created_at">) { unwrap(await this.db.from("installation_events").insert(input)); }
   async listInstallationEvents(id: string) {
     return unwrap(await this.db.from("installation_events").select("*").eq("installation_id", id).order("created_at", { ascending: true })) as InstallationEvent[];

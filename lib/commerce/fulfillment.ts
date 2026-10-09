@@ -2,6 +2,7 @@ import { generateLicenseKey, hashLicenseKey, licenseKeyPrefix } from "./license-
 import { normalizeDomain, normalizeEmail, ValidationError } from "./validation.ts";
 import {
   INSTALLATION_TYPES,
+  PLATFORMS,
   type CommerceRepo,
   type Customer,
   type Installation,
@@ -56,6 +57,11 @@ function installationTypeFrom(metadata: Record<string, string> | null, product: 
   return product.installation_options.includes("self_service") ? "self_service" : product.installation_options[0] ?? "self_service";
 }
 
+function platformFrom(metadata: Record<string, string> | null): Platform | null {
+  const value = metadata?.platform;
+  return value && (PLATFORMS as readonly string[]).includes(value) ? (value as Platform) : null;
+}
+
 async function findOrCreateCustomer(repo: CommerceRepo, email: string, fullName: string | null, stripeCustomerId: string | null): Promise<Customer> {
   const existing = await repo.findCustomerByEmail(email);
   if (existing) {
@@ -91,21 +97,25 @@ export async function ensureFulfillment(repo: CommerceRepo, order: Order, produc
     license = result.license;
     if (result.created) await repo.addLicenseEvent({ license_id: license.id, event_type: "created", detail: { order_id: order.id }, actor_id: actorId });
   }
+  // Installations belong to a license (calculator_installations.license_id is required).
   let installation: Installation | null = null;
-  if (product.installation_options.length > 0) {
+  if (license && product.installation_options.length > 0) {
     const result = await repo.createInstallation({
       customer_id: order.customer_id,
       order_id: order.id,
-      license_id: license?.id ?? null,
+      license_id: license.id,
       product_id: product.id,
       installation_type: order.installation_type,
-      platform: details?.platform ?? null,
+      platform: details?.platform ?? "other",
       target_location: details?.target_location ?? null,
       status: "requested",
       internal_notes: null,
     });
     installation = result.installation;
-    if (result.created) await repo.addInstallationEvent({ installation_id: installation.id, from_status: null, to_status: "requested", note: "Created from verified order.", actor_id: actorId });
+    if (result.created) {
+      const note = details?.platform ? "Created from verified order." : "Created from verified order. Platform was not specified; confirm it with the customer.";
+      await repo.addInstallationEvent({ installation_id: installation.id, from_status: null, to_status: "requested", note, actor_id: actorId });
+    }
   }
   return { license, installation };
 }
@@ -165,7 +175,7 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
 
   let current = order;
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
-  if (current.payment_status === "paid") await ensureFulfillment(repo, current, product, null);
+  if (current.payment_status === "paid") await ensureFulfillment(repo, current, product, null, { platform: platformFrom(session.metadata) });
   return { status: "processed", detail: `Order ${current.id} is ${current.payment_status}.` };
 }
 
@@ -268,7 +278,7 @@ export type ReconcileInput = {
   currency: string;
   product_id: string;
   installation_type: InstallationType;
-  platform: Platform | null;
+  platform: Platform;
   target_location: string | null;
   notes: string | null;
   admin_id: string;
@@ -351,7 +361,7 @@ export async function issueLicenseKey(repo: CommerceRepo, licenseId: string, act
   return { key, license: updated };
 }
 
-export async function setLicenseStatus(repo: CommerceRepo, licenseId: string, status: Exclude<LicenseStatus, "pending">, reason: string | null, actorId: string, now?: () => string) {
+export async function setLicenseStatus(repo: CommerceRepo, licenseId: string, status: Extract<LicenseStatus, "active" | "suspended" | "revoked">, reason: string | null, actorId: string, now?: () => string) {
   const license = await repo.getLicense(licenseId);
   if (!license) throw new ValidationError("License not found.");
   if (license.status === "revoked") throw new ValidationError("Revoked licenses cannot be changed.");
@@ -391,7 +401,7 @@ export async function removeDomain(repo: CommerceRepo, licenseId: string, domain
 export type InstallationUpdate = {
   status?: InstallationStatus;
   installation_type?: InstallationType;
-  platform?: Platform | null;
+  platform?: Platform;
   target_location?: string | null;
   internal_notes?: string | null;
   note?: string | null;
