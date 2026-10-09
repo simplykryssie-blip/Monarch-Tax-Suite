@@ -1,298 +1,351 @@
-# Stripe test-mode runbook
+# Stripe test-mode runbook (isolated test project)
 
-Goal: prove payment → signed webhook → order → license → duplicate handling → refund, **without touching production and without any real money**.
+**Status: written and partly verified. The end-to-end test has NOT been run yet.** Nothing below should be read as "it works" until you have run it and ticked the evidence boxes. Section 1 lists what has been confirmed and what is still an assumption.
 
-Nothing in this runbook changes the live Stripe account, the production Supabase project, the production Vercel project, or any Stripe product/price ID. If a step ever seems to require that, **stop** (see "Stop rules" at the end).
+Goal: prove payment → signed webhook → order → license → duplicate handling → refund, using Stripe **test mode** and a **throwaway Supabase project**, with no way to touch production or the Verexa project.
+
+Never done by this runbook: live Stripe keys or objects, production database changes, production environment variable changes, deploys, merging the branch.
 
 ---
 
-## 0. The one-minute picture
+## 1. What is confirmed and what is not
+
+### Confirmed (checked against the code or by running it)
+
+| Fact | How it was checked |
+|---|---|
+| The foundation SQL (`supabase/test-env/00_foundation.sql`) is the exact migration production applied as `20261008224443`. | Read from production's migration history (SQL text only, no data). |
+| Foundation + all repo migrations build a schema whose tables, columns, constraints, indexes, row-level-security flags and triggers match production's (checksums), apart from the two migrations production has not applied yet (`180000`, `200000`). | Replayed on local PostgreSQL 16 and compared with production metadata (structure only). |
+| Production gives table access only to `service_role` (19 tables); `anon` and `authenticated` have none. After `apply.sh` the local rebuild is the same. | Production grant metadata vs local rebuild. |
+| Production relies on Supabase's old "grant new tables to service_role automatically" default. Supabase documents that new projects are moving away from it. `00_default_privileges.sql` reproduces the production default so the app does not fail with "permission denied". | Production `pg_default_acl`; Supabase docs. Local run: `service_role` can read, `anon` cannot. |
+| `apply.sh` refuses: production or Verexa refs, any URL shape outside a strict allowlist, query-string tricks, wrong/missing marker, non-empty database, wrong typed confirmation. | 15 adversarial and normal cases run against scratch databases (see section 3). |
+| `check-env.sh` fails on: live Stripe key, unset/production/Verexa Supabase URL, extra `.env*` files, production values already set in the terminal, wrong-project JWT keys, bad encryption key. It never prints values. | Run against fake `.env.local` files. |
+| Save / "Save & publish" in the admin never calls Stripe. | `product-editor.tsx` text and `product-actions.ts`. |
+| Only these admin buttons write to Stripe: **Update Stripe product info**, **Create Stripe product**, the create-price button in the Stripe panel, and **Create & link price** (annual update versions). **Verify with Stripe** and **Check Stripe price** only read. | `app/(admin)/product-actions.ts`, `components/admin/stripe-panel.tsx`, `versions-panel.tsx`. |
+| The webhook verifies the signature on the raw body, then rejects (400) any event whose live/test flag does not match `STRIPE_SECRET_KEY`. Responses: 503 not configured, 400 bad/missing signature, 500 processing failure (Stripe retries), 200 `{"received":true,"status":"processed"\|"ignored"\|"duplicate"}`. | `app/api/stripe/webhook/route.ts`, `tests/event-mode.test.ts`. |
+| Fulfillment logic (126 automated tests pass): paid checkout → customer + order (`payment_status = paid`) + license (`status = pending`, **no key yet**) + installation request; **Issue license key** → license `active`; same event id twice → `duplicate`; full refund → order `refunded` and license `revoked`; partial refund → `partially_refunded`, license unchanged. | `lib/commerce/fulfillment.ts` and the test suite (in-memory database). |
+| The Basic Calculator order is matched by the Stripe **product** ID on the purchased line item (not by price ID). | `fulfillment.ts` `handleCheckoutSession`. |
+
+### Not yet verified (assumptions you are testing)
+
+- The schema build on a **real** Supabase project (the local run used stand-ins for Supabase's `auth`/`storage` schemas and roles).
+- The Stripe CLI commands and the Stripe Dashboard screens as described below (taken from Stripe's documentation, not run).
+- The exact wording and layout of admin screens beyond the button names listed above.
+- That `Authorize domain` makes a domain valid for `/api/license/validate` straight away (domain verification rules were not traced).
+- The annual-update checkout steps (Test E). Treat that test as optional and less certain.
+- That `sb_publishable_…` / `sb_secret_…` style Supabase keys work with this app version (the code accepts either variable name; legacy JWT keys are the safer choice because `check-env.sh` can verify which project they belong to).
+
+---
+
+## 2. Audit: anything that could reach production or Verexa
+
+| Item | Risk | Status |
+|---|---|---|
+| `lib/supabase/config.ts`: if `NEXT_PUBLIC_SUPABASE_URL` is unset, the app uses the **production** URL. | Test app writing to production. | Code left unchanged (changing it could break the live site if its variable is unset). Guarded by `check-env.sh` (FAIL unless the URL is exactly the test project) and the rules in section 7. |
+| Environment variables already set in your terminal override `.env.local`. | Production values leaking in. | `check-env.sh` fails if any Supabase/Stripe/Monarch/Vercel variable is set. |
+| Other `.env*` files are also loaded by Next.js. | Surprise overrides. | `check-env.sh` fails on any file except `.env.local`. |
+| `.env.local.example` pointed at the Verexa project. | Copying it connected you to Verexa. | Fixed (placeholders only). |
+| `README.md` named the Verexa project as the app's database. | Misleading. | Fixed. |
+| `lib/admin.ts`: if no host header and no `NEXT_PUBLIC_APP_URL`, links use the production domain. | Wrong return URLs only; no data access. | `check-env.sh` requires `NEXT_PUBLIC_APP_URL=http://localhost:3000`. |
+| Migrations: no connection strings or project refs. `044133` seeds two draft products that carry the **live** Stripe product IDs, and links an admin if `info@monarchtaxsuite.com` exists in `auth.users` (it will not in a new project). | Harmless text; no connection. | Documented in step 7. |
+| `docs/monarch-commerce.md` tells you to run `supabase db push` against the Monarch project. | Pushing to production by habit. | That is a production instruction. Do not use `supabase link`, `supabase db push`, `vercel env pull`, `vercel dev` or any `vercel` command for this test. No `supabase/config.toml` or `.vercel` folder exists in the repo. |
+| `apply.sh` connecting to the wrong database. | Schema written to production/Verexa. | Seven layered checks (section 3). |
+| Stripe CLI. | Live requests. | CLI is test mode by default. Never add `--live`; never pass a `sk_live_` key. |
+| Admin buttons that create Stripe products/prices. | Live Stripe objects if a live key were loaded. | `check-env.sh` rejects any live key. Section 7 lists the buttons to skip anyway. |
+| CRM / HighLevel / lead webhooks. | Outbound posts to real services. | Leave all `HIGHLEVEL_*` unset (`check-env.sh` enforces). Do not configure a lead destination. |
+
+---
+
+## 3. How `apply.sh` protects you (and its limits)
+
+All of these must pass before anything is written:
+
+1. `TEST_PROJECT_REF` is exactly 20 lowercase letters and is not the production or Verexa ref.
+2. `TEST_DB_URL` matches one of two strict shapes and contains **exactly** your test ref in the host (direct) or in the user name (pooler). Query strings, `#`, extra `@`, other hosts, and the protected refs (any capitalisation) are all refused.
+3. All `PG*` environment variables are cleared (they could redirect the connection).
+4. **The database must say it is the test project.** Schema `public` must carry the comment `monarch-test-throwaway:<ref>`, which you set yourself from inside the test project's SQL editor. A database without it is refused. This is the independent check: it does not depend on the URL being typed correctly.
+5. The database must look like Supabase (roles `anon`/`authenticated`/`service_role`, `auth.users`, `storage.buckets`) and `public` must have **no** tables, views or other relations. Production and Verexa both have tables.
+6. You must type the project ref back.
+7. Each file runs in its own transaction and stops at the first error.
+
+`DRY_RUN=1` runs checks 1 to 5 and stops. Always do the dry run first.
+
+**Limits:** if you deliberately put the marker comment into the production or Verexa database from their SQL editor, *and* their `public` schema were empty, *and* you used that project's real ref, the script could not know. That takes several deliberate steps and neither real database has an empty `public` schema. The script also cannot see which dashboard you copied the password from, so use the independent check in step 2.
+
+---
+
+## 4. Test vs live at a glance
 
 | | Live (production) | Test (this runbook) |
 |---|---|---|
-| Stripe | Live mode (toggle OFF "Test mode") | **Test mode** (toggle ON, orange banner) |
-| Stripe keys | `sk_live_…` | `sk_test_…` |
-| Webhook secret | `whsec_…` of the live endpoint | `whsec_…` printed by `stripe listen` (different) |
-| Database | Monarch Supabase `ftthniovwzxztkwtregz` | **A new throwaway Supabase project** |
-| App | https://monarch-tax-suite.vercel.app | `http://localhost:3000` on your computer |
-| Cards | Real | `4242 4242 4242 4242` |
+| Stripe | Live mode | **Test mode** (orange banner) |
+| Stripe key | `sk_live_…` | `sk_test_…` |
+| Webhook secret | the live endpoint's `whsec_…` | `whsec_…` from the Stripe CLI (different, local only) |
+| Database | Monarch project `ftthniovwzxztkwtregz` | **New throwaway project** |
+| App | https://monarch-tax-suite.vercel.app | `http://localhost:3000` |
+| Cards | real | `4242 4242 4242 4242` |
 
-Stripe test and live mode have **completely separate** products, prices, customers, payments and webhooks. A test product has different `prod_`/`price_` IDs than the live one. That is normal and expected. Do not copy test IDs into production or live IDs into the test database.
+Test and live Stripe data are completely separate: different products, prices, customers, payments. A test product has **different** `prod_` and `price_` IDs from the live one. That is expected. Never copy test IDs into production or live IDs into the test database.
 
-Built-in safety net: the webhook rejects (HTTP 400) any event whose live/test flag does not match the `STRIPE_SECRET_KEY` of that deployment. A test event can never create an order on a live deployment, and vice versa.
-
-### Why not just use the Vercel preview or production?
-
-- **Production**: has live keys. Not allowed here.
-- **Vercel preview**: `STRIPE_SECRET_KEY` exists in the Preview scope, but its mode (test or live) has not been verified, and `STRIPE_WEBHOOK_SECRET` is not set there. Preview deployments would also talk to the **production database** unless `NEXT_PUBLIC_SUPABASE_URL` is overridden. Do not use previews for payment tests until you have confirmed both.
-- **Local + throwaway project** (this runbook): nothing shared with production.
+Do **not** use a Vercel preview or production for this test. The Preview-scoped `STRIPE_SECRET_KEY`'s mode has not been checked, preview has no webhook secret, and previews use the production database unless overridden.
 
 ---
 
-## 1. Prerequisites (one-time)
+## 5. Step-by-step
 
-Tick each before continuing.
+Tick each box. If any step does not give the expected result, **stop** and see section 11.
 
-1. [ ] Node 20+ and `npm` installed; repo cloned; on branch `claude/launch-readiness-hardening` (the review branch; do not merge it for this). `npm ci` completes.
-2. [ ] [Stripe CLI](https://docs.stripe.com/stripe-cli) installed. Run `stripe login` and choose the Monarch Stripe account. (This grants the CLI a test-mode key. It does not change anything.)
-3. [ ] Stripe Dashboard → **Test mode ON** (toggle top right). Keep it on for the whole runbook.
-4. [ ] Supabase CLI or `psql` available (only needed for step 2).
-5. [ ] A scratch text file (outside the repo) for values you will paste into `.env.local`. **Never paste keys into chat, commits, or screenshots.**
+### Step 0. Prerequisites (once)
 
----
+- [ ] Node 20+, `npm ci` completes in the repo, on branch `claude/launch-readiness-hardening` (do not merge it for this).
+- [ ] `psql` installed (PostgreSQL client).
+- [ ] [Stripe CLI](https://docs.stripe.com/stripe-cli) installed and `stripe login` done with the Monarch Stripe account (this only authorizes the CLI; it changes nothing).
+- [ ] A scratch text file **outside the repo** for values you will paste. Never paste keys into chat, commits or screenshots.
+- [ ] A **fresh terminal** (no leftovers from other work).
 
-## 2. Create the throwaway test database
+### Step 1. Create the throwaway Supabase project (manual)
 
-The original foundation migration (`20261008224443`, the five `calculator_*` tables) was never committed to the repo, but it is recorded verbatim in production's migration history. It is now saved as `supabase/test-env/00_foundation.sql`.
+In the Supabase dashboard:
 
-**How this was verified (read-only against production, no customer data read):** the foundation + every repo migration was replayed on a scratch local Postgres 16. Its tables, columns, constraints, indexes, row-level-security flags and triggers were then compared (by checksum) with production's schema metadata, and all match. The only difference is `rls_auto_enable()`, a helper Supabase creates itself in every project. Not covered: Supabase-specific objects (the `auth`/`storage` schemas and roles) were stubbed locally, so the first run in a real test project is still a real test. If it fails, nothing in production is affected.
-
-Steps:
-
-1. In Supabase create a **new, empty project** named `monarch-test-throwaway`. Not the Monarch project (`ftthniovwzxztkwtregz`) and not the Verexa project (`daxpavvsotvsyqqntddc`). Save its URL, publishable key, service-role key and database connection string in your scratch file.
-2. Run the script, which builds the schema in the test project only:
-   ```
-   TEST_DB_URL='postgresql://postgres:<password>@db.<TEST-ref>.supabase.co:5432/postgres' ./supabase/test-env/apply.sh
-   ```
-   It refuses if the URL contains the production or Verexa project ref, refuses if the database already has Monarch tables, prints the target host, and waits for you to type `TEST`. It then applies `00_foundation.sql` and all files in `supabase/migrations/` in order, each in its own transaction. This includes the pending rate-limit migration, which is how you rehearse it.
-   (No `psql`? Instead paste each file into the test project's SQL editor in the same order. Check the project name at the top first.)
-3. Create a test admin: Authentication → Add user (any email/password you choose). Then in the **test** project's SQL editor:
+1. New project, name **`monarch-test-throwaway`**, any region, strong database password (save it in your scratch file). Do not touch `ftthniovwzxztkwtregz` or `daxpavvsotvsyqqntddc`.
+2. Project Settings → General → copy the **Reference ID** (20 letters). Call it `TEST_REF`.
+3. SQL Editor (check the project name at the top says `monarch-test-throwaway`), run:
    ```sql
-   insert into public.admin_users (user_id)
-   select id from auth.users where email = '<the email you just created>';
+   comment on schema public is 'monarch-test-throwaway:<TEST_REF>';
+   select extname, extnamespace::regnamespace from pg_extension where extname = 'pgcrypto';
    ```
-4. Sanity check in the test project: `select count(*) from public.orders;` returns `0`; `select public.hit_rate_limit('x', now());` returns `1`.
+   Expected: the second query returns one row, `pgcrypto` in `extensions`. (If it returns nothing the foundation file creates it; that is also fine.)
+4. Authentication → Users → **Add user** → *Create new user*: your own email and a password; tick **Auto Confirm User**. Remember the email.
+5. Project Settings → API Keys: copy the project URL, the publishable/anon key and the secret/service-role key into your scratch file. Prefer the **legacy anon / service_role** keys if the dashboard still offers them: `check-env.sh` can then confirm they belong to your test project.
+6. Click **Connect** and copy the **Session pooler** connection string (user looks like `postgres.<TEST_REF>`). Use the pooler because the direct `db.<ref>.supabase.co` address is IPv6-only on many connections. Replace `[YOUR-PASSWORD]` with the password, URL-encoded (for example `@` becomes `%40`).
 
-Notes: the test database has no `calculator_leads` table (the lead-storage removal is included), which production still has until you approve that migration. The old CRM pages under `app/(app)/` (clients, engagements, tasks) use tables that do not exist in Monarch's production project either; don't open them.
+Nothing else needs manual setup: Storage (the migration creates its image bucket), extensions, the `auth`/`storage` schemas and the standard roles come with every Supabase project. The test does not need Edge Functions, Realtime or the Vault.
 
----
+### Step 2. Build the schema (dry run first)
 
-## 3. Create Stripe test objects (test mode only)
-
-In Stripe Dashboard with **Test mode ON**:
-
-1. Product catalog → Add product: `Monarch Basic Tax Calculator (TEST)`, one-time price **$75.00 USD**. Note its `prod_…` id.
-2. On that price → **Create payment link**. Copy the `https://buy.stripe.com/test_…` URL.
-3. Add product: `Annual Tax-Year Update (TEST)`, one-time **$50.00 USD**. Note `prod_…` and `price_…`.
-
-These are new test objects. You are **not** editing the live products or any existing price ID.
-
----
-
-## 4. Configure the local app for test mode
-
-Create `.env.local` in the repo root (git-ignored). Fill from your scratch file:
+From the repo root:
 
 ```
-# --- TEST PROJECT ONLY. If this points at ftthniovwzxztkwtregz, STOP. ---
-NEXT_PUBLIC_SUPABASE_URL=https://<test-project-ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<test publishable key>
-SUPABASE_SERVICE_ROLE_KEY=<test service-role key>
+export TEST_PROJECT_REF='<TEST_REF>'
+export TEST_DB_URL='postgresql://postgres.<TEST_REF>:<URL-encoded-password>@aws-0-<region>.pooler.supabase.com:5432/postgres'
+DRY_RUN=1 ./supabase/test-env/apply.sh
+```
 
-STRIPE_SECRET_KEY=sk_test_...          # Dashboard (Test mode) → Developers → API keys
-STRIPE_WEBHOOK_SECRET=whsec_...        # filled in at step 5
+Expected: `All safety checks passed.`, the target host and ref, and `DRY_RUN=1: nothing was changed.` Any line starting with `REFUSING:` means stop and read it.
+
+- [ ] **Independent check (do not skip).** In the Supabase dashboard, open the project you are looking at, go to Settings → General, and confirm that its Reference ID equals the ref in the output above **and** that the project name is `monarch-test-throwaway`.
+
+Only after both match:
+
+```
+./supabase/test-env/apply.sh
+```
+Type the ref when asked. Expected: `applying …` for 11 files, then `Done. Tables in public: 19`.
+
+Then, in the test project's SQL editor, run `supabase/test-env/schema_fingerprint.sql` and compare with the expected values in its header (counts must match; checksums should).
+
+Then clear the password from your shell:
+```
+unset TEST_DB_URL TEST_PROJECT_REF
+```
+
+Create the test admin (SQL editor of the **test** project):
+```sql
+insert into public.admin_users (user_id)
+select id from auth.users where email = '<the email from step 1.4>';
+```
+Expected: `INSERT 0 1`. Check: `select count(*) from public.orders;` returns `0`, and `select public.hit_rate_limit('x', now());` returns `1`.
+
+This step also rehearses the pending rate-limit migration (`200000`) and the lead-storage removal (`180000`).
+
+### Step 3. Create Stripe test objects (Dashboard, Test mode ON)
+
+Confirm the orange **Test mode** banner first.
+
+1. Product catalog → Add product `Monarch Basic Tax Calculator (TEST)`, one-time **$75.00 USD**. Copy its `prod_…` and the price's `price_…`.
+2. On that price, **Create payment link**. Copy the `https://buy.stripe.com/test_…` URL. (Payment Links collect the buyer's email, which the app requires.)
+3. Optional, for Test E only: product `Annual Tax-Year Update (TEST)`, one-time **$50.00**; copy its `prod_…` and `price_…`.
+
+You create these in the Stripe Dashboard yourself. You do **not** need any app button to create Stripe products or prices.
+
+### Step 4. Get the test webhook secret
+
+```
+stripe listen --print-secret
+```
+Prints a `whsec_…` value (per the Stripe CLI docs; test mode, local use). Copy it to your scratch file. It is not the live endpoint's secret, and nothing in Stripe or Vercel is changed.
+
+### Step 5. Create `.env.local` and run the pre-flight check
+
+Create `.env.local` in the repo root (git-ignored), starting from `.env.local.example`:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://<TEST_REF>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<test publishable/anon key>
+SUPABASE_SERVICE_ROLE_KEY=<test service-role/secret key>
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-MONARCH_ENCRYPTION_KEY=<throwaway key, see section 10 — NOT the production key>
+MONARCH_ENCRYPTION_KEY=<optional: a throwaway value; see section 9>
 ```
-
-**Critical:** `NEXT_PUBLIC_SUPABASE_URL` defaults to the **production** Monarch project if it is unset. Always set it explicitly here. Quick check before every session:
-```
-grep NEXT_PUBLIC_SUPABASE_URL .env.local
-```
-It must show the test project ref, never `ftthniovwzxztkwtregz`.
-
-Also confirm the key is a test key without printing it: `grep -c '^STRIPE_SECRET_KEY=sk_test_' .env.local` → prints `1`.
-
-Before starting, run these **three safety checks** (they print no secrets):
+`STRIPE_SECRET_KEY` comes from Stripe Dashboard (**Test mode**) → Developers → API keys.
 
 ```
-# 1. Only .env.local (and .env.local.example) should exist. Any other .env* file could override it.
-ls -a | grep '^\.env'
-# 2. Your terminal must not already hold production values (Next.js lets real environment variables win over .env.local).
-env | grep -E '^(NEXT_PUBLIC_SUPABASE_URL|SUPABASE_|STRIPE_|MONARCH_)' | sed 's/=.*/=<set>/'
-# 3. The Supabase URL must be the TEST project.
-grep -c 'ftthniovwzxztkwtregz' .env.local
+./supabase/test-env/check-env.sh <TEST_REF>
 ```
-Expected: (1) only `.env.local` and `.env.local.example`; (2) **nothing printed**. If anything prints, run `unset NAME` for each, or open a fresh terminal. Never run `vercel env pull` or `vercel dev` for this runbook, because they bring production values onto your computer; (3) prints `0`.
+Expected: every line `PASS` and `ALL CHECKS PASSED.` Any `FAIL` means stop and fix it. `NOTE` lines are information.
 
-Start the app: `npm run dev`. Leave it running.
+### Step 6. Start the app and forwarding
+
+Terminal 1: `npm run dev`. Terminal 2: `stripe listen --forward-to localhost:3000/api/stripe/webhook`. Never add `--live`. Leave both running.
+
+Expected in terminal 2: `Ready!`, then one line per event with the HTTP status your app returned.
+
+### Step 7. Make the product sellable (test database only)
+
+Sign in at `http://localhost:3000/login` with the test admin. Admin → Products → *Basic Tax Calculator*. A fresh database seeds this product as a draft with the **live** Stripe product ID copied from the original setup; replace it:
+
+- Price: `75.00`
+- Stripe product ID: your test `prod_…`
+- Stripe price ID: your test `price_…`
+- Installation options: tick at least one
+- Product settings (one `key: value` per line): `checkout_url: https://buy.stripe.com/test_…`
+- Click **Save & publish** (this never calls Stripe).
+
+Optional read-only check: **Verify with Stripe**. With the test key and test IDs it should report verified (test mode). On the live IDs it would only say "not found", which is harmless.
+
+Expected: `/shop` lists the product.
 
 ---
 
-## 5. Start signed webhook forwarding
+## 6. Tests
 
-In a second terminal:
-```
-stripe listen --forward-to localhost:3000/api/stripe/webhook
-```
-The CLI uses **test mode by default**. **Never add `--live`** to any `stripe` command in this runbook, and never pass a `sk_live_` key with `--api-key`. It prints `Ready! Your webhook signing secret is whsec_…`. Put that value in `.env.local` as `STRIPE_WEBHOOK_SECRET`, then restart `npm run dev` (env is read at start). Keep `stripe listen` running; it shows each event and the HTTP status your app returned.
+### Test A. Payment, signed webhook, order, license
 
-This secret is for the CLI only. It is **not** the live endpoint's secret and nothing in Stripe or Vercel is modified.
+1. Open `http://localhost:3000/shop`, open the product, click buy → Stripe Checkout (test banner). Pay with `4242 4242 4242 4242`, any future expiry, any CVC and ZIP, an email you control.
+2. Watch terminal 2.
 
----
-
-## 6. Test A — payment, webhook, order, license
-
-1. Open `http://localhost:3000/login`, sign in as the test admin.
-2. Admin → **Products** → open *Basic Tax Calculator*. In the test database set:
-   - `Stripe product ID` = the **test** `prod_…` from step 3,
-   - `Stripe price ID` = the **test** `price_…`,
-   - `checkout_url` metadata = the `https://buy.stripe.com/test_…` Payment Link (https only),
-   - then Publish. If publish is blocked, the page lists what is missing. Fix those items.
-   (This edits only the throwaway test database. The two seeded products in a fresh database carry the **live** product IDs copied from the original setup; replace them with the test IDs as above. A "Verify with Stripe" check against live IDs just says "not found" in test mode and is harmless.)
-   **Do not click any "Sync to Stripe"/create-price button in the admin for this runbook.** Those buttons create or update Stripe products and prices using whatever `STRIPE_SECRET_KEY` is loaded. With the `sk_test_` key that only touches test mode, but this runbook never needs them, so skip them.
-3. Visit `http://localhost:3000/shop`, open the product, click buy. You land on Stripe's hosted checkout (test banner).
-4. Pay with `4242 4242 4242 4242`, any future expiry, any CVC, any ZIP, any email you control.
-5. Watch the `stripe listen` terminal.
-
-**Expected evidence**
-
-| Where | What you should see |
+| Where | Expected |
 |---|---|
-| `stripe listen` | `checkout.session.completed` → `[200]`, also `payment_intent.succeeded` and `charge.succeeded` (ignored events still return 200) |
-| App terminal (`npm run dev`) | no stack traces; at most a short line with event ids |
-| Stripe Dashboard (test) → Developers → Events | the events above |
-| Stripe Dashboard → Payments | one $75.00 payment, *Succeeded* |
-| Test DB `stripe_events` | one row per processed event id, finished |
-| Test DB `orders` | 1 order, status paid, amount 7500 |
-| Test DB `licenses` | 1 license for that customer, status active, **no plaintext key** |
-| Admin → Orders / Licenses | the order and license appear |
+| `stripe listen` | `checkout.session.completed` → `[200]`. Other events (`charge.succeeded`, `payment_intent.succeeded`, `payment_intent.created`…) also `[200]`; some are answered with status `ignored`, which is correct. |
+| `npm run dev` terminal | a line like `stripe-webhook: evt_… checkout.session.completed -> processed`; no errors |
+| Stripe (Test mode) → Developers → Events | the same events |
+| Stripe → Payments | one $75.00 payment, Succeeded |
+| Test DB `stripe_events` | one row per event id, status `processed` or `ignored` |
+| Test DB `orders` | 1 row: `payment_status = paid`, `amount_cents = 7500` |
+| Test DB `calculator_licenses` | 1 row: `status = pending`, `key_hash` empty |
+| Admin → Orders / Licenses | the order and a **pending** license |
 
-6. Admin → Licenses → the new license → **Issue key**. The key `MTS-XXXXX-…` is shown **once**. Copy it into your scratch file. The database stores only a hash and prefix.
-7. (Optional) Add an authorized domain `localhost` on the license and load the embed from a page you control to see it validate.
+3. Admin → Licenses → the license → **Issue license key**. The key `MTS-…` is shown **once**; copy it to your scratch file.
 
-Pass criteria: exactly **one** order and **one** license after one payment.
+   Expected: license `status = active`, `key_prefix` set, `key_hash` set (hash only; the key itself is not stored).
 
----
+4. Optional: on the license, **Authorize domain** `localhost`; then
+   `curl "http://localhost:3000/api/license/validate?id=<emb_… id from the license page>&domain=localhost"` → expected `{"valid":true}` (assumption, see section 1).
 
-## 7. Test B — duplicate event handling
+**Pass:** exactly one order, one license, key issued once.
 
-Stripe retries and you can replay. The app must not create a second order or license.
+### Test B. Duplicate event
 
-1. Take the `evt_…` id of the `checkout.session.completed` event from Test A (shown in the `stripe listen` output, or Dashboard → Events) and run `stripe events resend evt_…`. Per Stripe's docs this resends the event to the CLI's local listener (test mode by default; do not add `--live`). Stripe only resends events from the last 30 days.
-2. Expected: `stripe listen` shows `[200]`; response body says it was already processed/duplicate.
-3. Re-check counts: `orders` still 1, `licenses` still 1, `stripe_events` has no duplicate id.
-
-Pass: counts unchanged.
-
----
-
-## 8. Test C — refund behavior, signature check, mode guard
-
-**Refund (full)**
-1. Stripe Dashboard (test) → Payments → open the $75 payment → **Refund** → full amount.
-2. Expected events: `charge.refunded` → `[200]`.
-3. Test DB: order shows refunded, license status `revoked`. Embeds for it now fail validation (`unavailable`).
-
-**Refund (partial)** — repeat Test A with a second payment, refund e.g. $10.
-Expected: order notes the partial refund, license **stays active**.
-
-**Bad signature (safe negative test)** — from a terminal:
+Take the `evt_…` id of `checkout.session.completed` (from the terminal 2 output or Dashboard → Events).
 ```
-curl -i -X POST http://localhost:3000/api/stripe/webhook -H 'stripe-signature: t=1,v1=bad' -d '{}'
+stripe events resend evt_…
 ```
-Expected: `400`. No rows created.
+Per Stripe's docs this sends the event again to the CLI's local listener (test mode; never add `--live`).
 
-**Mode guard** — optional, proves a live event cannot reach a test deployment. This is covered by `tests/event-mode.test.ts` (`node --test tests/event-mode.test.ts`). Do **not** try to send real live events.
+Expected: terminal 2 `[200]`; the app log shows `-> duplicate`; `orders` still 1, `calculator_licenses` still 1, no repeated event id in `stripe_events`.
 
-**Dispute** — `stripe trigger charge.dispute.created` suspends a license (test mode only; trigger creates its own test data). Optional.
+### Test C. Refunds
 
----
+1. **Partial:** make a second purchase (new email), then Dashboard (Test mode) → that payment → Refund → $10. Expected: `charge.refunded` `[200]`; that order `payment_status = partially_refunded`, `amount_refunded_cents = 1000`; its license **unchanged**.
+2. **Full:** Dashboard → the first payment → Refund → full amount. Expected: `charge.refunded` `[200]`; order `payment_status = refunded`, `refunded_at` set; license `status = revoked`, `revoke_reason = Payment refunded`; admin shows revoked. If you authorized `localhost`, the validate URL now returns `{"valid":false,"reason":"unavailable"}`.
 
-## 9. Test D — annual update checkout (optional)
+### Test D. Safety negatives (no money involved)
 
-1. In the test DB, make sure a product version row exists with the test update `price_…`.
-2. With a license + issued key from Test A, open `http://localhost:3000/update`, enter the key, buy the update with `4242…`.
-3. Expect `checkout.session.completed` `[200]`, license moves to the newer tax-year version, and one additional order of $50.
-4. Refund it: only the update reverts; the base license stays active.
+- Bad signature: `curl -i -X POST http://localhost:3000/api/stripe/webhook -H 'stripe-signature: t=1,v1=bad' -d '{}'` → `400`, nothing written.
+- Mode guard: `node --test tests/event-mode.test.ts` → pass (a live event on a test key, and the reverse, are refused).
+- Dispute (optional, not verified): pay with Stripe's dispute test card `4000 0000 0000 0259`; expected `charge.dispute.created` → order disputed and license `suspended`. (`stripe trigger charge.dispute.created` does **not** work for this: it creates unrelated test data, so the app answers `ignored: No order for this dispute`.)
 
----
+### Test E. Annual update (optional, least certain)
 
-## 10. Pending items — safest next steps (nothing applied yet)
-
-### 10a. Rate-limit migration `20261009200000_rate_limit_counters.sql`
-
-What it does: adds one new table (`rate_limit_counters`) and one function (`hit_rate_limit`) for the validate endpoint. It is **additive**: no existing table is altered or dropped, no data deleted.
-Current behavior if it is *not* applied: the code fails **open** (requests are allowed, a warning is logged), so production keeps working.
-
-Safe order:
-1. Rehearse in the **test** project (done by `apply.sh` in step 2). Confirm it succeeds and that `select public.hit_rate_limit('x', now());` returns `1` then `2`.
-2. Review the SQL once yourself (about 40 lines).
-3. **Owner approval required** before production. When approved: apply to production *after* the branch is merged and deployed (or before; both orders are safe because of fail-open), then check `/api/license/validate` still answers and the table exists.
-4. Rollback if ever needed: `drop function public.hit_rate_limit(text, timestamptz); drop table public.rate_limit_counters;` (safe because nothing else depends on them). Not destructive to business data.
-
-Do **not** apply `20261009180000_remove_lead_storage.sql` to production without a separate look: it drops lead storage. Production has 0 rows there, but it is still a drop, so it needs explicit approval.
-
-### 10b. `MONARCH_ENCRYPTION_KEY`
-
-What it is: a secret of exactly 32 random bytes, base64-encoded. It encrypts saved CRM credentials and keys the one-way client hash used by rate limiting.
-
-Why it's missing now and what happens: no key anywhere. CRM connections stay disabled and the rate limiter hashes with plain SHA-256. Nothing is encrypted with any key yet (0 CRM connections exist), so there is **no existing data to lose**.
-
-Safe steps:
-1. Generate it on your own computer, never in chat:
-   ```
-   openssl rand -base64 32
-   ```
-   Store it in a password manager. Losing it later means saved CRM credentials become unreadable.
-2. For this runbook use a **different, throwaway** value in `.env.local`. Never reuse the production key in test.
-3. **Owner approval required** to add to Vercel: Project → Settings → Environment Variables → add `MONARCH_ENCRYPTION_KEY`, mark **Sensitive**, scope **Production** first (Preview optional, with a different value). Redeploy for it to take effect.
-4. Verify by **name and scope only** in the Vercel UI. Never display the value.
-5. **Never change or delete the key once CRM connections exist**, unless you first re-encrypt or re-connect those connections. Different key = old ciphertext cannot be decrypted.
+Needs the annual-update product (step 3.3) set in the test database with the test product ID and a version whose price is verified. Use **Check Stripe price** then **Link price** (both safe). **Do not use "Create & link price"** (it creates a Stripe price). Then `http://localhost:3000/update`, enter the license key, pay `4242…`. Expected: `checkout.session.completed` `[200]`, the license moves to the newer tax-year version, a second order of $50. Refunding that order reverts only the update. These steps were not traced end to end.
 
 ---
 
-## 11. Evidence checklist
+## 7. Rules while the test runs
 
-**Stripe (test mode ON)**
-- Developers → Events: `checkout.session.completed`, `charge.refunded`
-- Developers → Webhooks → (CLI listeners appear under *Local listeners*): delivery 200
-- Payments: payment succeeded, refund listed
-- Customers: the test buyer
-
-**Vercel** (only relevant if you later deploy a test setup; for the local run use your terminal logs)
-- Project `monarch-tax-suite` → Logs, filter path `/api/stripe/webhook`: status 200 for good events, 400 for bad signature or mode mismatch, none 5xx.
-- Look for `stripe-webhook: <evt_id> <type> rejected (mode_mismatch)` if a test event hits a live deployment (expected and good).
-- Do **not** expect any test event in production Vercel logs. If you see one, the wrong URL is being used. Stop.
-
-**Database (test project)**: `stripe_events`, `orders`, `licenses`, `calculator_license_events`.
+- Run `./supabase/test-env/check-env.sh <TEST_REF>` at the start of **every** session.
+- Never run `vercel`, `supabase link`, `supabase db push`, or any Stripe command with `--live`.
+- Never paste secrets into chat or commits; `.env.local` is git-ignored.
+- Do not click: **Update Stripe product info**, **Create Stripe product**, the create-price button in the Stripe panel, **Create & link price**. They write to Stripe with whatever key is loaded. With a test key that only affects test mode, but this runbook never needs them.
+- Skip the old CRM pages under `app/(app)/` (clients, engagements, tasks). They use tables Monarch's database does not have.
 
 ---
 
-## 12. Stop rules
+## 8. The Basic Calculator price ID discrepancy (investigated, nothing changed)
+
+| Source | Basic Calculator price ID |
+|---|---|
+| Your original instructions | `price_1UOcySLVYOWPw48grmegxbVH` |
+| Production database row | `price_1UOcySLvYOWPw48grmeghXVH` |
+| Repo tests (`tests/stripe-verify.test.ts`) | same as the database value; introduced in commit `b8f2f88` |
+
+Findings:
+- The two strings differ in two places (`LV` vs `Lv`, and `gxb` vs `ghX`). The product IDs and the Annual Update price ID match across all sources.
+- No application code contains either price ID. Fulfillment matches by **product** ID, so a wrong price ID would not stop an order from being fulfilled. It would make **Verify with Stripe** fail (price not found), and it matters if your live Payment Link was built on a different price.
+- Circumstantial only: the Annual Update price in your instructions contains the segment `LvYOWPw48`, like the database's Basic value, while your Basic value has `LVYOWPw48`. Stripe price IDs from one account normally share that segment, which suggests the database value is the consistent one and the instructions' value has a typo. This is **not proof**: Stripe IDs are case-sensitive and Stripe cannot be queried from here.
+- Nothing was changed. The test project cannot settle it because test mode has different IDs.
+
+How to settle it (no production change): Stripe Dashboard → **live** mode → Product catalog → Basic Tax Calculator → the $75 price → copy the Price ID and compare it character by character with the value on the production admin product page. If they match, the discrepancy was in the instructions. If not, tell me and I will prepare the correction for your approval. Do not use "Verify with Stripe" on production for this: it writes a verification result to the production database.
+
+---
+
+## 9. Pending production items (not executed; each needs your explicit approval)
+
+### Rate-limit migration `20261009200000_rate_limit_counters.sql`
+Adds one table and one function; touches nothing existing. If it is not applied, the code fails **open** (requests allowed, a warning logged). Rehearsed in your test project in step 2 (`hit_rate_limit('x', now())` returns `1`, then `2`). Production steps once you approve: review the SQL, apply it, check the table exists and `/api/license/validate` still answers. Rollback: `drop function public.hit_rate_limit(text, timestamptz); drop table public.rate_limit_counters;`.
+
+`20261009180000_remove_lead_storage.sql` drops lead storage (0 rows in production, but still a drop). Separate approval.
+
+### `MONARCH_ENCRYPTION_KEY`
+A secret of exactly 32 random bytes, base64-encoded. Currently missing everywhere, so CRM connections are off and rate-limit hashing uses plain SHA-256. No existing data is encrypted with any key, so adding it loses nothing.
+
+1. Generate it on your own computer: `openssl rand -base64 32`. Store it in a password manager. Never paste it in chat.
+2. For this test use a **different throwaway** value (or leave it unset).
+3. Production, with your approval: Vercel → Project → Settings → Environment Variables → add as **Sensitive**, **Production** scope, redeploy, then confirm by name and scope only.
+4. Never change or delete it once CRM connections exist unless those connections are re-created.
+
+---
+
+## 10. Evidence to keep
+
+- **Stripe (Test mode):** Events, webhook delivery 200s, Payments, Refunds.
+- **Terminal logs:** `stripe-webhook: evt_… <type> -> processed|ignored|duplicate`. A `rejected (mode_mismatch)` line means a test event reached a live-key deployment, which must never happen here.
+- **Test database:** `stripe_events`, `orders`, `calculator_customers`, `calculator_licenses`, `calculator_license_events`.
+- **Vercel:** nothing. The test runs locally. Production logs must show no test events; if they do, a wrong URL was used. Stop.
+
+---
+
+## 11. Stop rules
 
 Stop and ask before continuing if:
-- `.env.local` shows `ftthniovwzxztkwtregz` or any `sk_live_` key.
-- Stripe Dashboard shows no "Test mode" banner while creating products or refunding.
-- Any command would `drop`, `delete`, `reset`, `truncate`, or rotate/replace a secret in production.
-- A step asks you to edit a live Stripe product or price ID. The Basic Calculator live price ID discrepancy (owner-supplied vs. stored) must be resolved in the Stripe Dashboard and the admin product editor by you, separately, before launch. Not part of this runbook.
-- You are about to add the test webhook secret to Vercel. Don't: the CLI secret is local-only.
 
-## 13. Cleanup
+- `apply.sh` or `check-env.sh` prints `REFUSING` / `FAIL` and you are tempted to work around it.
+- `.env.local` mentions `ftthniovwzxztkwtregz` or `daxpavvsotvsyqqntddc`, or contains `sk_live_`.
+- Stripe Dashboard shows no **Test mode** banner while you create products, pay or refund.
+- Any command would drop, delete, reset, truncate or rotate something in production, or change a Stripe product/price ID.
+- You are about to add the CLI's webhook secret to Vercel (it is local-only).
+- Production Vercel logs show a test event.
 
-Stop `npm run dev` and `stripe listen`. Delete `.env.local` when done. Pause or delete the `monarch-test-throwaway` Supabase project (it only ever contained test data). Test-mode Stripe objects can stay.
+## 12. Cleanup
+
+Stop `npm run dev` and `stripe listen`. Delete `.env.local`. Delete the `monarch-test-throwaway` project (check its name first). Test-mode Stripe objects can stay.
 
 ---
 
-## 14. Production-safety review of every step
+## 13. Remaining blockers before the first run
 
-Reviewed line by line. "Touches" means what the command can reach.
-
-| Step | Command / action | Touches | Production risk and guard |
-|---|---|---|---|
-| 1 | `stripe login` | Stripe account (authorizes the CLI) | None by itself. Default mode is test. |
-| 2.1 | Create new Supabase project | New project only | None. Never reuse `ftthniovwzxztkwtregz` or `daxpavvsotvsyqqntddc`. |
-| 2.2 | `apply.sh` | Only `TEST_DB_URL` | Script refuses both production refs, refuses a non-empty database, shows the host, requires typing `TEST`. Residual risk: pasting the production password with a differently-hosted URL (e.g., a pooler hostname not containing the ref). Check the project name in the Supabase dashboard where you copied the URL from. |
-| 2.3-2.4 | SQL in the test project's SQL editor | Whichever project the editor is open on | Confirm the project name at the top of the editor says `monarch-test-throwaway`. |
-| 3 | Dashboard, Test mode ON | Stripe test data | Confirm the orange Test mode banner before creating anything. |
-| 4 | `.env.local` + three checks | Local files | Checks catch other `.env*` files, shell variables holding production values, and the production Supabase URL fallback. Never run `vercel env pull` / `vercel dev`. |
-| 5 | `stripe listen` | Local forwarding, test events | Never add `--live`. The webhook secret is local only. |
-| 6-9 | Browser at `localhost:3000`, test card | Test DB + Stripe test mode | A live key (`sk_live_`) in `.env.local` would be caught by check 3 of section 4 only for the URL; verify the key with `grep -c '^STRIPE_SECRET_KEY=sk_test_' .env.local` (prints `1`). Also the webhook returns 400 for any live-mode event under a test key. |
-| 7 | `stripe events resend` | Local listener | Never add `--live`. |
-| 8 | `curl localhost:3000/...` | Local only | None. |
-| 10a | Production migration | **Production DB** | **Not part of the test.** Requires your explicit approval; additive; rollback listed. |
-| 10b | Production env var | **Production Vercel** | **Not part of the test.** Requires your explicit approval; generate locally; never paste into chat. |
-| 13 | Cleanup | Local, test project | Deleting the test project is safe only if its name is `monarch-test-throwaway`. |
-
-Result: no step in sections 1-9 connects to production when the checks in sections 2 and 4 pass. Sections 10a/10b are the only production changes and are not executed by this runbook.
-
+1. **You** must create the Supabase test project and set the marker (step 1). Nothing can run until then.
+2. **You** must create the Stripe test product, price and Payment Link (step 3).
+3. The assumptions in section 1 stay untested until you run the steps; report any mismatch rather than working around it.
+4. The Basic Calculator live price ID must be settled in the live Stripe Dashboard (section 8) before real selling. It does not block the test.
