@@ -1,5 +1,6 @@
 import { commerceRepo, stripeClient } from "@/lib/admin";
 import { handleStripeEvent } from "@/lib/commerce/fulfillment.ts";
+import { checkEventMode } from "@/lib/commerce/stripe-verify.ts";
 
 // Stripe webhook: the only path that grants paid access automatically. The
 // signature is verified against the raw body before anything is read, and
@@ -21,6 +22,14 @@ export async function POST(request: Request) {
     event = await stripe.webhooks.constructEventAsync(body, signature, secret);
   } catch {
     return new Response("Invalid signature", { status: 400 });
+  }
+
+  // Test-mode events must never fulfil orders on a live deployment (or the
+  // reverse), even when correctly signed. Ids and the reason code only are logged.
+  const modeCheck = checkEventMode(event.livemode, process.env.STRIPE_SECRET_KEY);
+  if (!modeCheck.ok) {
+    console.warn(`stripe-webhook: ${event.id} ${event.type} rejected (${modeCheck.reason})`);
+    return new Response("Event mode does not match this deployment", { status: 400 });
   }
 
   try {
