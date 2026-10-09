@@ -30,24 +30,24 @@ not sent.
 4. **Create the contact.** Add action **Create/Update Contact**; map first name,
    last name, email, phone from `contact.*`; add tags and source. *The webhook
    alone does not create a contact.*
-5. **Email the results.** Add action **Send Email** (to the contact, to staff, or
-   both). Put `estimate.headline` and `estimate.text` in the body. *The webhook
+5. **Email the results and notify staff.** Add action **Send Email** (to the
+   contact, to staff, or both; use *Internal Notification* for a staff alert). Put `estimate.headline` and `estimate.text` in the body. *The webhook
    alone does not send an email.* Publish the workflow.
-6. **Lead form settings.** Same page: business name, lead source, tags, whether
-   to include the estimate, optional notification email, then enable the form.
+6. **Lead form settings.** Same page: business name, lead source, tags and whether
+   to include the estimate, then enable the form.
 
 Optional: GoHighLevel OAuth (Marketplace app) can create the contact directly;
 it is off until `HIGHLEVEL_CLIENT_ID`/`HIGHLEVEL_CLIENT_SECRET` are configured.
 
-## Notification email (optional, separate from the CRM)
+## Who does what
 
-When the server has `RESEND_API_KEY` and `LEAD_NOTIFY_FROM` (a sender on a
-verified domain) and the migration `20261009210000_lead_notification_email.sql`
-is applied, the settings screen accepts a notification email. Each *delivered*
-lead is then also emailed there (contact details and results, reply-to = the
-visitor). A failed email never fails the lead; it is recorded on the connection
-without personal data. Without these, leave the field blank and email from the
-CRM workflow instead.
+Monarch delivers one signed webhook per lead and nothing else. It does not send
+email, create contacts or keep a lead history, and it needs no email provider or
+email-related secrets. **The customer's CRM workflow is responsible for creating
+or updating the contact and for sending any email** (a new-lead notification to
+staff, the results to the visitor, or both). Nothing in the lead path depends on
+an email service. If the destination is down, the visitor sees a retryable error
+and can submit again; the retry reuses the same `Idempotency-Key`.
 
 ## Reusable approach for other CRMs
 
@@ -68,5 +68,4 @@ verify `X-Monarch-Signature` if the receiver can, de-duplicate on
 | Webhook received by the customer's GoHighLevel workflow | NOT RUN |
 | Contact created in the correct GoHighLevel location | NOT RUN |
 | Agreed results present in that contact/workflow | NOT RUN |
-| Notification email received | NOT RUN (needs provider config + migration approval) |
-| Results email from the GoHighLevel workflow received | NOT RUN |
+| Staff notification / results email sent by the GoHighLevel workflow, received | NOT RUN |

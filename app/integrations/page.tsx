@@ -18,7 +18,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
         </p>
         {error && <p className="monarch-alert is-error" role="alert">{error}</p>}
         {notice && <p className="monarch-alert" role="status">{notice}</p>}
-        {config.encryption ? <SetupForms highlevelAvailable={config.highlevel} emailAvailable={config.email} /> : <p className="monarch-notice"><b>NOT AVAILABLE YET</b> Lead destinations are being set up. Please contact info@monarchtaxsuite.com.</p>}
+        {config.encryption ? <SetupForms highlevelAvailable={config.highlevel} /> : <p className="monarch-notice"><b>NOT AVAILABLE YET</b> Lead destinations are being set up. Please contact info@monarchtaxsuite.com.</p>}
       </div>
     </main>
   );

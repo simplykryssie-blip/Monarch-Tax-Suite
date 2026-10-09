@@ -1,13 +1,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
 import { MemoryRepo } from "./memory-repo.ts";
 import { FakeHighLevel, MemoryCrmRepo } from "./crm-memory.ts";
 import { CrmSecrets } from "../lib/crm/crypto.ts";
 import { completeConnection, setWebhook, startConnection, type CrmDeps } from "../lib/crm/connection.ts";
 import { forwardLead, issueEmbedToken, type LeadSubmission } from "../lib/crm/leads.ts";
 import type { WebhookSender } from "../lib/crm/webhook.ts";
-import { mailerFromEnv, type MailMessage, type Mailer } from "../lib/crm/mailer.ts";
 import { ValidationError } from "../lib/commerce/validation.ts";
 import type { License } from "../lib/commerce/types.ts";
 
@@ -41,7 +41,7 @@ function setup() {
 }
 
 const enable = (deps: CrmDeps, licenseId: string, over = {}) =>
-  deps.repo.saveLeadSettings({ license_id: licenseId, enabled: true, business_name: "Buyer A Tax Co", lead_source: "Tax Calculator", tags: ["calc-lead"], update_existing: false, include_summary: true, notification_email: null, ...over });
+  deps.repo.saveLeadSettings({ license_id: licenseId, enabled: true, business_name: "Buyer A Tax Co", lead_source: "Tax Calculator", tags: ["calc-lead"], update_existing: false, include_summary: true, ...over });
 
 const INPUTS = { status: "single", wages: "65000", withholding: "8500", netProfit: "", investment: "", kids: "", tips: "", overtime: "", vehicleInterest: "", otherAdjustments: "", seniorSelf: false, seniorSpouse: false, tipsQualified: true, overtimeQualified: true, vehicleQualified: true, eicAge: "", eicUs: "", eicDependent: false, eicMfsApart: false };
 
@@ -158,79 +158,70 @@ describe("full calculator lead -> buyer's webhook", () => {
   });
 });
 
-describe("notification email (optional copy to the license holder)", () => {
-  function withMailer(result: "ok" | "fail" = "ok") {
-    const ctx = setup();
-    const mails: MailMessage[] = [];
-    const mailer: Mailer = async (m) => { mails.push(m); return result === "ok" ? { ok: true } : { ok: false, reason: "http_422" }; };
-    ctx.deps.mailer = mailer;
-    return { ...ctx, mails };
-  }
+describe("webhook delivery needs no email provider", () => {
+  test("no source file in the app depends on an email provider or its secrets", () => {
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const path = `${dir}/${e.name}`;
+        if (e.isDirectory()) walk(path);
+        else if (/\.(ts|tsx)$/.test(e.name) && !/database\.types\.ts$/.test(e.name) && /RESEND_API_KEY|LEAD_NOTIFY_FROM|api\.resend\.com|notification_email/.test(readFileSync(path, "utf8"))) hits.push(path);
+      }
+    };
+    for (const d of ["app", "lib", "components"]) walk(new URL(`../${d}`, import.meta.url).pathname);
+    assert.deepEqual(hits, []);
+  });
 
-  test("emails the configured address with contact details and results, after the CRM delivery", async () => {
-    const { deps, A, sent, mails } = withMailer();
+  test("a lead is delivered with no email provider, no email settings and no email-related environment", async () => {
+    delete process.env.RESEND_API_KEY;
+    delete process.env.LEAD_NOTIFY_FROM;
+    const { deps, repo, A, sent } = setup();
+    assert.deepEqual(Object.keys(deps).filter((k) => /mail|notif/i.test(k)), [], "no email provider in the delivery dependencies");
     await setWebhook(deps, A.id, "https://hooks.buyer-a.com/in");
-    await enable(deps, A.id, { notification_email: "owner@buyer-a.com" });
-    assert.deepEqual(await forwardLead(deps, full(deps, A.id), { ip: "5.5.5.5" }), { ok: true });
+    await enable(deps, A.id);
+    assert.deepEqual(await forwardLead(deps, full(deps, A.id), { ip: "9.9.9.1" }), { ok: true });
     assert.equal(sent.length, 1);
-    assert.equal(mails.length, 1);
-    const m = mails[0];
-    assert.equal(m.to, "owner@buyer-a.com");
-    assert.equal(m.replyTo, "jamie@example.com");
-    assert.equal(m.subject, "New tax calculator lead: Jamie Rivera");
-    assert.match(m.text, /Name: Jamie Rivera/);
-    assert.match(m.text, /Phone: 5550102030/);
-    assert.match(m.text, /Estimated Refund: \$2,880/);
-    assert.match(m.text, /Taxable income \(estimate\): \$48,900/);
-    assert.ok(!/wages|withheld/i.test(m.text.replace("Withholding + refundable credits", "")), "income entries are not in the email");
+    assert.equal(sent[0].body.contact.email, "jamie@example.com");
+    assert.equal(sent[0].body.estimate.headline, "Estimated Refund: $2,880");
+    assert.ok(!("notification_email" in repo.settings[0]), "no notification email setting exists");
+    assert.equal(repo.connections[0].last_error, null);
   });
 
-  test("no email when no address is set, when the provider is not configured, or when the CRM delivery failed", async () => {
-    const a = withMailer();
-    await setWebhook(a.deps, a.A.id, "https://hooks.buyer-a.com/in");
-    await enable(a.deps, a.A.id);
-    await forwardLead(a.deps, full(a.deps, a.A.id), { ip: "6.6.6.6" });
-    assert.equal(a.mails.length, 0, "no address saved");
-
-    const b = setup();
-    await setWebhook(b.deps, b.A.id, "https://hooks.buyer-a.com/in");
-    await enable(b.deps, b.A.id, { notification_email: "owner@buyer-a.com" });
-    assert.deepEqual(await forwardLead(b.deps, full(b.deps, b.A.id), { ip: "6.6.6.7" }), { ok: true }, "lead still delivered without a mailer");
-
-    const c = withMailer();
-    c.deps.webhook = async () => ({ ok: false, status: 503, reason: "http_error" });
-    await setWebhook(c.deps, c.A.id, "https://hooks.buyer-a.com/in");
-    await enable(c.deps, c.A.id, { notification_email: "owner@buyer-a.com" });
-    const r = await forwardLead(c.deps, full(c.deps, c.A.id), { ip: "6.6.6.8" });
-    assert.equal(r.ok, false);
-    assert.equal(c.mails.length, 0, "no email for an undelivered lead");
-  });
-
-  test("a failing email provider never fails the lead; the problem is recorded without personal data", async () => {
-    const { deps, repo, A, sent, mails } = withMailer("fail");
+  test("a failed CRM destination returns a retryable error, and the retry delivers once with the same idempotency key", async () => {
+    const { deps, repo, A, sent } = setup();
+    let down = true;
+    const attempts: string[] = [];
+    deps.webhook = async (_t, body, key) => {
+      attempts.push(key);
+      if (down) return { ok: false, status: 503, reason: "http_error" };
+      sent.push({ body: body as Record<string, any>, key });
+      return { ok: true, status: 200 };
+    };
     await setWebhook(deps, A.id, "https://hooks.buyer-a.com/in");
-    await enable(deps, A.id, { notification_email: "owner@buyer-a.com" });
-    assert.deepEqual(await forwardLead(deps, full(deps, A.id), { ip: "7.7.7.7" }), { ok: true });
+    await enable(deps, A.id);
+    const sub = full(deps, A.id);
+    const first = await forwardLead(deps, sub, { ip: "9.9.9.2" });
+    assert.deepEqual(first, { ok: false, reason: "destination_failed", retryable: true });
+    assert.equal(sent.length, 0);
+    assert.equal(repo.log.at(-1)?.outcome, "failed");
+    assert.match(repo.connections[0].last_error ?? "", /Delivery failed: http_error \(HTTP 503\)/);
+    down = false;
+    assert.deepEqual(await forwardLead(deps, sub, { ip: "9.9.9.2" }), { ok: true });
     assert.equal(sent.length, 1);
-    assert.equal(mails.length, 1);
-    const err = repo.connections[0].last_error ?? "";
-    assert.match(err, /Notification email failed \(http_422\)/);
-    for (const pii of ["Jamie", "Rivera", "jamie@example.com", "owner@buyer-a.com"]) assert.ok(!err.includes(pii));
+    assert.deepEqual(attempts, [sub.submissionId, sub.submissionId]);
+    assert.equal(repo.connections[0].last_error, null, "error cleared after a successful retry");
+    const persisted = JSON.stringify({ c: repo.connections, s: repo.settings, l: repo.log });
+    for (const pii of ["Jamie", "Rivera", "jamie@example.com", "5550102030", "Estimated"]) assert.ok(!persisted.includes(pii), `${pii} not stored`);
   });
 
-  test("header-injection attempts in the visitor's name cannot reach the subject", async () => {
-    const { deps, A, mails } = withMailer();
+  test("a destination that throws is also reported as retryable and does not leak details", async () => {
+    const { deps, A } = setup();
+    deps.webhook = async () => { throw new Error("boom jamie@example.com"); };
     await setWebhook(deps, A.id, "https://hooks.buyer-a.com/in");
-    await enable(deps, A.id, { notification_email: "owner@buyer-a.com" });
-    await forwardLead(deps, full(deps, A.id, { firstName: "Eve\r\nBcc: attacker@evil.test", lastName: "X\nSubject: spoof" }), { ip: "8.8.8.8" });
-    assert.ok(!/[\r\n]/.test(mails[0].subject));
-    assert.equal(mails[0].to, "owner@buyer-a.com");
-  });
-
-  test("mailerFromEnv: needs both a key and a well-formed sender; secrets are never required in the browser", () => {
-    assert.equal(mailerFromEnv({}), null);
-    assert.equal(mailerFromEnv({ RESEND_API_KEY: "re_x" }), null);
-    assert.equal(mailerFromEnv({ RESEND_API_KEY: "re_x", LEAD_NOTIFY_FROM: "not an address" }), null);
-    assert.equal(typeof mailerFromEnv({ RESEND_API_KEY: "re_x", LEAD_NOTIFY_FROM: "Leads <leads@monarchtaxsuite.com>" }), "function");
+    await enable(deps, A.id);
+    const r = await forwardLead(deps, full(deps, A.id), { ip: "9.9.9.3" }).catch((e: Error) => e);
+    // Either a retryable result or an error that the API route turns into a generic retryable 500; never a success.
+    assert.ok(r instanceof Error || (typeof r === "object" && "ok" in r && r.ok === false));
   });
 });
+
