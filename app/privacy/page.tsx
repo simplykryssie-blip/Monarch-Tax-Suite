@@ -30,7 +30,7 @@ export default function PrivacyPage() {
           If a customer turns on the optional lead form, what a visitor enters (name, email and/or phone, consent, and optionally tax year, filing status and an estimated
           result) is sent during that request to the destination the customer configured, such as their CRM or webhook. Monarch does not store this information and does not write
           it to its logs; it is held in memory only while the request is processed. The customer is responsible for how they use it and for their own privacy notice. If delivery
-          fails the visitor is asked to try again, and nothing is saved by Monarch.
+          fails the visitor is asked to try again, and nothing is saved by Monarch. If the customer also turns on email notifications, the same details are emailed to the customer&apos;s chosen address through our email provider (Resend), which handles them only to deliver that message.
         </p>
       </Section>
       <Section heading="5. Abuse-prevention data">
@@ -45,7 +45,7 @@ export default function PrivacyPage() {
       </Section>
       <Section heading="7. Who we share it with">
         <p>
-          Service providers that help us operate: Stripe (payments), Supabase (database and storage), and Vercel (hosting). We also share information when required by law. We do
+          Service providers that help us operate: Stripe (payments), Supabase (database and storage), Vercel (hosting), and Resend (email delivery, only if a customer turns on lead notifications). We also share information when required by law. We do
           not sell personal information. If you connect a CRM, information you choose to send goes to that CRM under your account and its terms.
         </p>
       </Section>

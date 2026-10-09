@@ -7,6 +7,7 @@ import { CrmSecrets } from "../lib/crm/crypto.ts";
 import { completeConnection, setWebhook, startConnection, type CrmDeps } from "../lib/crm/connection.ts";
 import { forwardLead, issueEmbedToken, type LeadSubmission } from "../lib/crm/leads.ts";
 import type { WebhookSender } from "../lib/crm/webhook.ts";
+import { mailerFromEnv, type MailMessage, type Mailer } from "../lib/crm/mailer.ts";
 import { ValidationError } from "../lib/commerce/validation.ts";
 import type { License } from "../lib/commerce/types.ts";
 
@@ -40,7 +41,7 @@ function setup() {
 }
 
 const enable = (deps: CrmDeps, licenseId: string, over = {}) =>
-  deps.repo.saveLeadSettings({ license_id: licenseId, enabled: true, business_name: "Buyer A Tax Co", lead_source: "Tax Calculator", tags: ["calc-lead"], update_existing: false, include_summary: true, ...over });
+  deps.repo.saveLeadSettings({ license_id: licenseId, enabled: true, business_name: "Buyer A Tax Co", lead_source: "Tax Calculator", tags: ["calc-lead"], update_existing: false, include_summary: true, notification_email: null, ...over });
 
 const INPUTS = { status: "single", wages: "65000", withholding: "8500", netProfit: "", investment: "", kids: "", tips: "", overtime: "", vehicleInterest: "", otherAdjustments: "", seniorSelf: false, seniorSpouse: false, tipsQualified: true, overtimeQualified: true, vehicleQualified: true, eicAge: "", eicUs: "", eicDependent: false, eicMfsApart: false };
 
@@ -154,5 +155,82 @@ describe("full calculator lead -> buyer's webhook", () => {
     assert.equal(api.contacts.length, 1);
     assert.match(api.contacts[0].notes[0], /Estimated Refund: \$2,880/);
     assert.match(api.contacts[0].notes[0], /Taxable income \(estimate\): \$48,900/);
+  });
+});
+
+describe("notification email (optional copy to the license holder)", () => {
+  function withMailer(result: "ok" | "fail" = "ok") {
+    const ctx = setup();
+    const mails: MailMessage[] = [];
+    const mailer: Mailer = async (m) => { mails.push(m); return result === "ok" ? { ok: true } : { ok: false, reason: "http_422" }; };
+    ctx.deps.mailer = mailer;
+    return { ...ctx, mails };
+  }
+
+  test("emails the configured address with contact details and results, after the CRM delivery", async () => {
+    const { deps, A, sent, mails } = withMailer();
+    await setWebhook(deps, A.id, "https://hooks.buyer-a.com/in");
+    await enable(deps, A.id, { notification_email: "owner@buyer-a.com" });
+    assert.deepEqual(await forwardLead(deps, full(deps, A.id), { ip: "5.5.5.5" }), { ok: true });
+    assert.equal(sent.length, 1);
+    assert.equal(mails.length, 1);
+    const m = mails[0];
+    assert.equal(m.to, "owner@buyer-a.com");
+    assert.equal(m.replyTo, "jamie@example.com");
+    assert.equal(m.subject, "New tax calculator lead: Jamie Rivera");
+    assert.match(m.text, /Name: Jamie Rivera/);
+    assert.match(m.text, /Phone: 5550102030/);
+    assert.match(m.text, /Estimated Refund: \$2,880/);
+    assert.match(m.text, /Taxable income \(estimate\): \$48,900/);
+    assert.ok(!/wages|withheld/i.test(m.text.replace("Withholding + refundable credits", "")), "income entries are not in the email");
+  });
+
+  test("no email when no address is set, when the provider is not configured, or when the CRM delivery failed", async () => {
+    const a = withMailer();
+    await setWebhook(a.deps, a.A.id, "https://hooks.buyer-a.com/in");
+    await enable(a.deps, a.A.id);
+    await forwardLead(a.deps, full(a.deps, a.A.id), { ip: "6.6.6.6" });
+    assert.equal(a.mails.length, 0, "no address saved");
+
+    const b = setup();
+    await setWebhook(b.deps, b.A.id, "https://hooks.buyer-a.com/in");
+    await enable(b.deps, b.A.id, { notification_email: "owner@buyer-a.com" });
+    assert.deepEqual(await forwardLead(b.deps, full(b.deps, b.A.id), { ip: "6.6.6.7" }), { ok: true }, "lead still delivered without a mailer");
+
+    const c = withMailer();
+    c.deps.webhook = async () => ({ ok: false, status: 503, reason: "http_error" });
+    await setWebhook(c.deps, c.A.id, "https://hooks.buyer-a.com/in");
+    await enable(c.deps, c.A.id, { notification_email: "owner@buyer-a.com" });
+    const r = await forwardLead(c.deps, full(c.deps, c.A.id), { ip: "6.6.6.8" });
+    assert.equal(r.ok, false);
+    assert.equal(c.mails.length, 0, "no email for an undelivered lead");
+  });
+
+  test("a failing email provider never fails the lead; the problem is recorded without personal data", async () => {
+    const { deps, repo, A, sent, mails } = withMailer("fail");
+    await setWebhook(deps, A.id, "https://hooks.buyer-a.com/in");
+    await enable(deps, A.id, { notification_email: "owner@buyer-a.com" });
+    assert.deepEqual(await forwardLead(deps, full(deps, A.id), { ip: "7.7.7.7" }), { ok: true });
+    assert.equal(sent.length, 1);
+    assert.equal(mails.length, 1);
+    const err = repo.connections[0].last_error ?? "";
+    assert.match(err, /Notification email failed \(http_422\)/);
+    for (const pii of ["Jamie", "Rivera", "jamie@example.com", "owner@buyer-a.com"]) assert.ok(!err.includes(pii));
+  });
+
+  test("header-injection attempts in the visitor's name cannot reach the subject", async () => {
+    const { deps, A, mails } = withMailer();
+    await setWebhook(deps, A.id, "https://hooks.buyer-a.com/in");
+    await enable(deps, A.id, { notification_email: "owner@buyer-a.com" });
+    await forwardLead(deps, full(deps, A.id, { firstName: "Eve\r\nBcc: attacker@evil.test", lastName: "X\nSubject: spoof" }), { ip: "8.8.8.8" });
+    assert.ok(!/[\r\n]/.test(mails[0].subject));
+    assert.equal(mails[0].to, "owner@buyer-a.com");
+  });
+
+  test("mailerFromEnv: needs both a key and a well-formed sender; secrets are never required in the browser", () => {
+    assert.equal(mailerFromEnv({}), null);
+    assert.equal(mailerFromEnv({ RESEND_API_KEY: "re_x" }), null);
+    assert.equal(mailerFromEnv({ RESEND_API_KEY: "re_x", LEAD_NOTIFY_FROM: "not an address" }), null);
+    assert.equal(typeof mailerFromEnv({ RESEND_API_KEY: "re_x", LEAD_NOTIFY_FROM: "Leads <leads@monarchtaxsuite.com>" }), "function");
   });
 });

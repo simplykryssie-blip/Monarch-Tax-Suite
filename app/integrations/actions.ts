@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { disconnect, setWebhook, startConnection, testDestination } from "@/lib/crm/connection.ts";
 import { authorizeUrl } from "@/lib/crm/highlevel.ts";
-import { crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri } from "@/lib/crm/server";
+import { crmConfigStatus, crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri } from "@/lib/crm/server";
+import { EMAIL_PATTERN } from "@/lib/crm/mailer.ts";
 import { DEFAULT_LEAD_SETTINGS } from "@/lib/crm/types.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 
@@ -18,7 +19,7 @@ export type DestinationView = {
   label: string | null;
   lastSuccess: string | null;
   lastError: string | null;
-  settings: { enabled: boolean; business_name: string; lead_source: string; tags: string; update_existing: boolean; include_summary: boolean };
+  settings: { enabled: boolean; business_name: string; lead_source: string; tags: string; update_existing: boolean; include_summary: boolean; notification_email: string };
 };
 export type SetupState = { ok?: boolean; message?: string; signingSecret?: string; view?: DestinationView };
 
@@ -34,7 +35,7 @@ async function view(licenseId: string): Promise<DestinationView> {
     label: !c ? null : c.provider === "webhook" ? `Webhook to ${c.webhook_host}` : `GoHighLevel: ${c.location_name ?? c.location_id}`,
     lastSuccess: c?.last_success_at ?? null,
     lastError: c?.last_error ?? null,
-    settings: { enabled: settings.enabled, business_name: settings.business_name ?? "", lead_source: settings.lead_source, tags: settings.tags.join(", "), update_existing: settings.update_existing, include_summary: settings.include_summary },
+    settings: { enabled: settings.enabled, business_name: settings.business_name ?? "", lead_source: settings.lead_source, tags: settings.tags.join(", "), update_existing: settings.update_existing, include_summary: settings.include_summary, notification_email: settings.notification_email ?? "" },
   };
 }
 
@@ -82,12 +83,17 @@ export async function saveSettingsAction(_prev: SetupState, form: FormData): Pro
     const business = text(form, "business_name", 120);
     const tags = [...new Set(text(form, "tags", 500).split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))];
     if (tags.length > 10 || tags.some((t) => t.length > 40)) throw new ValidationError("Use at most 10 tags, each 40 characters or fewer.");
+    const notify = text(form, "notification_email", 254).toLowerCase();
+    if (notify) {
+      if (!EMAIL_PATTERN.test(notify)) throw new ValidationError("Enter a valid notification email address.");
+      if (!crmConfigStatus().email) throw new ValidationError("Email notifications are not available yet. Leave the notification email blank, or use an email step in your CRM workflow.");
+    }
     if (enabled) {
       const c = await deps.repo.getLiveConnection(licenseId);
       if (!c || c.status !== "connected") throw new ValidationError("Connect GoHighLevel or a webhook before turning on the lead form.");
       if (!business) throw new ValidationError("Enter your business name; visitors see it in the consent statement.");
     }
-    await deps.repo.saveLeadSettings({ license_id: licenseId, enabled, business_name: business || null, lead_source: text(form, "lead_source", 80) || "Monarch Tax Calculator", tags, update_existing: form.get("update_existing") === "on", include_summary: form.get("include_summary") === "on" });
+    await deps.repo.saveLeadSettings({ license_id: licenseId, enabled, business_name: business || null, lead_source: text(form, "lead_source", 80) || "Monarch Tax Calculator", tags, update_existing: form.get("update_existing") === "on", include_summary: form.get("include_summary") === "on", notification_email: notify || null });
     return { message: enabled ? "Saved. The lead form now appears on your calculator." : "Saved. The lead form is off." };
   });
 }

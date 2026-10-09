@@ -47,10 +47,12 @@ export class SupabaseCrmRepo implements CrmRepo {
     return unwrap(await this.db.from("crm_lead_settings").select("*").eq("license_id", licenseId).maybeSingle()) as LeadSettings | null;
   }
   async saveLeadSettings(settings: Omit<LeadSettings, "updated_at">) {
-    const { license_id, enabled, business_name, lead_source, tags, update_existing, include_summary } = settings;
-    return unwrap(
-      await this.db.from("crm_lead_settings").upsert({ license_id, enabled, business_name, lead_source, tags, update_existing, include_summary }, { onConflict: "license_id" }).select("*").single(),
-    ) as LeadSettings;
+    const { license_id, enabled, business_name, lead_source, tags, update_existing, include_summary, notification_email } = settings;
+    const row: Record<string, unknown> = { license_id, enabled, business_name, lead_source, tags, update_existing, include_summary };
+    // The notification_email column arrives with its own migration: write it only when it is set, or when the row already has it (so it can be cleared).
+    const existing = (await this.getLeadSettings(license_id)) as (LeadSettings & Record<string, unknown>) | null;
+    if (notification_email || (existing && "notification_email" in existing)) row.notification_email = notification_email ?? null;
+    return unwrap(await this.db.from("crm_lead_settings").upsert(row, { onConflict: "license_id" }).select("*").single()) as LeadSettings;
   }
 
   async logDelivery(entry: Omit<DeliveryLogEntry, "id" | "created_at">) {
