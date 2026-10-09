@@ -5,7 +5,6 @@ import { ValidationError } from "../commerce/validation.ts";
 import { HighLevelError } from "./highlevel.ts";
 import { nowOf, requireSecrets, webhookTarget, withAccessToken, type CrmDeps } from "./connection.ts";
 import { sendWebhook } from "./webhook.ts";
-import { EMAIL_PATTERN } from "./mailer.ts";
 import type { CrmConnection, LeadPayload, LeadSettings } from "./types.ts";
 
 // Direct lead forwarding. A submission is validated and forwarded to the
@@ -136,28 +135,6 @@ async function toHighLevel(deps: CrmDeps, connection: CrmConnection, settings: L
   });
 }
 
-
-/** Optional copy of a delivered lead to the license holder's own inbox. Never affects the visitor's result. */
-async function notifyByEmail(deps: CrmDeps, connection: CrmConnection, settings: LeadSettings, p: LeadPayload, host: string | null) {
-  const to = settings.notification_email;
-  if (!to || !deps.mailer || !EMAIL_PATTERN.test(to)) return;
-  const who = [p.firstName, p.lastName].filter(Boolean).join(" ");
-  const lines = [
-    `New calculator lead for ${settings.business_name}`,
-    "",
-    `Name: ${who}`,
-    `Email: ${p.email ?? "(not given)"}`,
-    `Phone: ${p.phone ?? "(not given)"}`,
-    `Submitted: ${p.submittedAt}${host ? ` on ${host}` : ""}`,
-    "",
-    p.estimate ? fullEstimateText(p.estimate) : p.summary ? noteText(p, host) : "No estimate was included (the lead form is set to send contact details only).",
-    "",
-    "The visitor agreed to be contacted by your business. This lead was also sent to your CRM destination.",
-  ];
-  const result = await deps.mailer({ to, replyTo: p.email, subject: `New tax calculator lead: ${who}`.slice(0, 120), text: lines.join("\n") }).catch(() => ({ ok: false as const, reason: "error" }));
-  if (!result.ok) await deps.repo.updateConnection(connection.id, { last_error: `Notification email failed (${result.reason}); the lead itself was delivered.`, last_error_at: nowOf(deps).toISOString() }).catch(() => undefined);
-}
-
 export type ForwardResult =
   | { ok: true }
   | { ok: false; reason: "unavailable" | "rate_limited" | "destination_failed"; retryable: boolean };
@@ -220,6 +197,5 @@ export async function forwardLead(deps: CrmDeps, input: LeadSubmission, ctx: { i
     await deps.repo.pruneDeliveryLog(new Date(now.getTime() - 86_400_000).toISOString(), new Date(now.getTime() - 30 * 86_400_000).toISOString()).catch(() => undefined);
   }
   await deps.repo.updateConnection(connection.id, { last_success_at: nowOf(deps).toISOString(), last_error: null }).catch(() => undefined);
-  await notifyByEmail(deps, connection, settings, payload, token.h);
   return { ok: true };
 }

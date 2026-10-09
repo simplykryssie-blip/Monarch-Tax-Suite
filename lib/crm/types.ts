@@ -49,8 +49,6 @@ export type LeadSettings = {
   update_existing: boolean;
   /** Include the estimate summary (tax year, filing status, estimated refund/amount owed). Disclosed on the form. */
   include_summary: boolean;
-  /** Optional address that gets a plain-text email for each delivered lead (needs the server email provider). */
-  notification_email: string | null;
   updated_at: string;
 };
 
@@ -62,7 +60,6 @@ export const DEFAULT_LEAD_SETTINGS = (licenseId: string): LeadSettings => ({
   tags: [],
   update_existing: false,
   include_summary: true,
-  notification_email: null,
   updated_at: new Date(0).toISOString(),
 });
 
