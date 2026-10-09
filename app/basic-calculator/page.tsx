@@ -1,0 +1,71 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
+type Filing = "single" | "married" | "head" | "separate";
+type FieldProps = { label: string; value: string; onChange: (value: string) => void; hint?: string };
+const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number.isFinite(value) ? value : 0);
+const filingLabels: Record<Filing, string> = { single: "Single", married: "Married filing jointly", head: "Head of household", separate: "Married filing separately" };
+const standard2025: Record<Filing, number> = { single: 15750, married: 31500, head: 23625, separate: 15750 };
+const brackets2025: Record<Filing, [number, number, number][]> = {
+  single: [[12400,.10,0],[50400,.12,1240],[105700,.22,5800],[201775,.24,17966],[256225,.32,41024],[640600,.35,58448],[Infinity,.37,192979.25]],
+  married: [[24800,.10,0],[100800,.12,2480],[211400,.22,8816],[403550,.24,33148],[512450,.32,79264],[768700,.35,114512],[Infinity,.37,204199.5]],
+  head: [[17700,.10,0],[67450,.12,1770],[105700,.22,7740],[201750,.24,16155],[256200,.32,39207],[640600,.35,56631],[Infinity,.37,191171]],
+  separate: [[12400,.10,0],[50400,.12,1240],[105700,.22,5800],[201775,.24,17966],[256225,.32,41024],[384350,.35,61520],[Infinity,.37,192979.25]],
+};
+function Field({label,value,onChange,hint}:FieldProps){return <label className="mt-field"><span>{label}</span><div className="mt-input-wrap"><span>$</span><input inputMode="decimal" value={value} onChange={e=>onChange(e.target.value.replace(/[^0-9.]/g,""))} placeholder="0" /></div>{hint&&<small>{hint}</small>}</label>}
+function taxFromBrackets(taxable:number, filing:Filing){const rows=brackets2025[filing];let prior=0;for(const [limit,rate,base] of rows){if(taxable<=limit)return Math.max(0,base+(taxable-prior)*rate);prior=limit;}return 0;}
+export default function BasicCalculatorPage(){
+ const [filing,setFiling]=useState<Filing>("single");
+ const [income,setIncome]=useState("65000");
+ const [otherIncome,setOtherIncome]=useState("0");
+ const [deductions,setDeductions]=useState("0");
+ const [withholding,setWithholding]=useState("8500");
+ const [credits,setCredits]=useState("0");
+ const [useStandard,setUseStandard]=useState(true);
+ const [children,setChildren]=useState("0");
+ const result=useMemo(()=>{
+  const n=(s:string)=>Math.max(0,Number(s)||0);
+  const gross=n(income)+n(otherIncome);
+  const deduction=useStandard?standard2025[filing]:n(deductions);
+  const taxable=Math.max(0,gross-deduction);
+  const estimatedTax=taxFromBrackets(taxable,filing);
+  const childCount=Math.min(20,Math.floor(n(children)));
+  const estimatedCredits=n(credits);
+  const taxAfterCredits=Math.max(0,estimatedTax-estimatedCredits);
+  const balance=n(withholding)-taxAfterCredits;
+  return {gross,deduction,taxable,estimatedTax,taxAfterCredits,balance,childCount};
+ },[income,otherIncome,deductions,withholding,credits,filing,useStandard,children]);
+ const reset=()=>{setFiling("single");setIncome("65000");setOtherIncome("0");setDeductions("0");setWithholding("8500");setCredits("0");setUseStandard(true);setChildren("0");};
+ return <main className="mt-shell">
+  <header className="mt-header"><a className="mt-brand" href="/" aria-label="Monarch Tax Suite"><span className="mt-crown">♛</span><span><b>MONARCH</b><small>TAX SUITE</small></span></a><span className="mt-product-tag">BASIC TAX CALCULATOR</span></header>
+  <section className="mt-hero"><div className="mt-eyebrow">A CLEARER STARTING POINT</div><h1>Estimate your federal<br/><em>tax picture.</em></h1><p>Explore an approximate federal income tax outcome using your income, deduction, credits, and withholding.</p><div className="mt-year">TAX YEAR 2025 <span>·</span> FEDERAL ESTIMATE</div></section>
+  <div className="mt-layout">
+   <section className="mt-form-card"><div className="mt-card-head"><div><span className="mt-step">YOUR DETAILS</span><h2>Build your estimate</h2></div><button className="mt-reset" onClick={reset}>Reset ↺</button></div>
+    <label className="mt-field"><span>Filing status</span><select value={filing} onChange={e=>setFiling(e.target.value as Filing)}>{Object.entries(filingLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
+    <div className="mt-two"><Field label="Wages and earned income" value={income} onChange={setIncome} hint="Total taxable wages / earned income"/><Field label="Other taxable income" value={otherIncome} onChange={setOtherIncome} hint="Interest or other taxable income"/></div>
+    <div className="mt-deduction-head"><span className="mt-section-label">DEDUCTION</span><div className="mt-toggle"><button className={useStandard?"selected":""} onClick={()=>setUseStandard(true)}>Standard</button><button className={!useStandard?"selected":""} onClick={()=>setUseStandard(false)}>Other amount</button></div></div>
+    {useStandard?<div className="mt-standard"><span>2025 standard deduction</span><b>{money(standard2025[filing])}</b></div>:<Field label="Deduction amount" value={deductions} onChange={setDeductions} hint="Enter the deduction amount you expect to claim"/>}
+    <div className="mt-two"><Field label="Federal income tax withheld" value={withholding} onChange={setWithholding} hint="Year-to-date / expected total"/><Field label="Estimated tax credits" value={credits} onChange={setCredits} hint="Enter credits you reasonably expect to qualify for"/></div>
+    <div className="mt-info"><span>ⓘ</span><p>This basic estimator uses federal ordinary-income brackets and a deduction amount. Credits are entered manually; eligibility and phaseouts are not verified.</p></div>
+   </section>
+   <aside className="mt-results"><div className="mt-result-top"><span className="mt-step">YOUR ESTIMATE</span><span className="mt-live"><i/> UPDATING LIVE</span></div><div className="mt-result-label">{result.balance>=0?"Potential refund":"Potential amount owed"}</div><div className={"mt-result-amount "+(result.balance<0?"owed":"")}>{money(Math.abs(result.balance))}</div><p className="mt-result-caption">Estimated withholding compared with estimated federal income tax.</p><div className="mt-rule"/>
+    <div className="mt-breakdown"><div><span>Total income entered</span><b>{money(result.gross)}</b></div><div><span>Deduction used</span><b>− {money(result.deduction)}</b></div><div><span>Estimated taxable income</span><b>{money(result.taxable)}</b></div><div><span>Estimated tax before credits</span><b>{money(result.estimatedTax)}</b></div><div><span>Credits entered</span><b>− {money(Math.min(Number(credits)||0,result.estimatedTax))}</b></div><div><span>Estimated federal tax</span><b>{money(result.taxAfterCredits)}</b></div><div><span>Federal withholding</span><b>{money(Number(withholding)||0)}</b></div></div>
+    <div className="mt-result-foot"><span>Estimated effective tax rate</span><b>{result.gross>0?((result.taxAfterCredits/result.gross)*100).toFixed(1):"0.0"}%</b></div>
+   </aside>
+  </div>
+  <section className="mt-disclaimer"><b>IMPORTANT — ESTIMATE ONLY</b><p>This is an educational estimate, not tax advice, tax preparation, or a guarantee of a refund. It uses 2025 federal ordinary-income tax brackets and standard deduction amounts and does not fully calculate filing eligibility, refundable credits, dependents, earned income credit, self-employment tax, Social Security/Medicare taxes, capital gains, AMT, itemized deduction limits, additional deductions, state/local taxes, penalties, or other special rules. Actual results can differ materially. Verify against current IRS instructions or consult a qualified tax professional before making decisions. Do not enter Social Security numbers or other sensitive personal information.</p><a href="https://www.irs.gov/filing/federal-income-tax-rates-and-brackets" target="_blank" rel="noreferrer">Review IRS tax-rate guidance ↗</a></section>
+  <footer className="mt-footer"><span>MONARCH TAX SUITE</span><span>STRATEGY · GROWTH · LEGACY</span><span>Basic Calculator · v1</span></footer>
+  <style jsx global>{`
+  .mt-shell{min-height:100vh;background:#f6f4ee;color:#211f19;font-family:Arial,Helvetica,sans-serif}
+  .mt-header{height:78px;padding:0 clamp(20px,6vw,88px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e3dfd4;background:#11110f;color:#f5f0e3}
+  .mt-brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit}.mt-crown{font-size:33px;color:#d9b96c}.mt-brand>span:last-child{display:flex;flex-direction:column;gap:4px}.mt-brand b{font-family:Georgia,serif;font-size:21px;letter-spacing:2px;color:#e0c780}.mt-brand small{font-size:9px;letter-spacing:4px}.mt-product-tag{font-size:10px;letter-spacing:2px;color:#d5bd81}
+  .mt-hero{padding:55px 22px 44px;text-align:center;background:radial-gradient(ellipse at 50% 0%,#2a261b 0,#151410 58%,#11110f 100%);color:#f5f1e8}.mt-eyebrow,.mt-step,.mt-section-label{font-size:10px;font-weight:700;letter-spacing:2px;color:#a57d2c}.mt-hero .mt-eyebrow{color:#d8b96b}.mt-hero h1{font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:clamp(42px,6vw,66px);letter-spacing:-1.8px;line-height:1.02;margin:18px 0 14px}.mt-hero h1 em{font-style:normal;color:#d5b568}.mt-hero p{max-width:590px;margin:0 auto;color:#c7c2b5;font-size:15px;line-height:1.7}.mt-year{margin-top:22px;color:#e0c982;font-size:10px;letter-spacing:2px}.mt-year span{padding:0 9px;color:#8d7b51}
+  .mt-layout{width:min(1140px,calc(100% - 36px));margin:30px auto;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(330px,.8fr);gap:22px;align-items:start}.mt-form-card,.mt-results{border:1px solid #e4dfd3;border-radius:7px;background:#fff;box-shadow:0 8px 30px #30271808}.mt-form-card{padding:26px}.mt-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:23px}.mt-card-head h2{font-family:Georgia,serif;font-weight:400;font-size:29px;margin:8px 0 0}.mt-reset{background:transparent;border:0;color:#806124;font-size:12px}.mt-field{display:flex;flex-direction:column;gap:8px;min-width:0;margin-bottom:18px}.mt-field>span{font-size:12px;font-weight:700;color:#343128}.mt-field small{font-size:10px;line-height:1.4;color:#898477}.mt-field input,.mt-field select{width:100%;height:46px;border:1px solid #ded9ce;border-radius:4px;background:#fff;padding:0 12px;color:#25231d;font-size:14px;min-width:0}.mt-field select{appearance:auto}.mt-input-wrap{height:46px;display:flex;align-items:center;border:1px solid #ded9ce;border-radius:4px;padding-left:12px;color:#8a7b5c}.mt-input-wrap input{border:0;height:43px;padding-left:8px;outline:none}.mt-input-wrap:focus-within{outline:2px solid #c5a455;outline-offset:1px}.mt-two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.mt-deduction-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:3px 0 14px}.mt-section-label{color:#8c7b57;font-size:9px}.mt-toggle{display:flex;background:#f2f0e9;padding:3px;border-radius:4px}.mt-toggle button{border:0;border-radius:3px;padding:8px 10px;background:transparent;color:#777164;font-size:11px}.mt-toggle button.selected{background:#211f19;color:#e3c77b}.mt-standard{display:flex;justify-content:space-between;align-items:center;padding:15px;background:#faf7ef;border:1px solid #ece4d2;border-radius:4px;margin-bottom:18px;font-size:12px}.mt-standard b{font-family:Georgia,serif;font-size:19px;color:#6d511d}.mt-info{display:flex;gap:10px;background:#f8f6f0;border:1px solid #ebe6d9;border-radius:4px;padding:12px;color:#8a6b2f}.mt-info>span{font-size:17px}.mt-info p{font-size:11px;line-height:1.6;margin:0;color:#6f6a5d}
+  .mt-results{padding:26px;background:#171714;color:#f4f0e5;border-color:#333026;position:sticky;top:20px}.mt-result-top{display:flex;justify-content:space-between;align-items:center;gap:12px}.mt-result-top .mt-step{color:#d6b769}.mt-live{display:flex;align-items:center;gap:6px;color:#b8b3a5;font-size:8px;letter-spacing:1px}.mt-live i{width:6px;height:6px;border-radius:50%;background:#a8bc7a}.mt-result-label{margin-top:30px;font-size:13px;color:#d0c9b8}.mt-result-amount{font-family:Georgia,serif;font-size:clamp(42px,4.5vw,57px);letter-spacing:-1.5px;color:#e0c478;margin-top:7px;overflow-wrap:anywhere}.mt-result-amount.owed{color:#e4b1a7}.mt-result-caption{font-size:11px;color:#a7a193;line-height:1.6;margin:7px 0 22px}.mt-rule{height:1px;background:#3b382e}.mt-breakdown{padding:13px 0}.mt-breakdown>div{display:flex;justify-content:space-between;gap:15px;padding:9px 0;font-size:11px;color:#c4beb0}.mt-breakdown>div b{color:#f1ecdf;font-size:12px;white-space:nowrap}.mt-breakdown>div:nth-child(3),.mt-breakdown>div:nth-child(6){border-top:1px solid #3b382e;padding-top:13px;margin-top:3px;color:#e5d4a2}.mt-result-foot{border-top:1px solid #3b382e;padding-top:17px;display:flex;justify-content:space-between;align-items:center;color:#c4beb0;font-size:11px}.mt-result-foot b{font-size:15px;color:#e0c478}
+  .mt-disclaimer{width:min(1096px,calc(100% - 36px));margin:0 auto 25px;border:1px solid #e5dcc6;background:#fdfaf2;padding:20px 22px;border-radius:5px}.mt-disclaimer>b{font-size:10px;letter-spacing:1.5px;color:#76561d}.mt-disclaimer p{font-size:11px;line-height:1.8;color:#696457;margin:9px 0}.mt-disclaimer a{color:#795a21;font-size:11px;font-weight:700}.mt-footer{border-top:1px solid #e3dfd4;padding:20px clamp(20px,6vw,88px);display:flex;justify-content:space-between;gap:12px;color:#817a6b;font-size:9px;letter-spacing:1.2px}.mt-footer span:first-child{color:#4e432a;font-weight:700}
+  @media(max-width:800px){.mt-layout{grid-template-columns:1fr;width:min(620px,calc(100% - 28px));margin:18px auto}.mt-results{position:static;grid-row:1}.mt-form-card{padding:21px}.mt-hero{padding:42px 18px 35px}.mt-hero p{font-size:13px}.mt-disclaimer{width:calc(100% - 28px)}.mt-footer{flex-wrap:wrap}.mt-result-amount{font-size:49px}}
+  @media(max-width:480px){.mt-header{height:66px;padding:0 16px}.mt-brand b{font-size:17px}.mt-brand small{font-size:8px;letter-spacing:3px}.mt-crown{font-size:28px}.mt-product-tag{font-size:8px;letter-spacing:1px}.mt-hero h1{font-size:43px}.mt-two{grid-template-columns:1fr;gap:0}.mt-results{padding:21px}.mt-form-card{padding:18px}.mt-deduction-head{align-items:flex-start;flex-direction:column}.mt-footer{font-size:8px}}
+  `}</style>
+ </main>;
+}
