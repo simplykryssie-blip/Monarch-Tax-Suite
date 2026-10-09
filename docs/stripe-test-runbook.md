@@ -41,7 +41,7 @@ Never done by this runbook: live Stripe keys or objects, production database cha
 
 | Item | Risk | Status |
 |---|---|---|
-| `lib/supabase/config.ts`: if `NEXT_PUBLIC_SUPABASE_URL` is unset, the app uses the **production** URL. | Test app writing to production. | Code left unchanged (changing it could break the live site if its variable is unset). Guarded by `check-env.sh` (FAIL unless the URL is exactly the test project) and the rules in section 7. |
+| `lib/supabase/config.ts`: if `NEXT_PUBLIC_SUPABASE_URL` is unset, the app used to fall back to the **production** URL. | Test app writing to production. | Fixed: the fallback now applies only when `VERCEL_ENV=production`. Previews and local runs without the variable show a 503 "not configured" page, and a Preview pointing at the production project is refused. Still checked by `check-env.sh`. |
 | Environment variables already set in your terminal override `.env.local`. | Production values leaking in. | `check-env.sh` fails if any Supabase/Stripe/Monarch/Vercel variable is set. |
 | Other `.env*` files are also loaded by Next.js. | Surprise overrides. | `check-env.sh` fails on any file except `.env.local`. |
 | `.env.local.example` pointed at the Verexa project. | Copying it connected you to Verexa. | Fixed (placeholders only). |

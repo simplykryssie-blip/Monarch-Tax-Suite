@@ -39,7 +39,7 @@ grep -qE "$PROD_REF|$VEREXA_REF" .env.local && bad ".env.local mentions the prod
 
 url="${V[NEXT_PUBLIC_SUPABASE_URL]:-}"
 [[ "$url" == "https://${REF}.supabase.co" ]] && ok "NEXT_PUBLIC_SUPABASE_URL is the test project" \
-  || bad "NEXT_PUBLIC_SUPABASE_URL must be exactly https://<test ref>.supabase.co (if unset the app falls back to PRODUCTION)"
+  || bad "NEXT_PUBLIC_SUPABASE_URL must be exactly https://<test ref>.supabase.co (if unset the app now refuses to start outside production)"
 
 [[ -n "${V[NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY]:-}" ]] && ok "publishable key present" || bad "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is empty"
 svc="${V[SUPABASE_SERVICE_ROLE_KEY]:-${V[SUPABASE_SECRET_KEY]:-}}"
