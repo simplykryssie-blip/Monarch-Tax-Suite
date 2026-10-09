@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { LEGAL_PAGES_APPROVED } from "@/lib/legal";
 import { LegalPage, Section, SUPPORT_EMAIL } from "@/components/legal/legal-page";
 
 export const metadata: Metadata = { title: "Terms of Service and Software License | Monarch Tax Suite", description: "Draft terms and software license for Monarch Tax Suite products." };
 
 export default function TermsPage() {
+  // Unapproved draft: not available to visitors until the owner and counsel approve it (see lib/legal.ts).
+  if (!LEGAL_PAGES_APPROVED) notFound();
   return (
     <LegalPage title="Terms of Service and Software License Agreement">
       <Section heading="1. Agreement">

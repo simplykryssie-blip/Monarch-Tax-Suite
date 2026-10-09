@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { LEGAL_PAGES_APPROVED } from "@/lib/legal";
 import { LegalPage, Section, SUPPORT_EMAIL } from "@/components/legal/legal-page";
 
 export const metadata: Metadata = { title: "Privacy Policy | Monarch Tax Suite", description: "Draft privacy policy for Monarch Tax Suite." };
 
 export default function PrivacyPage() {
+  // Unapproved draft: not available to visitors until the owner and counsel approve it (see lib/legal.ts).
+  if (!LEGAL_PAGES_APPROVED) notFound();
   return (
     <LegalPage title="Privacy Policy">
       <Section heading="1. Who we are">

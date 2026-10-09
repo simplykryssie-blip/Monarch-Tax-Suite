@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { categoryLabel, formatPrice } from "@/components/storefront/product-view";
+import { LEGAL_PAGES_APPROVED } from "@/lib/legal";
 import { imagesByProduct, publishedProducts, toStorefrontImages } from "@/lib/storefront";
 
 export const metadata: Metadata = { title: "Shop | Monarch Tax Suite", description: "Monarch Tax Suite software, packages, guides and courses." };
@@ -36,11 +37,13 @@ export default async function ShopPage() {
           })}
         </ul>
       )}
-      <footer style={{ marginTop: 40, fontSize: 14, display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <Link href="/terms">Terms of Service</Link>
-        <Link href="/privacy">Privacy Policy</Link>
-        <Link href="/refunds">Refund Policy</Link>
-      </footer>
+      {LEGAL_PAGES_APPROVED && (
+        <footer style={{ marginTop: 40, fontSize: 14, display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <Link href="/terms">Terms of Service</Link>
+          <Link href="/privacy">Privacy Policy</Link>
+          <Link href="/refunds">Refund Policy</Link>
+        </footer>
+      )}
     </main>
   );
 }

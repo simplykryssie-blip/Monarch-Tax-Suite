@@ -1,12 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./database.types";
+import { LEGAL_PAGES_APPROVED, LEGAL_PATHS } from "../legal.ts";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabaseConfigProblems } from "./config";
 
 // The Stripe webhook authenticates by signature, not session. /shop lists
 // published products only. /integrations authorizes each action with the buyer's license key; the
 // lead endpoint authorizes with a signed embed token.
-const PUBLIC_PATHS = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads", "/terms", "/privacy", "/refunds"];
+const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
+  // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).
+  ...(LEGAL_PAGES_APPROVED ? LEGAL_PATHS : []),
+];
 
 /**
  * A deployment without its database settings cannot authenticate anyone, so
