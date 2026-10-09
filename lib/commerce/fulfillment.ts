@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { generateEmbedId } from "./embed.ts";
 import { generateLicenseKey, hashLicenseKey, licenseKeyPrefix } from "./license-keys.ts";
 import { PLATFORM_GUIDES } from "./platforms.ts";
+import { applyPaidUpdate, latestAvailable, reverseUpdate } from "./versions.ts";
 import { normalizeDomain, normalizeEmail, normalizeWebsiteUrl, ValidationError } from "./validation.ts";
 import {
   INSTALLATION_TYPES,
@@ -99,8 +100,11 @@ export type InstallationDetails = { platform?: Platform | null; platform_other?:
 
 export async function ensureFulfillment(repo: CommerceRepo, order: Order, product: Product, actorId: string | null, details?: InstallationDetails) {
   if (order.payment_status !== "paid") throw new ValidationError("Only paid orders can be fulfilled.");
+  if (order.order_type !== "purchase") throw new ValidationError("Annual updates upgrade an existing license; they are not fulfilled as new purchases.");
   let license: License | null = null;
   if (product.access_type === "license") {
+    // The license covers the tax-year version on sale when the purchase was made.
+    const currentYear = latestAvailable(await repo.listVersions(product.id))?.tax_year ?? null;
     const result = await repo.createLicense({
       customer_id: order.customer_id,
       order_id: order.id,
@@ -108,6 +112,8 @@ export async function ensureFulfillment(repo: CommerceRepo, order: Order, produc
       key_hash: null,
       key_prefix: null,
       embed_id: null,
+      original_tax_year: currentYear,
+      licensed_tax_year: currentYear,
       status: "pending",
       max_domains: 1,
       issued_at: null,
@@ -126,7 +132,7 @@ export async function ensureFulfillment(repo: CommerceRepo, order: Order, produc
       order_id: order.id,
       license_id: license.id,
       product_id: product.id,
-      installation_type: order.installation_type,
+      installation_type: order.installation_type ?? "self_service",
       platform: details?.platform ?? "other",
       platform_other: details?.platform_other ?? null,
       installation_method: PLATFORM_GUIDES[details?.platform ?? "other"].defaultMethod,
@@ -167,6 +173,7 @@ async function restrictLicenseForOrder(repo: CommerceRepo, order: Order, status:
 }
 
 async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSession, paid: boolean): Promise<EventOutcome> {
+  if (session.metadata?.purpose === "annual_update") return handleUpdateCheckout(deps, session, paid);
   const { repo } = deps;
   const at = nowIso(deps);
   const productIds = await deps.listCheckoutProductIds(session.id);
@@ -193,6 +200,10 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
     provider: "stripe",
     provider_payment_intent_id: paymentIntentId,
     provider_checkout_session_id: session.id,
+    order_type: "purchase",
+    license_id: null,
+    tax_year: null,
+    previous_tax_year: null,
     installation_type: installationTypeFrom(session.metadata, product),
     verification_method: "stripe_webhook",
     verified_by: null,
@@ -207,6 +218,54 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
   if (current.payment_status === "paid") await ensureFulfillment(repo, current, product, null, detailsFromMetadata(session.metadata));
   return { status: "processed", detail: `Order ${current.id} is ${current.payment_status}.` };
+}
+
+/**
+ * Annual tax-year update bought through a Checkout Session this server
+ * created (metadata is set server-side after the license key was verified).
+ * Records its own order linked to the existing license; never a second full
+ * purchase, never a subscription.
+ */
+async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSession, paid: boolean): Promise<EventOutcome> {
+  const { repo } = deps;
+  const at = nowIso(deps);
+  const licenseId = session.metadata?.license_id ?? "";
+  const taxYear = Number(session.metadata?.tax_year);
+  const license = licenseId ? await repo.getLicense(licenseId) : null;
+  if (!license || !Number.isInteger(taxYear)) throw new Error(`Update checkout ${session.id} has an unknown license or tax year.`);
+  const paymentIntentId = idOf(session.payment_intent);
+  if (!paymentIntentId) return { status: "ignored", detail: "Update checkout has no payment intent." };
+  const version = (await repo.listVersions(license.product_id)).find((v) => v.tax_year === taxYear) ?? null;
+  const amount = session.amount_total ?? 0;
+  const priceMismatch = !version || amount !== version.update_price_cents || (session.currency ?? "").toLowerCase() !== "usd";
+
+  const { order } = await repo.createOrder({
+    order_type: "annual_update",
+    customer_id: license.customer_id,
+    product_id: license.product_id,
+    license_id: license.id,
+    tax_year: taxYear,
+    previous_tax_year: license.licensed_tax_year,
+    amount_cents: amount,
+    amount_refunded_cents: 0,
+    currency: (session.currency ?? "usd").toLowerCase(),
+    payment_status: paid ? "paid" : "pending",
+    provider: "stripe",
+    provider_payment_intent_id: paymentIntentId,
+    provider_checkout_session_id: session.id,
+    installation_type: null,
+    verification_method: "stripe_webhook",
+    verified_by: null,
+    verified_at: at,
+    notes: priceMismatch ? `Review: paid ${amount} ${session.currency ?? ""} does not match the ${taxYear} update price; update not applied automatically.` : null,
+    paid_at: paid ? at : null,
+    refunded_at: null,
+  });
+  if (order.license_id !== license.id) throw new Error(`Payment intent ${paymentIntentId} is already recorded for another order.`);
+  let current = order;
+  if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
+  if (current.payment_status === "paid" && !priceMismatch) await applyPaidUpdate(repo, current, null);
+  return { status: "processed", detail: `Update order ${current.id} is ${current.payment_status}.` };
 }
 
 /** Applies one signature-verified Stripe event. Idempotent per event id and per payment intent. */
@@ -252,8 +311,12 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
       if (!order) return { status: "ignored", detail: "No order yet; checkout.session.completed creates it." };
       if (order.payment_status === "pending") {
         const paidOrder = await setOrderPayment(repo, order, "paid", at);
-        const product = await repo.getProduct(paidOrder.product_id);
-        if (product) await ensureFulfillment(repo, paidOrder, product, null);
+        if (paidOrder.order_type === "annual_update") {
+          if (!paidOrder.notes?.startsWith("Review:")) await applyPaidUpdate(repo, paidOrder, null);
+        } else {
+          const product = await repo.getProduct(paidOrder.product_id);
+          if (product) await ensureFulfillment(repo, paidOrder, product, null);
+        }
       }
       return { status: "processed", detail: `Order ${order.id} paid.` };
     }
@@ -273,7 +336,11 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
       if (!order) return { status: "ignored", detail: "No order for this charge." };
       const full = charge.amount_refunded >= charge.amount;
       await setOrderPayment(repo, order, full ? "refunded" : "partially_refunded", at, { amount_refunded_cents: charge.amount_refunded });
-      if (full) await restrictLicenseForOrder(repo, order, "revoked", "Payment refunded", at);
+      if (full) {
+        // A refunded update reverts only that update; a refunded purchase revokes the license.
+        if (order.order_type === "annual_update") await reverseUpdate(repo, order, "Update payment refunded");
+        else await restrictLicenseForOrder(repo, order, "revoked", "Payment refunded", at);
+      }
       return { status: "processed", detail: `Order ${order.id} ${full ? "refunded" : "partially refunded"}.` };
     }
     case "charge.dispute.created": {
@@ -281,7 +348,8 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
       const order = pi ? await repo.findOrderByPaymentIntent(pi) : null;
       if (!order) return { status: "ignored", detail: "No order for this dispute." };
       await setOrderPayment(repo, order, "disputed", at);
-      await restrictLicenseForOrder(repo, order, "suspended", "Payment disputed", at);
+      if (order.order_type === "annual_update") await reverseUpdate(repo, order, "Update payment disputed");
+      else await restrictLicenseForOrder(repo, order, "suspended", "Payment disputed", at);
       return { status: "processed", detail: `Order ${order.id} disputed.` };
     }
     default:
@@ -357,6 +425,10 @@ export async function reconcilePurchase(repo: CommerceRepo, input: ReconcileInpu
     provider: "stripe",
     provider_payment_intent_id: input.payment_intent_id,
     provider_checkout_session_id: null,
+    order_type: "purchase",
+    license_id: null,
+    tax_year: null,
+    previous_tax_year: null,
     installation_type: input.installation_type,
     verification_method: check ? "stripe_api" : "admin_manual",
     verified_by: input.admin_id,

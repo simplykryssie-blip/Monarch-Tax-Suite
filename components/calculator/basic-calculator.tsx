@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { CALCULATOR_TAX_YEARS } from "@/lib/calculator/years";
 
 type Filing = "single" | "married" | "head" | "separate";
 type FieldProps = { label: string; value: string; onChange: (value: string) => void; hint?: string };
 const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number.isFinite(value) ? value : 0);
 const filingLabels: Record<Filing, string> = { single: "Single", married: "Married filing jointly", head: "Head of household", separate: "Married filing separately" };
 type TaxYear = "2025" | "2026";
+
 // 2025: Rev. Proc. 2024-40 as amended by P.L. 119-21. 2026: Rev. Proc. 2025-32.
 const standardDeductions: Record<TaxYear, Record<Filing, number>> = {
   "2025": { single: 15750, married: 31500, head: 23625, separate: 15750 },
@@ -38,8 +40,10 @@ function Field({label,value,onChange,hint,prefix="$"}:FieldProps&{prefix?:string
 function taxFromBrackets(taxable:number, filing:Filing, year:TaxYear){let tax=0,prior=0;for(let i=0;i<RATES.length;i++){const limit=bracketLimits[year][filing][i];if(taxable<=prior)break;tax+=(Math.min(taxable,limit)-prior)*RATES[i];prior=limit;}return tax;}
 function marginalRate(taxable:number, filing:Filing, year:TaxYear){const i=bracketLimits[year][filing].findIndex(limit=>taxable<=limit);return RATES[i<0?RATES.length-1:i];}
 /** The Basic Tax Calculator. `embedded` hides site chrome for iframe installs on customer sites. */
-export function BasicCalculator({embedded=false}:{embedded?:boolean}){
- const [year,setYear]=useState<TaxYear>("2026");
+export function BasicCalculator({embedded=false,maxTaxYear}:{embedded?:boolean;maxTaxYear?:number}){
+ const years=CALCULATOR_TAX_YEARS.filter(y=>maxTaxYear===undefined||y<=maxTaxYear).map(String) as TaxYear[];
+ const newest=years[0]??"2025";
+ const [year,setYear]=useState<TaxYear>(newest);
  const [filing,setFiling]=useState<Filing>("single");
  const [income,setIncome]=useState("65000");
  const [otherIncome,setOtherIncome]=useState("0");
@@ -65,7 +69,7 @@ export function BasicCalculator({embedded=false}:{embedded?:boolean}){
   const balance=n(withholding)-totalTax;
   return {gross,deduction,taxable,estimatedTax,ctcNonrefundable,ctcRefundable,otherCredits,taxAfterCredits,totalTax,balance,childCount,marginal:marginalRate(taxable,filing,year)};
  },[income,otherIncome,deductions,withholding,credits,filing,useStandard,children,year]);
- const reset=()=>{setYear("2026");setFiling("single");setIncome("65000");setOtherIncome("0");setDeductions("0");setWithholding("8500");setCredits("0");setUseStandard(true);setChildren("0");};
+ const reset=()=>{setYear(newest);setFiling("single");setIncome("65000");setOtherIncome("0");setDeductions("0");setWithholding("8500");setCredits("0");setUseStandard(true);setChildren("0");};
  // In an iframe, report content height so host pages that listen can resize the frame.
  useEffect(()=>{if(!embedded||typeof window==="undefined"||window.parent===window)return;const send=()=>window.parent.postMessage({type:"monarch-calculator:height",height:document.documentElement.scrollHeight},"*");send();const ro=new ResizeObserver(send);ro.observe(document.body);return()=>ro.disconnect();},[embedded]);
  return <main className={"mt-shell"+(embedded?" mt-embedded":"")}>
@@ -73,7 +77,7 @@ export function BasicCalculator({embedded=false}:{embedded?:boolean}){
   <section className="mt-hero"><div className="mt-eyebrow">A CLEARER STARTING POINT</div><h1>Estimate your federal<br/><em>tax picture.</em></h1><p>Explore an approximate federal income tax outcome using your income, deduction, credits, and withholding.</p><div className="mt-year">TAX YEAR {year} <span>·</span> FILED IN {Number(year)+1} <span>·</span> FEDERAL ESTIMATE</div></section>
   <div className="mt-layout">
    <section className="mt-form-card"><div className="mt-card-head"><div><span className="mt-step">YOUR DETAILS</span><h2>Build your estimate</h2></div><button className="mt-reset" onClick={reset}>Reset ↺</button></div>
-    <div className="mt-two"><label className="mt-field"><span>Tax year</span><select value={year} onChange={e=>setYear(e.target.value as TaxYear)}><option value="2026">2026 (filed in 2027)</option><option value="2025">2025 (filed in 2026)</option></select></label><label className="mt-field"><span>Filing status</span><select value={filing} onChange={e=>setFiling(e.target.value as Filing)}>{Object.entries(filingLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label></div>
+    <div className="mt-two"><label className="mt-field"><span>Tax year</span><select value={year} onChange={e=>setYear(e.target.value as TaxYear)}>{years.map(y=><option key={y} value={y}>{y} (filed in {Number(y)+1})</option>)}</select></label><label className="mt-field"><span>Filing status</span><select value={filing} onChange={e=>setFiling(e.target.value as Filing)}>{Object.entries(filingLabels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label></div>
     <div className="mt-two"><Field label="Wages and earned income" value={income} onChange={setIncome} hint="Total taxable wages / earned income"/><Field label="Other taxable income" value={otherIncome} onChange={setOtherIncome} hint="Interest or other taxable income"/></div>
     <div className="mt-deduction-head"><span className="mt-section-label">DEDUCTION</span><div className="mt-toggle"><button className={useStandard?"selected":""} onClick={()=>setUseStandard(true)}>Standard</button><button className={!useStandard?"selected":""} onClick={()=>setUseStandard(false)}>Other amount</button></div></div>
     {useStandard?<div className="mt-standard"><span>{year} standard deduction</span><b>{money(standardDeductions[year][filing])}</b></div>:<Field label="Deduction amount" value={deductions} onChange={setDeductions} hint="Enter the deduction amount you expect to claim"/>}

@@ -12,8 +12,11 @@ import type {
   NewLicense,
   NewOrder,
   NewProduct,
+  NewProductVersion,
   Order,
   Product,
+  ProductVersion,
+  VersionChange,
 } from "./types.ts";
 
 // Thrown when the commerce tables are missing (migration not applied yet), so
@@ -107,6 +110,17 @@ export class SupabaseCommerceRepo implements CommerceRepo {
   createProduct(input: NewProduct) { return this.insert<Product>("products", input); }
   updateProduct(id: string, patch: Partial<NewProduct>) { return this.patch<Product>("products", id, patch); }
 
+  async listVersions(productId: string) {
+    return unwrap(await this.db.from("product_versions").select("*").eq("product_id", productId).order("tax_year", { ascending: false })) as ProductVersion[];
+  }
+  getVersion(id: string) { return this.one<ProductVersion>("product_versions", "id", id); }
+  createVersion(input: NewProductVersion) { return this.insert<ProductVersion>("product_versions", input); }
+  updateVersion(id: string, patch: Partial<NewProductVersion>) { return this.patch<ProductVersion>("product_versions", id, patch); }
+  addVersionChange(input: Omit<VersionChange, "id" | "created_at">) { return this.insert<VersionChange>("product_version_changes", input); }
+  async listVersionChanges(versionId: string) {
+    return unwrap(await this.db.from("product_version_changes").select("*").eq("version_id", versionId).order("created_at", { ascending: false })) as VersionChange[];
+  }
+
   listCustomers() { return this.all<Customer>("calculator_customers"); }
   getCustomer(id: string) { return this.one<Customer>("calculator_customers", "id", id); }
   findCustomerByEmail(email: string) { return this.one<Customer>("calculator_customers", "email", email.toLowerCase()); }
@@ -140,6 +154,7 @@ export class SupabaseCommerceRepo implements CommerceRepo {
   async listLicenses() { return (await this.all<Row>("calculator_licenses")).map((r) => licenseFromRow(r)!); }
   async getLicense(id: string) { return licenseFromRow(await this.one<Row>("calculator_licenses", "id", id)); }
   async findLicenseByOrder(orderId: string) { return licenseFromRow(await this.one<Row>("calculator_licenses", "order_id", orderId)); }
+  async findLicenseByKeyHash(hash: string) { return licenseFromRow(await this.one<Row>("calculator_licenses", "license_key_hash", hash)); }
   async findLicenseByEmbedId(embedId: string) { return licenseFromRow(await this.one<Row>("calculator_licenses", "embed_id", embedId)); }
   async createLicense(input: NewLicense) {
     const { row, created } = await this.insertOrGet<Row>("calculator_licenses", licenseToRow(input), "order_id", input.order_id);

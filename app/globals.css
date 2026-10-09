@@ -111,3 +111,8 @@ a{color:inherit}
 .monarch-badge.verified{background:#e2f2e8;color:#206745}
 .monarch-badge.generic-embed{background:#fff1cf;color:#86611c}
 .monarch-badge.awaiting-testing{background:#ecebe6;color:#5e5b52}
+.monarch-details{border-top:1px solid var(--line);padding:12px 0}
+.monarch-details summary{cursor:pointer;font-size:13px;font-weight:700;margin-bottom:10px}
+.monarch-add-version{border-top:1px solid var(--line);padding-top:16px;margin-top:8px}
+.monarch-badge.available{background:#e2f2e8;color:#206745}
+.monarch-badge.retired{background:#ecebe6;color:#5e5b52}

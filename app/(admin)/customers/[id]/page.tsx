@@ -33,11 +33,12 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <div className="monarch-panel-head"><h2>Purchases</h2></div>
         <div className="monarch-table-wrap">
           <table>
-            <thead><tr><th>ORDER</th><th>PRODUCT</th><th>AMOUNT</th><th>PAYMENT</th><th>INSTALLATION</th><th>VERIFIED BY</th><th>STRIPE REFERENCE</th><th>DATE</th></tr></thead>
+            <thead><tr><th>ORDER</th><th>TYPE</th><th>PRODUCT</th><th>AMOUNT</th><th>PAYMENT</th><th>INSTALLATION</th><th>VERIFIED BY</th><th>STRIPE REFERENCE</th><th>DATE</th></tr></thead>
             <tbody>
-              {orders.length === 0 ? <EmptyRow colSpan={8}>No purchases.</EmptyRow> : orders.map((o) => (
+              {orders.length === 0 ? <EmptyRow colSpan={9}>No purchases.</EmptyRow> : orders.map((o) => (
                 <tr key={o.id}>
                   <td>#{o.order_number}</td>
+                  <td>{o.order_type === "annual_update" ? `Annual update → ${o.tax_year}` : "Purchase"}</td>
                   <td>{products.get(o.product_id)?.name}</td>
                   <td><b>{money(o.amount_cents, o.currency)}</b>{o.amount_refunded_cents > 0 && <small className="monarch-subcell">Refunded {money(o.amount_refunded_cents, o.currency)}</small>}</td>
                   <td><Badge value={o.payment_status} /></td>
@@ -56,12 +57,13 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           <div className="monarch-panel-head"><h2>Licenses</h2></div>
           <div className="monarch-table-wrap">
             <table>
-              <thead><tr><th>LICENSE</th><th>PRODUCT</th><th>STATUS</th></tr></thead>
+              <thead><tr><th>LICENSE</th><th>PRODUCT</th><th>VERSION</th><th>STATUS</th></tr></thead>
               <tbody>
-                {licenses.length === 0 ? <EmptyRow colSpan={3}>No licenses.</EmptyRow> : licenses.map((l) => (
+                {licenses.length === 0 ? <EmptyRow colSpan={4}>No licenses.</EmptyRow> : licenses.map((l) => (
                   <tr key={l.id}>
                     <td><Link href={`/licenses/${l.id}`}><b>{l.key_prefix ? `${l.key_prefix}…` : "Key not issued"}</b></Link></td>
                     <td>{products.get(l.product_id)?.name}</td>
+                    <td>{l.licensed_tax_year ?? "—"}{l.original_tax_year && l.original_tax_year !== l.licensed_tax_year ? ` (originally ${l.original_tax_year})` : ""}{(() => { const last = orders.filter((o) => o.order_type === "annual_update" && o.license_id === l.id && o.payment_status === "paid").sort((a, b) => (b.paid_at ?? "").localeCompare(a.paid_at ?? ""))[0]; return last ? <small className="monarch-subcell">Last update {when(last.paid_at)}</small> : null; })()}</td>
                     <td><Badge value={l.status} /></td>
                   </tr>
                 ))}

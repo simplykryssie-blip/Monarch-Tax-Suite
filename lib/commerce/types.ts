@@ -12,6 +12,9 @@ export const INSTALLATION_STATUSES = ["requested", "in_progress", "blocked", "ac
 export const PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded", "partially_refunded", "canceled", "disputed"] as const;
 // past_due and expired exist in the original licensing schema (subscriptions); this CRM sets the other four.
 export const LICENSE_STATUSES = ["pending", "active", "suspended", "revoked", "past_due", "expired"] as const;
+export const VERSION_STATUSES = ["draft", "available", "retired"] as const;
+export const CHANGE_KINDS = ["release", "maintenance"] as const;
+export const ORDER_TYPES = ["purchase", "annual_update"] as const;
 export const VERIFICATION_METHODS = ["stripe_webhook", "stripe_api", "admin_manual"] as const;
 
 export type ProductType = (typeof PRODUCT_TYPES)[number];
@@ -23,6 +26,9 @@ export type InstallationMethod = (typeof INSTALLATION_METHODS)[number];
 export type InstallationStatus = (typeof INSTALLATION_STATUSES)[number];
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export type LicenseStatus = (typeof LICENSE_STATUSES)[number];
+export type VersionStatus = (typeof VERSION_STATUSES)[number];
+export type ChangeKind = (typeof CHANGE_KINDS)[number];
+export type OrderType = (typeof ORDER_TYPES)[number];
 export type VerificationMethod = (typeof VERIFICATION_METHODS)[number];
 
 export type Product = {
@@ -42,6 +48,31 @@ export type Product = {
   updated_at: string;
 };
 
+/** A tax-year version of a product (e.g. the 2027 calculator). */
+export type ProductVersion = {
+  id: string;
+  product_id: string;
+  tax_year: number;
+  label: string;
+  status: VersionStatus;
+  release_date: string | null;
+  /** One-time price to upgrade an existing license to this version. */
+  update_price_cents: number;
+  stripe_update_price_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Changelog entry: the release itself, or an included maintenance fix. */
+export type VersionChange = {
+  id: string;
+  version_id: string;
+  kind: ChangeKind;
+  summary: string;
+  actor_id: string | null;
+  created_at: string;
+};
+
 export type Customer = {
   id: string;
   email: string;
@@ -55,6 +86,7 @@ export type Customer = {
 export type Order = {
   id: string;
   order_number: number;
+  order_type: OrderType;
   customer_id: string;
   product_id: string;
   amount_cents: number;
@@ -64,7 +96,12 @@ export type Order = {
   provider: "stripe";
   provider_payment_intent_id: string | null;
   provider_checkout_session_id: string | null;
-  installation_type: InstallationType;
+  /** Purchase orders only. */
+  installation_type: InstallationType | null;
+  /** Annual updates: the license being upgraded, the version bought, and the version before. */
+  license_id: string | null;
+  tax_year: number | null;
+  previous_tax_year: number | null;
   verification_method: VerificationMethod;
   verified_by: string | null;
   verified_at: string;
@@ -84,6 +121,9 @@ export type License = {
   key_prefix: string | null;
   /** Public, non-secret identifier used in embed code. */
   embed_id: string | null;
+  /** Tax year licensed by the original purchase, and the tax year currently licensed. */
+  original_tax_year: number | null;
+  licensed_tax_year: number | null;
   status: LicenseStatus;
   max_domains: number;
   issued_at: string | null;
@@ -147,6 +187,7 @@ export type InstallationEvent = {
   created_at: string;
 };
 
+export type NewProductVersion = Omit<ProductVersion, "id" | "created_at" | "updated_at">;
 export type NewProduct = Omit<Product, "id" | "created_at" | "updated_at">;
 export type NewOrder = Omit<Order, "id" | "order_number" | "created_at" | "updated_at">;
 export type NewLicense = Omit<License, "id" | "created_at" | "updated_at">;
@@ -163,6 +204,13 @@ export interface CommerceRepo {
   getProductByStripeProductId(stripeProductId: string): Promise<Product | null>;
   createProduct(input: NewProduct): Promise<Product>;
   updateProduct(id: string, patch: Partial<NewProduct>): Promise<Product>;
+
+  listVersions(productId: string): Promise<ProductVersion[]>;
+  getVersion(id: string): Promise<ProductVersion | null>;
+  createVersion(input: NewProductVersion): Promise<ProductVersion>;
+  updateVersion(id: string, patch: Partial<NewProductVersion>): Promise<ProductVersion>;
+  addVersionChange(input: Omit<VersionChange, "id" | "created_at">): Promise<VersionChange>;
+  listVersionChanges(versionId: string): Promise<VersionChange[]>;
 
   listCustomers(): Promise<Customer[]>;
   getCustomer(id: string): Promise<Customer | null>;
@@ -185,6 +233,7 @@ export interface CommerceRepo {
   getLicense(id: string): Promise<License | null>;
   findLicenseByOrder(orderId: string): Promise<License | null>;
   findLicenseByEmbedId(embedId: string): Promise<License | null>;
+  findLicenseByKeyHash(hash: string): Promise<License | null>;
   createLicense(input: NewLicense): Promise<{ license: License; created: boolean }>;
   updateLicense(id: string, patch: Partial<NewLicense>): Promise<License>;
   addLicenseEvent(input: Omit<LicenseEvent, "id" | "created_at">): Promise<void>;

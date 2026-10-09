@@ -3,6 +3,7 @@ import { commerceRepo, requireAdmin } from "@/lib/admin";
 import { publishBlockers } from "@/lib/commerce/validation.ts";
 import { setProductStatusAction, updateProductAction } from "../../actions";
 import { ProductForm } from "@/components/admin/product-form";
+import { VersionsPanel } from "@/components/admin/versions-panel";
 import { Badge, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 
 const NEXT: Record<string, { status: string; label: string }[]> = {
@@ -15,9 +16,16 @@ const NEXT: Record<string, { status: string; label: string }[]> = {
 export default async function ProductPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
   await requireAdmin();
   const { id } = await params;
-  const result = await load(() => commerceRepo().getProduct(id));
+  const repo = commerceRepo();
+  const result = await load(async () => {
+    const product = await repo.getProduct(id);
+    if (!product) return { product: null, versions: [], changes: {} };
+    const versions = await repo.listVersions(product.id);
+    const changes = Object.fromEntries(await Promise.all(versions.map(async (v) => [v.id, await repo.listVersionChanges(v.id)] as const)));
+    return { product, versions, changes };
+  });
   if (!result.ok) return <SetupRequired message={result.message} />;
-  const product = result.data;
+  const { product, versions, changes } = result.data;
   if (!product) notFound();
   const blockers = publishBlockers(product);
 
@@ -49,6 +57,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
           <ProductForm action={updateProductAction} product={product} submitLabel="Save changes" />
         </section>
       )}
+      <VersionsPanel productId={product.id} versions={versions} changes={changes} />
     </>
   );
 }

@@ -93,3 +93,46 @@ the license key is never used in browser code.
 Database values: `calculator_installations.platform` keeps the original
 `ghl`/`website` values (`website` = custom HTML) and adds `shopify`, `wix`
 (migration `20261009122229`).
+
+## One-time purchase and paid annual tax-year updates
+
+No subscriptions and no automatic charges anywhere. Checkout Sessions are
+created only in `mode: "payment"`, and update prices are rejected unless they
+are active, one-time, USD prices matching the version's configured price.
+
+- **Versions** (`product_versions`, migration `20261009125750`): one row per
+  tax year with status (draft / available / retired), release date, one-time
+  update price ($50 default) and the Stripe one-time price id. A version can
+  only be made available if the deployed calculator code contains that tax year
+  (`lib/calculator/years.ts`); a CRM label alone never delivers code.
+- **Licenses** record `original_tax_year` and `licensed_tax_year`. A purchase
+  licenses the newest available version. The embed shows only tax years up to
+  the licensed year, so releasing a new year does not upgrade anyone, and
+  skipping an update keeps the current version. Retiring a version stops sales
+  but never removes access.
+- **Bug fixes / corrections** are recorded per version as "maintenance"
+  changes. They ship in the deployed code for that tax year and are never
+  charged.
+- **Update purchase:** the customer enters their license key at `/update`
+  (the key proves ownership; only its hash is stored), sees their version, the
+  newest version and the one-time price, and is sent to Stripe Checkout. The
+  session carries `purpose=annual_update`, `license_id`, `tax_year` set
+  server-side. The signed webhook records a separate `annual_update` order
+  linked to the license (never a second full purchase) and raises
+  `licensed_tax_year`. Idempotent per event and payment intent.
+- **Failed / pending** update payments change nothing. A **full refund or
+  dispute of an update** reverts only that update (`version_reverted` event);
+  the base license stays active. A full refund of the original purchase still
+  revokes the license; a dispute of the purchase still suspends it.
+- Payments whose amount does not match the version price are recorded with a
+  "Review:" note and not applied automatically.
+
+**Stripe setup still required** (not done: no Stripe key is configured):
+1. In Stripe, confirm the calculator product `prod_VMBCU4J5IZb61R` and its
+   approved one-time price.
+2. Create a product "Monarch Basic Tax Calculator — Annual Tax-Year Update"
+   with a one-time $50.00 USD price for each released tax year.
+3. Paste that price id into the version in the CRM (Products → calculator →
+   versions).
+4. Add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in Vercel and subscribe
+   the webhook to the events listed under Setup.

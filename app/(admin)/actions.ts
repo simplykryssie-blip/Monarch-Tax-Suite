@@ -14,8 +14,10 @@ import {
   updateInstallation,
   type StripePaymentCheck,
 } from "@/lib/commerce/fulfillment.ts";
+import { createVersion, editVersion, parseTaxYear, recordChange, setVersionStatus } from "@/lib/commerce/versions.ts";
 import {
   cleanNote,
+  optionalStripeId,
   normalizeDomain,
   normalizeEmail,
   normalizeWebsiteUrl,
@@ -218,4 +220,66 @@ export async function createIntakeLinkAction(_prev: IntakeLinkState, form: FormD
     if (error instanceof ValidationError) return { error: error.message };
     throw error;
   }
+}
+
+// ----------------------------------------------------------------- versions
+
+function optionalDate(form: FormData, name: string): string | null {
+  const v = str(form, name);
+  if (!v) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new ValidationError("Enter the release date as YYYY-MM-DD.");
+  return v;
+}
+
+export async function createVersionAction(form: FormData) {
+  await requireAdmin();
+  const productId = id(form, "product_id");
+  await mutate(`/products/${productId}`, async () => {
+    const version = await createVersion(commerceRepo(), {
+      product_id: productId,
+      tax_year: parseTaxYear(str(form, "tax_year")),
+      label: cleanNote(str(form, "label"), 80),
+      release_date: optionalDate(form, "release_date"),
+      update_price_cents: str(form, "update_price") ? parsePriceToCents(str(form, "update_price")) : null,
+      stripe_update_price_id: optionalStripeId(str(form, "stripe_update_price_id"), "price", "Stripe update price ID"),
+    });
+    return { notice: `${version.label} created as a draft.` };
+  });
+}
+
+export async function updateVersionAction(form: FormData) {
+  await requireAdmin();
+  const productId = id(form, "product_id");
+  await mutate(`/products/${productId}`, async () => {
+    const price = parsePriceToCents(str(form, "update_price"));
+    if (price === null || price <= 0) throw new ValidationError("Enter the update price.");
+    await editVersion(commerceRepo(), id(form), {
+      label: cleanNote(str(form, "label"), 80) ?? undefined,
+      release_date: optionalDate(form, "release_date"),
+      update_price_cents: price,
+      stripe_update_price_id: optionalStripeId(str(form, "stripe_update_price_id"), "price", "Stripe update price ID"),
+    });
+    return { notice: "Version saved." };
+  });
+}
+
+export async function setVersionStatusAction(form: FormData) {
+  const admin = await requireAdmin();
+  const productId = id(form, "product_id");
+  await mutate(`/products/${productId}`, async () => {
+    const status = str(form, "status");
+    if (status !== "available" && status !== "retired" && status !== "draft") throw new ValidationError("Invalid version status.");
+    const version = await setVersionStatus(commerceRepo(), id(form), status, admin.userId);
+    return { notice: `${version.label} is now ${version.status}.` };
+  });
+}
+
+export async function recordVersionChangeAction(form: FormData) {
+  const admin = await requireAdmin();
+  const productId = id(form, "product_id");
+  await mutate(`/products/${productId}`, async () => {
+    const kind = str(form, "kind") === "release" ? "release" : "maintenance";
+    await recordChange(commerceRepo(), id(form), kind, str(form, "summary"), admin.userId);
+    return { notice: kind === "maintenance" ? "Maintenance change recorded (included, no charge)." : "Release note recorded." };
+  });
 }

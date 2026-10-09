@@ -24,21 +24,22 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           <section className="monarch-panel">
             <div className="monarch-table-wrap">
               <table>
-                <thead><tr><th>ORDER</th><th>CUSTOMER</th><th>PRODUCT</th><th>AMOUNT</th><th>PAYMENT</th><th>INSTALLATION</th><th>VERIFIED BY</th><th>DATE</th></tr></thead>
+                <thead><tr><th>ORDER</th><th>TYPE</th><th>CUSTOMER</th><th>PRODUCT</th><th>AMOUNT</th><th>PAYMENT</th><th>INSTALLATION</th><th>VERIFIED BY</th><th>DATE</th></tr></thead>
                 <tbody>
                   {result.data.orders.length === 0 ? (
-                    <EmptyRow colSpan={8}>No orders recorded yet.</EmptyRow>
+                    <EmptyRow colSpan={9}>No orders recorded yet.</EmptyRow>
                   ) : (
                     result.data.orders.map((o) => {
                       const c = result.data.customers.get(o.customer_id);
                       return (
                         <tr key={o.id}>
                           <td>#{o.order_number}</td>
+                          <td>{o.order_type === "annual_update" ? `Update → ${o.tax_year}` : "Purchase"}</td>
                           <td><Link href={`/customers/${o.customer_id}`}><b>{c?.full_name ?? c?.email}</b></Link><small className="monarch-subcell">{c?.email}</small></td>
                           <td>{result.data.products.get(o.product_id)?.name}</td>
                           <td><b>{money(o.amount_cents, o.currency)}</b></td>
                           <td><Badge value={o.payment_status} /></td>
-                          <td>{label(o.installation_type)}</td>
+                          <td>{o.installation_type ? label(o.installation_type) : "—"}</td>
                           <td>{label(o.verification_method)}</td>
                           <td>{when(o.paid_at ?? o.created_at)}</td>
                         </tr>

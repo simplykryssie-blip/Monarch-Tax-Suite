@@ -9,12 +9,16 @@ import type {
   LicenseEvent,
   Order,
   Product,
+  ProductVersion,
+  VersionChange,
 } from "../lib/commerce/types.ts";
 
 // In-memory CommerceRepo enforcing the same unique constraints as the SQL
 // migration, so idempotency behavior is tested the way production stores it.
 export class MemoryRepo implements CommerceRepo {
   products: Product[] = [];
+  versions: ProductVersion[] = [];
+  versionChanges: VersionChange[] = [];
   customers: Customer[] = [];
   orders: Order[] = [];
   events = new Map<string, { type: string; status: string; error?: string }>();
@@ -37,6 +41,22 @@ export class MemoryRepo implements CommerceRepo {
     return this.clone(row);
   }
   async updateProduct(id: string, patch: Partial<Product>) { return this.patch(this.products, id, patch); }
+
+  async listVersions(productId: string) { return this.clone(this.versions.filter((v) => v.product_id === productId).sort((a, b) => b.tax_year - a.tax_year)); }
+  async getVersion(id: string) { return this.clone(this.versions.find((v) => v.id === id) ?? null); }
+  async createVersion(input: Omit<ProductVersion, "id" | "created_at" | "updated_at">) {
+    if (this.versions.some((v) => v.product_id === input.product_id && v.tax_year === input.tax_year)) throw new Error("duplicate version");
+    const row = { ...input, id: randomUUID(), created_at: this.ts(), updated_at: this.ts() };
+    this.versions.push(row);
+    return this.clone(row);
+  }
+  async updateVersion(id: string, patch: Partial<ProductVersion>) { return this.patch(this.versions, id, patch); }
+  async addVersionChange(input: Omit<VersionChange, "id" | "created_at">) {
+    const row = { ...input, id: randomUUID(), created_at: this.ts() };
+    this.versionChanges.push(row);
+    return this.clone(row);
+  }
+  async listVersionChanges(versionId: string) { return this.clone(this.versionChanges.filter((c) => c.version_id === versionId)); }
 
   async listCustomers() { return this.clone(this.customers); }
   async getCustomer(id: string) { return this.clone(this.customers.find((c) => c.id === id) ?? null); }
@@ -74,6 +94,7 @@ export class MemoryRepo implements CommerceRepo {
   async listLicenses() { return this.clone(this.licenses); }
   async getLicense(id: string) { return this.clone(this.licenses.find((l) => l.id === id) ?? null); }
   async findLicenseByOrder(orderId: string) { return this.clone(this.licenses.find((l) => l.order_id === orderId) ?? null); }
+  async findLicenseByKeyHash(hash: string) { return this.clone(this.licenses.find((l) => l.key_hash === hash) ?? null); }
   async findLicenseByEmbedId(embedId: string) { return this.clone(this.licenses.find((l) => l.embed_id === embedId) ?? null); }
   async createLicense(input: Omit<License, "id" | "created_at" | "updated_at">) {
     const existing = this.licenses.find((l) => l.order_id === input.order_id);

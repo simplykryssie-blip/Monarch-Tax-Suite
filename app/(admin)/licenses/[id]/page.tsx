@@ -4,6 +4,7 @@ import { commerceRepo, requireAdmin } from "@/lib/admin";
 import { authorizeDomainAction, removeDomainAction, setLicenseStatusAction } from "../../actions";
 import { IssueKeyForm } from "@/components/admin/issue-key";
 import { Badge, EmptyRow, Flash, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { latestAvailable } from "@/lib/commerce/versions.ts";
 
 export default async function LicensePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
   await requireAdmin();
@@ -12,18 +13,22 @@ export default async function LicensePage({ params, searchParams }: { params: Pr
   const result = await load(async () => {
     const license = await repo.getLicense(id);
     if (!license) return null;
-    const [customer, order, product, domains, events] = await Promise.all([
+    const [customer, order, product, domains, events, versions, orders] = await Promise.all([
       repo.getCustomer(license.customer_id),
       repo.getOrder(license.order_id),
       repo.getProduct(license.product_id),
       repo.listDomains(license.id),
       repo.listLicenseEvents(license.id),
+      repo.listVersions(license.product_id),
+      repo.listOrders(),
     ]);
-    return { license, customer, order, product, domains, events };
+    const updates = orders.filter((o) => o.order_type === "annual_update" && o.license_id === license.id);
+    return { license, customer, order, product, domains, events, versions, updates };
   });
   if (!result.ok) return <SetupRequired message={result.message} />;
   if (!result.data) notFound();
-  const { license, customer, order, product, domains, events } = result.data;
+  const { license, customer, order, product, domains, events, versions, updates } = result.data;
+  const latest = latestAvailable(versions);
   const activeDomains = domains.filter((d) => d.status === "active");
 
   return (
@@ -37,6 +42,9 @@ export default async function LicensePage({ params, searchParams }: { params: Pr
           <h2 className="monarch-h2">Access</h2>
           <dl className="monarch-dl">
             <dt>Status</dt><dd><Badge value={license.status} /></dd>
+            <dt>Original version</dt><dd>{license.original_tax_year ?? "—"} tax year · purchased {when(order?.paid_at ?? order?.created_at ?? null)} for {order ? money(order.amount_cents, order.currency) : "—"}</dd>
+            <dt>Licensed version</dt><dd><b>{license.licensed_tax_year ?? "—"}</b> tax year{latest && license.licensed_tax_year !== null && latest.tax_year > license.licensed_tax_year ? ` · ${latest.tax_year} update available (${money(latest.update_price_cents)} one-time)` : ""}</dd>
+            <dt>Latest available</dt><dd>{latest ? `${latest.label}` : "No version released"}</dd>
             <dt>Order</dt><dd>#{order?.order_number} · {order && money(order.amount_cents, order.currency)} · <Badge value={order?.payment_status ?? "pending"} /></dd>
             <dt>Key</dt><dd>{license.key_prefix ? `${license.key_prefix}… (only a hash is stored)` : "Not issued"}</dd>
             <dt>Embed ID (public)</dt><dd>{license.embed_id ? <code>{license.embed_id}</code> : "Assigned when the key is issued"}</dd>
@@ -90,6 +98,19 @@ export default async function LicensePage({ params, searchParams }: { params: Pr
           )}
         </section>
       </div>
+      <section className="monarch-panel">
+        <div className="monarch-panel-head"><h2>Annual updates purchased</h2></div>
+        <div className="monarch-table-wrap">
+          <table>
+            <thead><tr><th>ORDER</th><th>VERSION</th><th>AMOUNT</th><th>PAYMENT</th><th>DATE</th></tr></thead>
+            <tbody>
+              {updates.length === 0 ? <EmptyRow colSpan={5}>No updates purchased.</EmptyRow> : updates.map((u) => (
+                <tr key={u.id}><td>#{u.order_number}</td><td>{u.previous_tax_year ?? "—"} → {u.tax_year}</td><td>{money(u.amount_cents, u.currency)}</td><td><Badge value={u.payment_status} /></td><td>{when(u.paid_at ?? u.created_at)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
       <section className="monarch-panel">
         <div className="monarch-panel-head"><h2>License history</h2></div>
         <div className="monarch-table-wrap">

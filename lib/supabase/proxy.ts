@@ -4,7 +4,7 @@ import type { Database } from "./database.types";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 
 // The Stripe webhook authenticates by signature, not session.
-const PUBLIC_PATHS = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/"];
+const PUBLIC_PATHS = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
