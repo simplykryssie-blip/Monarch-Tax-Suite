@@ -36,6 +36,11 @@ export default async function ShopPage() {
           })}
         </ul>
       )}
+      <footer style={{ marginTop: 40, fontSize: 14, display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <Link href="/terms">Terms of Service</Link>
+        <Link href="/privacy">Privacy Policy</Link>
+        <Link href="/refunds">Refund Policy</Link>
+      </footer>
     </main>
   );
 }
