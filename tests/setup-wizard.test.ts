@@ -31,12 +31,13 @@ function setup() {
   api.addLocation("locAAAAAAAA", "Buyer A Tax Co");
   api.addLocation("locBBBBBBBB", "Buyer B Accounting");
   const hooks = { ok: true };
-  const webhook: WebhookSender = async () => (hooks.ok ? { ok: true, status: 200 } : { ok: false, status: 503, reason: "http_error" });
+  const bodies: Record<string, unknown>[] = [];
+  const webhook: WebhookSender = async (_t, body) => (bodies.push(body as Record<string, unknown>), hooks.ok ? { ok: true, status: 200 } : { ok: false, status: 503, reason: "http_error" });
   const deps: CrmDeps = { repo, commerce, api, secrets: new CrmSecrets(randomBytes(32)), webhook, sleep: async () => undefined };
   const A = license();
   const B = license();
   commerce.licenses.push(A, B);
-  return { deps, repo, api, commerce, A, B, hooks };
+  return { deps, repo, api, commerce, A, B, hooks, bodies };
 }
 
 async function connect(deps: CrmDeps, api: FakeHighLevel, licenseId: string, loc: string) {
@@ -128,6 +129,17 @@ describe("step 3: testing and enabling", () => {
     const passed = (await deps.repo.getLiveConnection(A.id))!;
     assert.equal(hasPassedTest(passed), true);
     assert.doesNotThrow(() => assertCanEnable(passed, false));
+  });
+  test("webhook test sends a clearly fake sample with every field GoHighLevel needs for its mapping reference", async () => {
+    const { deps, A, bodies } = setup();
+    await setWebhook(deps, A.id, "https://hooks.example.com/abc");
+    await runConnectionTest(deps, A.id);
+    const b = bodies[0] as { event: string; contact: Record<string, string>; estimate: Record<string, unknown>; consent: unknown };
+    assert.equal(b.event, "calculator.test");
+    assert.deepEqual(Object.keys(b.contact).sort(), ["email", "first_name", "last_name", "phone"]);
+    assert.match(b.contact.email, /@example\.com$/);
+    assert.ok(b.estimate.headline && b.estimate.text && b.consent);
+    assert.match(String(b.estimate.text), /SAMPLE/);
   });
   test("a GoHighLevel connection is not 'tested' until the test runs; the test adds one labelled contact, once", async () => {
     const { deps, api, A } = setup();

@@ -105,10 +105,15 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
             {note("ghl")}
             <details className="intg-advanced" open={feedback?.section === "hook" || undefined}>
               <summary>Advanced: connect with a workflow link</summary>
-              <p className="monarch-muted">
-                In GoHighLevel, create a workflow that starts with &quot;Inbound Webhook&quot;, and paste its link here. The workflow must also be set up to create the contact and send any email; the link alone does neither.
-                Saving a link replaces any GoHighLevel connection and creates a new signing secret, shown once.
-              </p>
+              <p className="monarch-muted"><b>Do these in order, and keep your GoHighLevel workflow open the whole time.</b></p>
+              <ol className="intg-steps">
+                <li>In GoHighLevel, create a workflow and choose the trigger <b>Inbound Webhook</b>. Copy the link it shows. Leave that screen open.</li>
+                <li>Paste the link below and press <b>Save link</b>. Saving here never changes your GoHighLevel link.</li>
+                <li>Press <b>Test connection</b> in step 3. It sends one clearly fake sample lead (Test Sample, test-sample@example.com), so no real data is sent.</li>
+                <li>Back in GoHighLevel, press <b>Test trigger</b> on the Inbound Webhook, then select the request that arrived as your <b>Mapping Reference</b>. GoHighLevel will not let you save the workflow until you do this.</li>
+                <li>Add the actions <b>Create/Update Contact</b> (map first name, last name, email and phone from the sample) and <b>Send Email</b> if you want one. Receiving the lead does not create a contact or send an email by itself. Then <b>publish</b> the workflow.</li>
+              </ol>
+              <p className="monarch-muted">Saving a link here also creates a new signing secret (shown once). You don&apos;t need it for this setup.</p>
               <form action={hook} className="intg-row">
                 {hidden}
                 <label>Workflow link (https)<input name="webhook_url" required maxLength={2000} placeholder="https://services.leadconnectorhq.com/hooks/…" /></label>

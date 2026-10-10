@@ -93,7 +93,7 @@ export async function runConnectionTest(deps: CrmDeps, licenseId: string): Promi
   const connection = await deps.repo.getLiveConnection(licenseId);
   if (!connection) return { ok: false, message: "Connect your CRM first." };
   if (connection.provider === "webhook") {
-    const result = await testDestination(deps, licenseId);
+    const result = await testDestination(deps, licenseId, { sample: true });
     return result.ok
       ? { ok: true, message: `${result.message} We can confirm your address received the test. Check your CRM to see that your own automation handled it.` }
       : { ok: false, message: result.message };

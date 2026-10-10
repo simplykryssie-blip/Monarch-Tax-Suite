@@ -17,7 +17,7 @@ resolves the license on the server from that key.
 - **GoHighLevel (OAuth):** the token works, the chosen location is readable, and one contact named
   "Monarch Connection Test" (tag `monarch-test`, no phone, `example.com` email) is created or found in the
   customer's own location. No email or text is sent.
-- **Workflow link (webhook):** the address accepted a signed test event with no lead data. This does
+- **Workflow link (webhook):** the address accepted a signed test event carrying one clearly fake sample lead (`Test Sample`, `test-sample@example.com`, `SAMPLE` estimate text). GoHighLevel's Inbound Webhook trigger refuses to save a workflow ("A Mapping Reference is required") until it has received a request, so the wizard tells the customer to: create the trigger and keep it open, save the link here, press Test connection, then in GoHighLevel press Test trigger and pick the received request as the Mapping Reference, add Create/Update Contact (and Send Email), and publish. Saving the link in Monarch never changes the customer's GoHighLevel link; it only issues a new signing secret. This does
   **not** prove the customer's workflow creates a contact or sends email; the message says so.
 
 ## Statuses
