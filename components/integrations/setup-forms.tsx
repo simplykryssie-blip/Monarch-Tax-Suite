@@ -131,9 +131,13 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
                 <p>{v.label}{v.lastSuccess ? ` · last lead delivered ${new Date(v.lastSuccess).toLocaleString()}` : ""}</p>
                 {v.lastError && <p className="intg-error">{v.lastError}</p>}
                 <div className="monarch-inline-actions">
-                  <form action={test}>{hidden}<button className="monarch-primary" disabled={testing}>{testing ? "Testing…" : "Test connection"}</button></form>
+                  <form action={test} className="intg-row">{hidden}
+                    <label>Send the test lead to my email (optional)<input name="test_email" type="email" maxLength={254} placeholder="you@yourbusiness.com" autoComplete="email" /></label>
+                    <button className="monarch-primary" disabled={testing}>{testing ? "Testing…" : "Test connection"}</button>
+                  </form>
                   <form action={disc}>{hidden}<button className="monarch-secondary is-danger" disabled={disconnecting}>Disconnect</button></form>
                 </div>
+                <p className="monarch-muted">The test lead is fake. If you enter your email, your workflow&apos;s emails will reach you. We don&apos;t keep it. Leave it blank to use a made-up address.</p>
                 {note("test")}
                 {!v.canEnable && !v.settings.enabled && <p className="monarch-muted">Lead capture can be turned on after the test passes.</p>}
                 <form action={save} className="monarch-form">

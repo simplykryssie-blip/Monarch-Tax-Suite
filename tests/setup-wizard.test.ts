@@ -141,6 +141,14 @@ describe("step 3: testing and enabling", () => {
     assert.ok(b.estimate.headline && b.estimate.text && b.consent);
     assert.match(String(b.estimate.text), /SAMPLE/);
   });
+  test("the test lead can carry the customer's own email, and the default stays a made-up address", async () => {
+    const { deps, A, bodies } = setup();
+    await setWebhook(deps, A.id, "https://hooks.example.com/abc");
+    await runConnectionTest(deps, A.id, { email: "owner@mybusiness.com" });
+    await runConnectionTest(deps, A.id);
+    assert.equal((bodies[0] as { contact: { email: string } }).contact.email, "owner@mybusiness.com");
+    assert.equal((bodies[1] as { contact: { email: string } }).contact.email, "test-sample@example.com");
+  });
   test("a GoHighLevel connection is not 'tested' until the test runs; the test adds one labelled contact, once", async () => {
     const { deps, api, A } = setup();
     const c = await connect(deps, api, A.id, "locAAAAAAAA");

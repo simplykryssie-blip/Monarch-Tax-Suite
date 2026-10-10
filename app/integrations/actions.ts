@@ -7,7 +7,7 @@ import { authorizeUrl } from "@/lib/crm/highlevel.ts";
 import { crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri } from "@/lib/crm/server";
 import { DEFAULT_LEAD_SETTINGS } from "@/lib/crm/types.ts";
 import { activateDomain, assertCanEnable, deriveSetupStatus, previewActivation, runConnectionTest, type SetupStatus } from "@/lib/crm/setup.ts";
-import { ValidationError } from "@/lib/commerce/validation.ts";
+import { normalizeEmail, ValidationError } from "@/lib/commerce/validation.ts";
 
 // Buyer self-service for the lead destination. There is no account or
 // session: every action is authorized by the license key submitted with it,
@@ -87,7 +87,8 @@ export async function setWebhookAction(_prev: SetupState, form: FormData): Promi
 
 export async function testAction(_prev: SetupState, form: FormData): Promise<SetupState> {
   return run(form, async (licenseId) => {
-    const result = await runConnectionTest(crmDeps(), licenseId);
+    const raw = String(form.get("test_email") ?? "").trim();
+    const result = await runConnectionTest(crmDeps(), licenseId, { email: raw ? normalizeEmail(raw) : undefined });
     if (!result.ok) throw new ValidationError(result.message);
     return { message: result.message };
   });

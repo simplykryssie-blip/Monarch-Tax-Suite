@@ -89,11 +89,12 @@ export type TestOutcome = { ok: boolean; message: string };
  *  - Webhook: delivers a test event that contains no lead data. We can confirm the address
  *    accepted it, not what the customer's workflow does with it.
  */
-export async function runConnectionTest(deps: CrmDeps, licenseId: string): Promise<TestOutcome> {
+export async function runConnectionTest(deps: CrmDeps, licenseId: string, opts: { email?: string } = {}): Promise<TestOutcome> {
+  const testEmail = opts.email || TEST_EMAIL;
   const connection = await deps.repo.getLiveConnection(licenseId);
   if (!connection) return { ok: false, message: "Connect your CRM first." };
   if (connection.provider === "webhook") {
-    const result = await testDestination(deps, licenseId, { sample: true });
+    const result = await testDestination(deps, licenseId, { sample: true, email: opts.email });
     return result.ok
       ? { ok: true, message: `${result.message} We can confirm your address received the test. Check your CRM to see that your own automation handled it.` }
       : { ok: false, message: result.message };
@@ -105,9 +106,9 @@ export async function runConnectionTest(deps: CrmDeps, licenseId: string): Promi
     const settings = await deps.repo.getLeadSettings(licenseId);
     const outcome = await withAccessToken(deps, connection, async (token, c) => {
       const location = await api.getLocation(token, c.location_id!);
-      let id = await api.findDuplicate(token, c.location_id!, { email: TEST_EMAIL });
+      let id = await api.findDuplicate(token, c.location_id!, { email: testEmail });
       const created = !id;
-      if (!id) id = await api.createContact(token, { locationId: c.location_id!, firstName: "Monarch", lastName: "Connection Test", email: TEST_EMAIL, source: settings?.lead_source || "Monarch Tax Calculator" });
+      if (!id) id = await api.createContact(token, { locationId: c.location_id!, firstName: "Monarch", lastName: "Connection Test", email: testEmail, source: settings?.lead_source || "Monarch Tax Calculator" });
       await api.addTags(token, id, [TEST_TAG]);
       return { name: location.name, created };
     });
