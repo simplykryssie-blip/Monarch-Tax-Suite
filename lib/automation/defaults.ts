@@ -30,7 +30,7 @@ Use your secure setup page to confirm your website and connect GoHighLevel, so c
 
 You can complete setup yourself, in a few minutes, with nothing to send us:
 1. Confirm your business details and enter your main website address. The calculator shows only on this website.
-2. Connect your GoHighLevel account (or paste a workflow link) and press Test connection.
+2. Connect GoHighLevel by pasting a workflow link, then press Test connection.
 3. Copy your calculator code onto your page and press Finish setup.
 
 This link is private to you and expires in 14 days. If your license is still being prepared when you open it, the page will say so and we will email you when it is ready.
