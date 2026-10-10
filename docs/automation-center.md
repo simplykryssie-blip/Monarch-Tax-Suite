@@ -78,3 +78,37 @@ Scheduled retries run when something calls `GET/POST /api/automation/run` with `
 **Blocked / needs you:** applying the migration to Production; `MONARCH_EMAIL_FROM` and a verified Resend domain; `CRON_SECRET` + a scheduler. "Approaching expiration" is not applicable: licenses have no expiry date in the current data model.
 
 **Not claimed:** nothing here has been deployed or tested in Production.
+
+---
+
+# Customer onboarding wizard (added in the onboarding PR)
+
+## The flow you get
+
+1. **You** create the customer's license (Orders → internal license, or reconcile a payment). The license is saved and, for manual licenses, **activated automatically** (a key is issued but not shown; the customer uses their link). You do not authorize any domain.
+2. **Monarch emails the customer** a secure setup link (14 days, revocable, only its hash stored). The result (sent / failed, Resend message id) appears in the **Customer onboarding** panel on the license page.
+3. The customer opens the link → `/integrations` loads their license with no key typed. They:
+   1. confirm **details** (name, business, email, phone; prefilled from the license);
+   2. enter **their own website address**, review, and confirm. It is normalized, rejected if malformed, shared-host, wrong protocol, or already registered to another license, and limited by the license's domain count; then authorized with the existing rules;
+   3. connect **GoHighLevel** (native OAuth, when the app is configured) or paste a **workflow link** (webhook fallback with step-by-step instructions); one is enough;
+   4. press **Test connection** (fake sample lead; success is shown only when GoHighLevel or the webhook endpoint accepted it);
+   5. copy their **own calculator code** (shown only after the domain is authorized) and press **Finish setup**.
+4. **Finish setup** completes only when details, an authorized domain, a connected destination and a passed test all exist. It is recorded once; a confirmation email with installation instructions is sent through Resend.
+5. If the link expired, the page offers "email me a new link". It answers identically for any address, is rate limited, and sends only to the email already on a license.
+
+## Admin: license page → Customer onboarding
+
+Status (Not started / Invitation sent / In progress / Awaiting CRM connection / Ready to install / Completed / Needs attention), setup-email result and Resend id, link state (active, expired, replaced; first opened), details, authorized website, CRM method and test result, installation record, last activity, steps left, and anything needing attention. **Resend setup email** issues a fresh link (limit 3 per license per hour; never creates a license). The earlier link is retired only after the new email is sent.
+
+## Migrations (additive, not applied to Production by the PR)
+
+1. `20261010200000_automation_center.sql` (PR #8)
+2. `20261010210000_onboarding_profiles.sql` — one new table; depends on #1's `set_updated_at` function from the commerce migration.
+
+## What is verified and what is not
+
+*Automated (235 tests):* one invitation per manual license; failed email keeps one intact license and is retryable; resend limits; no customer enumeration; domain entry, normalization, conflicts and limits; status transitions; completion gated on a passed CRM test and idempotent; completion email uses only the customer's own code; plus the existing OAuth, webhook, test-lead, tenant-isolation and embed-enforcement suites.
+
+*Needs you (manual):* a real Resend send (needs `MONARCH_EMAIL_FROM` on a verified domain); a real GoHighLevel OAuth install; the browser walkthrough on Preview with a test license and an allow-listed email; applying the two migrations.
+
+*Decisions/limits:* **paid** licenses are still created pending and an administrator issues the key (existing control); the customer's first email says it is being prepared and a second email goes out when you issue the key. The setup link is reusable until it expires or is replaced, so customers can reopen their instructions after completing. Installation status is "confirmed by an administrator"; Monarch does not crawl the customer's site.

@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUniqueViolation, unwrap } from "../commerce/supabase-repo.ts";
-import type { AuditEntry, AutomationEvent, AutomationRepo, Execution, ExecutionStatus, OnboardingLink, Template, Workflow } from "./types.ts";
+import type { AuditEntry, AutomationEvent, AutomationRepo, Execution, ExecutionStatus, OnboardingLink, OnboardingProfile, Template, Workflow } from "./types.ts";
 
 // Service-role store for the Automation Center. RLS is on for every table with no anon/authenticated
 // grants; callers authorize (administrator, or a hashed setup link) before using it.
@@ -98,6 +98,21 @@ export class SupabaseAutomationRepo implements AutomationRepo {
     return (unwrap(await q.select("id")) as Row[]).length;
   }
   async listLinks(limit: number) { return unwrap(await this.db.from("onboarding_links").select("*").order("created_at", { ascending: false }).limit(limit)) as OnboardingLink[]; }
+
+  async getProfile(licenseId: string) { return unwrap(await this.db.from("onboarding_profiles").select("*").eq("license_id", licenseId).maybeSingle()) as OnboardingProfile | null; }
+  async saveProfile(licenseId: string, patch: Row) {
+    return unwrap(await this.db.from("onboarding_profiles").upsert({ license_id: licenseId, ...patch }, { onConflict: "license_id" }).select("*").single()) as OnboardingProfile;
+  }
+  async completeProfile(licenseId: string, nowIso: string) {
+    const rows = unwrap(await this.db.from("onboarding_profiles").update({ completed_at: nowIso }).eq("license_id", licenseId).is("completed_at", null).select("license_id")) as Row[];
+    return rows.length === 1;
+  }
+  async listEventsByLicense(licenseId: string, limit: number) { return unwrap(await this.db.from("automation_events").select("*").eq("license_id", licenseId).order("created_at", { ascending: false }).limit(limit)) as AutomationEvent[]; }
+  async listExecutionsForEvents(eventIds: string[]) {
+    if (!eventIds.length) return [];
+    return unwrap(await this.db.from("automation_executions").select("*").in("event_id", eventIds).order("created_at", { ascending: false })) as Execution[];
+  }
+  async listLinksForLicense(licenseId: string, limit: number) { return unwrap(await this.db.from("onboarding_links").select("*").eq("license_id", licenseId).order("created_at", { ascending: false }).limit(limit)) as OnboardingLink[]; }
 
   async addAudit(input: Row) { unwrap(await this.db.from("automation_audit_log").insert(input)); }
   async listAudit(limit: number) { return unwrap(await this.db.from("automation_audit_log").select("*").order("created_at", { ascending: false }).limit(limit)) as AuditEntry[]; }

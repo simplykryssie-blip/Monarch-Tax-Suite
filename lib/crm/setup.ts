@@ -18,6 +18,8 @@ const SHARED_HOST_SUFFIXES = [
 
 /** Turns whatever the customer typed (a page URL, a www address) into the main domain to authorize. */
 export function normalizeMainDomain(input: string): string {
+  const scheme = input.trim().match(/^([a-z][a-z0-9+.-]*):\/\//i)?.[1]?.toLowerCase();
+  if (scheme && scheme !== "http" && scheme !== "https") throw new ValidationError("Enter your website address without anything before it, such as yourbusiness.com.");
   const host = normalizeDomain(input);
   if (SHARED_HOST_SUFFIXES.some((s) => host === s || host.endsWith(`.${s}`))) {
     throw new ValidationError("That is a shared address used by many websites. Enter your own website address, such as yourbusiness.com.");
@@ -37,6 +39,11 @@ export async function previewActivation(commerce: CommerceRepo, licenseId: strin
   const twin = `www.${domain}`;
   const active = (await commerce.listDomains(license.id)).filter((d) => d.status === "active");
   const alreadyActive = active.some((d) => d.domain === domain || d.domain === twin);
+  if (!alreadyActive) {
+    const holders = (await commerce.findActiveDomainHolders([domain, twin])).filter((id) => id !== license.id);
+    // Deliberately vague: do not reveal who holds the domain.
+    if (holders.length) throw new ValidationError("That website address is already registered to another Monarch Tax Suite license. If it is yours, contact Monarch Tax Suite so we can sort it out.");
+  }
   if (!alreadyActive && active.length >= license.max_domains) {
     throw new ValidationError(`This license is already activated for ${active.map((d) => d.domain).join(", ")}. Contact Monarch Tax Suite to change your website.`);
   }

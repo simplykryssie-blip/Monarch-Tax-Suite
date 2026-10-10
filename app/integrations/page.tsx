@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { NewLinkForm } from "@/components/integrations/new-link-form";
 import { SetupForms } from "@/components/integrations/setup-forms";
 import { cookies } from "next/headers";
 import { readPendingInstall } from "@/lib/crm/connection.ts";
@@ -18,9 +19,10 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
       <div className="monarch-public-card intg-card">
         <div className="monarch-eyebrow">MONARCH TAX SUITE · SETUP</div>
         <h1>Set up your calculator</h1>
-        <p>Three quick steps: activate your calculator, choose where your leads should go, then test it. Monarch Tax Suite doesn&apos;t store your leads. They go straight to your own CRM account.</p>
+        <p>Confirm your details and website, choose where your leads should go, test it, then add the calculator to your page. Monarch Tax Suite doesn&apos;t store your leads. They go straight to your own CRM account.</p>
         {error && <p className="monarch-alert is-error" role="alert">{error}</p>}
         {notice && <p className="monarch-alert" role="status">{notice}</p>}
+        {!jar.get(SETUP_COOKIE)?.value && <NewLinkForm />}
         {config.encryption ? <SetupForms highlevelAvailable={config.highlevel} pending={pending} linked={Boolean(jar.get(SETUP_COOKIE)?.value)} /> : <p className="monarch-notice"><b>NOT AVAILABLE YET</b> Lead destinations are being set up. Please contact info@monarchtaxsuite.com.</p>}
       </div>
     </main>

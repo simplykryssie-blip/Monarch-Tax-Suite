@@ -11,6 +11,10 @@ import { normalizeEmail, ValidationError } from "@/lib/commerce/validation.ts";
 import { resolveSetupSession, SETUP_COOKIE } from "@/lib/automation/onboarding.ts";
 import { automationDeps, setupSecrets } from "@/lib/automation/server";
 import type { License } from "@/lib/commerce/types.ts";
+import { embedSnippet } from "@/lib/commerce/platforms.ts";
+import { completeOnboarding, connectionVerified, stepsFor, validateProfileInput, type Step } from "@/lib/automation/progress.ts";
+import { appOrigin } from "@/lib/admin";
+import { safeEmit } from "@/lib/automation/server";
 
 // Buyer self-service for the lead destination. There is no account or
 // session: every action is authorized by the license key submitted with it,
@@ -25,6 +29,15 @@ export type DestinationView = {
   status_info: SetupStatus;
   domains: string[];
   canEnable: boolean;
+  onboarding: {
+    licenseStatus: string;
+    completedAt: string | null;
+    steps: Step[];
+    profile: { contact_name: string; business_name: string; business_email: string; phone: string; ghl_account: string };
+    embed: string | null;
+    allowedDomains: string[];
+    verified: boolean;
+  };
   settings: { enabled: boolean; business_name: string; lead_source: string; tags: string; update_existing: boolean; include_summary: boolean };
 };
 export type SetupState = { ok?: boolean; message?: string; signingSecret?: string; view?: DestinationView; pending?: { domain: string; alsoCovers: string; alreadyActive: boolean } };
@@ -45,15 +58,31 @@ async function licenseForRequest(form: FormData): Promise<License> {
     const session = await resolveSetupSession({ repo: deps.repo, commerce: deps.commerce, secrets }, cookie);
     const license = session ? await deps.commerce.getLicense(session.licenseId) : null;
     if (license && license.status === "active") return license;
+    if (license) throw new ValidationError(license.status === "pending" ? "Your license is still being prepared. We will email you as soon as it is ready." : `Your license is ${license.status}. Please contact Monarch Tax Suite.`);
   }
   return licenseFromKey(typed);
 }
 
 async function view(licenseId: string): Promise<DestinationView> {
   const deps = crmDeps();
-  const [c, s, d] = await Promise.all([deps.repo.getLiveConnection(licenseId), deps.repo.getLeadSettings(licenseId), deps.commerce.listDomains(licenseId)]);
+  const auto = automationDeps();
+  const [c, s, d, profile, license] = await Promise.all([deps.repo.getLiveConnection(licenseId), deps.repo.getLeadSettings(licenseId), deps.commerce.listDomains(licenseId), auto.repo.getProfile(licenseId), deps.commerce.getLicense(licenseId)]);
+  const customer = license ? await deps.commerce.getCustomer(license.customer_id) : null;
   const settings = s ?? DEFAULT_LEAD_SETTINGS(licenseId);
+  const active = d.filter((x) => x.status === "active");
+  const connection = c ? { provider: c.provider, status: c.status, last_checked_at: c.last_checked_at, last_error: c.last_error } : null;
   return {
+    onboarding: {
+      licenseStatus: license?.status ?? "unknown",
+      completedAt: profile?.completed_at ?? null,
+      steps: stepsFor({ profile, domains: d, connection }),
+      // Pre-filled from the license record; the customer may correct anything.
+      profile: { contact_name: profile?.contact_name ?? customer?.full_name ?? "", business_name: profile?.business_name ?? settings.business_name ?? "", business_email: profile?.business_email ?? customer?.email ?? "", phone: profile?.phone ?? "", ghl_account: profile?.ghl_account ?? "" },
+      // Only this license's own embed id, and only once a domain is authorized.
+      embed: license?.embed_id && active.length ? embedSnippet(await appOrigin(), license.embed_id) : null,
+      allowedDomains: active.map((x) => x.domain),
+      verified: connectionVerified(connection),
+    },
     provider: c?.provider ?? null,
     status_info: deriveSetupStatus({ connection: c, settings: s }),
     domains: d.filter((x) => x.status === "active").map((x) => x.domain),
@@ -62,14 +91,24 @@ async function view(licenseId: string): Promise<DestinationView> {
     label: !c ? null : c.provider === "webhook" ? `Webhook to ${c.webhook_host}` : `GoHighLevel: ${c.location_name ?? c.location_id}`,
     lastSuccess: c?.last_success_at ?? null,
     lastError: c?.last_error ?? null,
-    settings: { enabled: settings.enabled, business_name: settings.business_name ?? "", lead_source: settings.lead_source, tags: settings.tags.join(", "), update_existing: settings.update_existing, include_summary: settings.include_summary },
+    settings: { enabled: settings.enabled, business_name: settings.business_name ?? profile?.business_name ?? "", lead_source: settings.lead_source, tags: settings.tags.join(", "), update_existing: settings.update_existing, include_summary: settings.include_summary },
   };
+}
+
+/** Remembers that the customer was just here, for the admin's "last activity". Never blocks the action. */
+async function touch(licenseId: string) {
+  try {
+    await automationDeps().repo.saveProfile(licenseId, { last_activity_at: new Date().toISOString() });
+  } catch {
+    // The onboarding tables may not be installed yet; setup itself must still work.
+  }
 }
 
 async function run(form: FormData, fn: (licenseId: string) => Promise<Partial<SetupState>>): Promise<SetupState> {
   try {
     const license = await licenseForRequest(form);
     const result = await fn(license.id);
+    await touch(license.id);
     return { ok: true, ...result, view: await view(license.id) };
   } catch (e) {
     if (e instanceof ValidationError) return { ok: false, message: e.message };
@@ -166,4 +205,28 @@ export async function finishInstallAction(_prev: SetupState, form: FormData): Pr
     if (e instanceof ValidationError) return { ok: false, message: e.message };
     throw e;
   }
+}
+
+/** Step: the customer's own details. Saved against the license the setup session belongs to, never one named by the browser. */
+export async function saveProfileAction(_prev: SetupState, form: FormData): Promise<SetupState> {
+  return run(form, async (licenseId) => {
+    const v = validateProfileInput({ contact_name: form.get("contact_name"), business_name: form.get("business_name"), business_email: form.get("business_email"), phone: form.get("phone"), ghl_account: form.get("ghl_account") });
+    await automationDeps().repo.saveProfile(licenseId, { ...v, last_activity_at: new Date().toISOString() });
+    return { message: "Details saved." };
+  });
+}
+
+/** Final step. Completes only when every required step is genuinely done; otherwise lists what remains. */
+export async function completeOnboardingAction(_prev: SetupState, form: FormData): Promise<SetupState> {
+  return run(form, async (licenseId) => {
+    const deps = crmDeps();
+    const auto = automationDeps();
+    const [license, domains, c] = await Promise.all([deps.commerce.getLicense(licenseId), deps.commerce.listDomains(licenseId), deps.repo.getLiveConnection(licenseId)]);
+    const connection = c ? { provider: c.provider, status: c.status, last_checked_at: c.last_checked_at, last_error: c.last_error } : null;
+    const result = await completeOnboarding(auto.repo, { license: license!, domains, connection }, new Date().toISOString());
+    if (!result.ok) throw new ValidationError(`Not finished yet: ${result.remaining.map((s) => s.label.toLowerCase()).join(", ")}.`);
+    // The completion is saved first; the confirmation email can fail without undoing it.
+    if (!result.alreadyCompleted) await safeEmit({ type: "onboarding.completed", key: `onboarding_completed:${licenseId}`, licenseId, customerId: license!.customer_id });
+    return { message: result.alreadyCompleted ? "Setup was already complete." : "Setup complete. We emailed you a confirmation with your installation instructions." };
+  });
 }

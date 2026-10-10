@@ -142,6 +142,7 @@ export class MemoryRepo implements CommerceRepo {
   async updateLicense(id: string, patch: Partial<License>) { return this.patch(this.licenses, id, patch); }
   async addLicenseEvent(input: Omit<LicenseEvent, "id" | "created_at">) { this.licenseEvents.push({ ...input, id: randomUUID(), created_at: this.ts() }); }
   async listLicenseEvents(licenseId: string) { return this.clone(this.licenseEvents.filter((e) => e.license_id === licenseId)); }
+  async findActiveDomainHolders(domains: string[]) { return [...new Set(this.domains.filter((d) => d.status === "active" && domains.includes(d.domain)).map((d) => d.license_id))]; }
   async listDomains(licenseId: string) { return this.clone(this.domains.filter((d) => d.license_id === licenseId)); }
   async upsertDomain(licenseId: string, domain: string, status: AuthorizedDomain["status"]) {
     const existing = this.domains.find((d) => d.license_id === licenseId && d.domain === domain);

@@ -325,6 +325,8 @@ export interface CommerceRepo {
   addLicenseEvent(input: Omit<LicenseEvent, "id" | "created_at">): Promise<void>;
   listLicenseEvents(licenseId: string): Promise<LicenseEvent[]>;
   listDomains(licenseId: string): Promise<AuthorizedDomain[]>;
+  /** Ids of licenses (other than none) that currently hold any of these domains as active. */
+  findActiveDomainHolders(domains: string[]): Promise<string[]>;
   upsertDomain(licenseId: string, domain: string, status: AuthorizedDomain["status"]): Promise<AuthorizedDomain>;
 
   listInstallations(): Promise<Installation[]>;
