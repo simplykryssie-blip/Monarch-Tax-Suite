@@ -33,3 +33,12 @@ A saved link or a fresh OAuth connection is "Connected, not tested yet", never a
 - Follow-up emails and workflow triggers remain the customer's own GoHighLevel workflow; Monarch does
   not send email and cannot verify that a workflow ran.
 - No database migration is included. Rate limiting stays inactive until `20261009200000_rate_limit_counters.sql` is applied.
+
+## Installs started inside GoHighLevel
+A Marketplace app is normally installed from GoHighLevel, so the redirect to `/api/integrations/crm/callback` can arrive with an authorization code but without the one-time `state` this app creates (and without the browser cookie). Monarch then:
+1. Exchanges the code and accepts only a **Location (sub-account)** token. Nothing is written to the database.
+2. Keeps the refresh token, location id and name in an **encrypted, HttpOnly, 10-minute cookie** (`mts_crm_pending`, path `/integrations`).
+3. Redirects to `/integrations`, which shows "Finish connecting GoHighLevel: <account name>". The license holder enters their license key and presses the confirm button.
+4. Only then is the connection saved to that license. The refresh token is single-use at GoHighLevel, so a replay fails.
+
+Installs started from Monarch's Connect button still use the one-time state and cookie as before. Risk note: someone could be tricked into completing another person's approval; the confirmation shows the account name and id so the license holder can recognise a foreign account. Not exercised against real GoHighLevel yet.

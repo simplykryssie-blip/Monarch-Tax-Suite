@@ -2,9 +2,9 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { disconnect, setWebhook, startConnection } from "@/lib/crm/connection.ts";
+import { disconnect, finishPendingInstall, setWebhook, startConnection } from "@/lib/crm/connection.ts";
 import { authorizeUrl } from "@/lib/crm/highlevel.ts";
-import { crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri } from "@/lib/crm/server";
+import { crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri, PENDING_COOKIE, pendingCookieOptions } from "@/lib/crm/server";
 import { DEFAULT_LEAD_SETTINGS } from "@/lib/crm/types.ts";
 import { activateDomain, assertCanEnable, deriveSetupStatus, previewActivation, runConnectionTest, type SetupStatus } from "@/lib/crm/setup.ts";
 import { normalizeEmail, ValidationError } from "@/lib/commerce/validation.ts";
@@ -131,4 +131,18 @@ export async function connectHighLevelAction(_prev: SetupState, form: FormData):
     throw e;
   }
   redirect(target);
+}
+
+/** Finishes an install that was started inside GoHighLevel: the license holder's key binds it to their license. */
+export async function finishInstallAction(_prev: SetupState, form: FormData): Promise<SetupState> {
+  try {
+    const license = await licenseFromKey(String(form.get("license_key") ?? ""));
+    const jar = await cookies();
+    const connection = await finishPendingInstall(crmDeps(), { sealed: jar.get(PENDING_COOKIE)?.value, licenseId: license.id });
+    jar.set(PENDING_COOKIE, "", { ...pendingCookieOptions, maxAge: 0 });
+    return { ok: true, message: `GoHighLevel connected to ${connection.location_name ?? connection.location_id}. Now test the connection.`, view: await view(license.id) };
+  } catch (e) {
+    if (e instanceof ValidationError) return { ok: false, message: e.message };
+    throw e;
+  }
 }

@@ -41,6 +41,9 @@ export async function oauthRedirectUri() {
 
 /** Short-lived cookie binding an OAuth attempt to the browser that started it. */
 export const OAUTH_COOKIE = "mts_crm_oauth";
+/** Short-lived, encrypted cookie holding an install that was started inside HighLevel until the license holder confirms it. */
+export const PENDING_COOKIE = "mts_crm_pending";
+export const pendingCookieOptions = { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: "/integrations", maxAge: 600 };
 export const oauthCookieOptions = { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: "/api/integrations/crm", maxAge: 600 };
 
 /**

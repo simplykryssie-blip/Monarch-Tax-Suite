@@ -1,14 +1,14 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { activateAction, connectHighLevelAction, disconnectAction, lookupAction, saveSettingsAction, setWebhookAction, testAction, type SetupState } from "@/app/integrations/actions";
+import { activateAction, connectHighLevelAction, disconnectAction, finishInstallAction, lookupAction, saveSettingsAction, setWebhookAction, testAction, type SetupState } from "@/app/integrations/actions";
 
 // Three plain steps: activate, connect, test and turn on. Every form sends the license key typed
 // on this page; nothing is remembered after the page closes. Webhook and signing-secret details
 // live only under "Advanced" in step 2.
-type Section = "lookup" | "activate" | "hook" | "test" | "save" | "ghl";
+type Section = "lookup" | "activate" | "hook" | "test" | "save" | "ghl" | "finish";
 
-export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean }) {
+export function SetupForms({ highlevelAvailable, pending }: { highlevelAvailable: boolean; pending?: { locationId: string; locationName: string | null } | null }) {
   const [key, setKey] = useState("");
   const [domain, setDomain] = useState("");
   const [state, setState] = useState<SetupState>({});
@@ -23,6 +23,7 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
     } catch {
       next = { ok: false, message: "Something went wrong on our side. Please try again in a moment." };
     }
+    if (section === "finish" && next.ok) setFinished(true);
     setFeedback(next.message ? { section, ok: Boolean(next.ok), message: next.message } : null);
     setState((s) => ({ ...next, view: next.view ?? s.view, signingSecret: next.signingSecret }));
     return next;
@@ -43,6 +44,8 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
   const [, disc, disconnecting] = useActionState(wrap("test", disconnectAction), {});
   const [, save, saving] = useActionState(wrap("save", saveSettingsAction), {});
   const [, ghl, connecting] = useActionState(wrap("ghl", connectHighLevelAction), {});
+  const [, finishInstall, finishing] = useActionState(wrap("finish", finishInstallAction), {});
+  const [finished, setFinished] = useState(false);
   const v = state.view;
   const status = v?.status_info;
   const hidden = <input type="hidden" name="license_key" value={key} />;
@@ -59,6 +62,16 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
         </div>
       </form>
       {note("lookup")}
+      {pending && !finished && (
+        <form action={finishInstall} className="intg-step">
+          {hidden}
+          <h2>Finish connecting GoHighLevel</h2>
+          <p>GoHighLevel approved access for <b>{pending.locationName ?? "your sub-account"}</b> <span className="monarch-muted">(ID {pending.locationId})</span>.</p>
+          <p className="monarch-muted">Enter your license key above, then confirm. Only continue if this is your own GoHighLevel account. This approval expires in about 10 minutes.</p>
+          <button className="monarch-primary" disabled={finishing || !key}>{finishing ? "Connecting…" : `Connect ${pending.locationName ?? "this account"} to my license`}</button>
+          {note("finish")}
+        </form>
+      )}
 
       {v && status && (
         <>
