@@ -88,6 +88,20 @@ export type OnboardingLink = {
   created_at: string;
 };
 
+export type OnboardingProfile = {
+  license_id: string;
+  contact_name: string | null;
+  business_name: string | null;
+  business_email: string | null;
+  phone: string | null;
+  ghl_account: string | null;
+  completed_at: string | null;
+  last_activity_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type ProfilePatch = Partial<Pick<OnboardingProfile, "contact_name" | "business_name" | "business_email" | "phone" | "ghl_account" | "completed_at" | "last_activity_at">>;
+
 export type AuditEntry = { id: string; actor_id: string | null; action: string; target_type: string | null; target_id: string | null; detail: Record<string, unknown>; created_at: string };
 
 export interface AutomationRepo {
@@ -131,6 +145,15 @@ export interface AutomationRepo {
   /** Revokes every unrevoked link of a license except `exceptId`. */
   revokeLinksForLicense(licenseId: string, nowIso: string, exceptId?: string): Promise<number>;
   listLinks(limit: number): Promise<OnboardingLink[]>;
+
+  getProfile(licenseId: string): Promise<OnboardingProfile | null>;
+  /** Creates or updates the one profile row of a license. */
+  saveProfile(licenseId: string, patch: ProfilePatch): Promise<OnboardingProfile>;
+  /** Sets completed_at only if empty; returns true when this call completed it. */
+  completeProfile(licenseId: string, nowIso: string): Promise<boolean>;
+  listEventsByLicense(licenseId: string, limit: number): Promise<AutomationEvent[]>;
+  listExecutionsForEvents(eventIds: string[]): Promise<Execution[]>;
+  listLinksForLicense(licenseId: string, limit: number): Promise<OnboardingLink[]>;
 
   addAudit(input: Omit<AuditEntry, "id" | "created_at">): Promise<void>;
   listAudit(limit: number): Promise<AuditEntry[]>;

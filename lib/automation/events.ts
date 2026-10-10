@@ -53,6 +53,16 @@ export const EVENTS: Record<string, EventDef> = {
     description: "A calculator lead could not be delivered to the customer's CRM. No lead contents are recorded.",
     fields: { provider: ["highlevel", "webhook"], error_kind: ["auth", "transient", "permanent"] },
   },
+  "onboarding.invite_requested": {
+    label: "Setup email requested again",
+    description: "An administrator, or the customer through the \"send me a new link\" form, asked for a fresh setup email.",
+    fields: {},
+  },
+  "onboarding.completed": {
+    label: "Onboarding completed",
+    description: "The customer finished every setup step: details, authorized website, and a CRM destination that passed its test.",
+    fields: {},
+  },
   "license.suspended": {
     label: "License suspended",
     description: "An administrator suspended a license.",

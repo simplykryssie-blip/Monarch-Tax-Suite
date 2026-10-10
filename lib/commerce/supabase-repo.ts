@@ -189,6 +189,10 @@ export class SupabaseCommerceRepo implements CommerceRepo {
     const rows = unwrap(await this.db.from("calculator_license_events").select("*").eq("license_id", licenseId).order("created_at", { ascending: true })) as Row[];
     return rows.map(licenseEventFromRow);
   }
+  async findActiveDomainHolders(domains: string[]) {
+    const rows = unwrap(await this.db.from("calculator_authorized_domains").select("license_id").in("domain", domains).eq("verification_status", "verified")) as { license_id: string }[];
+    return [...new Set(rows.map((r) => r.license_id))];
+  }
   async listDomains(licenseId: string) {
     const rows = unwrap(await this.db.from("calculator_authorized_domains").select("*").eq("license_id", licenseId).order("created_at")) as Row[];
     return rows.map(domainFromRow);

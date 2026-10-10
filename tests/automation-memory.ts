@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AuditEntry, AutomationEvent, AutomationRepo, Execution, ExecutionStatus, NewEvent, NewExecution, NewTemplate, NewWorkflow, OnboardingLink, Template, Workflow } from "../lib/automation/types.ts";
+import type { AuditEntry, AutomationEvent, AutomationRepo, Execution, ExecutionStatus, NewEvent, NewExecution, NewTemplate, NewWorkflow, OnboardingLink, OnboardingProfile, ProfilePatch, Template, Workflow } from "../lib/automation/types.ts";
 
 // In-memory AutomationRepo with the same uniqueness rules as the database.
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -81,6 +81,24 @@ export class MemoryAutomationRepo implements AutomationRepo {
     return n;
   }
   async listLinks(limit: number) { return clone(this.links.slice(-limit).reverse()); }
+
+  profiles: OnboardingProfile[] = [];
+  async getProfile(licenseId: string) { return clone(this.profiles.find((p) => p.license_id === licenseId) ?? null); }
+  async saveProfile(licenseId: string, patch: ProfilePatch) {
+    let p = this.profiles.find((x) => x.license_id === licenseId);
+    if (!p) { p = { license_id: licenseId, contact_name: null, business_name: null, business_email: null, phone: null, ghl_account: null, completed_at: null, last_activity_at: null, created_at: now(), updated_at: now() }; this.profiles.push(p); }
+    Object.assign(p, clone(patch), { updated_at: now() });
+    return clone(p);
+  }
+  async completeProfile(licenseId: string, nowIso: string) {
+    const p = this.profiles.find((x) => x.license_id === licenseId);
+    if (!p || p.completed_at) return false;
+    p.completed_at = nowIso;
+    return true;
+  }
+  async listEventsByLicense(licenseId: string, limit: number) { return clone(this.events.filter((e) => e.license_id === licenseId).slice(-limit).reverse()); }
+  async listExecutionsForEvents(eventIds: string[]) { return clone(this.executions.filter((x) => eventIds.includes(x.event_id))); }
+  async listLinksForLicense(licenseId: string, limit: number) { return clone(this.links.filter((l) => l.license_id === licenseId).slice(-limit).reverse()); }
 
   async addAudit(input: Omit<AuditEntry, "id" | "created_at">) { this.audit.push({ ...clone(input), id: randomUUID(), created_at: now() }); }
   async listAudit(limit: number) { return clone(this.audit.slice(-limit).reverse()); }

@@ -1,12 +1,12 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
-import { activateAction, connectHighLevelAction, disconnectAction, finishInstallAction, lookupAction, saveSettingsAction, setWebhookAction, testAction, type SetupState } from "@/app/integrations/actions";
+import { activateAction, completeOnboardingAction, saveProfileAction, connectHighLevelAction, disconnectAction, finishInstallAction, lookupAction, saveSettingsAction, setWebhookAction, testAction, type SetupState } from "@/app/integrations/actions";
 
 // Three plain steps: activate, connect, test and turn on. Every form sends the license key typed
 // on this page; nothing is remembered after the page closes. Webhook and signing-secret details
 // live only under "Advanced" in step 2.
-type Section = "lookup" | "activate" | "hook" | "test" | "save" | "ghl" | "finish";
+type Section = "profile" | "complete" | "lookup" | "activate" | "hook" | "test" | "save" | "ghl" | "finish";
 
 export function SetupForms({ highlevelAvailable, pending, linked = false }: { highlevelAvailable: boolean; linked?: boolean; pending?: { locationId: string; locationName: string | null } | null }) {
   const [key, setKey] = useState("");
@@ -46,6 +46,9 @@ export function SetupForms({ highlevelAvailable, pending, linked = false }: { hi
   const [, ghl, connecting] = useActionState(wrap("ghl", connectHighLevelAction), {});
   const [, finishInstall, finishing] = useActionState(wrap("finish", finishInstallAction), {});
   const [finished, setFinished] = useState(false);
+  const [, saveProfile, savingProfile] = useActionState(wrap("profile", saveProfileAction), {});
+  const [, complete, completing] = useActionState(wrap("complete", completeOnboardingAction), {});
+  const [copied, setCopied] = useState(false);
   // Arriving from the emailed setup link: the server already knows the license, so load it without a key.
   useEffect(() => {
     if (linked) startTransition(() => lookup(new FormData()));
@@ -84,7 +87,21 @@ export function SetupForms({ highlevelAvailable, pending, linked = false }: { hi
           <p ref={topRef} className="intg-status" data-state={status.key}><b>{status.label}</b> {status.detail}</p>
 
           <section className="intg-step">
-            <h2><span className="intg-num">1</span> Activate your calculator {activated && <span className="intg-done">Done</span>}</h2>
+            <h2><span className="intg-num">1</span> Your details {v.onboarding.steps[0].done && <span className="intg-done">Done</span>}</h2>
+            <p className="monarch-muted">Confirm who you are. We filled in what we already know; correct anything that is wrong.</p>
+            <form action={saveProfile} className="monarch-form">
+              {hidden}
+              <label>Your full name<input name="contact_name" required maxLength={120} defaultValue={v.onboarding.profile.contact_name} autoComplete="name" /></label>
+              <label>Business name<input name="business_name" required maxLength={120} defaultValue={v.onboarding.profile.business_name} autoComplete="organization" /></label>
+              <label>Business email<input name="business_email" type="email" required maxLength={254} defaultValue={v.onboarding.profile.business_email} autoComplete="email" /></label>
+              <label>Business phone (optional)<input name="phone" type="tel" maxLength={40} defaultValue={v.onboarding.profile.phone} autoComplete="tel" /></label>
+              <label className="is-wide">GoHighLevel account or sub-account name, if you know it (optional)<input name="ghl_account" maxLength={120} defaultValue={v.onboarding.profile.ghl_account} /></label>
+              <div className="is-wide"><button className="monarch-primary" disabled={savingProfile}>{savingProfile ? "Saving…" : "Save details"}</button>{note("profile")}</div>
+            </form>
+          </section>
+
+          <section className="intg-step">
+            <h2><span className="intg-num">2</span> Activate your calculator {activated && <span className="intg-done">Done</span>}</h2>
             {activated ? (
               <>
                 <p>Your calculator is activated for <b>{v.domains.join(", ")}</b> (and the www version).</p>
@@ -111,7 +128,7 @@ export function SetupForms({ highlevelAvailable, pending, linked = false }: { hi
           </section>
 
           <section className="intg-step">
-            <h2><span className="intg-num">2</span> Choose where your leads should go {v.provider && status.key !== "not_connected" && <span className="intg-done">{v.label}</span>}</h2>
+            <h2><span className="intg-num">3</span> Choose where your leads should go {v.provider && status.key !== "not_connected" && <span className="intg-done">{v.label}</span>}</h2>
             {highlevelAvailable ? (
               <form action={ghl}>
                 {hidden}
@@ -144,7 +161,7 @@ export function SetupForms({ highlevelAvailable, pending, linked = false }: { hi
           </section>
 
           <section className="intg-step">
-            <h2><span className="intg-num">3</span> Test your connection and turn on lead capture</h2>
+            <h2><span className="intg-num">4</span> Test your connection and turn on lead capture</h2>
             {v.provider ? (
               <>
                 <p>{v.label}{v.lastSuccess ? ` · last lead delivered ${new Date(v.lastSuccess).toLocaleString()}` : ""}</p>
@@ -177,6 +194,39 @@ export function SetupForms({ highlevelAvailable, pending, linked = false }: { hi
               </>
             ) : (
               <p className="monarch-muted">Finish step 2 first.</p>
+            )}
+          </section>
+
+          <section className="intg-step">
+            <h2><span className="intg-num">5</span> Add the calculator to your website, then finish {v.onboarding.completedAt && <span className="intg-done">Complete</span>}</h2>
+            {v.onboarding.embed ? (
+              <>
+                <p>Your calculator is authorized for <b>{v.onboarding.allowedDomains.join(", ")}</b>. Add this code to the page where it should appear (in GoHighLevel, use a <b>Custom Code / HTML</b> element):</p>
+                <pre className="intg-code" tabIndex={0}>{v.onboarding.embed}</pre>
+                <button type="button" className="monarch-secondary" onClick={() => { void navigator.clipboard?.writeText(v.onboarding.embed ?? "").then(() => setCopied(true)); }}>{copied ? "Copied" : "Copy code"}</button>
+                <details className="intg-advanced">
+                  <summary>Troubleshooting</summary>
+                  <ul>
+                    <li><b>The area is blank:</b> the page must be on {v.onboarding.allowedDomains[0]} (or its www version). The calculator never shows on any other address, including preview links.</li>
+                    <li><b>&ldquo;Not authorized&rdquo;:</b> your website address in step 2 doesn&apos;t match the page. Contact us to change it.</li>
+                    <li><b>Leads don&apos;t arrive:</b> run Test connection in step 4 and read the message it shows.</li>
+                  </ul>
+                </details>
+              </>
+            ) : (
+              <p className="monarch-muted">Your calculator code appears here once your website is authorized in step 2.</p>
+            )}
+            <ul className="intg-checklist">
+              {v.onboarding.steps.map((s) => <li key={s.key}>{s.done ? "✓" : "○"} {s.label}{s.done ? "" : ` — ${s.hint}`}</li>)}
+            </ul>
+            {v.onboarding.completedAt ? (
+              <p className="monarch-alert is-ok">✓ Setup completed {new Date(v.onboarding.completedAt).toLocaleString()}. Your confirmation email has your installation instructions.</p>
+            ) : (
+              <form action={complete}>
+                {hidden}
+                <button className="monarch-primary" disabled={completing || v.onboarding.steps.some((s) => !s.done)}>{completing ? "Finishing…" : "Finish setup"}</button>
+                {note("complete")}
+              </form>
             )}
           </section>
         </>

@@ -243,3 +243,4 @@ a{color:inherit}
 @media(max-width:680px){.intg-step{padding:14px}}
 .monarch-alert.is-ok{background:#e6f4ec;border:1px solid #1a6b3a;color:#134d2a}
 .intg-steps{margin:8px 0 14px;padding-left:20px;font-size:13px;line-height:1.55}.intg-steps li{margin-bottom:6px}
+.intg-code{background:#11110f;color:#f1ead6;padding:14px;border-radius:6px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all}.intg-checklist{list-style:none;padding:0;margin:14px 0;display:grid;gap:4px;font-size:13px}

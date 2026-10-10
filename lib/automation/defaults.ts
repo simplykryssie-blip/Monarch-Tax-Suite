@@ -28,10 +28,10 @@ Use your secure setup page to confirm your website and connect GoHighLevel, so c
 
 {{setup_link}}
 
-What you will do there:
-1. Confirm your main website address. The calculator shows only on this website.
-2. Connect your GoHighLevel account and press Test connection.
-3. Turn on lead capture, then add the calculator to your page.
+You can complete setup yourself, in a few minutes, with nothing to send us:
+1. Confirm your business details and enter your main website address. The calculator shows only on this website.
+2. Connect your GoHighLevel account (or paste a workflow link) and press Test connection.
+3. Copy your calculator code onto your page and press Finish setup.
 
 This link is private to you and expires in 14 days. If your license is still being prepared when you open it, the page will say so and we will email you when it is ready.
 
@@ -127,6 +127,20 @@ Reconnect from your setup page:
 Visitors were shown an error and asked to try again. Questions? Write to {{support_email}}.`,
   },
   {
+    key: "onboarding_completed",
+    name: "Onboarding completed: confirmation and install guide",
+    subject: "You're all set: your Monarch calculator setup is complete",
+    body: `# Setup complete, {{customer_first_name}}
+
+Your calculator is authorized for {{authorized_domain}} and your leads go to {{crm_account}}.
+
+{{embed_instructions}}
+
+If the calculator area stays blank, check that the page is on {{authorized_domain}} (or its www version) and that the code was pasted exactly as shown. You can reopen your setup page any time from your original setup email.
+
+Questions? Write to {{support_email}}.`,
+  },
+  {
     key: "license_suspended",
     name: "License suspended notice",
     subject: "Your Monarch Tax Suite license has been suspended",
@@ -155,7 +169,9 @@ const email = (templateKey: string, to: "customer" | "support" = "customer", lin
 export const DEFAULT_WORKFLOWS: DefaultWorkflow[] = [
   { key: "manual_license_created", name: "Manual license created: onboarding email", description: "Sends the customer their secure setup link when an administrator creates a manual (internal or reconciled) license.", trigger: "license.manual_created", conditions: [], actions: email("onboarding_welcome", "customer", true), status: "active" },
   { key: "paid_license_created", name: "Paid license created: onboarding email", description: "Runs only after a signature-verified Stripe payment created the license.", trigger: "license.paid_created", conditions: [], actions: email("paid_welcome", "customer", true), status: "active" },
-  { key: "license_activated", name: "License key issued: setup is ready", description: "Optional second email when an administrator issues the key. Off by default so customers get one email, not two.", trigger: "license.activated", conditions: [], actions: email("license_ready", "customer", true), status: "paused" },
+  { key: "license_activated", name: "License key issued: setup is ready", description: "Sent when an administrator issues the key for a license that was still being prepared (paid licenses). Manual licenses are activated automatically and do not send it.", trigger: "license.activated", conditions: [], actions: email("license_ready", "customer", true), status: "active" },
+  { key: "invite_requested", name: "Setup email requested again: send a fresh link", description: "Sends a new secure setup link when an administrator or the customer asks for one. The earlier link is retired once the new email goes out.", trigger: "onboarding.invite_requested", conditions: [], actions: email("onboarding_welcome", "customer", true), status: "active" },
+  { key: "onboarding_completed", name: "Onboarding completed: confirmation email", description: "Sent once, when every setup step is genuinely finished.", trigger: "onboarding.completed", conditions: [], actions: email("onboarding_completed"), status: "active" },
   { key: "onboarding_started", name: "Onboarding started: record progress", description: "Records that the customer opened their setup link. It does not mean setup is complete.", trigger: "onboarding.started", conditions: [], actions: () => [{ type: "record_note", note: "Customer opened their secure setup link." }], status: "active" },
   { key: "crm_connected", name: "GoHighLevel connected: confirmation email", description: "Runs only after the connection was verified and saved.", trigger: "crm.connected", conditions: [{ field: "provider", op: "eq", value: "highlevel" }], actions: email("crm_connected", "customer", true), status: "active" },
   { key: "installation_recorded", name: "Installation recorded: guidance email", description: "Sends embed instructions after the customer submits their installation details.", trigger: "installation.recorded", conditions: [], actions: email("installation_recorded"), status: "active" },

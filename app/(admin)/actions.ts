@@ -15,7 +15,8 @@ import {
   updateInstallation,
   type StripePaymentCheck,
 } from "@/lib/commerce/fulfillment.ts";
-import { safeEmit } from "@/lib/automation/server";
+import { automationDeps, safeEmit } from "@/lib/automation/server";
+import { requestInvite } from "@/lib/automation/invites.ts";
 import { disconnect as disconnectCrm } from "@/lib/crm/connection.ts";
 import { crmDeps } from "@/lib/crm/server";
 import { publishBlockersForVersion } from "@/lib/commerce/stripe-verify.ts";
@@ -127,7 +128,8 @@ export async function reconcilePurchaseAction(form: FormData) {
 
 /**
  * A $0 internal (complimentary) license for the owner's own sites. Records no payment.
- * It creates a pending license; the key is issued and the domain authorized from the license page.
+ * It creates the license and activates it (a key is issued but not shown: the customer uses their emailed setup link,
+ * and you can rotate a key later from the license page). The customer then enters and authorizes their own domain.
  */
 export async function createInternalLicenseAction(form: FormData) {
   const admin = await requireAdmin();
@@ -144,15 +146,23 @@ export async function createInternalLicenseAction(form: FormData) {
       admin_id: admin.userId,
       confirmed: form.get("confirm") === "on",
     });
+    let activated = false;
     if (result.created && result.license) {
+      try {
+        // Activate so the customer's setup link works immediately. The license is already saved either way.
+        await issueLicenseKey(commerceRepo(), result.license.id, admin.userId);
+        activated = true;
+      } catch (error) {
+        console.error(`automatic activation failed: ${error instanceof Error ? error.message.slice(0, 120) : "unknown"}`);
+      }
       await safeEmit({ type: "license.manual_created", key: `license:${result.license.id}:manual_created`, licenseId: result.license.id, customerId: result.customer.id, orderId: result.order.id, data: { origin: "internal" } });
     }
     const to = result.license ? `/licenses/${result.license.id}` : `/customers/${result.customer.id}`;
     return {
       to,
       notice: result.created
-        ? `Internal $0 license created for ${result.customer.email}. Now issue the key and authorize ${result.domain}.`
-        : "This internal license already exists; showing it. Issue the key and authorize the domain from here if you have not.",
+        ? `License created for ${result.customer.email}${activated ? " and activated" : " (activation failed: issue the key from this page)"}. A setup email is on its way; check the Onboarding panel below for its status.`
+        : "This internal license already exists; showing it. Use Resend setup email below if the customer needs a new link.",
     };
   });
 }
@@ -330,5 +340,23 @@ export async function adminDisconnectCrmAction(form: FormData) {
   await mutate(`/licenses/${licenseId}`, async () => {
     const done = await disconnectCrm(crmDeps(), licenseId);
     return { notice: done ? "GoHighLevel disconnected for this license; stored credentials were deleted." : "This license had no GoHighLevel connection." };
+  });
+}
+
+/** Sends the customer a fresh setup link. Creates no license; the earlier link is retired only after the new email is sent. */
+export async function resendSetupEmailAction(form: FormData) {
+  const admin = await requireAdmin();
+  const licenseId = id(form);
+  await mutate(`/licenses/${licenseId}`, async () => {
+    let result;
+    try {
+      result = await requestInvite(automationDeps(), licenseId, { adminId: admin.userId });
+    } catch (error) {
+      if (error instanceof ValidationError) throw error;
+      console.error(`resend setup email failed: ${error instanceof Error ? error.message.slice(0, 160) : "unknown"}`);
+      throw new ValidationError("The setup email could not be requested. Check that the Automation Center database migration is applied.");
+    }
+    if (!result.sent) throw new ValidationError("A setup email was already requested several times in the last hour. Please wait before sending another.");
+    return { notice: "Setup email requested. Its delivery status shows in the Onboarding panel." };
   });
 }
