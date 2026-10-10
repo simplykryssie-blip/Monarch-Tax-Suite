@@ -29,5 +29,7 @@ export function supabaseConfigProblems(env: Env): string[] {
   return problems;
 }
 
-export const SUPABASE_URL = resolveSupabaseUrl(process.env);
+// Literal property reads (not `process.env` as a whole) so Next can inline NEXT_PUBLIC_SUPABASE_URL into
+// browser bundles too. On the server the result is identical to resolveSupabaseUrl(process.env).
+export const SUPABASE_URL = resolveSupabaseUrl({ NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL, VERCEL_ENV: process.env.VERCEL_ENV });
 export const SUPABASE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";

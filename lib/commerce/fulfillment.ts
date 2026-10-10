@@ -471,6 +471,91 @@ export async function reconcilePurchase(repo: CommerceRepo, input: ReconcileInpu
 }
 
 // ---------------------------------------------------------------------------
+// Internal (complimentary) licenses: for the business owner's own sites and
+// partners. No payment is taken and none is recorded. The order is a $0 record
+// that is plainly labelled, has no payment reference, and can never be matched
+// by a Stripe event, so it cannot be mistaken for a sale or refunded.
+// ---------------------------------------------------------------------------
+
+export const INTERNAL_ORDER_MARKER = "[INTERNAL LICENSE - NO PAYMENT TAKEN]";
+
+/** True for an order created by `createInternalLicense`. */
+export function isInternalOrder(o: Pick<Order, "amount_cents" | "provider_payment_intent_id" | "provider_checkout_session_id" | "verification_method" | "notes">): boolean {
+  return o.amount_cents === 0 && !o.provider_payment_intent_id && !o.provider_checkout_session_id && o.verification_method === "admin_manual" && (o.notes ?? "").startsWith(INTERNAL_ORDER_MARKER);
+}
+
+export type InternalLicenseInput = {
+  email: string;
+  full_name: string;
+  phone: string | null;
+  product_id: string;
+  platform: InstallationDetails["platform"];
+  website_url: string | null;
+  domain: string;
+  reason: string;
+  admin_id: string;
+  /** The administrator confirmed this is a $0 internal license, not a sale. */
+  confirmed: boolean;
+};
+
+/**
+ * Creates the customer, a $0 internal order, the pending license and the
+ * installation request. It does not issue a key and does not authorize the
+ * domain: the administrator does both from the license page (the key is shown
+ * once there). Safe to repeat: the same customer and product reuse the order.
+ */
+export async function createInternalLicense(repo: CommerceRepo, input: InternalLicenseInput, now?: () => string) {
+  const at = now ? now() : new Date().toISOString();
+  if (!input.confirmed) throw new ValidationError("Confirm that this is a $0 internal license and not a sale.");
+  const email = normalizeEmail(input.email);
+  const fullName = input.full_name.replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+  if (!fullName) throw new ValidationError("Enter the customer name.");
+  const reason = input.reason.replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
+  if (reason.length < 3) throw new ValidationError("Enter why this license is being given (for the record).");
+  const phone = input.phone ? input.phone.replace(/[^0-9+()\-.\s]/g, "").trim().slice(0, 30) : "";
+  const domain = normalizeDomain(input.domain);
+  const product = await repo.getProduct(input.product_id);
+  if (!product) throw new ValidationError("Choose a catalog product.");
+  if (product.access_type !== "license") throw new ValidationError("Internal licenses are only for licensed software products.");
+  if (!product.installation_options.includes("self_service")) throw new ValidationError("That installation option is not offered for this product.");
+
+  const customer = await findOrCreateCustomer(repo, email, fullName, null);
+  const notes = `${INTERNAL_ORDER_MARKER} Reason: ${reason}.${phone ? ` Phone on file: ${phone}.` : ""} Domain to authorize: ${domain}.`;
+  const existing = (await repo.listOrders()).find((o) => o.customer_id === customer.id && o.product_id === product.id && isInternalOrder(o));
+  const { order, created } = existing
+    ? { order: existing, created: false }
+    : await repo.createOrder({
+        customer_id: customer.id,
+        product_id: product.id,
+        amount_cents: 0,
+        amount_refunded_cents: 0,
+        currency: product.currency.toLowerCase(),
+        payment_status: "paid",
+        provider: "stripe", // the only value the orders table allows; there is no payment reference
+        provider_payment_intent_id: null,
+        provider_checkout_session_id: null,
+        order_type: "purchase",
+        license_id: null,
+        tax_year: null,
+        previous_tax_year: null,
+        installation_type: "self_service",
+        verification_method: "admin_manual",
+        verified_by: input.admin_id,
+        verified_at: at,
+        notes,
+        paid_at: at,
+        refunded_at: null,
+      });
+  const fulfillment = await ensureFulfillment(repo, order, product, input.admin_id, {
+    platform: input.platform,
+    platform_other: null,
+    website_url: input.website_url,
+    target_location: domain,
+  });
+  return { customer, order, created, domain, ...fulfillment };
+}
+
+// ---------------------------------------------------------------------------
 // Administrator license and installation actions.
 // ---------------------------------------------------------------------------
 
@@ -677,7 +762,8 @@ export function computeMetrics(data: { customers: Customer[]; orders: Order[]; p
   for (const o of settled) revenueByCurrency[o.currency] = (revenueByCurrency[o.currency] ?? 0) + o.amount_cents - o.amount_refunded_cents;
   return {
     customers: data.customers.length,
-    paidOrders: data.orders.filter((o) => o.payment_status === "paid" || o.payment_status === "partially_refunded").length,
+    // Internal ($0, no payment) licenses are not sales, so they are not counted as paid orders.
+    paidOrders: data.orders.filter((o) => (o.payment_status === "paid" || o.payment_status === "partially_refunded") && !isInternalOrder(o)).length,
     revenueByCurrency,
     publishedProducts: data.products.filter((p) => p.status === "published").length,
     activeLicenses: data.licenses.filter((l) => l.status === "active").length,

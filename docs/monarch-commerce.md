@@ -358,6 +358,26 @@ one, deliver licenses by hand:
 5. Send it through a channel you control (your own email to the checkout
    address). Never paste keys into order notes, tickets or chat logs.
 
+## Internal (complimentary) licenses: your own sites and partners
+
+A license normally comes from a real Stripe payment. For the owner's own
+GoHighLevel account or a partner, use **Orders → New internal license (no
+payment)**. It is deliberately not a sale:
+
+- It creates the customer, a **$0** order, a pending license and an installation
+  request. The order has no payment reference (so no Stripe event can ever match,
+  refund or dispute it), is marked "Internal · no payment" in the Orders list,
+  and records who created it and why in its notes.
+- Internal orders are **not** counted in the dashboard's paid orders or revenue.
+- It does **not** issue a key or authorize a domain by itself. On the license page
+  you press **Issue key** (shown once; copy it then) and authorize the domain,
+  exactly as for a purchased license.
+- Repeating the form for the same customer and product reuses the same order and
+  license; it never creates a duplicate.
+- A real customer who paid must still be recorded with **Reconcile a past purchase**
+  using the real Stripe payment ID. Never use an internal license for a customer
+  who paid, and never enter a made-up payment ID.
+
 ## Launch status and evidence
 
 See [launch-checklist.md](launch-checklist.md).
