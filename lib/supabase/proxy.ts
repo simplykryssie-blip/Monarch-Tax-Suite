@@ -8,6 +8,8 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabaseConfigProblems } from "
 // published products only. /integrations authorizes each action with the buyer's license key; the
 // lead endpoint authorizes with a signed embed token.
 const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
+  // Customer setup links (the token is the credential) and the retry runner (authorized by CRON_SECRET).
+  "/setup", "/api/automation/run",
   // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).
   ...(LEGAL_PAGES_APPROVED ? LEGAL_PATHS : []),
 ];
