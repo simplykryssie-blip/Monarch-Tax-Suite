@@ -11,10 +11,10 @@ const root = new URL("../", import.meta.url).pathname;
 const read = (rel: string) => readFileSync(root + rel, "utf8");
 const PAGES = ["app/terms/page.tsx", "app/privacy/page.tsx", "app/refunds/page.tsx"];
 
-test("the drafts are not approved, and the switch is a single reversible constant", () => {
-  assert.equal(LEGAL_PAGES_APPROVED, false);
+test("the pages are published (owner decision, 2026-10-10), and the switch is a single reversible constant", () => {
+  assert.equal(LEGAL_PAGES_APPROVED, true);
   assert.deepEqual([...LEGAL_PATHS], ["/terms", "/privacy", "/refunds"]);
-  assert.match(read("lib/legal.ts"), /export const LEGAL_PAGES_APPROVED: boolean = false;/);
+  assert.match(read("lib/legal.ts"), /export const LEGAL_PAGES_APPROVED: boolean = true;/);
 });
 
 test("each draft page returns 404 (notFound) as the first thing it does while unapproved", () => {
@@ -24,6 +24,11 @@ test("each draft page returns 404 (notFound) as the first thing it does while un
     assert.match(src, /import \{ LEGAL_PAGES_APPROVED \} from "@\/lib\/legal";/, file);
     assert.match(src, /export default function \w+\(\) \{\s*(?:\/\/[^\n]*\n\s*)?if \(!LEGAL_PAGES_APPROVED\) notFound\(\);/, `${file}: guard must precede any rendering`);
   }
+});
+
+test("while published, the proxy lists exactly the three legal paths as public", () => {
+  assert.match(read("lib/supabase/proxy.ts"), /\.\.\.\(LEGAL_PAGES_APPROVED \? LEGAL_PATHS : \[\]\)/);
+  assert.deepEqual([...LEGAL_PATHS], ["/terms", "/privacy", "/refunds"]);
 });
 
 test("the shop links to the drafts only when they are approved", () => {
@@ -56,9 +61,10 @@ test("nothing else in the app links to the drafts (alternate routes and navigati
   assert.doesNotMatch(read("next.config.ts"), /terms|privacy|refunds/);
 });
 
-test("the draft text is preserved for later review and makes no compliance or approval claims", () => {
+test("the published text keeps its draft banner and counsel notes, and makes no compliance or approval claims", () => {
   assert.match(read("components/legal/legal-page.tsx"), /Draft for review/);
   assert.match(read("components/legal/legal-page.tsx"), /not yet been reviewed or approved/);
+  assert.match(read("app/terms/page.tsx"), /\[To confirm with counsel/);
   assert.match(read("app/terms/page.tsx"), /Governing law/);
   assert.match(read("app/privacy/page.tsx"), /Optional lead form/);
   assert.match(read("app/refunds/page.tsx"), /Governing law/);
