@@ -42,8 +42,13 @@ type Dispute = { payment_intent: string | { id: string } | null };
 
 export type StripeEventLike = { id: string; type: string; data: { object: unknown } };
 
+/** Raised after a business action commits. Must never be allowed to fail the action. */
+export type AutomationEmit = (e: { type: string; key: string; licenseId?: string | null; customerId?: string | null; orderId?: string | null; data?: Record<string, string | number | boolean | null> }) => Promise<void>;
+
 export type FulfillmentDeps = {
   repo: CommerceRepo;
+  /** Optional Automation Center hook. Errors are swallowed: payment fulfillment is never rolled back by automation. */
+  emit?: AutomationEmit;
   /** Stripe product ids of a checkout session's line items (Stripe API call in production). */
   listCheckoutProductIds(sessionId: string): Promise<string[]>;
   now?: () => string;
@@ -221,7 +226,18 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
 
   let current = order;
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
-  if (current.payment_status === "paid") await ensureFulfillment(repo, current, product, null, detailsFromMetadata(session.metadata));
+  if (current.payment_status === "paid") {
+    const { license } = await ensureFulfillment(repo, current, product, null, detailsFromMetadata(session.metadata));
+    // Only reached for a signature-verified, paid order. The event key is per order, so Stripe retries or a second
+    // event for the same payment cannot start the onboarding workflow twice.
+    if (license && deps.emit) {
+      try {
+        await deps.emit({ type: "license.paid_created", key: `order:${current.id}:paid_license`, licenseId: license.id, customerId: customer.id, orderId: current.id, data: { origin: "stripe" } });
+      } catch {
+        // swallowed on purpose
+      }
+    }
+  }
   return { status: "processed", detail: `Order ${current.id} is ${current.payment_status}.` };
 }
 

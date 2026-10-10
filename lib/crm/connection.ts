@@ -18,6 +18,10 @@ export type CrmDeps = {
   /** Server encryption/signing keys; null until MONARCH_ENCRYPTION_KEY is configured. */
   secrets: CrmSecrets | null;
   webhook?: WebhookSender;
+  /** Optional Automation Center hook; never allowed to fail the operation that raised it. */
+  emit?: (e: { type: string; key: string; licenseId?: string | null; customerId?: string | null; orderId?: string | null; data?: Record<string, string | number | boolean | null> }) => Promise<void>;
+  /** In-request retry delays for transient lead-delivery failures (milliseconds). Unset means no retries. */
+  leadRetryDelaysMs?: number[];
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
 };
@@ -105,7 +109,7 @@ async function saveHighLevelConnection(deps: CrmDeps, license: { id: string; cus
   await replaceLive(deps, license.id);
   const now = nowOf(deps);
   const ids = { license_id: license.id, location_id: tokens.locationId };
-  return deps.repo.insertConnection({
+  const saved = await deps.repo.insertConnection({
     license_id: license.id,
     customer_id: license.customer_id,
     provider: "highlevel",
@@ -119,6 +123,13 @@ async function saveHighLevelConnection(deps: CrmDeps, license: { id: string; cus
     token_expires_at: new Date(now.getTime() + tokens.expires_in * 1000).toISOString(),
     // last_checked_at stays empty: the connection is authorized but has not been tested yet (see lib/crm/setup.ts).
   });
+  // Reached only after the code exchange, the Location check and the save all succeeded.
+  try {
+    await deps.emit?.({ type: "crm.connected", key: `crm:${saved.id}`, licenseId: license.id, customerId: license.customer_id, data: { provider: "highlevel" } });
+  } catch {
+    // Automation never affects the connection.
+  }
+  return saved;
 }
 
 // ------------------------------------------------- installs started in HighLevel
@@ -267,6 +278,11 @@ export async function setWebhook(deps: CrmDeps, licenseId: string, rawUrl: strin
     webhook_host: url.hostname,
     signing_secret_enc: secrets.encrypt(signingSecret, webhookAad(license.id, "secret")),
   });
+  try {
+    await deps.emit?.({ type: "crm.connected", key: `crm:${connection.id}`, licenseId: license.id, customerId: license.customer_id, data: { provider: "webhook" } });
+  } catch {
+    // Automation never affects the connection.
+  }
   return { connection, signingSecret };
 }
 

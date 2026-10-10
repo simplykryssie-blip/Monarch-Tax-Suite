@@ -7,7 +7,7 @@ import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, ti
 //    and field, so ciphertext cannot be moved between tenants or fields.
 //  - Embed lead tokens: HMAC-SHA256. Visitor IPs: keyed hash for rate limiting only.
 
-type Purpose = "encryption" | "embed-token" | "ip-hash";
+type Purpose = "encryption" | "embed-token" | "ip-hash" | "setup-session";
 
 export class CrmSecrets {
   private keys = new Map<Purpose, Buffer>();

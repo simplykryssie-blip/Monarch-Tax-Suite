@@ -172,30 +172,55 @@ export async function forwardLead(deps: CrmDeps, input: LeadSubmission, ctx: { i
     return { ok: false, reason: "rate_limited", retryable: false };
   }
 
-  try {
-    if (connection.provider === "webhook") {
-      const result = await (deps.webhook ?? sendWebhook)(webhookTarget(deps, connection), webhookBody(payload, settings, token.h), payload.submissionId);
-      if (!result.ok) {
-        await log("failed", result.reason, result.status);
-        await deps.repo.updateConnection(connection.id, { last_error: `Delivery failed: ${result.reason}${result.status ? ` (HTTP ${result.status})` : ""}`, last_error_at: nowOf(deps).toISOString() });
-        return { ok: false, reason: "destination_failed", retryable: true };
+  // Bounded in-request retries for transient failures only (never for rejected credentials or bad data).
+  // The submission id doubles as the idempotency key, so a retry cannot create a second contact or event.
+  const delays = deps.leadRetryDelaysMs ?? [];
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  type Attempt = { ok: true; status: number } | { ok: false; retryable: boolean; kind: "auth" | "transient" | "permanent"; reason: string; status: number | null; message: string };
+  const attempt = async (): Promise<Attempt> => {
+    try {
+      if (connection.provider === "webhook") {
+        const result = await (deps.webhook ?? sendWebhook)(webhookTarget(deps, connection), webhookBody(payload, settings, token.h), payload.submissionId);
+        if (result.ok) return { ok: true, status: result.status };
+        const transient = result.status === null || result.status >= 500 || result.status === 429 || result.status === 408;
+        return { ok: false, retryable: transient, kind: transient ? "transient" : "permanent", reason: result.reason, status: result.status, message: `Delivery failed: ${result.reason}${result.status ? ` (HTTP ${result.status})` : ""}` };
       }
-      await log("sent", null, result.status);
-    } else {
       await toHighLevel(deps, connection, settings, payload, token.h);
-      await log("sent", null, 200);
+      return { ok: true, status: 200 };
+    } catch (e) {
+      if (e instanceof HighLevelError) {
+        return { ok: false, retryable: e.kind === "retryable", kind: e.kind === "auth" ? "auth" : e.kind === "permanent" ? "permanent" : "transient", reason: `highlevel_${e.kind}`, status: e.status, message: `Delivery failed: ${e.message.slice(0, 300)}` };
+      }
+      return { ok: false, retryable: true, kind: "transient", reason: "error", status: null, message: `Delivery failed: ${e instanceof Error ? e.message.slice(0, 300) : "error"}` };
     }
-  } catch (e) {
-    const kind = e instanceof HighLevelError ? e.kind : "retryable";
-    await log("failed", e instanceof HighLevelError ? `highlevel_${e.kind}` : "error", e instanceof HighLevelError ? e.status : null);
-    if (!(e instanceof HighLevelError && e.kind === "auth")) {
-      await deps.repo.updateConnection(connection.id, { last_error: `Delivery failed: ${e instanceof Error ? e.message.slice(0, 300) : "error"}`, last_error_at: nowOf(deps).toISOString() }).catch(() => undefined);
+  };
+  let outcome = await attempt();
+  for (let i = 0; !outcome.ok && outcome.retryable && i < delays.length; i++) {
+    await sleep(delays[i]);
+    outcome = await attempt();
+  }
+  try {
+    if (!outcome.ok) {
+      await log("failed", outcome.reason, outcome.status);
+      if (outcome.kind !== "auth") await deps.repo.updateConnection(connection.id, { last_error: outcome.message, last_error_at: nowOf(deps).toISOString() }).catch(() => undefined);
+      // No lead contents are kept (privacy policy); the visitor is asked to try again. Only the outcome is recorded.
+      await emitSafe(deps, { type: "lead.delivery_failed", key: `lead:${payload.submissionId}:failed`, licenseId: license.id, customerId: license.customer_id, data: { provider: connection.provider, error_kind: outcome.kind } });
+      return { ok: false, reason: "destination_failed", retryable: outcome.kind !== "permanent" };
     }
-    return { ok: false, reason: "destination_failed", retryable: kind !== "permanent" };
+    await log("sent", null, outcome.status);
   } finally {
     // Opportunistic retention: no scheduled job is needed.
     await deps.repo.pruneDeliveryLog(new Date(now.getTime() - 86_400_000).toISOString(), new Date(now.getTime() - 30 * 86_400_000).toISOString()).catch(() => undefined);
   }
   await deps.repo.updateConnection(connection.id, { last_success_at: nowOf(deps).toISOString(), last_error: null }).catch(() => undefined);
+  await emitSafe(deps, { type: "lead.delivered", key: `lead:${payload.submissionId}:delivered`, licenseId: license.id, customerId: license.customer_id, data: { provider: connection.provider } });
   return { ok: true };
+}
+
+async function emitSafe(deps: CrmDeps, e: Parameters<NonNullable<CrmDeps["emit"]>>[0]) {
+  try {
+    await deps.emit?.(e);
+  } catch {
+    // Automation never affects lead delivery.
+  }
 }

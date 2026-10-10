@@ -159,13 +159,14 @@ describe("full calculator lead -> buyer's webhook", () => {
 });
 
 describe("webhook delivery needs no email provider", () => {
-  test("no source file in the app depends on an email provider or its secrets", () => {
+  // The Automation Center (lib/automation) is the one place that sends email, through Resend, and is never awaited by lead delivery.
+  test("no source file outside the Automation Center depends on an email provider or its secrets", () => {
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const e of readdirSync(dir, { withFileTypes: true })) {
         const path = `${dir}/${e.name}`;
         if (e.isDirectory()) walk(path);
-        else if (/\.(ts|tsx)$/.test(e.name) && !/database\.types\.ts$/.test(e.name) && /RESEND_API_KEY|LEAD_NOTIFY_FROM|api\.resend\.com|notification_email/.test(readFileSync(path, "utf8"))) hits.push(path);
+        else if (!path.includes("/lib/automation/") && /\.(ts|tsx)$/.test(e.name) && !/database\.types\.ts$/.test(e.name) && /RESEND_API_KEY|LEAD_NOTIFY_FROM|api\.resend\.com|notification_email/.test(readFileSync(path, "utf8"))) hits.push(path);
       }
     };
     for (const d of ["app", "lib", "components"]) walk(new URL(`../${d}`, import.meta.url).pathname);

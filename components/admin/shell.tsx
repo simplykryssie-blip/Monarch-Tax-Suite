@@ -17,6 +17,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { label: "Licenses", icon: "⌘", href: "/licenses" },
       { label: "Installations", icon: "⚑", href: "/installations" },
+      { label: "Automation", icon: "↻", href: "/automation" },
       { label: "Support", icon: "◎" },
       { label: "Marketing", icon: "↗" },
       { label: "Reports", icon: "▥" },
