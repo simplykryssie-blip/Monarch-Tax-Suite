@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { disconnect, finishPendingInstall, setWebhook, startConnection } from "@/lib/crm/connection.ts";
 import { authorizeUrl } from "@/lib/crm/highlevel.ts";
-import { crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri, PENDING_COOKIE, pendingCookieOptions } from "@/lib/crm/server";
+import { crmConfigStatus, crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri, PENDING_COOKIE, pendingCookieOptions } from "@/lib/crm/server";
 import { DEFAULT_LEAD_SETTINGS } from "@/lib/crm/types.ts";
 import { activateDomain, assertCanEnable, deriveSetupStatus, previewActivation, runConnectionTest, type SetupStatus } from "@/lib/crm/setup.ts";
 import { normalizeEmail, ValidationError } from "@/lib/commerce/validation.ts";
@@ -182,6 +182,7 @@ export async function saveSettingsAction(_prev: SetupState, form: FormData): Pro
 export async function connectHighLevelAction(_prev: SetupState, form: FormData): Promise<SetupState> {
   let target: string;
   try {
+    if (!crmConfigStatus().highlevelConnect) throw new ValidationError("Connecting GoHighLevel with one click isn't available right now. Please use the workflow link method below.");
     const license = await licenseForRequest(form);
     const state = await startConnection(crmDeps(), license.id);
     (await cookies()).set(OAUTH_COOKIE, state, oauthCookieOptions);

@@ -136,11 +136,11 @@ export function SetupForms({ highlevelAvailable, pending, linked = false }: { hi
                 <button className="monarch-primary" disabled={connecting}>{v.provider === "highlevel" ? "Reconnect GoHighLevel" : "Connect GoHighLevel"}</button>
               </form>
             ) : (
-              <p className="monarch-notice"><b>The one-click GoHighLevel connection isn&apos;t switched on yet.</b> It&apos;s waiting on Monarch Tax Suite&apos;s GoHighLevel app approval. Until then, the Advanced option below connects GoHighLevel with a workflow link, and Monarch Tax Suite can walk you through it.</p>
+              <p className="monarch-muted">Connect GoHighLevel with a workflow link. It takes about five minutes, and the steps are below. You never share your GoHighLevel password.</p>
             )}
             {note("ghl")}
-            <details className="intg-advanced" open={feedback?.section === "hook" || undefined}>
-              <summary>Advanced: connect with a workflow link</summary>
+            <details className="intg-advanced" open={!highlevelAvailable || feedback?.section === "hook" || undefined}>
+              <summary>{highlevelAvailable ? "Advanced: connect with a workflow link" : "Connect with a workflow link"}</summary>
               <p className="monarch-muted"><b>Do these in order, and keep your GoHighLevel workflow open the whole time.</b></p>
               <ol className="intg-steps">
                 <li>In GoHighLevel, create a workflow and choose the trigger <b>Inbound Webhook</b>. Copy the link it shows. Leave that screen open.</li>

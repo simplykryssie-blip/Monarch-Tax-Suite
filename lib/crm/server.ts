@@ -21,6 +21,9 @@ import { after } from "next/server";
 export function crmConfigStatus() {
   return {
     highlevel: Boolean(process.env.HIGHLEVEL_CLIENT_ID && process.env.HIGHLEVEL_CLIENT_SECRET),
+    // The customer-facing "Connect GoHighLevel" button. Off unless HIGHLEVEL_CONNECT_ENABLED=true, so the
+    // workflow-link method is the only one customers see until the OAuth install is working end to end.
+    highlevelConnect: Boolean(process.env.HIGHLEVEL_CLIENT_ID && process.env.HIGHLEVEL_CLIENT_SECRET) && process.env.HIGHLEVEL_CONNECT_ENABLED === "true",
     encryption: CrmSecrets.fromBase64(process.env.MONARCH_ENCRYPTION_KEY) !== null,
   };
 }

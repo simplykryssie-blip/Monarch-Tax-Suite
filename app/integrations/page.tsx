@@ -13,7 +13,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   const config = crmConfigStatus();
   const jar = await cookies();
   const sealed = jar.get(PENDING_COOKIE)?.value;
-  const pending = config.encryption && config.highlevel && sealed ? readPendingInstall(crmDeps(), sealed) : null;
+  const pending = config.encryption && config.highlevelConnect && sealed ? readPendingInstall(crmDeps(), sealed) : null;
   return (
     <main className="monarch-public">
       <div className="monarch-public-card intg-card">
@@ -23,7 +23,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
         {error && <p className="monarch-alert is-error" role="alert">{error}</p>}
         {notice && <p className="monarch-alert" role="status">{notice}</p>}
         {!jar.get(SETUP_COOKIE)?.value && <NewLinkForm />}
-        {config.encryption ? <SetupForms highlevelAvailable={config.highlevel} pending={pending} linked={Boolean(jar.get(SETUP_COOKIE)?.value)} /> : <p className="monarch-notice"><b>NOT AVAILABLE YET</b> Lead destinations are being set up. Please contact info@monarchtaxsuite.com.</p>}
+        {config.encryption ? <SetupForms highlevelAvailable={config.highlevelConnect} pending={pending} linked={Boolean(jar.get(SETUP_COOKIE)?.value)} /> : <p className="monarch-notice"><b>NOT AVAILABLE YET</b> Lead destinations are being set up. Please contact info@monarchtaxsuite.com.</p>}
       </div>
     </main>
   );
