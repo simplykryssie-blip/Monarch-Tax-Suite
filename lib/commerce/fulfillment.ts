@@ -595,7 +595,7 @@ export async function setLicenseStatus(repo: CommerceRepo, licenseId: string, st
   return updated;
 }
 
-export async function authorizeDomain(repo: CommerceRepo, licenseId: string, rawDomain: string, actorId: string, now?: () => string) {
+export async function authorizeDomain(repo: CommerceRepo, licenseId: string, rawDomain: string, actorId: string | null, now?: () => string) {
   const license = await repo.getLicense(licenseId);
   if (!license) throw new ValidationError("License not found.");
   if (license.status !== "active") throw new ValidationError("Only active licenses can authorize domains.");
@@ -606,7 +606,7 @@ export async function authorizeDomain(repo: CommerceRepo, licenseId: string, raw
   if (active.length >= license.max_domains) throw new ValidationError(`This license allows ${license.max_domains} domain(s). Remove one first.`);
   const record = await repo.upsertDomain(license.id, domain, "active");
   if (!license.activated_at) await repo.updateLicense(license.id, { activated_at: now ? now() : new Date().toISOString() });
-  await repo.addLicenseEvent({ license_id: license.id, event_type: "domain_authorized", detail: { domain }, actor_id: actorId });
+  await repo.addLicenseEvent({ license_id: license.id, event_type: "domain_authorized", detail: actorId ? { domain } : { domain, by: "customer" }, actor_id: actorId });
   return record;
 }
 

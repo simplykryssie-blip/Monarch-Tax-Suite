@@ -1,0 +1,35 @@
+# Customer setup wizard (`/integrations`)
+
+Three plain steps. The customer types the license key on the page (never in chat); every action
+resolves the license on the server from that key.
+
+1. **Activate.** Customer enters their main website; any page URL or `www` address is reduced to the
+   main domain (shared hosting addresses such as `*.vercel.app` or `*.myshopify.com` are refused).
+   They review and confirm; only then is the domain authorized through the existing
+   `authorizeDomain` rules (`max_domains`, active license only). The `www` twin is covered automatically.
+2. **Choose where leads go.** *Connect GoHighLevel* (OAuth) when `HIGHLEVEL_CLIENT_ID` and
+   `HIGHLEVEL_CLIENT_SECRET` are set. Until then the button is not shown, a plain notice says the
+   one-click connection is not on yet, and the **Advanced** section offers the workflow-link (webhook)
+   route. The signing secret appears only there.
+3. **Test, then turn on.** *Test connection* must pass before lead capture can be enabled.
+
+## What "Test connection" proves
+- **GoHighLevel (OAuth):** the token works, the chosen location is readable, and one contact named
+  "Monarch Connection Test" (tag `monarch-test`, no phone, `example.com` email) is created or found in the
+  customer's own location. No email or text is sent.
+- **Workflow link (webhook):** the address accepted a signed test event with no lead data. This does
+  **not** prove the customer's workflow creates a contact or sends email; the message says so.
+
+## Statuses
+Not connected · Connected, not tested yet · Test failed · Test successful · Lead capture enabled.
+A saved link or a fresh OAuth connection is "Connected, not tested yet", never a success.
+
+## Not built / needs the owner
+- **GoHighLevel Marketplace app** (not yet registered, so OAuth is untested live). Needed: a Marketplace
+  app with sub-account (Location) install, redirect URL `https://<app origin>/api/integrations/crm/callback`
+  (or `HIGHLEVEL_REDIRECT_URI`), scopes `contacts.readonly contacts.write locations.readonly`, and the app's
+  client id and secret set as `HIGHLEVEL_CLIENT_ID` / `HIGHLEVEL_CLIENT_SECRET` in Vercel (server-only).
+  Marketplace review or approval may be required by GoHighLevel for public installs.
+- Follow-up emails and workflow triggers remain the customer's own GoHighLevel workflow; Monarch does
+  not send email and cannot verify that a workflow ran.
+- No database migration is included. Rate limiting stays inactive until `20261009200000_rate_limit_counters.sql` is applied.

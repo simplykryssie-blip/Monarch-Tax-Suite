@@ -112,7 +112,7 @@ export async function completeConnection(deps: CrmDeps, input: { state: string; 
     access_token_enc: secrets.encrypt(tokens.access_token, tokenAad(ids, "access")),
     refresh_token_enc: secrets.encrypt(tokens.refresh_token, tokenAad(ids, "refresh")),
     token_expires_at: new Date(now.getTime() + tokens.expires_in * 1000).toISOString(),
-    last_checked_at: now.toISOString(),
+    // last_checked_at stays empty: the connection is authorized but has not been tested yet (see lib/crm/setup.ts).
   });
 }
 
