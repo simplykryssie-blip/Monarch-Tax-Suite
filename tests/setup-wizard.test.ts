@@ -236,3 +236,20 @@ describe("lead form visibility", () => {
     assert.equal(await leadCaptureActive(deps, A.id), null);
   });
 });
+
+describe("GoHighLevel authorization link", () => {
+  test("matches the install link GoHighLevel shows: v2 address, redirect, scopes, and version_id only when set", async () => {
+    const { authorizeUrl, HIGHLEVEL_SCOPES } = await import("../lib/crm/highlevel.ts");
+    const redirect = "https://monarch-tax-suite.vercel.app/api/integrations/crm/callback";
+    const live = new URL(authorizeUrl("cid-abc", redirect, "st"));
+    assert.equal(live.origin + live.pathname, "https://marketplace.gohighlevel.com/v2/oauth/chooselocation");
+    assert.equal(live.searchParams.get("response_type"), "code");
+    assert.equal(live.searchParams.get("redirect_uri"), redirect);
+    assert.equal(live.searchParams.get("client_id"), "cid-abc");
+    assert.equal(live.searchParams.get("scope"), HIGHLEVEL_SCOPES.join(" "));
+    assert.deepEqual([...HIGHLEVEL_SCOPES].sort(), ["contacts.readonly", "contacts.write", "locations.readonly"]);
+    assert.equal(live.searchParams.has("version_id"), false);
+    const draft = new URL(authorizeUrl("cid-abc", redirect, "st", "6aca59b5f638845f26294e17"));
+    assert.equal(draft.searchParams.get("version_id"), "6aca59b5f638845f26294e17");
+  });
+});

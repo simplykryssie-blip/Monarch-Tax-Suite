@@ -125,7 +125,7 @@ export async function connectHighLevelAction(_prev: SetupState, form: FormData):
     const license = await licenseFromKey(String(form.get("license_key") ?? ""));
     const state = await startConnection(crmDeps(), license.id);
     (await cookies()).set(OAUTH_COOKIE, state, oauthCookieOptions);
-    target = authorizeUrl(process.env.HIGHLEVEL_CLIENT_ID!, await oauthRedirectUri(), state);
+    target = authorizeUrl(process.env.HIGHLEVEL_CLIENT_ID!, await oauthRedirectUri(), state, process.env.HIGHLEVEL_VERSION_ID || undefined);
   } catch (e) {
     if (e instanceof ValidationError) return { ok: false, message: e.message };
     throw e;

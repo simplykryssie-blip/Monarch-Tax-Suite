@@ -28,7 +28,7 @@ A saved link or a fresh OAuth connection is "Connected, not tested yet", never a
 - **GoHighLevel Marketplace app** (not yet registered, so OAuth is untested live). Needed: a Marketplace
   app with sub-account (Location) install, redirect URL `https://<app origin>/api/integrations/crm/callback`
   (or `HIGHLEVEL_REDIRECT_URI`), scopes `contacts.readonly contacts.write locations.readonly`, and the app's
-  client id and secret set as `HIGHLEVEL_CLIENT_ID` / `HIGHLEVEL_CLIENT_SECRET` in Vercel (server-only).
+  client id and secret set as `HIGHLEVEL_CLIENT_ID` / `HIGHLEVEL_CLIENT_SECRET` in Vercel (server-only). The client id must be the full value GoHighLevel shows, including the suffix after the hyphen (e.g. `6aca…-mv2lh55c`). While the app version is not live (draft or in review) also set `HIGHLEVEL_VERSION_ID` to the `version_id=` value in the portal's install link; remove it once the app is live. Monarch's authorization link must match the portal's install link: `https://marketplace.gohighlevel.com/v2/oauth/chooselocation?response_type=code&redirect_uri=…&client_id=…&scope=…&version_id=…`.
   Marketplace review or approval may be required by GoHighLevel for public installs.
 - Follow-up emails and workflow triggers remain the customer's own GoHighLevel workflow; Monarch does
   not send email and cannot verify that a workflow ran.

@@ -13,6 +13,7 @@ import type { CrmDeps } from "./connection.ts";
 // Server-only configuration (never NEXT_PUBLIC_*; nothing here reaches the browser).
 //   MONARCH_ENCRYPTION_KEY                          32 random bytes, base64 (required for any lead destination)
 //   HIGHLEVEL_CLIENT_ID / HIGHLEVEL_CLIENT_SECRET   HighLevel Marketplace app (optional; enables GoHighLevel connections)
+//   HIGHLEVEL_VERSION_ID (optional)                 app version id from the install link (version_id=...); needed only while the version is not live
 //   HIGHLEVEL_REDIRECT_URI (optional)               defaults to <app origin>/api/integrations/crm/callback
 
 export function crmConfigStatus() {
