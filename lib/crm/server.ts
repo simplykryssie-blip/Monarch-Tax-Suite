@@ -9,6 +9,8 @@ import { CrmSecrets } from "./crypto.ts";
 import { HttpHighLevelApi } from "./highlevel.ts";
 import { SupabaseCrmRepo } from "./supabase-repo.ts";
 import type { CrmDeps } from "./connection.ts";
+import { safeEmit } from "../automation/server";
+import { after } from "next/server";
 
 // Server-only configuration (never NEXT_PUBLIC_*; nothing here reaches the browser).
 //   MONARCH_ENCRYPTION_KEY                          32 random bytes, base64 (required for any lead destination)
@@ -32,6 +34,15 @@ export function crmDeps(): CrmDeps {
     commerce: new SupabaseCommerceRepo(db),
     api: id && secret ? new HttpHighLevelApi(id, secret) : null,
     secrets: CrmSecrets.fromBase64(process.env.MONARCH_ENCRYPTION_KEY),
+    // Lead events run after the visitor's response is sent, so automation can never slow or break a submission.
+    emit: async (e) => {
+      try {
+        after(() => safeEmit(e));
+      } catch {
+        void safeEmit(e);
+      }
+    },
+    leadRetryDelaysMs: [400, 1500],
   };
 }
 

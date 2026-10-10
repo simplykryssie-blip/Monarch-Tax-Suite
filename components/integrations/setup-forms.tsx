@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { activateAction, connectHighLevelAction, disconnectAction, finishInstallAction, lookupAction, saveSettingsAction, setWebhookAction, testAction, type SetupState } from "@/app/integrations/actions";
 
 // Three plain steps: activate, connect, test and turn on. Every form sends the license key typed
@@ -8,7 +8,7 @@ import { activateAction, connectHighLevelAction, disconnectAction, finishInstall
 // live only under "Advanced" in step 2.
 type Section = "lookup" | "activate" | "hook" | "test" | "save" | "ghl" | "finish";
 
-export function SetupForms({ highlevelAvailable, pending }: { highlevelAvailable: boolean; pending?: { locationId: string; locationName: string | null } | null }) {
+export function SetupForms({ highlevelAvailable, pending, linked = false }: { highlevelAvailable: boolean; linked?: boolean; pending?: { locationId: string; locationName: string | null } | null }) {
   const [key, setKey] = useState("");
   const [domain, setDomain] = useState("");
   const [state, setState] = useState<SetupState>({});
@@ -46,6 +46,11 @@ export function SetupForms({ highlevelAvailable, pending }: { highlevelAvailable
   const [, ghl, connecting] = useActionState(wrap("ghl", connectHighLevelAction), {});
   const [, finishInstall, finishing] = useActionState(wrap("finish", finishInstallAction), {});
   const [finished, setFinished] = useState(false);
+  // Arriving from the emailed setup link: the server already knows the license, so load it without a key.
+  useEffect(() => {
+    if (linked) startTransition(() => lookup(new FormData()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linked]);
   const v = state.view;
   const status = v?.status_info;
   const hidden = <input type="hidden" name="license_key" value={key} />;
@@ -53,11 +58,12 @@ export function SetupForms({ highlevelAvailable, pending }: { highlevelAvailable
 
   return (
     <div className="intg-wizard">
-      <form action={lookup} className="intg-step">
+      {linked && !v && !feedback && <p className="monarch-muted">Loading your license…</p>}
+      <form action={lookup} className="intg-step" hidden={linked && Boolean(v)}>
         <h2>Your license</h2>
         <p className="monarch-muted">Enter the license key from your purchase. It stays in this form only, and never needs to be shared with anyone at Monarch.</p>
         <div className="intg-row">
-          <label>License key<input name="license_key" type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => setKey(e.target.value)} placeholder="MTS-XXXXX-XXXXX-XXXXX-XXXXX" required /></label>
+          <label>License key<input name="license_key" type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => setKey(e.target.value)} placeholder="MTS-XXXXX-XXXXX-XXXXX-XXXXX" required={!linked} /></label>
           <button className="monarch-primary" disabled={looking}>{looking ? "Checking…" : v ? "Refresh" : "Continue"}</button>
         </div>
       </form>
@@ -68,7 +74,7 @@ export function SetupForms({ highlevelAvailable, pending }: { highlevelAvailable
           <h2>Finish connecting GoHighLevel</h2>
           <p>GoHighLevel approved access for <b>{pending.locationName ?? "your sub-account"}</b> <span className="monarch-muted">(ID {pending.locationId})</span>.</p>
           <p className="monarch-muted">Enter your license key above, then confirm. Only continue if this is your own GoHighLevel account. This approval expires in about 10 minutes.</p>
-          <button className="monarch-primary" disabled={finishing || !key}>{finishing ? "Connecting…" : `Connect ${pending.locationName ?? "this account"} to my license`}</button>
+          <button className="monarch-primary" disabled={finishing || (!key && !linked)}>{finishing ? "Connecting…" : `Connect ${pending.locationName ?? "this account"} to my license`}</button>
           {note("finish")}
         </form>
       )}

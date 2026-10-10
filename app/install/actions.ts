@@ -6,6 +6,7 @@ import { submitIntake } from "@/lib/commerce/fulfillment.ts";
 import { embedSnippet, embedUrl } from "@/lib/commerce/platforms.ts";
 import { cleanNote, parseInstallationType, parsePlatform, ValidationError } from "@/lib/commerce/validation.ts";
 import { appOrigin } from "@/lib/admin";
+import { safeEmit } from "@/lib/automation/server";
 import type { Platform } from "@/lib/commerce/types.ts";
 
 export type IntakeState = {
@@ -28,6 +29,9 @@ export async function submitIntakeAction(_prev: IntakeState, form: FormData): Pr
       domain: text("domain"),
       installation_type: parseInstallationType(text("installation_type")),
     });
+    if (result.installation.license_id) {
+      await safeEmit({ type: "installation.recorded", key: `installation:${result.installation.id}:recorded:${result.installation.intake_submitted_at}`, licenseId: result.installation.license_id, customerId: result.installation.customer_id, orderId: result.installation.order_id, data: {} });
+    }
     const embedId = result.domainAuthorized ? result.license?.embed_id ?? null : null;
     const origin = await appOrigin();
     return {

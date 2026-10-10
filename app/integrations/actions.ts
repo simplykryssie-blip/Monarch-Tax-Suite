@@ -8,6 +8,9 @@ import { crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirec
 import { DEFAULT_LEAD_SETTINGS } from "@/lib/crm/types.ts";
 import { activateDomain, assertCanEnable, deriveSetupStatus, previewActivation, runConnectionTest, type SetupStatus } from "@/lib/crm/setup.ts";
 import { normalizeEmail, ValidationError } from "@/lib/commerce/validation.ts";
+import { resolveSetupSession, SETUP_COOKIE } from "@/lib/automation/onboarding.ts";
+import { automationDeps, setupSecrets } from "@/lib/automation/server";
+import type { License } from "@/lib/commerce/types.ts";
 
 // Buyer self-service for the lead destination. There is no account or
 // session: every action is authorized by the license key submitted with it,
@@ -28,6 +31,24 @@ export type SetupState = { ok?: boolean; message?: string; signingSecret?: strin
 
 const text = (form: FormData, name: string, max: number) => String(form.get(name) ?? "").replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 
+/**
+ * The license for this request: a typed key wins; otherwise the signed session from the emailed setup link
+ * (re-checked against the stored link on every call, so expiry and revocation take effect immediately).
+ */
+async function licenseForRequest(form: FormData): Promise<License> {
+  const typed = String(form.get("license_key") ?? "").trim();
+  if (typed) return licenseFromKey(typed);
+  const secrets = setupSecrets();
+  const cookie = (await cookies()).get(SETUP_COOKIE)?.value;
+  if (secrets && cookie) {
+    const deps = automationDeps();
+    const session = await resolveSetupSession({ repo: deps.repo, commerce: deps.commerce, secrets }, cookie);
+    const license = session ? await deps.commerce.getLicense(session.licenseId) : null;
+    if (license && license.status === "active") return license;
+  }
+  return licenseFromKey(typed);
+}
+
 async function view(licenseId: string): Promise<DestinationView> {
   const deps = crmDeps();
   const [c, s, d] = await Promise.all([deps.repo.getLiveConnection(licenseId), deps.repo.getLeadSettings(licenseId), deps.commerce.listDomains(licenseId)]);
@@ -47,7 +68,7 @@ async function view(licenseId: string): Promise<DestinationView> {
 
 async function run(form: FormData, fn: (licenseId: string) => Promise<Partial<SetupState>>): Promise<SetupState> {
   try {
-    const license = await licenseFromKey(String(form.get("license_key") ?? ""));
+    const license = await licenseForRequest(form);
     const result = await fn(license.id);
     return { ok: true, ...result, view: await view(license.id) };
   } catch (e) {
@@ -59,7 +80,7 @@ async function run(form: FormData, fn: (licenseId: string) => Promise<Partial<Se
 /** Step 1. First submit shows the domain to be authorized; the customer must confirm before anything changes. */
 export async function activateAction(_prev: SetupState, form: FormData): Promise<SetupState> {
   try {
-    const license = await licenseFromKey(String(form.get("license_key") ?? ""));
+    const license = await licenseForRequest(form);
     const commerce = crmDeps().commerce;
     const raw = String(form.get("domain") ?? "");
     if (form.get("confirm") !== "yes") {
@@ -122,7 +143,7 @@ export async function saveSettingsAction(_prev: SetupState, form: FormData): Pro
 export async function connectHighLevelAction(_prev: SetupState, form: FormData): Promise<SetupState> {
   let target: string;
   try {
-    const license = await licenseFromKey(String(form.get("license_key") ?? ""));
+    const license = await licenseForRequest(form);
     const state = await startConnection(crmDeps(), license.id);
     (await cookies()).set(OAUTH_COOKIE, state, oauthCookieOptions);
     target = authorizeUrl(process.env.HIGHLEVEL_CLIENT_ID!, await oauthRedirectUri(), state, process.env.HIGHLEVEL_VERSION_ID || undefined);
@@ -136,7 +157,7 @@ export async function connectHighLevelAction(_prev: SetupState, form: FormData):
 /** Finishes an install that was started inside GoHighLevel: the license holder's key binds it to their license. */
 export async function finishInstallAction(_prev: SetupState, form: FormData): Promise<SetupState> {
   try {
-    const license = await licenseFromKey(String(form.get("license_key") ?? ""));
+    const license = await licenseForRequest(form);
     const jar = await cookies();
     const connection = await finishPendingInstall(crmDeps(), { sealed: jar.get(PENDING_COOKIE)?.value, licenseId: license.id });
     jar.set(PENDING_COOKIE, "", { ...pendingCookieOptions, maxAge: 0 });

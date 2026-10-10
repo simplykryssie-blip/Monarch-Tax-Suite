@@ -15,6 +15,7 @@ import {
   updateInstallation,
   type StripePaymentCheck,
 } from "@/lib/commerce/fulfillment.ts";
+import { safeEmit } from "@/lib/automation/server";
 import { disconnect as disconnectCrm } from "@/lib/crm/connection.ts";
 import { crmDeps } from "@/lib/crm/server";
 import { publishBlockersForVersion } from "@/lib/commerce/stripe-verify.ts";
@@ -116,6 +117,9 @@ export async function reconcilePurchaseAction(form: FormData) {
       stripe_payment: legacyAccount ? null : /^pi_/.test(paymentIntentId) ? await lookupStripePayment(paymentIntentId) : null,
       admin_attested: form.get("attest") === "on",
     });
+    if (result.created && result.license) {
+      await safeEmit({ type: "license.manual_created", key: `license:${result.license.id}:manual_created`, licenseId: result.license.id, customerId: result.customer.id, orderId: result.order.id, data: { origin: "reconciled" } });
+    }
     const target = result.installation ? `/installations/${result.installation.id}` : `/customers/${result.customer.id}`;
     return { to: target, notice: result.created ? "Purchase reconciled. Order, license and installation records created." : "This payment was already recorded; existing records shown." };
   });
@@ -140,6 +144,9 @@ export async function createInternalLicenseAction(form: FormData) {
       admin_id: admin.userId,
       confirmed: form.get("confirm") === "on",
     });
+    if (result.created && result.license) {
+      await safeEmit({ type: "license.manual_created", key: `license:${result.license.id}:manual_created`, licenseId: result.license.id, customerId: result.customer.id, orderId: result.order.id, data: { origin: "internal" } });
+    }
     const to = result.license ? `/licenses/${result.license.id}` : `/customers/${result.customer.id}`;
     return {
       to,
@@ -158,7 +165,8 @@ export type IssueKeyState = { key?: string; error?: string };
 export async function issueLicenseKeyAction(_prev: IssueKeyState, form: FormData): Promise<IssueKeyState> {
   const admin = await requireAdmin();
   try {
-    const { key } = await issueLicenseKey(commerceRepo(), id(form), admin.userId);
+    const { key, license } = await issueLicenseKey(commerceRepo(), id(form), admin.userId);
+    await safeEmit({ type: "license.activated", key: `license:${license.id}:activated:${license.issued_at}`, licenseId: license.id, customerId: license.customer_id, data: {} });
     revalidatePath("/", "layout");
     return { key };
   } catch (error) {
@@ -174,6 +182,10 @@ export async function setLicenseStatusAction(form: FormData) {
     const status = str(form, "status");
     if (status !== "active" && status !== "suspended" && status !== "revoked") throw new ValidationError("Invalid license status.");
     const license = await setLicenseStatus(commerceRepo(), licenseId, status, cleanNote(str(form, "reason"), 500), admin.userId);
+    // The status change is already saved; a notice (or its failure) never reverses it.
+    if (license.status === "suspended" || license.status === "revoked") {
+      await safeEmit({ type: `license.${license.status}`, key: `license:${license.id}:${license.status}:${license.updated_at}`, licenseId: license.id, customerId: license.customer_id });
+    }
     return { notice: `License is now ${license.status}.` };
   });
 }
@@ -202,7 +214,8 @@ export async function updateInstallationAction(form: FormData) {
   const admin = await requireAdmin();
   const installationId = id(form);
   await mutate(`/installations/${installationId}`, async () => {
-    await updateInstallation(
+    const before = await commerceRepo().getInstallation(installationId);
+    const updated = await updateInstallation(
       commerceRepo(),
       installationId,
       {
@@ -219,6 +232,9 @@ export async function updateInstallationAction(form: FormData) {
       },
       admin.userId,
     );
+    if (before && before.status !== "active" && updated.status === "active" && updated.license_id) {
+      await safeEmit({ type: "installation.verified", key: `installation:${updated.id}:verified:${updated.updated_at}`, licenseId: updated.license_id, customerId: updated.customer_id, orderId: updated.order_id, data: {} });
+    }
     return { notice: "Installation updated." };
   });
 }
