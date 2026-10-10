@@ -20,8 +20,10 @@ export function SetupForms({ highlevelAvailable, pending }: { highlevelAvailable
     let next: SetupState;
     try {
       next = await fn(prev, f);
-    } catch {
-      next = { ok: false, message: "Something went wrong on our side. Please try again in a moment." };
+    } catch (e) {
+      // Redirecting to GoHighLevel can surface here as a thrown redirect; that is not a failure.
+      const redirecting = /NEXT_REDIRECT/.test(`${(e as { digest?: string })?.digest ?? ""} ${e instanceof Error ? e.message : ""}`);
+      next = redirecting ? { ok: true, message: "Opening GoHighLevel…" } : { ok: false, message: "Something went wrong on our side. Please try again in a moment." };
     }
     if (section === "finish" && next.ok) setFinished(true);
     setFeedback(next.message ? { section, ok: Boolean(next.ok), message: next.message } : null);
