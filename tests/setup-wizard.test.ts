@@ -253,3 +253,82 @@ describe("GoHighLevel authorization link", () => {
     assert.equal(draft.searchParams.get("version_id"), "6aca59b5f638845f26294e17");
   });
 });
+
+describe("installs started inside GoHighLevel (no one-time state from our page)", () => {
+  const redirect = REDIRECT;
+  async function approve(deps: CrmDeps, api: FakeHighLevel, loc: string, userType = "Location") {
+    const { startPendingInstall } = await import("../lib/crm/connection.ts");
+    return startPendingInstall(deps, { code: api.issueCode(loc, userType), redirectUri: redirect });
+  }
+
+  test("classifyCallback: denied, invalid, verified (state matches cookie) and pending (no match)", async () => {
+    const { classifyCallback } = await import("../lib/crm/callback.ts");
+    assert.equal(classifyCallback({ error: "access_denied", code: "c", state: "s", cookieState: "s" }), "denied");
+    assert.equal(classifyCallback({ error: null, code: null, state: "s", cookieState: "s" }), "invalid");
+    assert.equal(classifyCallback({ error: null, code: "c", state: "s", cookieState: "s" }), "verified");
+    assert.equal(classifyCallback({ error: null, code: "c", state: null, cookieState: undefined }), "pending");
+    assert.equal(classifyCallback({ error: null, code: "c", state: "s", cookieState: undefined }), "pending");
+    assert.equal(classifyCallback({ error: null, code: "c", state: "s", cookieState: "other" }), "pending");
+  });
+
+  test("the license holder's key binds the approved sub-account; nothing is stored until then", async () => {
+    const { deps, api, A } = setup();
+    const { finishPendingInstall, readPendingInstall } = await import("../lib/crm/connection.ts");
+    const p = await approve(deps, api, "locAAAAAAAA");
+    assert.equal(await deps.repo.getLiveConnection(A.id), null);
+    assert.deepEqual(readPendingInstall(deps, p.sealed), { locationId: "locAAAAAAAA", locationName: "Buyer A Tax Co" });
+    const c = await finishPendingInstall(deps, { sealed: p.sealed, licenseId: A.id });
+    assert.equal(c.location_id, "locAAAAAAAA");
+    assert.equal(c.status, "connected");
+    assert.equal(c.last_checked_at, null, "connected is not tested");
+    assert.ok(c.access_token_enc && !c.access_token_enc.includes("at_"));
+    assert.equal(deriveSetupStatus({ connection: c, settings: null }).key, "connected");
+  });
+
+  test("the cookie value is encrypted, small, and unreadable without the server key", async () => {
+    const { deps, api } = setup();
+    const { readPendingInstall } = await import("../lib/crm/connection.ts");
+    const p = await approve(deps, api, "locAAAAAAAA");
+    assert.ok(!p.sealed.includes("rt_") && !p.sealed.includes("locAAAAAAAA") && !p.sealed.includes("Buyer A"));
+    assert.equal(readPendingInstall({ ...deps, secrets: new CrmSecrets(randomBytes(32)) }, p.sealed), null);
+    const big = deps.secrets!.encrypt(JSON.stringify({ r: "x".repeat(1500), loc: "l".repeat(24), name: "n".repeat(120), co: "c".repeat(24), e: Date.now() }), "ghl-pending-install");
+    assert.ok(big.length < 3500, `cookie would be ${big.length} bytes`);
+  });
+
+  test("an approval expires after about 10 minutes, and tampering is rejected", async () => {
+    const { deps, api, A } = setup();
+    const { finishPendingInstall, readPendingInstall } = await import("../lib/crm/connection.ts");
+    const p = await approve(deps, api, "locAAAAAAAA");
+    const later = { ...deps, now: () => new Date(Date.now() + 11 * 60_000) };
+    assert.equal(readPendingInstall(later, p.sealed), null);
+    await assert.rejects(() => finishPendingInstall(later, { sealed: p.sealed, licenseId: A.id }), /expired/);
+    await assert.rejects(() => finishPendingInstall(deps, { sealed: p.sealed.slice(0, -4) + "AAAA", licenseId: A.id }), ValidationError);
+    await assert.rejects(() => finishPendingInstall(deps, { sealed: undefined, licenseId: A.id }), ValidationError);
+    assert.equal(await deps.repo.getLiveConnection(A.id), null);
+  });
+
+  test("an approval can be used once: the second attempt (replay) fails", async () => {
+    const { deps, api, A, B } = setup();
+    const { finishPendingInstall } = await import("../lib/crm/connection.ts");
+    const p = await approve(deps, api, "locAAAAAAAA");
+    await finishPendingInstall(deps, { sealed: p.sealed, licenseId: A.id });
+    await assert.rejects(() => finishPendingInstall(deps, { sealed: p.sealed, licenseId: B.id }), /already used|expired/);
+    assert.equal(await deps.repo.getLiveConnection(B.id), null);
+  });
+
+  test("an agency-level approval is refused, and inactive licenses cannot be bound", async () => {
+    const { deps, api, commerce } = setup();
+    const { finishPendingInstall } = await import("../lib/crm/connection.ts");
+    await assert.rejects(() => approve(deps, api, "locAAAAAAAA", "Company"), /sub-account/);
+    const revoked = license({ status: "revoked" });
+    commerce.licenses.push(revoked);
+    const p = await approve(deps, api, "locBBBBBBBB");
+    await assert.rejects(() => finishPendingInstall(deps, { sealed: p.sealed, licenseId: revoked.id }), /active calculator license/);
+  });
+
+  test("a bad code from HighLevel is a clear failure and nothing is kept", async () => {
+    const { deps } = setup();
+    const { startPendingInstall } = await import("../lib/crm/connection.ts");
+    await assert.rejects(() => startPendingInstall(deps, { code: "not-a-real-code", redirectUri: redirect }), HighLevelError);
+  });
+});

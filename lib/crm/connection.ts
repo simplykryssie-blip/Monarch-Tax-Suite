@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import type { CommerceRepo } from "../commerce/types.ts";
 import { randomToken, type CrmSecrets } from "./crypto.ts";
-import { HighLevelError, type HighLevelApi } from "./highlevel.ts";
+import { HighLevelError, type HighLevelApi, type TokenSet } from "./highlevel.ts";
 import { parseWebhookUrl, sendWebhook, type WebhookSender } from "./webhook.ts";
 import type { CrmConnection, CrmRepo } from "./types.ts";
 
@@ -86,7 +86,7 @@ export async function startConnection(deps: CrmDeps, licenseId: string): Promise
  * (Location) token and the location is read back with it.
  */
 export async function completeConnection(deps: CrmDeps, input: { state: string; code: string; redirectUri: string }): Promise<CrmConnection> {
-  const { api, secrets } = requireHighLevel(deps);
+  const { api } = requireHighLevel(deps);
   const licenseId = await deps.repo.consumeOAuthState(sha256(input.state), nowOf(deps).toISOString());
   if (!licenseId) throw new ValidationError("This connection link expired or was already used. Start again from the setup page.");
   const license = await activeLicense(deps, licenseId);
@@ -97,6 +97,11 @@ export async function completeConnection(deps: CrmDeps, input: { state: string; 
   const location = await api.getLocation(tokens.access_token, tokens.locationId);
   if (location.id !== tokens.locationId) throw new ValidationError("GoHighLevel returned a different location than the one authorized.");
 
+  return saveHighLevelConnection(deps, license, tokens, location.name);
+}
+
+async function saveHighLevelConnection(deps: CrmDeps, license: { id: string; customer_id: string }, tokens: TokenSet, locationName: string | null): Promise<CrmConnection> {
+  const { secrets } = requireHighLevel(deps);
   await replaceLive(deps, license.id);
   const now = nowOf(deps);
   const ids = { license_id: license.id, location_id: tokens.locationId };
@@ -106,7 +111,7 @@ export async function completeConnection(deps: CrmDeps, input: { state: string; 
     provider: "highlevel",
     status: "connected",
     location_id: tokens.locationId,
-    location_name: location.name,
+    location_name: locationName,
     company_id: tokens.companyId,
     scopes: tokens.scope.split(/\s+/).filter(Boolean),
     access_token_enc: secrets.encrypt(tokens.access_token, tokenAad(ids, "access")),
@@ -114,6 +119,64 @@ export async function completeConnection(deps: CrmDeps, input: { state: string; 
     token_expires_at: new Date(now.getTime() + tokens.expires_in * 1000).toISOString(),
     // last_checked_at stays empty: the connection is authorized but has not been tested yet (see lib/crm/setup.ts).
   });
+}
+
+// ------------------------------------------------- installs started in HighLevel
+//
+// A Marketplace app is normally installed from HighLevel's side, so the browser comes back to our
+// callback with an authorization code but without the one-time state this app creates. We cannot
+// know which license it is for. So: exchange the code, keep only a refresh token and the location
+// in a short-lived encrypted cookie (nothing is written to the database), and bind it to a license
+// only when the license holder enters their license key and confirms the account name.
+
+const PENDING_TTL_MS = 10 * 60 * 1000;
+const PENDING_AAD = "ghl-pending-install";
+type PendingInstall = { r: string; loc: string; name: string | null; co: string | null; e: number };
+
+/** Exchanges the code and returns the sealed value for the cookie. Only a Location (sub-account) token is accepted. */
+export async function startPendingInstall(deps: CrmDeps, input: { code: string; redirectUri: string }): Promise<{ sealed: string; locationId: string; locationName: string | null }> {
+  const { api, secrets } = requireHighLevel(deps);
+  const tokens = await api.exchangeCode(input.code, input.redirectUri);
+  if (tokens.userType !== "Location" || !tokens.locationId) {
+    throw new ValidationError("Choose a single GoHighLevel sub-account (location) when connecting, not the agency account.");
+  }
+  const location = await api.getLocation(tokens.access_token, tokens.locationId);
+  if (location.id !== tokens.locationId) throw new ValidationError("GoHighLevel returned a different location than the one authorized.");
+  const payload: PendingInstall = { r: tokens.refresh_token, loc: tokens.locationId, name: location.name, co: tokens.companyId, e: nowOf(deps).getTime() + PENDING_TTL_MS };
+  return { sealed: secrets.encrypt(JSON.stringify(payload), PENDING_AAD), locationId: tokens.locationId, locationName: location.name };
+}
+
+function openPending(deps: CrmDeps, sealed: string | undefined | null): PendingInstall | null {
+  if (!sealed || !deps.secrets) return null;
+  try {
+    const p = JSON.parse(deps.secrets.decrypt(sealed, PENDING_AAD)) as PendingInstall;
+    return typeof p.r === "string" && typeof p.loc === "string" && typeof p.e === "number" && p.e > nowOf(deps).getTime() ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What the setup page shows (account name and id only); null when absent, tampered with or expired. */
+export function readPendingInstall(deps: CrmDeps, sealed: string | undefined | null): { locationId: string; locationName: string | null } | null {
+  const p = openPending(deps, sealed);
+  return p ? { locationId: p.loc, locationName: p.name } : null;
+}
+
+/** Binds a pending install to the license whose holder confirmed it. The refresh token is single-use at HighLevel, so a replay fails. */
+export async function finishPendingInstall(deps: CrmDeps, input: { sealed: string | undefined | null; licenseId: string }): Promise<CrmConnection> {
+  const { api } = requireHighLevel(deps);
+  const pending = openPending(deps, input.sealed);
+  if (!pending) throw new ValidationError("This GoHighLevel approval expired. Start again from GoHighLevel, or press Connect GoHighLevel on this page.");
+  const license = await activeLicense(deps, input.licenseId);
+  let tokens: TokenSet;
+  try {
+    tokens = await api.refresh(pending.r);
+  } catch (e) {
+    if (e instanceof HighLevelError && e.kind === "auth") throw new ValidationError("This GoHighLevel approval was already used or expired. Start again.");
+    throw e;
+  }
+  if (tokens.locationId !== pending.loc) throw new ValidationError("GoHighLevel returned a different location than the one approved.");
+  return saveHighLevelConnection(deps, license, { ...tokens, companyId: tokens.companyId ?? pending.co }, pending.name);
 }
 
 async function markReauth(deps: CrmDeps, connection: CrmConnection, error: string) {

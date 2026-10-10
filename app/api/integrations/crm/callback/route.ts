@@ -1,32 +1,34 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { completeConnection } from "@/lib/crm/connection.ts";
+import { classifyCallback } from "@/lib/crm/callback.ts";
+import { completeConnection, startPendingInstall } from "@/lib/crm/connection.ts";
 import { HighLevelError } from "@/lib/crm/highlevel.ts";
-import { crmDeps, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri } from "@/lib/crm/server";
+import { crmDeps, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri, PENDING_COOKIE, pendingCookieOptions } from "@/lib/crm/server";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 
-const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
-
 // HighLevel redirects here after the buyer approves access and picks a sub-account.
-// The license comes only from the single-use state, which must also match this browser's cookie.
+//  - Started from our setup page: the license comes only from the single-use state, which must also match this browser's cookie.
+//  - Started inside HighLevel (no matching state): keep the approval in a short-lived encrypted cookie and ask for the license key.
 export async function GET(request: NextRequest) {
-  const finish = (key: "notice" | "error", message: string) => {
+  const finish = (key: "notice" | "error", message: string, cookies?: (r: NextResponse) => void) => {
     const response = NextResponse.redirect(new URL(`/integrations?${key}=${encodeURIComponent(message)}`, request.url));
     response.cookies.set(OAUTH_COOKIE, "", { ...oauthCookieOptions, maxAge: 0 });
+    cookies?.(response);
     response.headers.set("Cache-Control", "no-store");
     return response;
   };
   const params = request.nextUrl.searchParams;
-  if (params.get("error")) return finish("error", "GoHighLevel access was not granted.");
   const code = params.get("code");
   const state = params.get("state");
-  const cookieState = request.cookies.get(OAUTH_COOKIE)?.value;
-  if (!code || !state || !cookieState || !same(state, cookieState)) {
-    return finish("error", "This connection attempt could not be verified. Start again from the setup page in the same browser.");
-  }
+  const action = classifyCallback({ error: params.get("error"), code, state, cookieState: request.cookies.get(OAUTH_COOKIE)?.value });
+  if (action === "denied") return finish("error", "GoHighLevel access was not granted.");
+  if (action === "invalid") return finish("error", "GoHighLevel did not send an approval. Start again from the setup page.");
   try {
-    const connection = await completeConnection(crmDeps(), { state, code, redirectUri: await oauthRedirectUri() });
-    return finish("notice", `GoHighLevel connected to ${connection.location_name ?? connection.location_id}. Turn on the lead form below if you have not already.`);
+    if (action === "verified") {
+      const connection = await completeConnection(crmDeps(), { state: state!, code: code!, redirectUri: await oauthRedirectUri() });
+      return finish("notice", `GoHighLevel connected to ${connection.location_name ?? connection.location_id}. Test the connection below, then turn on lead capture.`);
+    }
+    const pending = await startPendingInstall(crmDeps(), { code: code!, redirectUri: await oauthRedirectUri() });
+    return finish("notice", "GoHighLevel approved access. Enter your Monarch license key below to finish connecting.", (r) => r.cookies.set(PENDING_COOKIE, pending.sealed, pendingCookieOptions));
   } catch (e) {
     if (e instanceof ValidationError) return finish("error", e.message);
     if (e instanceof HighLevelError) {
