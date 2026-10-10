@@ -69,7 +69,15 @@ the license key is never used in browser code.
   `frame-ancestors 'none'`. The page also re-checks the Referer host.
 - **`GET /api/license/validate?id=<embed id>&domain=<host>`** returns
   `{ valid: true }` or `{ valid: false, reason }` for any embedding method. It
-  returns no customer or license details. (Not rate-limited yet.)
+  returns no customer or license details. The only failure reasons are
+  `domain_not_authorized` and `unavailable` (an unknown id, an inactive license
+  and a license with no domains look the same). Requests are rate limited per
+  client address (60/min) and per embed id (600/min) with durable Postgres
+  counters (migration `20261009200000_rate_limit_counters`, **not yet
+  applied**); until it is applied the limiter fails open. Over the limit the
+  response is `429` with `Retry-After`. Opening `/embed/calculator` directly in
+  a browser tab is refused (`Sec-Fetch-Dest: document`); it renders only in a
+  frame on an authorized domain.
 - **Customer intake:** from an installation, an administrator creates a
   one-time link (`/install/<token>`, 14 days, only its hash is stored). The
   customer picks a platform, gives the page URL, domain and Self-Service / Done
@@ -323,6 +331,33 @@ Migration `20261009185026_stripe_verification` (applied, additive) adds
   - the amount, currency or tax year is wrong;
   - the license has been revoked.
 
+## Webhook event mode guard
+
+The webhook refuses (HTTP 400, nothing recorded) any signature-verified event
+whose `livemode` does not match the mode of `STRIPE_SECRET_KEY`, and refuses
+everything if the key's mode cannot be determined. A test-mode event therefore
+cannot create an order or license on a live deployment, even if a test signing
+secret is configured there by mistake. Use separate environments for test and
+live (test key + test signing secret together, live key + live signing secret
+together).
+
+## Delivering a license to a customer (manual, secure)
+
+Automatic license email is not built: the project has no email provider, and
+Monarch-paid email delivery was intentionally removed. Until the owner approves
+one, deliver licenses by hand:
+
+1. A paid order appears under Orders with a pending license and installation.
+2. Open the license → **Issue key**. The full key is shown **once** on that
+   screen; only its hash is stored. Copy it straight into your reply to the
+   customer. Re-issuing rotates the key and invalidates the old one.
+3. Add the customer's domain under the license (Authorized domains).
+4. Send the customer their key (for `/update` and `/integrations`), the embed
+   snippet and the platform instructions from the installation page. The embed
+   id is public; the key is never used in browser code.
+5. Send it through a channel you control (your own email to the checkout
+   address). Never paste keys into order notes, tickets or chat logs.
+
 ## Internal (complimentary) licenses: your own sites and partners
 
 A license normally comes from a real Stripe payment. For the owner's own
@@ -342,3 +377,7 @@ payment)**. It is deliberately not a sale:
 - A real customer who paid must still be recorded with **Reconcile a past purchase**
   using the real Stripe payment ID. Never use an internal license for a customer
   who paid, and never enter a made-up payment ID.
+
+## Launch status and evidence
+
+See [launch-checklist.md](launch-checklist.md).

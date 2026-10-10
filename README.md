@@ -9,7 +9,7 @@ This is a standalone frontend backed by the existing **Verexa Tax Office v2** Su
 ## Stack
 
 - Next.js 16 (App Router) + TypeScript + Tailwind CSS
-- Supabase (`@supabase/ssr`) for auth and data, against project `daxpavvsotvsyqqntddc`
+- Supabase (`@supabase/ssr`) for auth and data. The project is chosen by `NEXT_PUBLIC_SUPABASE_URL` (Monarch's own project in production; a separate throwaway project for testing, see `docs/stripe-test-runbook.md`)
 - No component library dependency — a small hand-built set of UI primitives in `components/ui/`
 
 ## Getting started
@@ -18,13 +18,7 @@ This is a standalone frontend backed by the existing **Verexa Tax Office v2** Su
 2. `npm install`
 3. `npm run dev` and open [http://localhost:3000](http://localhost:3000).
 
-You'll be redirected to `/login`. A dedicated dev/demo account and workspace were created directly in Supabase for local testing, isolated from the live production workspaces:
-
-- Email: `dev@fullservicecrm.local`
-- Password: `FullServiceCRM-Dev-2026!`
-- Workspace: "Full Service CRM Dev"
-
-This account only has access to its own workspace — it cannot see the live "MKB Financial Group LLC" or "Verexa HQ CRM" workspace data (enforced by Postgres RLS).
+You'll be redirected to `/login`. No shared development credentials are published in this repository. Create your own local test user in a non-production Supabase project (or ask the project owner to provision one) and never commit passwords, tokens, or keys. Real secrets belong only in `.env.local` (git-ignored) or the Vercel environment settings.
 
 ## What's here
 

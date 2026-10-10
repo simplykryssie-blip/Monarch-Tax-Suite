@@ -16,6 +16,23 @@ export function modeFromKey(key: string | undefined | null): StripeMode | null {
   return null;
 }
 
+export type EventModeCheck = { ok: true; mode: StripeMode } | { ok: false; reason: "key_mode_unknown" | "event_mode_missing" | "mode_mismatch" };
+
+/**
+ * A signature-verified event may only be processed when its mode matches the
+ * mode of the deployment's Stripe secret key. This keeps a test-mode event
+ * (for example, one signed with a test signing secret that was configured by
+ * mistake) from creating a real license on a live deployment, and the reverse.
+ * Fails closed when either mode cannot be determined.
+ */
+export function checkEventMode(eventLivemode: boolean | null | undefined, secretKey: string | undefined | null): EventModeCheck {
+  const mode = modeFromKey(secretKey);
+  if (!mode) return { ok: false, reason: "key_mode_unknown" };
+  if (typeof eventLivemode !== "boolean") return { ok: false, reason: "event_mode_missing" };
+  if ((mode === "live") !== eventLivemode) return { ok: false, reason: "mode_mismatch" };
+  return { ok: true, mode };
+}
+
 export class StripeLookupError extends Error {
   kind: "not_found" | "auth" | "permission" | "connection" | "other";
   constructor(kind: StripeLookupError["kind"], message: string) {
