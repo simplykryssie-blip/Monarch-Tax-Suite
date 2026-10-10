@@ -1,27 +1,48 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { activateAction, connectHighLevelAction, disconnectAction, lookupAction, saveSettingsAction, setWebhookAction, testAction, type SetupState } from "@/app/integrations/actions";
 
 // Three plain steps: activate, connect, test and turn on. Every form sends the license key typed
 // on this page; nothing is remembered after the page closes. Webhook and signing-secret details
 // live only under "Advanced" in step 2.
+type Section = "lookup" | "activate" | "hook" | "test" | "save" | "ghl";
+
 export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean }) {
   const [key, setKey] = useState("");
   const [domain, setDomain] = useState("");
   const [state, setState] = useState<SetupState>({});
-  const wrap = (fn: (p: SetupState, f: FormData) => Promise<SetupState>) => async (prev: SetupState, f: FormData) => {
-    const next = await fn(prev, f);
+  // The result of an action is shown right beside the button that was pressed, so it can't be missed.
+  const [feedback, setFeedback] = useState<{ section: Section; ok: boolean; message: string } | null>(null);
+  const topRef = useRef<HTMLParagraphElement>(null);
+  const wrap = (section: Section, fn: (p: SetupState, f: FormData) => Promise<SetupState>) => async (prev: SetupState, f: FormData) => {
+    setFeedback(null);
+    let next: SetupState;
+    try {
+      next = await fn(prev, f);
+    } catch {
+      next = { ok: false, message: "Something went wrong on our side. Please try again in a moment." };
+    }
+    setFeedback(next.message ? { section, ok: Boolean(next.ok), message: next.message } : null);
     setState((s) => ({ ...next, view: next.view ?? s.view, signingSecret: next.signingSecret }));
     return next;
   };
-  const [, lookup, looking] = useActionState(wrap(lookupAction), {});
-  const [, activate, activating] = useActionState(wrap(activateAction), {});
-  const [, hook, hooking] = useActionState(wrap(setWebhookAction), {});
-  const [, test, testing] = useActionState(wrap(testAction), {});
-  const [, disc, disconnecting] = useActionState(wrap(disconnectAction), {});
-  const [, save, saving] = useActionState(wrap(saveSettingsAction), {});
-  const [, ghl, connecting] = useActionState(wrap(connectHighLevelAction), {});
+  const savedAt = useRef(0);
+  useEffect(() => {
+    // After a successful save, bring the overall status into view.
+    if (feedback?.section === "save" && feedback.ok && Date.now() - savedAt.current > 500) {
+      savedAt.current = Date.now();
+      topRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [feedback]);
+  const note = (section: Section) => (feedback?.section === section ? <p className={`monarch-alert${feedback.ok ? " is-ok" : " is-error"}`} role={feedback.ok ? "status" : "alert"}>{feedback.ok ? "✓ " : "✗ "}{feedback.message}</p> : null);
+  const [, lookup, looking] = useActionState(wrap("lookup", lookupAction), {});
+  const [, activate, activating] = useActionState(wrap("activate", activateAction), {});
+  const [, hook, hooking] = useActionState(wrap("hook", setWebhookAction), {});
+  const [, test, testing] = useActionState(wrap("test", testAction), {});
+  const [, disc, disconnecting] = useActionState(wrap("test", disconnectAction), {});
+  const [, save, saving] = useActionState(wrap("save", saveSettingsAction), {});
+  const [, ghl, connecting] = useActionState(wrap("ghl", connectHighLevelAction), {});
   const v = state.view;
   const status = v?.status_info;
   const hidden = <input type="hidden" name="license_key" value={key} />;
@@ -37,16 +58,19 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
           <button className="monarch-primary" disabled={looking}>{looking ? "Checking…" : v ? "Refresh" : "Continue"}</button>
         </div>
       </form>
-      {state.message && <p className={`monarch-alert${state.ok ? "" : " is-error"}`} role={state.ok ? "status" : "alert"}>{state.message}</p>}
+      {note("lookup")}
 
       {v && status && (
         <>
-          <p className="intg-status" data-state={status.key}><b>{status.label}</b> {status.detail}</p>
+          <p ref={topRef} className="intg-status" data-state={status.key}><b>{status.label}</b> {status.detail}</p>
 
           <section className="intg-step">
             <h2><span className="intg-num">1</span> Activate your calculator {activated && <span className="intg-done">Done</span>}</h2>
             {activated ? (
-              <p>Your calculator is activated for <b>{v.domains.join(", ")}</b> (and the www version).</p>
+              <>
+                <p>Your calculator is activated for <b>{v.domains.join(", ")}</b> (and the www version).</p>
+                {note("activate")}
+              </>
             ) : (
               <>
                 <p className="monarch-muted">Enter your main website address, not a page. For example <code>yourbusiness.com</code>. The calculator will show only on this website.</p>
@@ -55,6 +79,7 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
                   <label>Your website address<input name="domain" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="yourbusiness.com" required /></label>
                   <button className="monarch-secondary" disabled={activating}>Review</button>
                 </form>
+                {note("activate")}
                 {state.pending && !state.pending.alreadyActive && (
                   <form action={activate} className="intg-confirm">
                     {hidden}<input type="hidden" name="domain" value={state.pending.domain} /><input type="hidden" name="confirm" value="yes" />
@@ -77,7 +102,8 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
             ) : (
               <p className="monarch-notice"><b>The one-click GoHighLevel connection isn&apos;t switched on yet.</b> It&apos;s waiting on Monarch Tax Suite&apos;s GoHighLevel app approval. Until then, the Advanced option below connects GoHighLevel with a workflow link, and Monarch Tax Suite can walk you through it.</p>
             )}
-            <details className="intg-advanced">
+            {note("ghl")}
+            <details className="intg-advanced" open={feedback?.section === "hook" || undefined}>
               <summary>Advanced: connect with a workflow link</summary>
               <p className="monarch-muted">
                 In GoHighLevel, create a workflow that starts with &quot;Inbound Webhook&quot;, and paste its link here. The workflow must also be set up to create the contact and send any email; the link alone does neither.
@@ -88,6 +114,7 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
                 <label>Workflow link (https)<input name="webhook_url" required maxLength={2000} placeholder="https://services.leadconnectorhq.com/hooks/…" /></label>
                 <button className="monarch-secondary" disabled={hooking}>{hooking ? "Saving…" : "Save link"}</button>
               </form>
+              {note("hook")}
               {state.signingSecret && <p className="monarch-notice"><b>SIGNING SECRET (SHOWN ONCE)</b> <code>{state.signingSecret}</code></p>}
             </details>
           </section>
@@ -102,6 +129,7 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
                   <form action={test}>{hidden}<button className="monarch-primary" disabled={testing}>{testing ? "Testing…" : "Test connection"}</button></form>
                   <form action={disc}>{hidden}<button className="monarch-secondary is-danger" disabled={disconnecting}>Disconnect</button></form>
                 </div>
+                {note("test")}
                 {!v.canEnable && !v.settings.enabled && <p className="monarch-muted">Lead capture can be turned on after the test passes.</p>}
                 <form action={save} className="monarch-form">
                   {hidden}
@@ -116,7 +144,7 @@ export function SetupForms({ highlevelAvailable }: { highlevelAvailable: boolean
                       <label className="monarch-check is-wide"><input type="checkbox" name="update_existing" defaultChecked={v.settings.update_existing} /> Update an existing contact if the same person submits again</label>
                     </div>
                   </details>
-                  <div className="is-wide"><button className="monarch-primary" disabled={saving}>{saving ? "Saving…" : "Save"}</button></div>
+                  <div className="is-wide"><button className="monarch-primary" disabled={saving}>{saving ? "Saving…" : "Save"}</button>{note("save")}</div>
                 </form>
               </>
             ) : (
