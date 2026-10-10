@@ -112,7 +112,7 @@ export async function completeConnection(deps: CrmDeps, input: { state: string; 
     access_token_enc: secrets.encrypt(tokens.access_token, tokenAad(ids, "access")),
     refresh_token_enc: secrets.encrypt(tokens.refresh_token, tokenAad(ids, "refresh")),
     token_expires_at: new Date(now.getTime() + tokens.expires_in * 1000).toISOString(),
-    last_checked_at: now.toISOString(),
+    // last_checked_at stays empty: the connection is authorized but has not been tested yet (see lib/crm/setup.ts).
   });
 }
 
@@ -218,13 +218,32 @@ export function webhookTarget(deps: CrmDeps, connection: CrmConnection) {
 // ------------------------------------------------------------------- common
 
 /** Checks the destination without sending any personal data (HighLevel: reads the location; webhook: posts a test event). */
-export async function testDestination(deps: CrmDeps, licenseId: string): Promise<{ ok: boolean; message: string }> {
+/**
+ * A clearly fake lead in the same shape as a real one. GoHighLevel's Inbound Webhook trigger needs a
+ * received request ("Mapping Reference") before the workflow can be saved; this gives it every field.
+ */
+export function sampleTestBody(sentAt: string, email = "test-sample@example.com") {
+  return {
+    event: "calculator.test",
+    id: "00000000-0000-4000-8000-000000000000",
+    submitted_at: sentAt,
+    source: "Monarch Tax Calculator",
+    website: "example.com",
+    tags: ["monarch-test"],
+    contact: { first_name: "Test", last_name: "Sample", email, phone: "+15555550100" },
+    estimate: { headline: "SAMPLE: estimated refund $1,234", result: "refund", amount: 1234, estimated_federal_tax: 5000, withholding_plus_refundable_credits: 6234, text: "SAMPLE estimate for connection testing. Not a real lead." },
+    consent: { contact: true, text_shown: "SAMPLE consent text (test)." },
+    note: "Connection test from Monarch Tax Suite. All values are fake sample data, not a real lead.",
+  };
+}
+
+export async function testDestination(deps: CrmDeps, licenseId: string, opts: { sample?: boolean; email?: string } = {}): Promise<{ ok: boolean; message: string }> {
   requireSecrets(deps);
   const connection = await deps.repo.getLiveConnection(licenseId);
   if (!connection) return { ok: false, message: "No lead destination is connected." };
   const now = () => nowOf(deps).toISOString();
   if (connection.provider === "webhook") {
-    const result = await (deps.webhook ?? sendWebhook)(webhookTarget(deps, connection), { event: "calculator.test", sent_at: now(), note: "Connection test from Monarch Tax Suite. Contains no lead data." }, `test-${randomToken(8)}`);
+    const result = await (deps.webhook ?? sendWebhook)(webhookTarget(deps, connection), opts.sample ? sampleTestBody(now(), opts.email) : { event: "calculator.test", sent_at: now(), note: "Connection test from Monarch Tax Suite. Contains no lead data." }, `test-${randomToken(8)}`);
     await deps.repo.updateConnection(connection.id, result.ok ? { last_checked_at: now(), last_error: null } : { last_checked_at: now(), last_error: `Test failed: ${result.reason}${result.status ? ` (HTTP ${result.status})` : ""}`, last_error_at: now() });
     return result.ok ? { ok: true, message: `Your webhook at ${connection.webhook_host} accepted the test (HTTP ${result.status}).` } : { ok: false, message: `The webhook did not accept the test: ${result.reason}${result.status ? ` (HTTP ${result.status})` : ""}.` };
   }

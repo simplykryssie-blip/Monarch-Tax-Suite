@@ -1,10 +1,10 @@
 // HighLevel (LeadConnector) API v2 client. Official endpoints only:
-//   authorize: https://marketplace.gohighlevel.com/oauth/chooselocation
+//   authorize: https://marketplace.gohighlevel.com/v2/oauth/chooselocation (the address GoHighLevel shows as the app's install link)
 //   token:     POST https://services.leadconnectorhq.com/oauth/token (form-encoded)
 //   API:       https://services.leadconnectorhq.com, header Version: 2021-07-28
 // The HighLevel location chooser is where the buyer selects the sub-account.
 
-export const HIGHLEVEL_AUTHORIZE_URL = "https://marketplace.gohighlevel.com/oauth/chooselocation";
+export const HIGHLEVEL_AUTHORIZE_URL = "https://marketplace.gohighlevel.com/v2/oauth/chooselocation";
 export const HIGHLEVEL_API = "https://services.leadconnectorhq.com";
 export const HIGHLEVEL_VERSION = "2021-07-28";
 /** Least privilege: create/find contacts, add tags and notes, read the connected location's name. */
@@ -44,13 +44,18 @@ export interface HighLevelApi {
   addNote(token: string, contactId: string, body: string): Promise<void>;
 }
 
-export function authorizeUrl(clientId: string, redirectUri: string, state: string): string {
+/**
+ * `versionId` is the app version shown in the install link's `version_id=`. GoHighLevel includes it while an app
+ * version is not live yet (draft or in review); leave it unset once the app is live.
+ */
+export function authorizeUrl(clientId: string, redirectUri: string, state: string, versionId?: string): string {
   const url = new URL(HIGHLEVEL_AUTHORIZE_URL);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("scope", HIGHLEVEL_SCOPES.join(" "));
   url.searchParams.set("state", state);
+  if (versionId) url.searchParams.set("version_id", versionId);
   return url.toString();
 }
 

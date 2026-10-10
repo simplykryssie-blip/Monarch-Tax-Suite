@@ -65,7 +65,7 @@ verify `X-Monarch-Signature` if the receiver can, de-duplicate on
 | Server delivery payload, privacy, retries, failure paths (automated) | PASSED |
 | Licensed embed renders on the authorized domain inside GoHighLevel | NOT RUN (needs license + her GHL) |
 | Unauthorized domain / direct visit refused | Unknown id refused live (PASSED); licensed case NOT RUN |
-| Webhook received by the customer's GoHighLevel workflow | NOT RUN |
-| Contact created in the correct GoHighLevel location | NOT RUN |
+| Webhook received by the customer's GoHighLevel workflow | PASSED 2026-10-10 (owner-reported, PR #6 preview + test project, fake sample lead) |
+| Contact created in the correct GoHighLevel location | PASSED 2026-10-10 (owner-reported: the workflow's Create Contact made the contact from the fake sample) |
 | Agreed results present in that contact/workflow | NOT RUN |
-| Staff notification / results email sent by the GoHighLevel workflow, received | NOT RUN |
+| Staff notification / results email sent by the GoHighLevel workflow, received | PASSED 2026-10-10 (owner-reported: email from the customer's own Send Email action arrived; preview + test project, fake sample lead carrying the owner's email) |

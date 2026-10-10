@@ -2,11 +2,12 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { disconnect, setWebhook, startConnection, testDestination } from "@/lib/crm/connection.ts";
+import { disconnect, setWebhook, startConnection } from "@/lib/crm/connection.ts";
 import { authorizeUrl } from "@/lib/crm/highlevel.ts";
 import { crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri } from "@/lib/crm/server";
 import { DEFAULT_LEAD_SETTINGS } from "@/lib/crm/types.ts";
-import { ValidationError } from "@/lib/commerce/validation.ts";
+import { activateDomain, assertCanEnable, deriveSetupStatus, previewActivation, runConnectionTest, type SetupStatus } from "@/lib/crm/setup.ts";
+import { normalizeEmail, ValidationError } from "@/lib/commerce/validation.ts";
 
 // Buyer self-service for the lead destination. There is no account or
 // session: every action is authorized by the license key submitted with it,
@@ -18,18 +19,24 @@ export type DestinationView = {
   label: string | null;
   lastSuccess: string | null;
   lastError: string | null;
+  status_info: SetupStatus;
+  domains: string[];
+  canEnable: boolean;
   settings: { enabled: boolean; business_name: string; lead_source: string; tags: string; update_existing: boolean; include_summary: boolean };
 };
-export type SetupState = { ok?: boolean; message?: string; signingSecret?: string; view?: DestinationView };
+export type SetupState = { ok?: boolean; message?: string; signingSecret?: string; view?: DestinationView; pending?: { domain: string; alsoCovers: string; alreadyActive: boolean } };
 
 const text = (form: FormData, name: string, max: number) => String(form.get(name) ?? "").replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 
 async function view(licenseId: string): Promise<DestinationView> {
   const deps = crmDeps();
-  const [c, s] = await Promise.all([deps.repo.getLiveConnection(licenseId), deps.repo.getLeadSettings(licenseId)]);
+  const [c, s, d] = await Promise.all([deps.repo.getLiveConnection(licenseId), deps.repo.getLeadSettings(licenseId), deps.commerce.listDomains(licenseId)]);
   const settings = s ?? DEFAULT_LEAD_SETTINGS(licenseId);
   return {
     provider: c?.provider ?? null,
+    status_info: deriveSetupStatus({ connection: c, settings: s }),
+    domains: d.filter((x) => x.status === "active").map((x) => x.domain),
+    canEnable: Boolean(c && c.status === "connected" && c.last_checked_at && !c.last_error),
     status: !c ? "Not connected" : c.status === "connected" ? "Connected" : "Reauthorization required",
     label: !c ? null : c.provider === "webhook" ? `Webhook to ${c.webhook_host}` : `GoHighLevel: ${c.location_name ?? c.location_id}`,
     lastSuccess: c?.last_success_at ?? null,
@@ -49,6 +56,24 @@ async function run(form: FormData, fn: (licenseId: string) => Promise<Partial<Se
   }
 }
 
+/** Step 1. First submit shows the domain to be authorized; the customer must confirm before anything changes. */
+export async function activateAction(_prev: SetupState, form: FormData): Promise<SetupState> {
+  try {
+    const license = await licenseFromKey(String(form.get("license_key") ?? ""));
+    const commerce = crmDeps().commerce;
+    const raw = String(form.get("domain") ?? "");
+    if (form.get("confirm") !== "yes") {
+      const pending = await previewActivation(commerce, license.id, raw);
+      return { ok: true, pending, view: await view(license.id) };
+    }
+    const done = await activateDomain(commerce, license.id, raw);
+    return { ok: true, message: done.alreadyActive ? `${done.domain} was already activated.` : `Activated. Your calculator can now appear on ${done.domain} and www.${done.domain}.`, view: await view(license.id) };
+  } catch (e) {
+    if (e instanceof ValidationError) return { ok: false, message: e.message };
+    throw e;
+  }
+}
+
 export async function lookupAction(_prev: SetupState, form: FormData): Promise<SetupState> {
   return run(form, async () => ({}));
 }
@@ -62,7 +87,8 @@ export async function setWebhookAction(_prev: SetupState, form: FormData): Promi
 
 export async function testAction(_prev: SetupState, form: FormData): Promise<SetupState> {
   return run(form, async (licenseId) => {
-    const result = await testDestination(crmDeps(), licenseId);
+    const raw = String(form.get("test_email") ?? "").trim();
+    const result = await runConnectionTest(crmDeps(), licenseId, { email: raw ? normalizeEmail(raw) : undefined });
     if (!result.ok) throw new ValidationError(result.message);
     return { message: result.message };
   });
@@ -84,7 +110,7 @@ export async function saveSettingsAction(_prev: SetupState, form: FormData): Pro
     if (tags.length > 10 || tags.some((t) => t.length > 40)) throw new ValidationError("Use at most 10 tags, each 40 characters or fewer.");
     if (enabled) {
       const c = await deps.repo.getLiveConnection(licenseId);
-      if (!c || c.status !== "connected") throw new ValidationError("Connect GoHighLevel or a webhook before turning on the lead form.");
+      assertCanEnable(c, Boolean((await deps.repo.getLeadSettings(licenseId))?.enabled));
       if (!business) throw new ValidationError("Enter your business name; visitors see it in the consent statement.");
     }
     await deps.repo.saveLeadSettings({ license_id: licenseId, enabled, business_name: business || null, lead_source: text(form, "lead_source", 80) || "Monarch Tax Calculator", tags, update_existing: form.get("update_existing") === "on", include_summary: form.get("include_summary") === "on" });
@@ -99,7 +125,7 @@ export async function connectHighLevelAction(_prev: SetupState, form: FormData):
     const license = await licenseFromKey(String(form.get("license_key") ?? ""));
     const state = await startConnection(crmDeps(), license.id);
     (await cookies()).set(OAUTH_COOKIE, state, oauthCookieOptions);
-    target = authorizeUrl(process.env.HIGHLEVEL_CLIENT_ID!, await oauthRedirectUri(), state);
+    target = authorizeUrl(process.env.HIGHLEVEL_CLIENT_ID!, await oauthRedirectUri(), state, process.env.HIGHLEVEL_VERSION_ID || undefined);
   } catch (e) {
     if (e instanceof ValidationError) return { ok: false, message: e.message };
     throw e;
