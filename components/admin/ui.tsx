@@ -55,8 +55,9 @@ export function SetupRequired({ message, module }: { message: string; module?: "
     return (
       <div className="monarch-notice">
         <b>DATABASE SETUP REQUIRED</b> EFIN Management needs its database tables, which have not been installed on this database yet. Run
-        <code> supabase/migrations/20261011100000_efin_management.sql </code> and then
-        <code> supabase/migrations/20261012090000_efin_management_update.sql </code> on the Monarch Supabase project, then reload. Nothing else in the app is affected. <small>({message})</small>
+        <code> supabase/migrations/20261011100000_efin_management.sql </code> , then
+        <code> supabase/migrations/20261012090000_efin_management_update.sql </code> and
+        <code> supabase/migrations/20261012100000_efin_delete_functions.sql </code> on the Monarch Supabase project, then reload. Nothing else in the app is affected. <small>({message})</small>
       </div>
     );
   }
