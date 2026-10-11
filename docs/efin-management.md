@@ -9,7 +9,10 @@ Service-bureau CRM module under **My Office → EFIN Management** (`/efin`). The
 | Business rules (pure, tested) | `lib/efin/rules.ts`, `lib/efin/exceptions.ts`, `tests/efin-rules.test.ts` |
 | Data access, encryption, audit | `lib/efin/service.ts` |
 | Daily renewal sweep | `lib/efin/renewals.ts`, run from `/api/automation/run` (same `CRON_SECRET` scheduler) |
-| UI | `app/(admin)/efin/*`: Registry, EFIN profile (7 tabs), Offices, People, Assignments, Renewals & compliance, History |
+| UI | `app/(admin)/efin/*`: **EROs** (contacts-style list), **Add an ERO** (one form), ERO/EFIN profile (Overview, Office & Team, Office Assignments, Filing Relationships, Documents, Renewals, Activity History), Renewals & compliance, History |
+
+## One place for everything
+EFIN Management works like a contacts list of your EROs. **Add an ERO** is a single form (business, office, ERO/Responsible Official with optional PTIN, EFIN, expiration) saved by one database function (`efin_onboard`) in one transaction, so a failure such as a duplicate EFIN saves nothing. It also creates a draft ERO assignment. Everything afterwards happens on the ERO's page: add team members and PTINs (`efin_add_member`, also atomic), add offices, request/approve/suspend/revoke assignments, add filing providers. Renewals and History stay separate. Separate Offices, People and Assignments pages no longer exist; "Assignments to review" opens the list filtered to pending reviews.
 
 ## Model
 EFIN, organization, person and credential (PTIN) are separate records joined by relationships. Three things are kept apart and labelled as such:
@@ -33,7 +36,7 @@ A PTIN never authorizes e-file by itself. A tax-preparer assignment only require
 - Revealing a full EFIN is a server call that writes an `efin.revealed` audit event first; if the audit write fails nothing is shown. Identifiers are never written to the audit log.
 - `audit_events` is append-only: triggers reject UPDATE/DELETE/TRUNCATE for every role and `service_role` has no update/delete grant.
 
-Verified on a throwaway Supabase project (not production): partner A saw only its own EFIN and organization, could not read `efin_encrypted` or `efin_hash`, and could not insert or update; a bureau admin saw all rows; audit update/delete/truncate were rejected for the owner role and the service role; a duplicate EFIN was rejected.
+The onboarding functions are executable by `service_role` only. Verified on a throwaway Supabase project (not production): partner A saw only its own EFIN and organization, could not read `efin_encrypted` or `efin_hash`, and could not insert or update; a bureau admin saw all rows; audit update/delete/truncate were rejected for the owner role and the service role; a duplicate EFIN was rejected; the one-step onboarding saved all rows plus audit events, and a duplicate EFIN rolled the whole attempt back (no partial organization or person left behind).
 
 ## Renewals
 - Reminders at 60 / 30 / 14 / 7 days before a **verified** recorded date. After downtime only the most recent reached stage is sent. One email per task + deadline + stage + recipient (`notification_events` unique key, recorded before sending, 4 attempts max, safe to rerun).

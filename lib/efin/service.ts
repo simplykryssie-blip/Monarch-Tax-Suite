@@ -122,37 +122,6 @@ export async function loadEfinAudit(snap: Snapshot, efinId: string): Promise<Aud
 }
 
 // -------------------------------------------------------------------------------------------- organizations
-export async function saveOrganization(actor: Actor, form: FormData): Promise<OrgRow> {
-  const id = String(form.get("id") ?? "");
-  const einRaw = String(form.get("ein") ?? "").trim();
-  const row: Record<string, unknown> = {
-    legal_name: text(form.get("legal_name"), 200, "Legal name", true),
-    dba_name: text(form.get("dba_name"), 200, "Doing business as"),
-    business_structure: form.get("business_structure") ? oneOf(form.get("business_structure"), ["llc", "corporation", "s_corporation", "partnership", "sole_proprietorship", "nonprofit", "other"] as const, "Business structure") : null,
-    relationship: oneOf(form.get("relationship") || "partner", ["internal", "partner", "other"] as const, "Relationship"),
-    agreement_status: oneOf(form.get("agreement_status") || "pending", ["pending", "active", "suspended", "ended"] as const, "Agreement status"),
-    onboarding_status: oneOf(form.get("onboarding_status") || "not_started", ["not_started", "in_progress", "complete"] as const, "Onboarding status"),
-    primary_address: { line1: text(form.get("line1"), 200, "Address") ?? "", city: text(form.get("city"), 100, "City") ?? "", state: text(form.get("state"), 2, "State") ?? "", zip: text(form.get("zip"), 10, "ZIP") ?? "" },
-    notes: text(form.get("notes"), 4000, "Notes"),
-    updated_by: actor.id,
-  };
-  const orgId = id ? uuid(id, "organization") : randomUUID();
-  if (einRaw) {
-    const ein = normalizeEin(einRaw);
-    row.ein_encrypted = secrets().encrypt(ein, `org:${orgId}:ein`);
-    row.ein_last4 = last4(ein);
-  }
-  const client = db();
-  if (id) {
-    const saved = unwrap(await client.from("organizations").update(row).eq("id", orgId).select(ORG_COLS).single() as never) as OrgRow;
-    await audit(actor, { type: "organization.updated", targetType: "organization", targetId: orgId, organizationId: orgId, changes: { fields: Object.keys(row).filter((k) => k !== "ein_encrypted" && k !== "updated_by"), ein_changed: Boolean(einRaw) } });
-    return saved;
-  }
-  const saved = unwrap(await client.from("organizations").insert({ ...row, id: orgId, created_by: actor.id }).select(ORG_COLS).single() as never) as OrgRow;
-  await audit(actor, { type: "organization.created", targetType: "organization", targetId: orgId, organizationId: orgId, changes: { legal_name: row.legal_name } });
-  return saved;
-}
-
 export async function saveLocation(actor: Actor, form: FormData) {
   const organizationId = uuid(form.get("organization_id"), "organization");
   const isPrimary = form.get("is_primary") === "on";
@@ -168,42 +137,69 @@ export async function saveLocation(actor: Actor, form: FormData) {
 }
 
 // ------------------------------------------------------------------------------------------ people / credentials
-export async function savePerson(actor: Actor, form: FormData) {
-  const email = text(form.get("email"), 254, "Email");
-  if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new EfinRuleError("That email address does not look right.");
-  const row = unwrap(await db().from("people").insert({ full_name: text(form.get("full_name"), 200, "Full name", true), email, phone: text(form.get("phone"), 40, "Phone"), created_by: actor.id, updated_by: actor.id }).select("id, full_name").single() as never) as { id: string; full_name: string };
-  await audit(actor, { type: "person.created", targetType: "person", targetId: row.id, changes: { full_name: row.full_name } });
-}
+// ---------------------------------------------------------------------------------------- one-step ERO onboarding
+const addressFrom = (form: FormData) => ({ line1: text(form.get("line1"), 200, "Address") ?? "", city: text(form.get("city"), 100, "City") ?? "", state: text(form.get("state"), 2, "State") ?? "", zip: text(form.get("zip"), 10, "ZIP") ?? "" });
+const dupMessage = (e: { code?: string; message: string }) => {
+  if (e.code === "23505") return new EfinRuleError(/efin/i.test(e.message) ? "That EFIN is already recorded. Open the existing ERO instead." : /credential|ptin/i.test(e.message) ? "That PTIN is already recorded for someone." : "Something with those details is already recorded.");
+  return new Error(e.message);
+};
 
-/** PTIN is a separate protected record linked to a person. Recording one never authorizes e-file by itself. */
-export async function addCredential(actor: Actor, form: FormData) {
-  const personId = uuid(form.get("person_id"), "person");
-  const ptin = normalizePtin(String(form.get("identifier") ?? ""));
+/** Creates an ERO end to end (organization, office, person + ERO role, optional PTIN, EFIN, draft assignment) in one transaction. */
+export async function onboardEro(actor: Actor, form: FormData): Promise<string> {
   const s = secrets();
-  const id = randomUUID();
-  const verification = oneOf(form.get("verification_status") || "unverified", VERIFICATION, "Verification");
-  const hash = s.hashIdentifier("ptin", ptin);
-  const client = db();
-  const { error } = await client.from("professional_credentials").insert({
-    id, person_id: personId, kind: "ptin",
-    identifier_encrypted: s.encrypt(ptin, `credential:${id}:identifier`), identifier_last4: last4(ptin), identifier_hash: hash,
-    verification_status: verification, verification_source: text(form.get("verification_source"), 300, "Verification source"),
-    verified_at: verification === "unverified" ? null : new Date().toISOString(), verified_by: verification === "unverified" ? null : actor.id,
-    expires_on: day(form.get("expires_on"), "Expiration date"),
-  });
-  if (error) throw error.code === "23505" ? new EfinRuleError("That PTIN is already recorded for someone.") : new Error(error.message);
-  await audit(actor, { type: "credential.created", targetType: "credential", targetId: id, changes: { kind: "ptin", last4: last4(ptin), verification_status: verification, person_id: personId } });
+  const efin = normalizeEfin(String(form.get("efin") ?? ""));
+  const ptinRaw = String(form.get("ptin") ?? "").trim();
+  const einRaw = String(form.get("ein") ?? "").trim();
+  const ptin = ptinRaw ? normalizePtin(ptinRaw) : null;
+  const ein = einRaw ? normalizeEin(einRaw) : null;
+  const ids = { org: randomUUID(), loc: randomUUID(), person: randomUUID(), efin: randomUUID(), cred: ptin ? randomUUID() : null };
+  const efinVerification = oneOf(form.get("efin_verification") || "unverified", VERIFICATION, "EFIN verification");
+  const expiration = day(form.get("recorded_expiration"), "Expiration date");
+  const email = text(form.get("person_email"), 254, "Email");
+  if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new EfinRuleError("That email address does not look right.");
+  const payload = {
+    actor_id: actor.id, actor_email: actor.email,
+    org_id: ids.org, loc_id: ids.loc, person_id: ids.person, efin_id: ids.efin, cred_id: ids.cred,
+    legal_name: text(form.get("legal_name"), 200, "Legal name", true), dba_name: text(form.get("dba_name"), 200, "Doing business as"),
+    business_structure: form.get("business_structure") ? oneOf(form.get("business_structure"), ["llc", "corporation", "s_corporation", "partnership", "sole_proprietorship", "nonprofit", "other"] as const, "Business structure") : null,
+    ein_encrypted: ein ? s.encrypt(ein, `org:${ids.org}:ein`) : null, ein_last4: ein ? last4(ein) : null,
+    address: addressFrom(form),
+    relationship: oneOf(form.get("relationship") || "partner", ["internal", "partner", "other"] as const, "Relationship"),
+    agreement_status: oneOf(form.get("agreement_status") || "pending", ["pending", "active", "suspended", "ended"] as const, "Agreement status"),
+    org_notes: text(form.get("notes"), 4000, "Notes"),
+    office_name: text(form.get("office_name") || "Main office", 200, "Office name", true),
+    person_name: text(form.get("person_name"), 200, "ERO name", true), person_email: email, person_phone: text(form.get("person_phone"), 40, "Phone"),
+    role_verification: oneOf(form.get("role_verification") || "unverified", VERIFICATION, "Role verification"),
+    ptin_encrypted: ptin ? s.encrypt(ptin, `credential:${ids.cred}:identifier`) : null, ptin_last4: ptin ? last4(ptin) : null, ptin_hash: ptin ? s.hashIdentifier("ptin", ptin) : null,
+    ptin_verification: oneOf(form.get("ptin_verification") || "unverified", VERIFICATION, "PTIN verification"), ptin_source: text(form.get("ptin_source"), 300, "PTIN source"), ptin_expires_on: day(form.get("ptin_expires_on"), "PTIN date"),
+    efin_encrypted: s.encrypt(efin, `efin:${ids.efin}:efin`), efin_last4: last4(efin), efin_hash: s.hashIdentifier("efin", efin),
+    efin_verification: efinVerification, efin_source: text(form.get("efin_source"), 300, "EFIN source"),
+    recorded_expiration: expiration, expiration_verified: Boolean(expiration) && form.get("expiration_verified") === "on",
+    tax_year: form.get("tax_year") ? Number(form.get("tax_year")) : null, efin_notes: null,
+  };
+  const { error } = await db().rpc("efin_onboard", { p: payload });
+  if (error) throw dupMessage(error);
+  return ids.efin;
 }
 
-export async function addRole(actor: Actor, form: FormData) {
-  const organizationId = uuid(form.get("organization_id"), "organization");
-  const personId = uuid(form.get("person_id"), "person");
-  const role = oneOf(form.get("role"), ASSIGNMENT_ROLES, "Role");
-  const locationId = form.get("location_id") ? uuid(form.get("location_id"), "office") : null;
-  const verification = oneOf(form.get("verification_status") || "unverified", VERIFICATION, "Verification");
-  const { data, error } = await db().from("organization_roles").insert({ organization_id: organizationId, person_id: personId, role, location_id: locationId, verification_status: verification, verification_note: text(form.get("verification_note"), 1000, "Verification note"), start_date: day(form.get("start_date"), "Start date"), created_by: actor.id }).select("id").single();
-  if (error) throw error.code === "23505" ? new EfinRuleError("That person already holds this role here.") : new Error(error.message);
-  await audit(actor, { type: "role.created", targetType: "role", targetId: data.id as string, organizationId, changes: { role, person_id: personId, verification_status: verification } });
+/** Adds a team member (person + role, optional PTIN) to an existing organization in one transaction. */
+export async function addMember(actor: Actor, form: FormData) {
+  const s = secrets();
+  const ptinRaw = String(form.get("ptin") ?? "").trim();
+  const ptin = ptinRaw ? normalizePtin(ptinRaw) : null;
+  const credId = ptin ? randomUUID() : null;
+  const email = text(form.get("person_email"), 254, "Email");
+  if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new EfinRuleError("That email address does not look right.");
+  const payload = {
+    actor_id: actor.id, actor_email: actor.email, org_id: uuid(form.get("organization_id"), "organization"), person_id: randomUUID(), cred_id: credId,
+    person_name: text(form.get("person_name"), 200, "Name", true), person_email: email, person_phone: text(form.get("person_phone"), 40, "Phone"),
+    role: oneOf(form.get("role"), ASSIGNMENT_ROLES, "Role"), loc_id: form.get("location_id") ? uuid(form.get("location_id"), "office") : null,
+    role_verification: oneOf(form.get("role_verification") || "unverified", VERIFICATION, "Verification"),
+    ptin_encrypted: ptin ? s.encrypt(ptin, `credential:${credId}:identifier`) : null, ptin_last4: ptin ? last4(ptin) : null, ptin_hash: ptin ? s.hashIdentifier("ptin", ptin) : null,
+    ptin_verification: oneOf(form.get("ptin_verification") || "unverified", VERIFICATION, "PTIN verification"), ptin_source: text(form.get("ptin_source"), 300, "PTIN source"), ptin_expires_on: day(form.get("ptin_expires_on"), "PTIN date"),
+  };
+  const { error } = await db().rpc("efin_add_member", { p: payload });
+  if (error) throw dupMessage(error);
 }
 
 // ------------------------------------------------------------------------------------------------------ EFINs

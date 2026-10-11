@@ -5,13 +5,13 @@ import { Badge, EmptyRow, Flash, label, load, PageTitle, SetupRequired, when } f
 import { availableTransitions, daysUntil, roleLabel, todayIso } from "@/lib/efin/rules.ts";
 import { loadEfinAudit, loadSnapshot, problemsFor } from "@/lib/efin/service";
 import { ASSIGNMENT_ROLES, EFIN_STATUSES } from "@/lib/efin/types.ts";
-import { archiveEfinAction, changeAssignmentAction, requestAssignmentAction, saveFilingAction, updateEfinAction } from "../actions";
+import { addMemberAction, saveLocationAction, archiveEfinAction, changeAssignmentAction, requestAssignmentAction, saveFilingAction, updateEfinAction } from "../actions";
 import { orgName, personName, Select, VERIFY_OPTIONS, Verified } from "../parts";
 import { RevealEfin } from "../reveal";
 
 const TABS = [
   ["overview", "Overview"],
-  ["parties", "Responsible Parties"],
+  ["parties", "Office & Team"],
   ["assignments", "Office Assignments"],
   ["filing", "Filing Relationships"],
   ["documents", "Documents"],
@@ -41,7 +41,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
   const people = s.people.filter((p) => !p.archived_at);
   return (
     <>
-      <PageTitle title={`EFIN ending ${efin.efin_last4}`} back={{ href: "/efin", label: "Registry" }}>{orgName(s.orgs, efin.organization_id)}{efin.archived_at && " · Archived"}</PageTitle>
+      <PageTitle title={`EFIN ending ${efin.efin_last4}`} back={{ href: "/efin", label: "EROs" }}>{orgName(s.orgs, efin.organization_id)}{efin.archived_at && " · Archived"}</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       <nav className="efin-tabs" aria-label="EFIN sections">
         {TABS.map(([k, name]) => <Link key={k} href={`/efin/${id}?tab=${k}`} className={tab === k ? "is-on" : ""}>{name}</Link>)}
@@ -97,16 +97,56 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
       )}
 
       {tab === "parties" && (
-        <section className="monarch-panel">
-          <div className="monarch-panel-head"><div><h2>Responsible parties</h2><p>People holding roles at {orgName(s.orgs, efin.organization_id)}. PTINs are separate credentials and never authorize e-file by themselves.</p></div><Link className="monarch-secondary" href="/efin/people">Manage people</Link></div>
-          <div className="monarch-table-wrap"><table>
-            <thead><tr><th>PERSON</th><th>ROLE</th><th>VERIFICATION</th><th>PTIN</th></tr></thead>
-            <tbody>{orgRoles.length === 0 ? <EmptyRow colSpan={4}>No roles recorded for this organization yet.</EmptyRow> : orgRoles.map((r) => {
-              const ptin = s.credentials.find((c) => c.person_id === r.person_id && c.kind === "ptin" && !c.archived_at);
-              return <tr key={r.id}><td><b>{personName(s.people, r.person_id)}</b></td><td>{roleLabel(r.role)}</td><td><Verified value={r.verification_status} /></td><td>{ptin ? <>P••••{ptin.identifier_last4} <Verified value={ptin.verification_status} /></> : <span className="monarch-muted">None recorded</span>}</td></tr>;
-            })}</tbody>
-          </table></div>
-        </section>
+        <>
+          <section className="monarch-panel">
+            <div className="monarch-panel-head"><div><h2>Team</h2><p>People holding roles at {orgName(s.orgs, efin.organization_id)}. PTINs are separate credentials and never authorize e-file by themselves.</p></div></div>
+            <div className="monarch-table-wrap"><table>
+              <thead><tr><th>PERSON</th><th>CONTACT</th><th>ROLE</th><th>VERIFICATION</th><th>PTIN</th></tr></thead>
+              <tbody>{orgRoles.length === 0 ? <EmptyRow colSpan={5}>No team members recorded yet.</EmptyRow> : orgRoles.map((r) => {
+                const ptin = s.credentials.find((c) => c.person_id === r.person_id && c.kind === "ptin" && !c.archived_at);
+                const person = s.people.find((p) => p.id === r.person_id);
+                return <tr key={r.id}><td><b>{person?.full_name ?? "—"}</b></td><td>{person?.email ?? "—"}{person?.phone && <div className="monarch-muted">{person.phone}</div>}</td><td>{roleLabel(r.role)}</td><td><Verified value={r.verification_status} /></td><td>{ptin ? <>P••••{ptin.identifier_last4} <Verified value={ptin.verification_status} /></> : <span className="monarch-muted">None recorded</span>}</td></tr>;
+              })}</tbody>
+            </table></div>
+          </section>
+          <section className="monarch-panel monarch-pad">
+            <h2 style={{ marginTop: 0 }}>Add a team member</h2>
+            <form action={addMemberAction} className="monarch-form">
+              <input type="hidden" name="organization_id" value={efin.organization_id} /><input type="hidden" name="back" value={here} />
+              <label>Full name<input name="person_name" required maxLength={200} /></label>
+              <label>Role<Select name="role" required value="tax_preparer" options={ASSIGNMENT_ROLES.map((r) => ({ value: r, label: roleLabel(r) }))} /></label>
+              <label>Email<input name="person_email" type="email" maxLength={254} /></label>
+              <label>Phone<input name="person_phone" type="tel" maxLength={40} /></label>
+              <label>Office<Select name="location_id" empty="Whole business" options={s.locations.filter((l) => l.organization_id === efin.organization_id).map((l) => ({ value: l.id, label: l.name }))} /></label>
+              <label>How was this role confirmed?<Select name="role_verification" value="unverified" options={VERIFY_OPTIONS} /></label>
+              <label>PTIN (optional)<input name="ptin" autoComplete="off" maxLength={12} placeholder="P01234567" /></label>
+              <label>PTIN confirmed?<Select name="ptin_verification" value="unverified" options={VERIFY_OPTIONS} /></label>
+              <label>PTIN source<input name="ptin_source" maxLength={300} /></label>
+              <label>PTIN renewal date<input type="date" name="ptin_expires_on" /></label>
+              <div className="is-wide"><button className="monarch-primary" type="submit">Add team member</button></div>
+            </form>
+          </section>
+          <section className="monarch-panel">
+            <div className="monarch-panel-head"><div><h2>Offices</h2><p>Locations for this business.</p></div></div>
+            <div className="monarch-table-wrap"><table>
+              <thead><tr><th>OFFICE</th><th>ADDRESS</th><th>PRIMARY</th></tr></thead>
+              <tbody>{s.locations.filter((l) => l.organization_id === efin.organization_id && !l.archived_at).map((l) => <tr key={l.id}><td><b>{l.name}</b></td><td>{[l.address.line1, l.address.city, l.address.state, l.address.zip].filter(Boolean).join(", ") || "—"}</td><td>{l.is_primary ? "Yes" : ""}</td></tr>)}</tbody>
+            </table></div>
+          </section>
+          <section className="monarch-panel monarch-pad">
+            <h2 style={{ marginTop: 0 }}>Add an office</h2>
+            <form action={saveLocationAction} className="monarch-form">
+              <input type="hidden" name="organization_id" value={efin.organization_id} /><input type="hidden" name="back" value={here} />
+              <label>Office name<input name="name" required maxLength={200} /></label>
+              <label>Street address<input name="line1" maxLength={200} /></label>
+              <label>City<input name="city" maxLength={100} /></label>
+              <label>State<input name="state" maxLength={2} /></label>
+              <label>ZIP<input name="zip" maxLength={10} /></label>
+              <label className="monarch-check is-wide"><input type="checkbox" name="is_primary" /> This is the primary office</label>
+              <div className="is-wide"><button className="monarch-primary" type="submit">Add office</button></div>
+            </form>
+          </section>
+        </>
       )}
 
       {tab === "assignments" && (

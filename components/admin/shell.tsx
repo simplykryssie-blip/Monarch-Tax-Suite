@@ -25,10 +25,7 @@ const NAV: Entry[] = [
         label: "EFIN Management",
         icon: "licenses",
         items: [
-          { label: "Registry", icon: "licenses", href: "/efin" },
-          { label: "Offices", icon: "office", href: "/efin/offices" },
-          { label: "People", icon: "user", href: "/efin/people" },
-          { label: "Assignments", icon: "check", href: "/efin/assignments" },
+          { label: "EROs & EFINs", icon: "licenses", href: "/efin" },
           { label: "Renewals", icon: "bell", href: "/efin/renewals" },
           { label: "History", icon: "reports", href: "/efin/history" },
         ],

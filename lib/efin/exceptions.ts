@@ -44,11 +44,11 @@ export function complianceExceptions(d: Input): ComplianceException[] {
   for (const c of d.credentials) {
     if (c.archived_at) continue;
     const who = d.people.find((p) => p.id === c.person_id)?.full_name ?? "Unknown person";
-    if (c.expires_on && c.expires_on < d.today) out.push({ kind: "credential_expired", severity: "medium", subjectType: "credential", subjectId: c.id, organizationId: null, title: `${c.kind.toUpperCase()} for ${who}`, detail: `Recorded date ${c.expires_on} has passed.`, href: "/efin/people" });
-    else if (c.verification_status === "unverified") out.push({ kind: "credential_unverified", severity: "low", subjectType: "credential", subjectId: c.id, organizationId: null, title: `${c.kind.toUpperCase()} for ${who}`, detail: "Recorded but not verified.", href: "/efin/people" });
+    if (c.expires_on && c.expires_on < d.today) out.push({ kind: "credential_expired", severity: "medium", subjectType: "credential", subjectId: c.id, organizationId: null, title: `${c.kind.toUpperCase()} for ${who}`, detail: `Recorded date ${c.expires_on} has passed.`, href: "/efin" });
+    else if (c.verification_status === "unverified") out.push({ kind: "credential_unverified", severity: "low", subjectType: "credential", subjectId: c.id, organizationId: null, title: `${c.kind.toUpperCase()} for ${who}`, detail: "Recorded but not verified.", href: "/efin" });
   }
   for (const a of d.assignments) {
-    if (a.state === "pending_review" && daysUntil(a.requested_at.slice(0, 10), d.today) < -7) out.push({ kind: "stale_review", severity: "medium", subjectType: "assignment", subjectId: a.id, organizationId: a.organization_id, title: `${a.role.replace(/_/g, " ")} assignment`, detail: `Requested ${a.requested_at.slice(0, 10)} and still waiting for review.`, href: "/efin/assignments" });
+    if (a.state === "pending_review" && daysUntil(a.requested_at.slice(0, 10), d.today) < -7) out.push({ kind: "stale_review", severity: "medium", subjectType: "assignment", subjectId: a.id, organizationId: a.organization_id, title: `${a.role.replace(/_/g, " ")} assignment`, detail: `Requested ${a.requested_at.slice(0, 10)} and still waiting for review.`, href: `/efin/${a.efin_id}?tab=assignments` });
   }
   const rank = { high: 0, medium: 1, low: 2 } as const;
   return out.sort((a, b) => rank[a.severity] - rank[b.severity]);
