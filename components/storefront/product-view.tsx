@@ -75,7 +75,7 @@ export function ProductView({ product, images, preview = false, purchase }: { pr
             ) : purchase ? (
               purchase
             ) : (
-              <a href={`mailto:info@monarchtaxsuite.com?subject=${encodeURIComponent(product.name)}`}>Contact us to purchase</a>
+              <a href={`mailto:support@monarchtaxsuite.com?subject=${encodeURIComponent(product.name)}`}>Contact us to purchase</a>
             )}
             <small>{product.payment_type === "one_time" ? "One-time payment. No subscription." : `Billed every ${product.billing_interval}. Cancel anytime.`}</small>
           </div>

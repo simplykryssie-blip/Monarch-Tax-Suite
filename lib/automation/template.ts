@@ -98,6 +98,6 @@ export const SAMPLE_VALUES: Record<string, string> = {
   installation_status: "active",
   embed_instructions: "SAMPLE: add a Custom Code block to your page and paste the calculator code shown in your setup page.",
   failure_reason: "SAMPLE: GoHighLevel access expired. Reconnect it from your setup page.",
-  support_email: "info@monarchtaxsuite.com",
+  support_email: "support@monarchtaxsuite.com",
   app_url: "https://monarch-tax-suite.vercel.app",
 };

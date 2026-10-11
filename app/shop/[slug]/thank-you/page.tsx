@@ -11,7 +11,7 @@ export default function ThankYouPage() {
         <div className="monarch-eyebrow">MONARCH TAX SUITE</div>
         <h1>Thank you</h1>
         <p>Your payment is being confirmed. As soon as Stripe confirms it, usually within a minute, we email your next steps to the address you used at checkout.</p>
-        <p>If nothing arrives within an hour, check your spam folder or write to <a href="mailto:info@monarchtaxsuite.com">info@monarchtaxsuite.com</a>.</p>
+        <p>If nothing arrives within an hour, check your spam folder or write to <a href="mailto:support@monarchtaxsuite.com">support@monarchtaxsuite.com</a>.</p>
         <p><Link href="/shop">Back to the shop</Link></p>
       </div>
     </main>
