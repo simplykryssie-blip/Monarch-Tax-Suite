@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { unwrap } from "../commerce/supabase-repo.ts";
 import { serviceClient } from "../admin";
-import { assignmentProblems, EfinRuleError, forField, last4, tracksTeam, normalizeEfin, normalizeEin, normalizePtin, parseDay, planTransition, todayIso } from "./rules.ts";
+import { assignmentProblems, EfinRuleError, forField, hasLiveHistory, last4, tracksTeam, normalizeEfin, normalizeEin, normalizePtin, parseDay, planTransition, todayIso } from "./rules.ts";
 import type { AssignmentRole, AssignmentRow, AssignmentState, AuditRow, CredentialRow, DocRow, EfinRow, FilingRow, LocationRow, OptionRow, OrgOptionRow, OrgRow, PersonRow, RenewalTaskRow, RoleRow, Verification } from "./types.ts";
 import { ASSIGNMENT_ROLES, DOC_KINDS, EFIN_STATUSES, VERIFICATION } from "./types.ts";
 import { words } from "./text.ts";
@@ -450,14 +450,85 @@ export async function restoreOrganization(actor: Actor, orgId: string) {
   await audit(actor, { type: "organization.restored", targetType: "organization", targetId: id, organizationId: id, reason: "Restored; EFINs set to pending verification" });
 }
 
-/** Permanent deletion, all or nothing. Refused when an assignment ever went live (archive instead). Audit events remain. */
+const functionMissing = (e: { code?: string; message: string }) => e.code === "PGRST202" || e.code === "42883" || /could not find the function|function .* does not exist/i.test(e.message);
+const must = (r: { error: { message: string } | null }) => {
+  if (r.error) throw new Error(r.error.message);
+};
+
+/**
+ * Permanent deletion. Uses the all-or-nothing database function when it is installed; otherwise the app deletes in a safe
+ * order itself (dependents first), so it works without any SQL being run. Either way a live-history EFIN is refused (archive
+ * instead) and the audit log keeps a record that never contains identifiers.
+ */
 export async function deleteEfin(actor: Actor, efinId: string) {
-  const { error } = await db().rpc("efin_delete_efin", { p_efin: uuid(efinId, "EFIN"), p_actor: actor.id, p_email: actor.email });
-  if (error) throw dbError(error);
+  const id = uuid(efinId, "EFIN");
+  const { error } = await db().rpc("efin_delete_efin", { p_efin: id, p_actor: actor.id, p_email: actor.email });
+  if (!error) return;
+  if (!functionMissing(error)) throw dbError(error);
+  await deleteEfinDirect(actor, id);
 }
+
+async function deleteEfinDirect(actor: Actor, id: string) {
+  const c = db();
+  const efin = unwrap(await c.from("efin_records").select("id, efin_last4, organization_id").eq("id", id).maybeSingle() as never) as { id: string; efin_last4: string; organization_id: string } | null;
+  if (!efin) throw new EfinNotFound("That record could not be found. It may already be deleted.");
+  const assignments = unwrap(await c.from("efin_assignments").select("state, activated_at").eq("efin_id", id) as never) as Pick<AssignmentRow, "state" | "activated_at">[];
+  if (hasLiveHistory(assignments)) throw dbError({ message: "HAS_HISTORY" });
+  must(await c.from("renewal_tasks").delete().eq("subject_type", "efin").eq("subject_id", id));
+  must(await c.from("compliance_documents").delete().eq("subject_type", "efin").eq("subject_id", id));
+  must(await c.from("filing_relationships").delete().eq("efin_id", id));
+  must(await c.from("efin_assignments").delete().eq("efin_id", id));
+  must(await c.from("efin_records").delete().eq("id", id));
+  await audit(actor, { type: "efin.deleted", targetType: "efin", targetId: id, organizationId: efin.organization_id, changes: { last4: efin.efin_last4 } });
+}
+
 export async function deleteOrganization(actor: Actor, orgId: string) {
-  const { error } = await db().rpc("efin_delete_organization", { p_org: uuid(orgId, "ERO"), p_actor: actor.id, p_email: actor.email });
-  if (error) throw dbError(error);
+  const id = uuid(orgId, "ERO");
+  await deleteOrgDocuments(id); // files live outside the database function, so remove them first
+  const { error } = await db().rpc("efin_delete_organization", { p_org: id, p_actor: actor.id, p_email: actor.email });
+  if (!error) return;
+  if (!functionMissing(error)) throw dbError(error);
+  await deleteOrganizationDirect(actor, id);
+}
+
+/** Removes a firm's uploaded files and their records. */
+async function deleteOrgDocuments(orgId: string) {
+  const c = db();
+  const { data, error } = await c.from("compliance_documents").select("id, storage_path").eq("subject_type", "organization").eq("subject_id", orgId);
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205" || /schema cache|does not exist/i.test(error.message)) return;
+    throw new Error(error.message);
+  }
+  const paths = ((data ?? []) as { storage_path: string | null }[]).map((d) => d.storage_path).filter(Boolean) as string[];
+  if (paths.length) await c.storage.from(DOC_BUCKET).remove(paths);
+  if ((data ?? []).length) must(await c.from("compliance_documents").delete().eq("subject_type", "organization").eq("subject_id", orgId));
+}
+
+async function deleteOrganizationDirect(actor: Actor, id: string) {
+  const c = db();
+  const org = unwrap(await c.from("organizations").select("id, legal_name").eq("id", id).maybeSingle() as never) as { id: string; legal_name: string } | null;
+  if (!org) throw new EfinNotFound("That record could not be found. It may already be deleted.");
+  const efins = unwrap(await c.from("efin_records").select("id").eq("organization_id", id) as never) as { id: string }[];
+  const ownIds = new Set(efins.map((e) => e.id));
+  const assigned = unwrap(await c.from("efin_assignments").select("efin_id").eq("organization_id", id) as never) as { efin_id: string }[];
+  if (assigned.some((a) => !ownIds.has(a.efin_id))) throw dbError({ message: "ASSIGNED_ELSEWHERE" });
+  const roles = unwrap(await c.from("organization_roles").select("person_id").eq("organization_id", id) as never) as { person_id: string }[];
+  const personIds = [...new Set(roles.map((r) => r.person_id))];
+  // Check every EFIN first so a refusal leaves everything untouched.
+  for (const e of efins) {
+    const a = unwrap(await c.from("efin_assignments").select("state, activated_at").eq("efin_id", e.id) as never) as Pick<AssignmentRow, "state" | "activated_at">[];
+    if (hasLiveHistory(a)) throw dbError({ message: "HAS_HISTORY" });
+  }
+  for (const e of efins) await deleteEfinDirect(actor, e.id);
+  must(await c.from("renewal_tasks").delete().eq("organization_id", id));
+  must(await c.from("organizations").delete().eq("id", id)); // locations, roles, memberships and software choices cascade
+  // People who only ever belonged to this firm (and have no login) go too; their PTIN credentials cascade.
+  for (const pid of personIds) {
+    const { count } = await c.from("organization_roles").select("id", { count: "exact", head: true }).eq("person_id", pid);
+    const p = unwrap(await c.from("people").select("user_id").eq("id", pid).maybeSingle() as never) as { user_id: string | null } | null;
+    if (p && !p.user_id && (count ?? 0) === 0) must(await c.from("people").delete().eq("id", pid));
+  }
+  await audit(actor, { type: "organization.deleted", targetType: "organization", targetId: id, organizationId: id, changes: { legal_name: org.legal_name, efins_deleted: efins.length } });
 }
 
 export const BULK_ACTIONS = ["archive", "restore", "delete", "status_active", "status_inactive", "status_suspended", "status_pending_verification"] as const;

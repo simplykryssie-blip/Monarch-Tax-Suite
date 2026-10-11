@@ -217,3 +217,7 @@ export const isEfinStatus = (v: string): v is EfinStatus => ["draft", "pending_v
 
 /** Clients that only bought software or services: no team, PTIN or internal assignment records are kept for them. */
 export const tracksTeam = (relationship: string) => relationship !== "client";
+
+/** An EFIN that was ever used in a live assignment (active, or later suspended, revoked or expired) is archived, never deleted. */
+export const hasLiveHistory = (assignments: Pick<AssignmentRow, "state" | "activated_at">[]) =>
+  assignments.some((a) => Boolean(a.activated_at) || ["active", "suspended", "revoked", "expired"].includes(a.state));

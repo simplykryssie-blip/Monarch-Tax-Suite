@@ -285,3 +285,11 @@ test("pending confirmation is not done in the next-steps checklist", () => {
   const ok = nextSteps({ org, efin: baseEfin({ external_status: "verified" }), person: undefined, assignments: [], filings: [] });
   assert.equal(ok.find((s) => s.key === "verify")?.done, true);
 });
+
+import { hasLiveHistory } from "../lib/efin/rules.ts";
+test("only never-live EFINs can be permanently deleted", () => {
+  assert.equal(hasLiveHistory([]), false);
+  assert.equal(hasLiveHistory([{ state: "draft", activated_at: null }, { state: "pending_review", activated_at: null }, { state: "approved", activated_at: null }]), false);
+  for (const state of ["active", "suspended", "revoked", "expired"] as const) assert.equal(hasLiveHistory([{ state, activated_at: null }]), true);
+  assert.equal(hasLiveHistory([{ state: "draft", activated_at: "2026-01-01T00:00:00Z" }]), true);
+});
