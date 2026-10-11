@@ -1,0 +1,55 @@
+/* Keep the full admin navigation reachable on short screens. */
+.monarch-sidebar {
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #514a38 #11110f;
+}
+
+.monarch-sidebar > .monarch-brand {
+  flex: 0 0 auto;
+}
+
+.monarch-sidebar > .monarch-nav-group {
+  flex: 0 0 auto;
+}
+
+.monarch-sidebar > .monarch-user {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+.monarch-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.monarch-sidebar::-webkit-scrollbar-track {
+  background: #11110f;
+}
+
+.monarch-sidebar::-webkit-scrollbar-thumb {
+  background: #514a38;
+  border-radius: 6px;
+}
+
+@media (max-height: 760px) {
+  .monarch-sidebar {
+    padding-top: 14px;
+    padding-bottom: 10px;
+  }
+
+  .monarch-brand {
+    height: 100px;
+    margin-bottom: 14px;
+  }
+
+  .monarch-nav-group {
+    margin-bottom: 12px;
+  }
+
+  .monarch-nav {
+    height: 42px;
+  }
+}
