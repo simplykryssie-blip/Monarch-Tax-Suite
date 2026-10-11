@@ -7,6 +7,7 @@ import { createClient } from "./supabase/server";
 import { serviceClient } from "./supabase/service";
 import { decideAdmin } from "./commerce/authz.ts";
 import { SupabaseCommerceRepo, SupabaseImageStore } from "./commerce/supabase-repo.ts";
+import { SupabaseFileStore, SupabaseProductFilesRepo } from "./commerce/supabase-files.ts";
 
 export { serviceClient };
 
@@ -17,6 +18,12 @@ export function commerceRepo() {
 /** Product image storage (service role; call only after requireAdmin for writes). */
 export function imageStore() {
   return new SupabaseImageStore(serviceClient());
+}
+
+/** Product files (code bundles and other deliverables): private storage plus the file and download records. */
+export function productFilesDeps() {
+  const db = serviceClient();
+  return { commerce: new SupabaseCommerceRepo(db), files: new SupabaseProductFilesRepo(db), store: new SupabaseFileStore(db) };
 }
 
 /** Stripe client, or null when STRIPE_SECRET_KEY is not configured. */
