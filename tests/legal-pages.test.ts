@@ -75,6 +75,17 @@ test("the Refund Policy and Terms state the owner's final policy: no refunds, ex
   assert.match(read("lib/legal.ts"), /LEGAL_VERSION = "2026-10-11"/);
 });
 
+test("the Refund Policy (approved as final 2026-10-11) has no draft banner; Terms and Privacy keep it until counsel reviews them", () => {
+  assert.match(read("components/legal/legal-page.tsx"), /draft = true/);
+  assert.match(read("app/refunds/page.tsx"), /<LegalPage title="Refund and Cancellation Policy" draft=\{false\}>/);
+  for (const file of ["app/terms/page.tsx", "app/privacy/page.tsx"]) assert.doesNotMatch(read(file), /draft=\{false\}/, file);
+});
+
+test("the legal pages give support@monarchtaxsuite.com as the contact address", () => {
+  assert.match(read("components/legal/legal-page.tsx"), /SUPPORT_EMAIL = "support@monarchtaxsuite\.com"/);
+  for (const file of [...PAGES, "components/legal/legal-page.tsx"]) assert.doesNotMatch(read(file), /info@monarchtaxsuite\.com/, file);
+});
+
 test("the published text keeps its draft banner and counsel notes, and makes no compliance or approval claims", () => {
   assert.match(read("components/legal/legal-page.tsx"), /Draft for review/);
   assert.match(read("components/legal/legal-page.tsx"), /not yet been reviewed or approved/);

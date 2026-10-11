@@ -3,13 +3,14 @@ import { notFound } from "next/navigation";
 import { LEGAL_PAGES_APPROVED } from "@/lib/legal";
 import { LegalPage, Section, SUPPORT_EMAIL } from "@/components/legal/legal-page";
 
-export const metadata: Metadata = { title: "Refund and Cancellation Policy | Monarch Tax Suite", description: "Draft refund and cancellation policy for Monarch Tax Suite products." };
+export const metadata: Metadata = { title: "Refund and Cancellation Policy | Monarch Tax Suite", description: "Refund and cancellation policy for Monarch Tax Suite products." };
 
 export default function RefundPolicyPage() {
   // Unapproved draft: not available to visitors until the owner and counsel approve it (see lib/legal.ts).
   if (!LEGAL_PAGES_APPROVED) notFound();
   return (
-    <LegalPage title="Refund and Cancellation Policy">
+    // Approved as final by the owner on 2026-10-11, so it carries no draft banner.
+    <LegalPage title="Refund and Cancellation Policy" draft={false}>
       <Section heading="1. All sales are final">
         <p>
           All sales are final. Due to the nature of digital products, software licenses, courses, and services, Monarch Tax Suite does not offer refunds, exchanges, or
