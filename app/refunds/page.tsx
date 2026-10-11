@@ -32,7 +32,7 @@ export default function RefundPolicyPage() {
       </Section>
       <Section heading="4. Governing law">
         <p>
-          This policy is proposed to be governed by the laws of the State of Louisiana. [To confirm with counsel.] Nothing here limits any rights you have under law that cannot be
+          This policy is proposed to be governed by the laws of the State of Louisiana. Nothing here limits any rights you have under law that cannot be
           waived.
         </p>
       </Section>

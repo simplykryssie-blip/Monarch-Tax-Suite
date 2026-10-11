@@ -79,6 +79,7 @@ test("the Refund Policy (approved as final 2026-10-11) has no draft banner; Term
   assert.match(read("components/legal/legal-page.tsx"), /draft = true/);
   assert.match(read("app/refunds/page.tsx"), /<LegalPage title="Refund and Cancellation Policy" draft=\{false\}>/);
   for (const file of ["app/terms/page.tsx", "app/privacy/page.tsx"]) assert.doesNotMatch(read(file), /draft=\{false\}/, file);
+  assert.doesNotMatch(read("app/refunds/page.tsx"), /\[To confirm/, "a final page carries no counsel notes");
 });
 
 test("the legal pages give support@monarchtaxsuite.com as the contact address", () => {
