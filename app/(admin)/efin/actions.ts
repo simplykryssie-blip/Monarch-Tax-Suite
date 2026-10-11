@@ -22,6 +22,7 @@ const withParam = (path: string, key: "notice" | "error", message: string) => {
 function setupMessage(e: unknown): string | null {
   const code = (e as { code?: string } | null)?.code ?? "";
   const msg = e instanceof Error ? e.message : String((e as { message?: string } | null)?.message ?? "");
+  if (/bureau_options|organization_options|firm-documents|renews_on/i.test(msg) && (code === "42P01" || code === "PGRST205" || code === "42703" || /schema cache|does not exist|bucket/i.test(msg))) return "This needs the latest database update, which has not been applied yet. Run supabase/migrations/20261012110000_efin_firm_options_documents.sql on this database, then try again. Nothing was changed.";
   if (code === "23514" || /violates check constraint/i.test(msg)) return "The database does not accept that value yet because it is behind the app. Run supabase/migrations/20261012090000_efin_management_update.sql on this database, then try again. Nothing was changed.";
   if (code === "PGRST202" || code === "42883" || /could not find the function|function .* does not exist/i.test(msg)) return "The database is missing a function this feature needs. Run supabase/migrations/20261012090000_efin_management_update.sql on this database, then try again. Nothing was changed.";
   if (code === "42P01" || code === "PGRST205" || /schema cache|relation .* does not exist/i.test(msg)) return "The EFIN Management database tables are not installed yet. Run supabase/migrations/20261011100000_efin_management.sql first.";

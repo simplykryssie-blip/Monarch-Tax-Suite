@@ -15,11 +15,15 @@ Service-bureau CRM module under **My Office → EFIN Management** (`/efin`). The
 `/efin` is the dashboard. Every figure is derived from recorded, verified data (`lib/efin/metrics.ts`, tested). There are deliberately no return counts, filing totals or growth percentages, because Monarch has no verified source for them. An ERO can have any number of locations: add up to five extra on the Add-an-ERO form, or add more later from the ERO's Office & Team tab; each EFIN has a "filing office" you can change, and assignments can be pinned to a location.
 
 ## Status of the databases
+- **Production (Monarch Tax Calculator) also has `20261012110000_efin_firm_options_documents.sql` applied** (third confirmation state, tax software / bank lists, private `firm-documents` bucket, latest save functions), verified with a rolled-back test. The original description follows:
 - **Production (Monarch Tax Calculator):** the EFIN schema, row-level security, audit protection and the one-step save functions (`efin_onboard`, `efin_add_member`) were applied and verified (13 tables, RLS on all, read policies only, secret columns hidden from browser roles, audit append-only, partner isolation and duplicate-EFIN tests passed and rolled back; no rows were left). **Optional:** `20261012100000_efin_delete_functions.sql`. Permanent delete now works without it (the app deletes in a safe order itself); installing it makes deletion all-or-nothing in one database transaction.
 - **Throwaway test project:** has the schema, the latest save functions and the `client` relationship value, but not the optional delete functions.
 
 ## Updating a database that ran an earlier version
 If a database already ran an earlier `20261011100000_efin_management.sql` (for example a test or preview project), run `supabase/migrations/20261012090000_efin_management_update.sql` on it. It is safe to run repeatedly. It adds the `client` relationship value and replaces the save functions. Permanent-delete functions are in `20261012100000_efin_delete_functions.sql`. The app now says exactly which file to run when the database is behind (a missing value or function), instead of the misleading "tables not installed" message.
+
+## Pop-ups (keeping your place)
+Pages you open from a button on a firm or the onboarding (Settings, Locations, Documents, Edit firm, Software & banking) open in a pop-up over the current page. Closing it returns you exactly where you were, with anything half-typed intact, and refreshes the page behind it so new items appear. Cmd/Ctrl-click opens a normal tab. If a pop-up lands on the firm list (for example after a delete), it closes and the page follows. The pop-up is an iframe of the same site: `/efin/*` and `/bureau/*` send `X-Frame-Options: SAMEORIGIN` and `frame-ancestors 'self'`, so only this site can frame them. Confirmations (delete, archive) use an in-page dialog instead of the browser's blocking prompt.
 
 ## Latest changes (confirmation wording, responsible party, settings lists, documents)
 - **Renamed** "EFIN Management" to **My Service Bureau** (URLs still start with `/efin`).

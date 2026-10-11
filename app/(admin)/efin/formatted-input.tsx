@@ -9,8 +9,8 @@ const HINTS: Record<keyof typeof MASKS, Partial<InputHTMLAttributes<HTMLInputEle
   ein: { inputMode: "numeric", autoComplete: "off", placeholder: "12-3456789" },
   efin: { inputMode: "numeric", autoComplete: "off", placeholder: "123456" },
   ptin: { autoComplete: "off", placeholder: "P01234567" },
-  state: { autoComplete: "off", placeholder: "LA" },
-  zip: { inputMode: "numeric", autoComplete: "off", placeholder: "70607" },
+  state: { autoComplete: "off" },
+  zip: { inputMode: "numeric", autoComplete: "off" },
 };
 
 /** A text box that formats as you type (phone, EIN, EFIN, PTIN, state, ZIP). The server applies the same format when saving. */

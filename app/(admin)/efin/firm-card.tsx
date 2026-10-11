@@ -9,18 +9,19 @@ import { displayAddress, displayPhone } from "@/lib/efin/format.ts";
 import { structureLabel } from "@/lib/efin/text.ts";
 import { Verified } from "./parts";
 import { RevealEfin } from "./reveal";
+import { PopupLink } from "./popup-link";
 
 export const REL_LABEL: Record<string, string> = { internal: "My tax office", partner: "Partner office", client: "Software / service client", other: "Other" };
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 const addressLine = (a: Record<string, string> | null | undefined) => displayAddress(a);
 const statusValue = (e: EfinRow) => (e.internal_status === "pending_verification" ? "pending" : e.internal_status);
 
-function CardHead({ icon, title, sub, href, action }: { icon: IconName; title: string; sub?: string; href?: string; action?: string }) {
+function CardHead({ icon, title, sub, href, action, popup }: { icon: IconName; title: string; sub?: string; href?: string; action?: string; popup?: string }) {
   return (
     <div className="efin-card-head">
       <span className="efin-card-ico"><Icon name={icon} size={22} /></span>
       <div><h2>{title}</h2>{sub && <p>{sub}</p>}</div>
-      {href && <Link className="efin-card-link" href={href}>{action ?? "Edit"}</Link>}
+      {href && (popup ? <PopupLink className="efin-card-link" href={href} title={popup}>{action ?? "Edit"}</PopupLink> : <Link className="efin-card-link" href={href}>{action ?? "Edit"}</Link>)}
     </div>
   );
 }
@@ -53,12 +54,12 @@ export function FirmHeader({ s, org, efin, steps, base }: { s: Snapshot; org: Or
           {address && <p className="efin-firm-line"><span>{address}</span></p>}
         </div>
         <div className="efin-firm-actions">
-          {!org.archived_at && <Link className="monarch-secondary efin-gold" href={editLink("firm")}><Icon name="pencil" size={16} /> Edit firm</Link>}
+          {!org.archived_at && (efin ? <PopupLink className="monarch-secondary efin-gold" href={editLink("firm")} title="Edit firm"><Icon name="pencil" size={16} /> Edit firm</PopupLink> : <Link className="monarch-secondary efin-gold" href={editLink("firm")}><Icon name="pencil" size={16} /> Edit firm</Link>)}
           <details className="efin-more">
             <summary aria-label="More actions"><Icon name="dots" size={18} /></summary>
             <div className="efin-more-menu">
-              {!org.archived_at && <Link href={editLink("efin")}>Add another EFIN</Link>}
-              <Link href={editLink("more")}>Archive or delete</Link>
+              {!org.archived_at && (efin ? <PopupLink href={editLink("efin")} title="Add another EFIN">Add another EFIN</PopupLink> : <Link href={editLink("efin")}>Add another EFIN</Link>)}
+              {efin ? <PopupLink href={editLink("more")} title="Archive or delete">Archive or delete</PopupLink> : <Link href={editLink("more")}>Archive or delete</Link>}
             </div>
           </details>
         </div>
@@ -116,7 +117,7 @@ export function OverviewCards({ s, org, efin, base, activity }: { s: Snapshot; o
   return (
     <div className="efin-grid efin-overview">
       <section className="efin-card efin-span">
-        <CardHead icon="firms" title="Firm details" href={`${where}firm${efin ? "" : "#manage"}`} />
+        <CardHead icon="firms" title="Firm details" href={`${where}firm${efin ? "" : "#manage"}`} popup={efin ? "Edit firm" : undefined} />
         <div className="efin-two">
           <dl className="efin-kv">
             <div><dt>Relationship</dt><dd>{REL_LABEL[org.relationship] ?? org.relationship}</dd></div>
@@ -126,13 +127,13 @@ export function OverviewCards({ s, org, efin, base, activity }: { s: Snapshot; o
             <div>
               <dt>Documents</dt>
               <dd>{docs.length} document{docs.length === 1 ? "" : "s"}
-                <span className="efin-inline-actions"><Link className="efin-card-link" href={docBase}>View</Link><Link className="efin-card-link" href={docAdd}>+ Upload</Link></span>
+                <span className="efin-inline-actions"><PopupLink className="efin-card-link" href={docBase} title="Documents">View</PopupLink><PopupLink className="efin-card-link" href={docAdd} title="Upload a document">+ Upload</PopupLink></span>
               </dd>
             </div>
             <div>
               <dt>Locations</dt>
               <dd>{locations.length} location{locations.length === 1 ? "" : "s"}
-                <span className="efin-inline-actions"><Link className="efin-card-link" href={locBase}>View</Link><Link className="efin-card-link" href={locAdd}>+ Add</Link></span>
+                <span className="efin-inline-actions"><PopupLink className="efin-card-link" href={locBase} title="Locations">View</PopupLink><PopupLink className="efin-card-link" href={locAdd} title="Add a location">+ Add</PopupLink></span>
               </dd>
             </div>
           </dl>
@@ -141,8 +142,8 @@ export function OverviewCards({ s, org, efin, base, activity }: { s: Snapshot; o
             <div><dt>Responsible Official</dt><dd>{names("responsible_official").join(", ") || none}</dd></div>
             <div><dt>Principal(s)</dt><dd>{names("principal").join(", ") || none}</dd></div>
             <div><dt>Filing office</dt><dd>{(efin && s.locations.find((l) => l.id === efin.location_id)?.name) || none}</dd></div>
-            <div><dt>Tax software</dt><dd>{used("tax_software") || <Link className="efin-card-link" href={`${where}software${efin ? "" : "#manage"}`}>Choose</Link>}</dd></div>
-            <div><dt>Bank products</dt><dd>{used("bank_product") || <Link className="efin-card-link" href={`${where}software${efin ? "" : "#manage"}`}>Choose</Link>}</dd></div>
+            <div><dt>Tax software</dt><dd>{used("tax_software") || (efin ? <PopupLink className="efin-card-link" href={`${where}software`} title="Software & banking">Choose</PopupLink> : <Link className="efin-card-link" href={`${where}software#manage`}>Choose</Link>)}</dd></div>
+            <div><dt>Bank products</dt><dd>{used("bank_product") || (efin ? <PopupLink className="efin-card-link" href={`${where}software`} title="Software & banking">Choose</PopupLink> : <Link className="efin-card-link" href={`${where}software#manage`}>Choose</Link>)}</dd></div>
           </dl>
         </div>
       </section>

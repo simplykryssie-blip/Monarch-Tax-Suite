@@ -607,3 +607,23 @@ a.mt-section:hover:before{opacity:1}
 .efin-review{margin:8px 0 0}
 .efin-review>div{grid-template-columns:170px 1fr;padding:7px 0;border-top:0;font-size:14.5px}
 .efin-optform{display:grid;gap:18px}.efin-optform h3{font-size:15px;margin:0 0 4px}
+
+/* ---------- pop-ups: open a page over the current one without losing your place ---------- */
+.efin-pop{border:0;padding:0;background:transparent;max-width:none;max-height:none;width:min(1100px,94vw);height:min(88vh,900px);margin:auto;overflow:visible}
+.efin-pop::backdrop{background:rgba(17,17,17,.45);backdrop-filter:blur(2px)}
+.efin-pop-card{display:flex;flex-direction:column;width:100%;height:100%;background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.28);overflow:hidden}
+.efin-pop-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line-2)}
+.efin-pop-bar b{font-family:var(--font-display);font-size:19px}
+.efin-pop-bar span{display:inline-flex;align-items:center;gap:16px}
+.efin-pop-close{border:1px solid #d4d4d4;background:#fff;border-radius:50%;width:36px;height:36px;font-size:22px;line-height:1;cursor:pointer;color:var(--ink)}
+.efin-pop-close:hover{border-color:#c8a24a}
+.efin-pop-card iframe{flex:1;width:100%;border:0;background:#fff}
+.efin-pop-loading{position:absolute;margin:90px 24px;color:var(--muted);font-size:14px}
+.efin-confirm-dialog{border:1px solid var(--line);border-radius:16px;padding:22px 24px;max-width:440px;box-shadow:0 24px 60px rgba(0,0,0,.25)}
+.efin-confirm-dialog::backdrop{background:rgba(17,17,17,.4)}
+.efin-confirm-dialog p{margin:0 0 18px;font-size:15px;line-height:1.5}
+/* inside the pop-up: just the page, no app chrome */
+html[data-popup] .mt-sidebar,html[data-popup] .mt-topbar,html[data-popup] .mt-footer,html[data-popup] .efin-crumbs,html[data-popup] .efin-subnav,html[data-popup] .monarch-back,html[data-popup] .efin-nopopup,html[data-popup] .mt-scrim{display:none!important}
+html[data-popup] .mt-main{margin-left:0!important;width:100%!important}
+html[data-popup] .mt-content{padding:22px 26px 28px;max-width:none}
+html[data-popup] body{background:#fff}
