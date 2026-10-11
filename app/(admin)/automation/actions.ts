@@ -139,6 +139,6 @@ export async function revokeLinkAction(form: FormData) {
 export async function installDefaultsAction() {
   await mutate("/automation", async (a) => {
     const r = await installDefaults(automationDeps().repo, a.id);
-    return { notice: r.workflows || r.templates ? `Added ${r.templates} templates and ${r.workflows} workflows (all paused). Review them, then turn on what you want.` : "The standard templates and workflows are already installed." };
+    return { notice: r.workflows || r.templates ? `Added ${r.templates} template${r.templates === 1 ? "" : "s"} and ${r.workflows} workflow${r.workflows === 1 ? "" : "s"}, each with the status listed before you added it. Existing templates and workflows were not changed.` : "The standard templates and workflows are already installed." };
   });
 }

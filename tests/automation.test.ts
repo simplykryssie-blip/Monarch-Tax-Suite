@@ -7,7 +7,7 @@ import { createProduct } from "../lib/commerce/catalog.ts";
 import { createInternalLicense, handleStripeEvent, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
 import { CrmSecrets } from "../lib/crm/crypto.ts";
 import { createSetupLink, emitEvent, processExecution, retryExecution, runDue, runTest, BACKOFF_SECONDS, type AutomationDeps } from "../lib/automation/engine.ts";
-import { installDefaults } from "../lib/automation/defaults.ts";
+import { installDefaults, missingDefaults } from "../lib/automation/defaults.ts";
 import { openSetupLink, resolveSetupSession } from "../lib/automation/onboarding.ts";
 import { createTemplate, duplicateWorkflow, removeWorkflow, sendTemplateTest, setTemplateActive, setWorkflowStatus, workflowsUsing } from "../lib/automation/admin.ts";
 import { emailConfig, emailConfigProblems, type EmailMessage, type EmailSender, type SendResult } from "../lib/automation/email.ts";
@@ -390,5 +390,35 @@ describe("email provider configuration", () => {
     const set = emailConfig({ RESEND_API_KEY: "re_supersecretvalue123", MONARCH_EMAIL_FROM: "Monarch <hello@mail.example.com>" });
     assert.deepEqual(emailConfigProblems(set), []);
     assert.ok(!JSON.stringify(emailConfigProblems(set)).includes("supersecret"));
+  });
+});
+
+describe("standard set: adding what is missing", () => {
+  test("lists only defaults not yet installed, and installing them changes nothing else", async () => {
+    const repo = new MemoryAutomationRepo();
+    const all = await missingDefaults(repo);
+    assert.ok(all.workflows.length > 0 && all.templates.length > 0);
+    await installDefaults(repo, null);
+    assert.deepEqual(await missingDefaults(repo), { templates: [], workflows: [] });
+
+    // An installation from before the service-order defaults existed: remove them, keep an edited workflow.
+    for (const key of ["service_order_created", "service_order_delivered"]) repo.workflows.splice(repo.workflows.findIndex((w) => w.workflow_key === key), 1);
+    repo.templates.splice(repo.templates.findIndex((t) => t.template_key === "service_order_delivered"), 1);
+    const edited = repo.workflows.find((w) => w.workflow_key === "paid_license_created")!;
+    edited.name = "My own name";
+    edited.status = "paused";
+    const missing = await missingDefaults(repo);
+    assert.deepEqual(missing.workflows.map((w) => [w.key, w.status]), [["service_order_created", "active"], ["service_order_delivered", "active"]]);
+    assert.deepEqual(missing.templates.map((t) => t.key), ["service_order_delivered"]);
+
+    const result = await installDefaults(repo, null);
+    assert.deepEqual(result, { templates: 1, workflows: 2 });
+    assert.deepEqual(await missingDefaults(repo), { templates: [], workflows: [] });
+    const kept = repo.workflows.find((w) => w.workflow_key === "paid_license_created")!;
+    assert.equal(kept.name, "My own name");
+    assert.equal(kept.status, "paused");
+    const delivered = repo.workflows.find((w) => w.workflow_key === "service_order_delivered")!;
+    const template = repo.templates.find((t) => t.template_key === "service_order_delivered")!;
+    assert.equal(delivered.actions[0].type === "send_email" && delivered.actions[0].template_id, template.id, "the re-added workflow uses the re-added template");
   });
 });
