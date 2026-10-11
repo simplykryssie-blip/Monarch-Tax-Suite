@@ -160,6 +160,46 @@ Hi {{customer_first_name}}, your calculator license ({{license_reference}}) has 
 
 If you believe this is a mistake, contact us at {{support_email}}.`,
   },
+  {
+    key: "service_order_received",
+    name: "Service order: received, with what happens next",
+    subject: "We received your order #{{order_number}}: {{product_name}}",
+    body: `# Thank you, {{customer_first_name}}
+
+We received your payment for order #{{order_number}} ({{product_name}}), and your service order is open.
+
+What you receive: {{service_deliverable}}
+Who is handling it: {{service_owner}}
+When to expect a response: {{service_response_time}}
+
+Next step: {{service_next_step}}
+
+You do not need to book anything. We will contact you at this email address. Questions? Write to {{support_email}}.`,
+  },
+  {
+    key: "service_order_new_support",
+    name: "Service order: new order notice for the team",
+    subject: "New service order #{{order_number}}: {{product_name}}",
+    body: `# New service order #{{order_number}}
+
+{{customer_name}} paid for {{product_name}}.
+
+Deliverable: {{service_deliverable}}
+Owner: {{service_owner}}
+Promised response time: {{service_response_time}}
+
+Open Service orders in the admin to start it and record the next step.`,
+  },
+  {
+    key: "service_order_delivered",
+    name: "Service order: delivered",
+    subject: "Your {{product_name}} is complete",
+    body: `# Your service is complete, {{customer_first_name}}
+
+We have finished order #{{order_number}} ({{product_name}}): {{service_deliverable}}.
+
+If anything is missing, reply to this email or write to {{support_email}}.`,
+  },
 ];
 
 const email = (templateKey: string, to: "customer" | "support" = "customer", link = false) => (id: (k: string) => string): Action[] => [
@@ -176,6 +216,16 @@ export const DEFAULT_WORKFLOWS: DefaultWorkflow[] = [
   { key: "crm_connected", name: "GoHighLevel connected: confirmation email", description: "Runs only after the connection was verified and saved.", trigger: "crm.connected", conditions: [{ field: "provider", op: "eq", value: "highlevel" }], actions: email("crm_connected", "customer", true), status: "active" },
   { key: "installation_recorded", name: "Installation recorded: guidance email", description: "Sends embed instructions after the customer submits their installation details.", trigger: "installation.recorded", conditions: [], actions: email("installation_recorded"), status: "active" },
   { key: "installation_verified", name: "Installation verified: completion notice", description: "Sent when an administrator marks the installation active after confirming it.", trigger: "installation.verified", conditions: [], actions: email("installation_verified"), status: "active" },
+  {
+    key: "service_order_created", name: "Service order created: confirmation and team notice",
+    description: "Tells the customer what they will receive, who handles it and when, and tells the team a new service order is waiting.",
+    trigger: "service.order_created", conditions: [], status: "active",
+    actions: (id) => [
+      { type: "send_email", template_id: id("service_order_received"), to: "customer", include_setup_link: false },
+      { type: "send_email", template_id: id("service_order_new_support"), to: "support", include_setup_link: false },
+    ],
+  },
+  { key: "service_order_delivered", name: "Service delivered: completion notice", description: "Sent once when an administrator marks a service order Delivered.", trigger: "service.order_delivered", conditions: [], actions: email("service_order_delivered"), status: "active" },
   { key: "lead_delivered", name: "Lead delivered: record outcome", description: "Records that a lead reached the customer's CRM. No lead contents are stored.", trigger: "lead.delivered", conditions: [], actions: () => [{ type: "record_note", note: "A calculator lead was delivered to the customer's CRM." }], status: "active" },
   { key: "lead_delivery_failed", name: "Lead delivery failed: notify the customer", description: "Emails the customer when GoHighLevel rejects the connection (needs a reconnect). At most one email per day per license. Off by default.", trigger: "lead.delivery_failed", conditions: [{ field: "error_kind", op: "eq", value: "auth" }], actions: email("lead_delivery_needs_attention", "customer", true), status: "paused", cooldown_hours: 24 },
   { key: "license_suspended", name: "License suspended: notice", description: "Emails the customer when an administrator suspends a license. Off by default. Email problems never change a license.", trigger: "license.suspended", conditions: [], actions: email("license_suspended"), status: "paused" },

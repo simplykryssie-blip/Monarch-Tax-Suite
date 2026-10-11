@@ -43,6 +43,16 @@ export const EVENTS: Record<string, EventDef> = {
     description: "An administrator marked the installation active after confirming it.",
     fields: {},
   },
+  "service.order_created": {
+    label: "Service order created",
+    description: "A signature-verified payment for a service product created its service order.",
+    fields: {},
+  },
+  "service.order_delivered": {
+    label: "Service delivered",
+    description: "An administrator marked a service order Delivered.",
+    fields: {},
+  },
   "lead.delivered": {
     label: "Lead delivered",
     description: "A calculator lead reached the customer's CRM. No lead contents are recorded.",

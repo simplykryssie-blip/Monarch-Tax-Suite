@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { CommerceRepo } from "../commerce/types.ts";
+import type { ServiceOrdersRepo } from "../commerce/service-orders.ts";
 import { embedSnippet } from "../commerce/platforms.ts";
 import { isEventType, EVENTS } from "./events.ts";
 import { isEmailAddress, type EmailSender } from "./email.ts";
@@ -30,6 +31,8 @@ export type AutomationDeps = {
   repo: AutomationRepo;
   commerce: CommerceRepo;
   crm: { getLiveConnection(licenseId: string): Promise<{ status: string; provider: string; location_name: string | null } | null>; getLeadSettings(licenseId: string): Promise<{ business_name: string | null } | null> } | null;
+  /** Service orders, for the service email values. Optional: absent where no service orders exist. */
+  services?: Pick<ServiceOrdersRepo, "findServiceOrderByOrder"> | null;
   email: EmailSender;
   config: AutomationConfig;
   now?: () => Date;
@@ -163,6 +166,21 @@ async function contextFor(deps: AutomationDeps, event: AutomationEvent): Promise
           `3. Publish the page. The calculator shows only on your authorized website${domain ? ` (${domain} and its www version)` : ""}. If the area stays blank, check the website address in your setup page.`,
         ].join("\n")
       : "Your calculator code is created when your license is activated. We will email you as soon as it is ready.";
+  }
+  // Purchases without a license (services): the order, the product, and what the buyer was promised.
+  if (!license && event.order_id) {
+    const order = await deps.commerce.getOrder(event.order_id);
+    if (order) {
+      values.order_number = String(order.order_number);
+      if (!customer) {
+        const c = await deps.commerce.getCustomer(order.customer_id);
+        if (c) Object.assign(values, { customer_name: c.full_name?.trim() || "there", customer_first_name: (c.full_name?.trim() || "there").split(/\s+/)[0] });
+      }
+      const product = await deps.commerce.getProduct(order.product_id);
+      if (product) values.product_name = product.name;
+      const so = deps.services ? await deps.services.findServiceOrderByOrder(order.id).catch(() => null) : null;
+      if (so) Object.assign(values, { service_deliverable: so.deliverable, service_owner: so.owner, service_response_time: so.response_time, service_next_step: so.next_step ?? "" });
+    }
   }
   const kind = typeof event.data.error_kind === "string" ? event.data.error_kind : "";
   if (kind) values.failure_reason = FAILURE_TEXT[kind] ?? "A calculator lead could not be delivered.";

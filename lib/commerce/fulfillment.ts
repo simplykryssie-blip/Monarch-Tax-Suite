@@ -4,6 +4,7 @@ import { generateLicenseKey, hashLicenseKey, licenseKeyPrefix } from "./license-
 import { PLATFORM_GUIDES } from "./platforms.ts";
 import { isPurchasable } from "./catalog.ts";
 import { checkoutMismatch } from "./storefront-checkout.ts";
+import { cancelServiceForOrder, ensureServiceOrder, type ServiceOrdersRepo } from "./service-orders.ts";
 import { applyPaidUpdate, latestAvailable, reverseUpdate } from "./versions.ts";
 import { normalizeDomain, normalizeEmail, normalizeWebsiteUrl, ValidationError } from "./validation.ts";
 import {
@@ -53,8 +54,23 @@ export type FulfillmentDeps = {
   emit?: AutomationEmit;
   /** Stripe product ids of a checkout session's line items (Stripe API call in production). */
   listCheckoutProductIds(sessionId: string): Promise<string[]>;
+  /** Service orders (a paid service product creates one). Absent in callers that never sell services. */
+  services?: { repo: ServiceOrdersRepo; tenantId: string };
   now?: () => string;
 };
+
+/** Creates the service order for a paid service purchase and tells automation, once per order. */
+async function fulfilService(deps: FulfillmentDeps, order: Order, product: Product) {
+  if (product.product_type !== "service" || !deps.services) return;
+  const result = await ensureServiceOrder(deps.services.repo, deps.services.tenantId, order, product);
+  if (result?.created && deps.emit) {
+    try {
+      await deps.emit({ type: "service.order_created", key: `order:${order.id}:service_created`, customerId: order.customer_id, orderId: order.id, data: {} });
+    } catch {
+      // swallowed on purpose
+    }
+  }
+}
 
 export type EventOutcome = { status: "processed" | "ignored" | "duplicate"; detail: string };
 
@@ -244,6 +260,7 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
   if (current.payment_status === "paid" && !needsReview(current)) {
     const { license } = await ensureFulfillment(repo, current, product, null, detailsFromMetadata(session.metadata));
+    await fulfilService(deps, current, product);
     // Only reached for a signature-verified, paid order. The event key is per order, so Stripe retries or a second
     // event for the same payment cannot start the onboarding workflow twice.
     if (license && deps.emit) {
@@ -380,7 +397,10 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
         } else {
           const product = await repo.getProduct(paidOrder.product_id);
           if (product && !needsReview(paidOrder)) {
-            if (isPurchasable(product)) await ensureFulfillment(repo, paidOrder, product, null);
+            if (isPurchasable(product)) {
+              await ensureFulfillment(repo, paidOrder, product, null);
+              await fulfilService(deps, paidOrder, product);
+            }
             else await repo.updateOrder(paidOrder.id, { notes: notSellableNote(product) });
           }
         }
@@ -407,6 +427,7 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
         // A refunded update reverts only that update; a refunded purchase revokes the license.
         if (order.order_type === "annual_update") await reverseUpdate(repo, order, "Update payment refunded");
         else await restrictLicenseForOrder(repo, order, "revoked", "Payment refunded", at);
+        if (deps.services) await cancelServiceForOrder(deps.services.repo, order.id, "Payment refunded.");
       }
       return { status: "processed", detail: `Order ${order.id} ${full ? "refunded" : "partially refunded"}.` };
     }
@@ -417,6 +438,7 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
       await setOrderPayment(repo, order, "disputed", at);
       if (order.order_type === "annual_update") await reverseUpdate(repo, order, "Update payment disputed");
       else await restrictLicenseForOrder(repo, order, "suspended", "Payment disputed", at);
+      if (deps.services) await cancelServiceForOrder(deps.services.repo, order.id, "Payment disputed.");
       return { status: "processed", detail: `Order ${order.id} disputed.` };
     }
     default:
