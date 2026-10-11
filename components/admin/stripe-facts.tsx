@@ -33,6 +33,7 @@ export function VerificationBlock({ v, emptyText = "Not verified with Stripe yet
       {v.product && <div>Product: <code>{v.product.id}</code> · {v.product.name} · {v.product.active ? "active" : "archived"}</div>}
       {v.price && <div>Price: <PriceFacts price={v.price} /></div>}
       {v.issues.length > 0 && <ul>{v.issues.map((i) => <li key={i}>{i}</li>)}</ul>}
+      {v.notes && v.notes.length > 0 && <p className="monarch-muted">{v.notes.join(" ")}</p>}
     </div>
   );
 }

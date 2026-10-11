@@ -131,6 +131,8 @@ export type StripeVerification = {
   /** For versions: what the price lookup concluded. */
   state?: "linked_verified" | "linked_invalid" | "reuse_candidate" | "create_required" | "ambiguous" | "product_invalid";
   issues: string[];
+  /** Expected states that need no action, e.g. a draft's Stripe product being inactive. */
+  notes?: string[];
   price?: StripePriceFacts | null;
   candidates?: StripePriceFacts[];
   product?: { id: string; name: string | null; active: boolean; livemode: boolean } | null;
