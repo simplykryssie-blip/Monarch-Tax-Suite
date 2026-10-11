@@ -17,6 +17,9 @@ Service-bureau CRM module under **My Office → EFIN Management** (`/efin`). The
 ## Updating a database that ran an earlier version
 If a database already ran an earlier `20261011100000_efin_management.sql` (for example a test or preview project), run `supabase/migrations/20261012090000_efin_management_update.sql` on it. It is safe to run repeatedly. It adds the `client` relationship value and replaces/creates the save and delete functions. The app now says exactly which file to run when the database is behind (a missing value or function), instead of the misleading "tables not installed" message.
 
+## Firm page
+Each ERO has a firm page laid out as: breadcrumb (EFIN Management › Firms › name), header with contact lines and "Edit firm" / more menu, an EFIN-at-a-glance card beside a "Next steps" checklist (computed only from recorded data, `lib/efin/steps.ts`), tabs (Overview, Team, EFIN & Filing, Documents, Renewals, Activity), and overview cards: Firm overview, EFIN & ERO information, Team (or Locations for software clients), Recent activity, and shortcuts for Documents, Renewals and Filing relationships. Edit tools sit under "Manage this firm" and open from the Edit links. Responsible Official and Principal are shown only when someone is recorded in those roles; an ERO is never assumed to be both.
+
 ## Layout
 ERO pages read like a contact card: a header with the business, contact, address, locations and the EFIN at a glance, then flowing sections separated by hairlines. Edit tools sit in collapsible sections ("Add another EFIN", "Update this EFIN", "Edit ERO", "Locations", "Archive or delete") instead of stacked boxes. "Add another EFIN" lives on the ERO's own page, not on the main list. ERO, EFIN and PTIN are always capitalized in display text (`lib/efin/text.ts`).
 

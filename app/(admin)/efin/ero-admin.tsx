@@ -13,14 +13,14 @@ export const RELATIONSHIP_OPTIONS = [
 ];
 
 /** Edit, archive, restore and delete controls for an ERO (business) and, when given, one of its EFINs. */
-export function EroAdmin({ s, org, efin, back }: { s: Snapshot; org: OrgRow; efin?: EfinRow; back: string }) {
+export function EroAdmin({ s, org, efin, back, openSection }: { s: Snapshot; org: OrgRow; efin?: EfinRow; back: string; openSection?: string }) {
   const person = s.people.find((p) => p.id === (efin?.ero_person_id ?? org.administrator_person_id));
   const locations = s.locations.filter((l) => l.organization_id === org.id && !l.archived_at);
   const addr = org.primary_address ?? {};
   const efinCount = s.efins.filter((e) => e.organization_id === org.id).length;
   return (
     <>
-      <details className="efin-edit">
+      <details className="efin-edit" open={openSection === "firm"}>
         <summary>Edit ERO</summary>
         <div className="efin-edit-body">
         <ActionForm action={updateOrganizationAction} className="monarch-form">
@@ -79,7 +79,7 @@ export function EroAdmin({ s, org, efin, back }: { s: Snapshot; org: OrgRow; efi
         </div>
       </details>
 
-      <details className="efin-edit">
+      <details className="efin-edit" open={openSection === "more"}>
         <summary>Archive or delete</summary>
         <div className="efin-edit-body">
         <p className="monarch-muted">Archiving hides a record and stops reminders; it can be restored and keeps its history. Deleting is permanent and is allowed only for records that never went live in an assignment. The history log of the deletion is kept.</p>

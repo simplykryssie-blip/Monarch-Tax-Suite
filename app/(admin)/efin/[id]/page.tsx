@@ -3,29 +3,31 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { Badge, EmptyRow, Flash, label, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
-import { availableTransitions, daysUntil, roleLabel, todayIso, tracksTeam } from "@/lib/efin/rules.ts";
+import { availableTransitions, roleLabel, tracksTeam } from "@/lib/efin/rules.ts";
 import { loadEfinAudit, loadSnapshot, problemsFor } from "@/lib/efin/service";
 import { ASSIGNMENT_ROLES, EFIN_STATUSES } from "@/lib/efin/types.ts";
 import { addMemberAction, saveLocationAction, changeAssignmentAction, requestAssignmentAction, saveFilingAction, updateEfinAction } from "../actions";
 import { orgName, personName, Select, VERIFY_OPTIONS, Verified } from "../parts";
 import { EroAdmin } from "../ero-admin";
 import { AddEfinForm } from "../add-efin-form";
-import { ContactHeader } from "../contact-header";
+import { FirmHeader, OverviewCards } from "../firm-card";
+import { Icon, type IconName } from "@/components/admin/icons";
+import { nextSteps } from "@/lib/efin/steps.ts";
 import { words } from "@/lib/efin/text.ts";
 
-const TABS = [
-  ["overview", "Overview"],
-  ["parties", "Office & Team"],
-  ["assignments", "Office Assignments"],
-  ["filing", "Filing Relationships"],
-  ["documents", "Documents"],
-  ["renewals", "Renewals"],
-  ["history", "Activity History"],
-] as const;
+const TABS: readonly (readonly [string, string, IconName])[] = [
+  ["overview", "Overview", "dashboard"],
+  ["team", "Team", "customers"],
+  ["filing", "EFIN & Filing", "licenses"],
+  ["documents", "Documents", "document"],
+  ["renewals", "Renewals", "calendar"],
+  ["history", "Activity", "history"],
+];
+const LEGACY_TAB: Record<string, string> = { parties: "team", assignments: "filing" };
 
 const ACTION_COPY: Record<string, string> = { submit: "Submit for review", approve: "Approve", return: "Return to draft", activate: "Activate", suspend: "Suspend", revoke: "Revoke", expire: "Mark expired", reinstate: "Reinstate" };
 
-export default async function EfinProfile({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; notice?: string; error?: string }> }) {
+export default async function EfinProfile({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; edit?: string; notice?: string; error?: string }> }) {
   await requireAdmin();
   const { id } = await params;
   const sp = await searchParams;
@@ -36,40 +38,32 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
   if (!efin) notFound();
   const org = s.orgs.find((o) => o.id === efin.organization_id);
   const teamTracked = org ? tracksTeam(org.relationship) : true;
-  const tabs = TABS.filter(([k]) => teamTracked || (k !== "assignments")).map(([k, n]) => [k, k === "parties" && !teamTracked ? "Locations" : n] as const);
-  const tab = tabs.some(([k]) => k === sp.tab) ? (sp.tab as string) : "overview";
+  const tabs = TABS.map(([k, n, i]) => [k, k === "team" && !teamTracked ? "Locations" : n, i] as const);
+  const wanted = LEGACY_TAB[sp.tab ?? ""] ?? sp.tab;
+  const tab = tabs.some(([k]) => k === wanted) ? (wanted as string) : "overview";
+  const base = `/efin/${id}`;
   const here = `/efin/${id}?tab=${tab}`;
   const assignments = s.assignments.filter((a) => a.efin_id === id);
   const filings = s.filings.filter((f) => f.efin_id === id && !f.archived_at);
   const tasks = s.tasks.filter((t) => t.subject_type === "efin" && t.subject_id === id);
-  const history = tab === "history" ? await loadEfinAudit(s, id) : [];
-  const today = todayIso();
+  const history = tab === "history" || tab === "overview" ? await loadEfinAudit(s, id) : [];
+  const eroPerson = s.people.find((p) => p.id === (efin.ero_person_id ?? org?.administrator_person_id));
+  const steps = org ? nextSteps({ org, efin, person: eroPerson, assignments, filings: s.filings }) : [];
   const orgRoles = s.roles.filter((r) => r.organization_id === efin.organization_id && r.status === "active");
   const people = s.people.filter((p) => !p.archived_at);
   return (
     <>
-      <Link className="monarch-back" href="/efin/list">← EROs &amp; EFINs</Link>
-      {org ? <ContactHeader s={s} org={org} efin={efin} /> : <PageTitle title={`EFIN ending ${efin.efin_last4}`}>{orgName(s.orgs, efin.organization_id)}</PageTitle>}
+      {org ? <FirmHeader s={s} org={org} efin={efin} steps={steps} base={base} /> : <PageTitle title={`EFIN ending ${efin.efin_last4}`}>{orgName(s.orgs, efin.organization_id)}</PageTitle>}
       <Flash notice={sp.notice} error={sp.error} />
       <nav className="efin-tabs" aria-label="EFIN sections">
-        {tabs.map(([k, name]) => <Link key={k} href={`/efin/${id}?tab=${k}`} className={tab === k ? "is-on" : ""}>{name}</Link>)}
+        {tabs.map(([k, name, icon]) => <Link key={k} href={`/efin/${id}?tab=${k}`} className={tab === k ? "is-on" : ""}><Icon name={icon} size={17} /> {name}</Link>)}
       </nav>
       <div className="efin-flow">
 
       {tab === "overview" && (
         <>
-          <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Details</h2><p>What is recorded for this EFIN.</p></div></div>
-            <dl className="efin-facts">
-              <div><dt>Filing office</dt><dd>{s.locations.find((l) => l.id === efin.location_id)?.name ?? "—"}</dd></div>
-              <div><dt>Verification source</dt><dd>{efin.verification_source ?? "—"}</dd></div>
-              <div><dt>Renewal date</dt><dd>{efin.recorded_expiration ? <>{efin.recorded_expiration} <small className="monarch-muted">{efin.expiration_verified ? "verified" : "not verified"} · {daysUntil(efin.recorded_expiration, today)} days</small></> : "Not recorded"}</dd></div>
-              <div><dt>Tax year</dt><dd>{efin.tax_year ?? "—"}</dd></div>
-              <div><dt>Added</dt><dd>{when(efin.created_at)}</dd></div>
-              {efin.notes && <div style={{ gridColumn: "1 / -1" }}><dt>Notes</dt><dd>{efin.notes}</dd></div>}
-            </dl>
-            <p className="efin-note">Verification here means someone recorded checking it. Monarch does not read live IRS status and never marks an EFIN approved on its own.</p>
-          </section>
+          {org && <OverviewCards s={s} org={org} efin={efin} base={base} activity={history} />}
+          <h2 className="efin-manage-title" id="manage">Manage this firm</h2>
           {org && (
             <section className="monarch-panel">
               <div className="monarch-panel-head"><div><h2>EFINs for {org.legal_name}</h2><p>Every EFIN recorded for this ERO.</p></div></div>
@@ -81,13 +75,13 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
             </section>
           )}
           {org && !org.archived_at && (
-            <details className="efin-edit">
+            <details className="efin-edit" open={sp.edit === "efin"}>
               <summary>Add another EFIN</summary>
               <div className="efin-edit-body"><AddEfinForm s={s} org={org} back={here} /></div>
             </details>
           )}
           {!efin.archived_at && (
-            <details className="efin-edit">
+            <details className="efin-edit" open={sp.edit === "efin"}>
               <summary>Update this EFIN</summary>
               <div className="efin-edit-body">
               <ActionForm action={updateEfinAction} className="monarch-form">
@@ -107,11 +101,11 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
               </div>
             </details>
           )}
-          {org && <EroAdmin s={s} org={org} efin={efin} back={here} />}
+          {org && <EroAdmin s={s} org={org} efin={efin} back={here} openSection={sp.edit} />}
         </>
       )}
 
-      {tab === "parties" && (
+      {tab === "team" && (
         <>
           {teamTracked && (
             <>
@@ -127,7 +121,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
             </table></div>
           </section>
           <section className="monarch-panel monarch-pad">
-            <h2 style={{ marginTop: 0 }}>Add a team member</h2>
+            <h2 id="add-member" style={{ marginTop: 0 }}>Add a team member</h2>
             <ActionForm action={addMemberAction} className="monarch-form">
               <input type="hidden" name="organization_id" value={efin.organization_id} /><input type="hidden" name="back" value={here} />
               <label>Full name<input name="person_name" required maxLength={200} /></label>
@@ -168,7 +162,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
         </>
       )}
 
-      {tab === "assignments" && (
+      {tab === "filing" && teamTracked && (
         <>
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Office assignments</h2><p>Assignments are internal records. They are reviewed by an administrator before they take effect, and are separate from anything the IRS or a software provider has authorized.</p></div></div>

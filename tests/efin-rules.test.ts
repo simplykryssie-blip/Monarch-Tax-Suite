@@ -203,3 +203,19 @@ test("ERO, EFIN and PTIN are always capitalized in display text", () => {
   const found = run([baseEfin({ ero_person_id: null })], { assignments: [{ id: "a", efin_id: "e1", organization_id: "o1", person_id: null, role: "ero", state: "pending_review", requested_at: "2026-01-01T00:00:00Z" } as never] });
   assert.ok(found.some((x) => /^ERO assignment$/.test(x.title)));
 });
+
+import { nextSteps } from "../lib/efin/steps.ts";
+
+test("next steps come from recorded data and skip assignments for software clients", () => {
+  const org = (relationship: string) => ({ id: "o1", relationship }) as never;
+  const person = { id: "p1", email: "a@b.co", phone: "555" } as never;
+  const e = baseEfin({ external_status: "unverified", recorded_expiration: null, expiration_verified: false });
+  const own = nextSteps({ org: org("internal"), efin: e, person, assignments: [], filings: [] });
+  assert.deepEqual(own.filter((s) => !s.done).map((s) => s.key), ["verify", "renewal", "assignment", "filing"]);
+  assert.ok(own.find((s) => s.key === "contact")?.done);
+  const client = nextSteps({ org: org("client"), efin: e, person, assignments: [], filings: [] });
+  assert.ok(!client.some((s) => s.key === "assignment"));
+  assert.equal(nextSteps({ org: org("client"), assignments: [], filings: [] })[0].key, "efin");
+  const done = nextSteps({ org: org("client"), efin: baseEfin(), person, assignments: [], filings: [{ id: "f", efin_id: "e1", archived_at: null } as never] });
+  assert.ok(done.every((s) => s.done));
+});
