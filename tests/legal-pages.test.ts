@@ -66,6 +66,15 @@ test("nothing else in the app links to the drafts (alternate routes and navigati
   assert.doesNotMatch(read("next.config.ts"), /terms|privacy|refunds/);
 });
 
+test("the Refund Policy and Terms state the owner's final policy: no refunds, exchanges or transfers (2026-10-11)", () => {
+  const refunds = read("app/refunds/page.tsx").replace(/\s+/g, " ");
+  assert.match(refunds, /All sales are final\. Due to the nature of digital products, software licenses, courses, and services, Monarch Tax Suite does not offer refunds, exchanges, or transfers on any purchase\./);
+  assert.match(refunds, /License keys are issued to the purchaser only and may not be transferred to another individual or business\./);
+  assert.doesNotMatch(refunds, /When we will refund|generally final|How to request a refund/);
+  assert.doesNotMatch(read("app/terms/page.tsx"), /transferred to another person or business only with/);
+  assert.match(read("lib/legal.ts"), /LEGAL_VERSION = "2026-10-11"/);
+});
+
 test("the published text keeps its draft banner and counsel notes, and makes no compliance or approval claims", () => {
   assert.match(read("components/legal/legal-page.tsx"), /Draft for review/);
   assert.match(read("components/legal/legal-page.tsx"), /not yet been reviewed or approved/);

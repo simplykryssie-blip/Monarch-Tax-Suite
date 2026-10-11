@@ -35,11 +35,7 @@ While a product is published, edits still only need to keep it sellable: price, 
 
 ## Rollout order (important)
 
-1. **Apply `supabase/migrations/20261013090000_storefront_checkout.sql` to production before merging.** Until then:
-   - storefront checkout refuses to start (it closes the session and asks the buyer to try later);
-   - the webhook answers 500 to storefront purchase events. Stripe retries those for up to 3 days, so they recover once the migration is in.
-
-   The test project (`riuylqgpebchhinybxxz`) already has it.
+1. **Migration applied to production on 2026-10-11** (`supabase/migrations/20261013090000_storefront_checkout.sql`), before merge. Verified afterwards: the table exists with row-level security on, both order columns exist, and the existing orders are untouched. The test project has it too.
 2. Merge. Then, for the Basic calculator:
    - add an image;
    - check its Stripe price (**Verify Stripe mapping**, or create a price);
@@ -50,11 +46,15 @@ While a product is published, edits still only need to keep it sellable: price, 
    - Production has no `checkout_url` saved on any product (checked 2026-10-11).
    - Any payment that still arrives through an old link is held as **Needs review**.
 
-## Open for the owner
+## Refund Policy (owner's final decision, 2026-10-11)
 
-- **Refund Policy wording.** The page says purchases are "generally final … except" in listed cases, but the owner's decision on 2026-10-11 was **no refunds, exchanges or transfers**. Buyers now accept the page as written, so update the text (with counsel), then change `LEGAL_VERSION` and `LEGAL_LAST_UPDATED`.
+- `/refunds` now states the owner's final policy word for word: all sales final, no refunds, exchanges or transfers, and license keys are not transferable.
+- Terms section 6 (Transfers) now matches. It previously allowed transfers with written approval.
+- `LEGAL_VERSION` is `2026-10-11`, so orders from now on record this text.
+- The page keeps its "Draft for review" banner and counsel notes until counsel signs off.
+- **Still for the owner:** each product's own Terms text (edited in the admin) still says "All sales are final except where a refund is required…" and allows transfers with approval. Update both products before publishing.
 
-## Test evidence (`npm test`, 305 passing; new cases in `tests/storefront-checkout.test.ts`)
+## Test evidence (`npm test`, 306 passing; new cases in `tests/storefront-checkout.test.ts`)
 
 | Test case | Expected | Actual |
 |---|---|---|
@@ -73,4 +73,5 @@ While a product is published, edits still only need to keep it sellable: price, 
 | Publishing rules (details, verified price, course, download, membership, recurring, software, service) | As in the table above | Pass |
 | `checkout_url` setting | Refused on save | Pass |
 | Buy form shown only while the legal pages are published | Guard present in page and action | Pass |
+| Refund Policy and Terms carry the final policy; version 2026-10-11 (`legal-pages.test.ts`) | Final text present; old exceptions and transfer clause gone | Pass |
 | All earlier suites (F1, webhooks, refunds, updates, onboarding) | Unchanged | Pass |

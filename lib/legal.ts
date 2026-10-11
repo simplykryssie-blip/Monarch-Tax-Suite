@@ -14,5 +14,5 @@ export const LEGAL_PATHS = ["/terms", "/privacy", "/refunds"] as const;
  * order, so every order shows which text the buyer agreed to. Change it, and the "Last updated" date, whenever the
  * Terms or Refund Policy text changes.
  */
-export const LEGAL_VERSION = "2026-10-09";
-export const LEGAL_LAST_UPDATED = "October 9, 2026";
+export const LEGAL_VERSION = "2026-10-11";
+export const LEGAL_LAST_UPDATED = "October 11, 2026";
