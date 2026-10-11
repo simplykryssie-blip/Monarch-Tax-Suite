@@ -73,11 +73,12 @@ async function Body({ data }: { data: Data }) {
           </dl>
           <span className="mt-section-go">Open automation <Icon name="arrow" size={14} /></span>
         </Link>
-        <div className="mt-section is-soon" aria-disabled="true">
+        <Link href="/workspace" className="mt-section">
           <span className="mt-section-ico"><Icon name="firms" size={22} /></span>
-          <h2>Firms <em>Soon</em></h2>
-          <p>Your firms and their clients, returns and filings will live here.</p>
-        </div>
+          <h2>My Workspace</h2>
+          <p>Your own EFIN, the partner EROs attached to it, and the PTINs working under it.</p>
+          <span className="mt-section-go">Open workspace <Icon name="arrow" size={14} /></span>
+        </Link>
       </div>
       <ActivityAndAttention feed={feed} tasks={tasks} now={data.now} />
     </>

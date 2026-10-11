@@ -14,6 +14,7 @@ export const PAGES: SearchHit[] = [
   { id: "p-prod", group: "Pages", title: "Products", detail: "My Store", href: "/products" },
   { id: "p-lic", group: "Pages", title: "Licenses", detail: "My Store", href: "/licenses" },
   { id: "p-inst", group: "Pages", title: "Installations", detail: "My Store", href: "/installations" },
+  { id: "p-workspace", group: "Pages", title: "My Workspace", detail: "Partner EROs and PTINs", href: "/workspace" },
   { id: "p-efin", group: "Pages", title: "My Service Bureau", detail: "Dashboard", href: "/efin" },
   { id: "p-efin-list", group: "Pages", title: "EROs & EFINs", detail: "My Service Bureau", href: "/efin/list" },
   { id: "p-efin-new", group: "Pages", title: "Add a firm", detail: "My Service Bureau", href: "/efin/new" },

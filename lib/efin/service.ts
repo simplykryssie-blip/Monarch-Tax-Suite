@@ -245,7 +245,7 @@ export async function addMember(actor: Actor, form: FormData) {
   if (!orgRow) throw new EfinNotFound("That business could not be found.");
   if (!tracksTeam(orgRow.relationship)) throw new EfinRuleError(NO_TEAM);
   const ptinRaw = String(form.get("ptin") ?? "").trim();
-  const ptin = ptinRaw ? normalizePtin(ptinRaw) : null;
+  const ptin = ptinRaw ? forField("ptin", () => normalizePtin(ptinRaw)) : null;
   const credId = ptin ? randomUUID() : null;
   const email = lower(text(form.get("person_email"), 254, "Email"));
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new EfinRuleError("That email address does not look right.");
@@ -810,4 +810,62 @@ export async function addOfficial(actor: Actor, form: FormData) {
     throw new Error(r.error.message);
   }
   await audit(actor, { type: "role.created", targetType: "person", targetId: personId, organizationId: orgId, changes: { role, full_name: name } });
+}
+
+// ------------------------------------------------------------------------------------------------ PTINs (My Workspace)
+/**
+ * Adds a PTIN to a firm that keeps a team (your own office or a partner). Either a brand-new person (saved together with
+ * their role and PTIN in one step) or an existing person who has no PTIN yet. A PTIN is a separate protected credential
+ * linked to the person; recording it never authorizes e-file by itself.
+ */
+export async function addPtin(actor: Actor, form: FormData) {
+  const orgId = uuid(form.get("organization_id"), "firm");
+  const client = db();
+  const org = unwrap(await client.from("organizations").select("id, relationship").eq("id", orgId).maybeSingle() as never) as { id: string; relationship: string } | null;
+  if (!org) throw new EfinNotFound("That firm could not be found.");
+  if (!tracksTeam(org.relationship)) throw new EfinRuleError(NO_TEAM, "organization_id");
+  if (!String(form.get("ptin") ?? "").trim()) throw new EfinRuleError("Enter the PTIN.", "ptin");
+  const existing = String(form.get("person_id") ?? "").trim();
+  if (!existing) {
+    if (!String(form.get("person_name") ?? "").trim()) throw new EfinRuleError("Enter the preparer's name, or choose someone already on your list.", "person_name");
+    await addMember(actor, form);
+    return;
+  }
+  const personId = uuid(existing, "person");
+  const person = unwrap(await client.from("people").select("id, full_name").eq("id", personId).maybeSingle() as never) as { id: string; full_name: string } | null;
+  if (!person) throw new EfinNotFound("That person could not be found.");
+  const has = unwrap(await client.from("professional_credentials").select("id").eq("person_id", personId).eq("kind", "ptin").is("archived_at", null) as never) as { id: string }[];
+  if (has.length) throw new EfinRuleError(`${person.full_name} already has a PTIN on file. Remove it first if it is wrong.`, "person_id");
+  const ptin = forField("ptin", () => normalizePtin(String(form.get("ptin") ?? "")));
+  const sec = secrets();
+  const credId = randomUUID();
+  const verification = oneOf(form.get("ptin_verification") || "unverified", VERIFICATION, "PTIN status");
+  const confirmed = verification === "manually_verified" || verification === "verified";
+  const ins = await client.from("professional_credentials").insert({
+    id: credId, person_id: personId, kind: "ptin",
+    identifier_encrypted: sec.encrypt(ptin, `credential:${credId}:identifier`), identifier_last4: last4(ptin), identifier_hash: sec.hashIdentifier("ptin", ptin),
+    verification_status: verification, verification_source: text(form.get("ptin_source"), 300, "How it was confirmed"),
+    verified_at: confirmed ? new Date().toISOString() : null, verified_by: confirmed ? actor.id : null,
+    expires_on: forField("ptin_expires_on", () => day(form.get("ptin_expires_on"), "PTIN renewal date")),
+  });
+  if (ins.error) throw ins.error.code === "23505" ? new EfinRuleError("That PTIN is already recorded for someone.", "ptin") : new Error(ins.error.message);
+  // Make sure the person works at this firm.
+  const roles = unwrap(await client.from("organization_roles").select("id").eq("organization_id", orgId).eq("person_id", personId).eq("status", "active") as never) as { id: string }[];
+  if (roles.length === 0) {
+    const r = await client.from("organization_roles").insert({ organization_id: orgId, person_id: personId, role: oneOf(form.get("role") || "tax_preparer", ASSIGNMENT_ROLES, "Role"), verification_status: "unverified", created_by: actor.id });
+    if (r.error) {
+      await client.from("professional_credentials").delete().eq("id", credId); // do not leave a PTIN without a firm
+      throw new Error(r.error.message);
+    }
+  }
+  await audit(actor, { type: "credential.created", targetType: "credential", targetId: credId, organizationId: orgId, changes: { kind: "ptin", last4: last4(ptin), person_id: personId, verification_status: verification } });
+}
+
+/** Removes a PTIN record from your lists (kept in the history). */
+export async function archivePtin(actor: Actor, credentialId: string) {
+  const id = uuid(credentialId, "PTIN");
+  const { data, error } = await db().from("professional_credentials").update({ archived_at: new Date().toISOString() }).eq("id", id).is("archived_at", null).select("person_id, identifier_last4").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new EfinNotFound("That PTIN could not be found, or it was already removed.");
+  await audit(actor, { type: "credential.archived", targetType: "credential", targetId: id, changes: { kind: "ptin", last4: data.identifier_last4, person_id: data.person_id } });
 }
