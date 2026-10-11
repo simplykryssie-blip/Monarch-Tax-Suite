@@ -10,6 +10,8 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabaseConfigProblems } from "
 const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
   // Customer setup links (the token is the credential) and the retry runner (authorized by CRON_SECRET).
   "/setup", "/api/automation/run",
+  // Buyer downloads: every file request is authorized by the buyer's license key and checked again on each click.
+  "/downloads",
   // Password reset: the email link lands on /auth/callback; /reset-password checks for the session itself.
   "/forgot-password", "/reset-password", "/auth/",
   // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).

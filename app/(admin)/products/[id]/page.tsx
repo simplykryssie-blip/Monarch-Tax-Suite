@@ -10,6 +10,7 @@ import { duplicateProductAction } from "../../product-actions";
 import { ImageManager } from "@/components/admin/image-manager";
 import { ProductEditor } from "@/components/admin/product-editor";
 import { StripePanel } from "@/components/admin/stripe-panel";
+import { ProductFilesPanel } from "@/components/admin/product-files-panel";
 import { VersionsPanel } from "@/components/admin/versions-panel";
 import { Badge, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 
@@ -80,6 +81,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
         </section>
       )}
       <StripePanel product={product} stripeConfigured={stripeConfig().keyModeRecognized} config={stripeConfig()} />
+      <ProductFilesPanel product={product} />
       <VersionsPanel productId={product.id} versions={versions} changes={changes} stripeReady={stripeConfig().keyModeRecognized} />
     </>
   );
