@@ -323,7 +323,7 @@ kbd{font-family:var(--font-ui);font-size:11.5px;font-weight:600;color:#7a7a7a;bo
 
 /* sign-in */
 .mt-login{min-height:100vh;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);background:#fff}
-.mt-login-brand{position:relative;background:radial-gradient(90% 70% at 30% 20%,#2a2415 0%,#0b0b0a 60%);display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:18px;padding:64px;color:#fff;overflow:hidden}
+.mt-login-brand{position:relative;background:linear-gradient(90deg,rgba(8,8,7,.9) 0%,rgba(8,8,7,.55) 55%,rgba(8,8,7,.2) 100%),url("/brand/chess.jpg") 62% center/cover no-repeat,#0b0b0a;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:18px;padding:64px;color:#fff;overflow:hidden}
 .mt-login-brand:after{content:"";position:absolute;right:0;top:0;bottom:0;width:1px;background:linear-gradient(180deg,transparent,#b88c2c 30%,#f1dc9b 50%,#8a6420 75%,transparent)}
 .mt-login-brand img{width:min(440px,100%);height:auto}
 .mt-login-brand p{margin:14px 0 0;font-size:13px;letter-spacing:.32em;text-transform:uppercase;color:#d7c07a}
@@ -360,3 +360,46 @@ kbd{font-family:var(--font-ui);font-size:11.5px;font-weight:600;color:#7a7a7a;bo
 .mt-stepper li.is-done{color:var(--ink)}
 .mt-stepper li.is-done i:after{width:100%}
 @media(max-width:560px){.mt-stepper{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* ================= fly-out navigation (all widths) ================= */
+.mt-sidebar{transform:translateX(-102%);visibility:hidden;transition:transform .26s cubic-bezier(.2,.7,.2,1),visibility 0s linear .26s;box-shadow:none;z-index:60;width:300px}
+.mt-sidebar.is-open{transform:none;visibility:visible;transition:transform .26s cubic-bezier(.2,.7,.2,1),visibility 0s;box-shadow:18px 0 60px rgba(0,0,0,.28)}
+.mt-scrim{display:block;position:fixed;inset:0;z-index:55;border:0;background:rgba(10,10,10,.5);backdrop-filter:blur(2px);cursor:pointer;animation:mt-fade .2s ease both}
+@keyframes mt-fade{from{opacity:0}to{opacity:1}}
+.mt-main,.mt-shell.is-collapsed .mt-main{margin-left:0;width:100%}
+.mt-hamburger{display:grid;place-items:center;border:1px solid var(--line);background:#fff;border-radius:12px;width:42px;height:42px;cursor:pointer;color:var(--ink);transition:border-color .15s,box-shadow .15s}
+.mt-hamburger:hover{border-color:#c8a24a;box-shadow:0 0 0 3px rgba(200,162,74,.14)}
+.mt-collapse{display:none}
+.mt-chess{margin:0 12px 14px;height:104px;border-radius:14px;background:linear-gradient(180deg,rgba(11,11,10,.05),rgba(11,11,10,.78)),url("/brand/chess-pieces.jpg") 62% 34%/cover no-repeat;display:flex;align-items:flex-end;justify-content:center;gap:12px;padding:0 10px 12px;box-shadow:inset 0 0 0 1px rgba(212,174,85,.35)}
+.mt-chess span{font-size:10px;letter-spacing:.3em;color:#f1dc9b;font-weight:600}
+.mt-sidebar .mt-nav-scroll{flex:1}
+@media(min-width:861px){.mt-topbar{padding-left:24px}}
+
+/* My Office section cards */
+.mt-sections{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:20px}
+.mt-section{position:relative;display:flex;flex-direction:column;gap:6px;padding:24px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);text-decoration:none;color:inherit;transition:transform .18s,box-shadow .18s,border-color .18s;overflow:hidden}
+.mt-section:before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--metal-h);opacity:0;transition:opacity .18s}
+a.mt-section:hover{transform:translateY(-3px);box-shadow:var(--shadow-up);border-color:#d6b960}
+a.mt-section:hover:before{opacity:1}
+.mt-section.is-soon{opacity:.62;cursor:default;background:#fcfcfc}
+.mt-section-ico{color:var(--gold);margin-bottom:6px}
+.mt-section h2{font-size:22px;margin:0;display:flex;align-items:center;gap:10px}
+.mt-section h2 em{font-style:normal;font-family:var(--font-ui);font-size:11px;font-weight:600;color:var(--gold-deep);border:1px solid #ddd;border-radius:99px;padding:2px 9px}
+.mt-section p{margin:0 0 10px;color:var(--muted);font-size:14px}
+.mt-section dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:6px 0 12px}
+.mt-section dt{font-size:12px;color:var(--muted)}
+.mt-section dd{margin:2px 0 0;font-size:20px;font-weight:700;letter-spacing:-.01em}
+.mt-section-go{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:650;margin-top:auto;border-bottom:1.5px solid var(--gold);align-self:flex-start;padding-bottom:1px}
+@media(max-width:1100px){.mt-sections{grid-template-columns:1fr}}
+
+.mt-login-row{display:flex;align-items:baseline;justify-content:space-between;margin-top:8px}
+.mt-login-row label{margin-top:0}
+.mt-login-link{color:var(--ink);font-size:13.5px;font-weight:600;text-decoration:none;border-bottom:1.5px solid var(--gold)}
+.mt-login-link:hover{color:var(--gold-deep)}
+.mt-login-reset{justify-content:center;text-align:center;text-decoration:none;display:flex;margin-top:10px}
+.mt-login-back{align-self:center;margin-top:16px}
+.mt-login-notice{margin:6px 0 4px;padding:11px 14px;border:1px solid #e0e0e0;border-left:3px solid #c8a24a;border-radius:10px;font-size:14px;background:#fff}
+.mt-login-card{width:min(400px,100%);display:flex;flex-direction:column;gap:8px}
+
+@media(max-height:760px){.mt-chess{display:none}}

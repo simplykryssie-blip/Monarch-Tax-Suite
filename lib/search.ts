@@ -7,7 +7,8 @@ export type SearchHit = { id: string; group: "Customers" | "Orders" | "Licenses"
 export type SearchData = { customers: Customer[]; orders: Order[]; licenses: License[]; products: Product[]; installations: Installation[] };
 
 export const PAGES: SearchHit[] = [
-  { id: "p-dash", group: "Pages", title: "Dashboard", detail: "My Office", href: "/" },
+  { id: "p-home", group: "Pages", title: "Home", detail: "My Office", href: "/" },
+  { id: "p-dash", group: "Pages", title: "Store dashboard", detail: "My Store", href: "/store" },
   { id: "p-cust", group: "Pages", title: "Customers", detail: "My Store", href: "/customers" },
   { id: "p-ord", group: "Pages", title: "Orders", detail: "My Store", href: "/orders" },
   { id: "p-prod", group: "Pages", title: "Products", detail: "My Store", href: "/products" },

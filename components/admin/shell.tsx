@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { signOut } from "@/lib/auth-actions";
 import { Icon, type IconName } from "./icons";
 import { BrandMark, Wordmark } from "./brand";
@@ -19,12 +19,13 @@ const NAV: Entry[] = [
     label: "My Office",
     icon: "office",
     items: [
-      { label: "Dashboard", icon: "dashboard", href: "/" },
+      { label: "Home", icon: "dashboard", href: "/" },
       { label: "Firms", icon: "firms" },
       {
         label: "My Store",
         icon: "store",
         items: [
+          { label: "Dashboard", icon: "reports", href: "/store" },
           { label: "Customers", icon: "customers", href: "/customers" },
           { label: "Orders", icon: "orders", href: "/orders" },
           { label: "Products", icon: "products", href: "/products" },
@@ -131,45 +132,25 @@ function Popover({ trigger, children }: { trigger: (open: boolean, toggle: () =>
   );
 }
 
-const STORE_KEY = "mt-collapsed";
-const subscribe = (cb: () => void) => {
-  window.addEventListener("storage", cb);
-  window.addEventListener("mt-collapsed-change", cb);
-  return () => {
-    window.removeEventListener("storage", cb);
-    window.removeEventListener("mt-collapsed-change", cb);
-  };
-};
-const readCollapsed = () => {
-  try {
-    return localStorage.getItem(STORE_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
-
 export function AdminShell({ email, logoSrc, today, alerts = [], children }: { email: string; logoSrc?: string | null; today: string; alerts?: Alert[]; children: React.ReactNode }) {
   const pathname = usePathname();
   const [menu, setMenu] = useState(false);
   // Every section starts open; the owner can collapse any of them.
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (key: string) => setOpen((o) => ({ ...o, [key]: !(o[key] ?? true) }));
-  const collapsed = useSyncExternalStore(subscribe, readCollapsed, () => false);
-  const flip = () => {
-    try {
-      localStorage.setItem(STORE_KEY, collapsed ? "0" : "1");
-    } catch {
-      // storage may be blocked; the sidebar then just does not remember
-    }
-    window.dispatchEvent(new Event("mt-collapsed-change"));
-  };
+  useEffect(() => {
+    if (!menu) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setMenu(false);
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [menu]);
   const initial = (email[0] ?? "M").toUpperCase();
   const attention = alerts.filter((a) => a.count > 0);
   const total = attention.reduce((n, a) => n + a.count, 0);
 
   return (
-    <div className={"mt-shell" + (collapsed ? " is-collapsed" : "")}>
-      <aside className={"mt-sidebar" + (menu ? " is-open" : "")}>
+    <div className="mt-shell">
+      <aside className={"mt-sidebar" + (menu ? " is-open" : "")} aria-hidden={!menu} id="mt-flyout">
         <Link href="/" className="mt-brand" onClick={() => setMenu(false)} aria-label="Monarch Tax Suite home">
           <span className="mt-brand-plate">
             {logoSrc ? (
@@ -190,15 +171,12 @@ export function AdminShell({ email, logoSrc, today, alerts = [], children }: { e
         <nav className="mt-nav-scroll" aria-label="Main">
           {NAV.map((e) => <Group key={e.label} entry={e} depth={0} pathname={pathname} open={open} toggle={toggle} close={() => setMenu(false)} />)}
         </nav>
-        <button type="button" className="mt-collapse" onClick={flip} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand" : "Collapse"}>
-          <Icon name="collapse" size={16} />
-          <span>Collapse</span>
-        </button>
+        <div className="mt-chess" aria-hidden="true"><span>STRATEGY</span><span>GROWTH</span><span>LEGACY</span></div>
       </aside>
       {menu && <button className="mt-scrim" onClick={() => setMenu(false)} aria-label="Close menu" />}
       <main className="mt-main">
         <header className="mt-topbar">
-          <button className="mt-hamburger" onClick={() => setMenu(!menu)} aria-label="Open menu"><Icon name="menu" size={22} /></button>
+          <button className="mt-hamburger" onClick={() => setMenu(!menu)} aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu}><Icon name="menu" size={22} /></button>
           <div className="mt-crumb">{crumb(pathname)}</div>
           <CommandPalette />
           <span className="mt-date">{today}</span>
@@ -237,6 +215,7 @@ export function AdminShell({ email, logoSrc, today, alerts = [], children }: { e
             {() => (
               <div className="mt-pop is-narrow" role="menu">
                 <div className="mt-pop-title">{email}</div>
+                <Link href="/reset-password" className="mt-pop-item" role="menuitem"><span><b>Change password</b></span><Icon name="licenses" size={16} /></Link>
                 <form action={signOut}>
                   <button type="submit" className="mt-pop-item" role="menuitem"><span><b>Sign out</b></span><Icon name="signout" size={16} /></button>
                 </form>

@@ -32,13 +32,7 @@ export function DashboardView({ data, x, months = 12 }: { data: Data; x: Extras;
   const dollars = (c: number) => (c >= 100000 ? `$${(c / 100000).toFixed(c % 100000 ? 1 : 0)}k` : `$${Math.round(c / 100)}`);
   const netNow = revSeries.at(-1)?.value ?? 0;
   const feed = buildActivity(data, x.feed);
-  const settingUp = Math.max(m.activeLicenses - x.completed, 0);
-  const tasks = [
-    { title: "Licenses waiting for a key", note: "Issue the key so the customer can set up", count: m.pendingLicenses, href: "/licenses" },
-    { title: "Customers still setting up", note: "Active licenses that have not finished setup", count: settingUp, href: "/licenses" },
-    { title: "Installations needing attention", note: "Requested, in progress or blocked", count: m.openInstallations, href: "/installations" },
-    { title: "Automations that failed", note: "Emails or steps to retry", count: x.runs.failed, href: "/automation/activity?status=failed" },
-  ];
+  const tasks = buildTasks(m, x);
 
   return (
     <>
@@ -61,7 +55,7 @@ export function DashboardView({ data, x, months = 12 }: { data: Data; x: Extras;
           <div className="mt-card-head">
             <div><h2>Revenue</h2><p>Net of refunds, last {months} months</p></div>
             <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-              <div className="mt-seg" role="group" aria-label="Range">{[3, 6, 12].map((n) => <Link key={n} href={n === 12 ? "/" : `/?range=${n}`} className={n === months ? "is-on" : ""} scroll={false}>{n}M</Link>)}</div>
+              <div className="mt-seg" role="group" aria-label="Range">{[3, 6, 12].map((n) => <Link key={n} href={n === 12 ? "/store" : `/store?range=${n}`} className={n === months ? "is-on" : ""} scroll={false}>{n}M</Link>)}</div>
               <Link className="mt-card-link" href="/orders">View orders →</Link>
             </div>
           </div>
@@ -119,40 +113,7 @@ export function DashboardView({ data, x, months = 12 }: { data: Data; x: Extras;
         </section>
       </div>
 
-      <div className="mt-grid-act">
-        <section className="mt-card">
-          <div className="mt-card-head"><div><h2>Recent activity</h2><p>Sign-ups, payments, installs and automations</p></div></div>
-          <div className="mt-card-body">
-            {feed.length === 0 ? <p className="monarch-muted">Nothing has happened yet. New customers, payments and emails appear here as they occur.</p> : (
-              <ul className="mt-feed">
-                {feed.map((f) => (
-                  <li key={f.id}>
-                    <span className={"mt-feed-ico" + (f.kind === "alert" ? " is-bad" : "")}><Icon name={FEED_ICON[f.kind]} size={17} /></span>
-                    <span className="mt-feed-text"><b>{f.title}</b><span>{f.detail}</span></span>
-                    <time dateTime={f.at}>{ago(f.at, now)}</time>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
-        <section className="mt-card">
-          <div className="mt-card-head"><div><h2>Needs your attention</h2><p>Select an item to open it</p></div></div>
-          <div className="mt-card-body">
-            <ul className="mt-tasks">
-              {tasks.map((t) => (
-                <li key={t.title}>
-                  <Link href={t.href}>
-                    <span className={"mt-task-box" + (t.count === 0 ? " is-done" : "")}>{t.count === 0 && <Icon name="check" size={13} />}</span>
-                    <span><span className="mt-task-title">{t.title}</span><span className="mt-task-note">{t.note}</span></span>
-                    <span className={"mt-pill" + (t.count > 0 ? " is-hot" : "")}>{t.count}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      </div>
+      <ActivityAndAttention feed={feed} tasks={tasks} now={now} />
 
       <div className="monarch-lower-grid">
         <section className="monarch-panel">
@@ -241,5 +202,58 @@ function QuickLink({ href, icon, title, note }: { href: string; icon: IconName; 
       <span><b>{title}</b><small>{note}</small></span>
       <span className="q-go"><Icon name="arrow" size={18} /></span>
     </Link>
+  );
+}
+
+
+export type Task = { title: string; note: string; count: number; href: string };
+
+/** Things that need the owner, from recorded data only. */
+export function buildTasks(m: ReturnType<typeof computeMetrics>, x: Extras): Task[] {
+  const settingUp = Math.max(m.activeLicenses - x.completed, 0);
+  return [
+    { title: "Licenses waiting for a key", note: "Issue the key so the customer can set up", count: m.pendingLicenses, href: "/licenses" },
+    { title: "Customers still setting up", note: "Active licenses that have not finished setup", count: settingUp, href: "/licenses" },
+    { title: "Installations needing attention", note: "Requested, in progress or blocked", count: m.openInstallations, href: "/installations" },
+    { title: "Automations that failed", note: "Emails or steps to retry", count: x.runs.failed, href: "/automation/activity?status=failed" },
+  ];
+}
+
+export function ActivityAndAttention({ feed, tasks, now }: { feed: ActivityItem[]; tasks: Task[]; now: Date }) {
+  return (
+      <div className="mt-grid-act">
+        <section className="mt-card">
+          <div className="mt-card-head"><div><h2>Recent activity</h2><p>Sign-ups, payments, installs and automations</p></div></div>
+          <div className="mt-card-body">
+            {feed.length === 0 ? <p className="monarch-muted">Nothing has happened yet. New customers, payments and emails appear here as they occur.</p> : (
+              <ul className="mt-feed">
+                {feed.map((f) => (
+                  <li key={f.id}>
+                    <span className={"mt-feed-ico" + (f.kind === "alert" ? " is-bad" : "")}><Icon name={FEED_ICON[f.kind]} size={17} /></span>
+                    <span className="mt-feed-text"><b>{f.title}</b><span>{f.detail}</span></span>
+                    <time dateTime={f.at}>{ago(f.at, now)}</time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+        <section className="mt-card">
+          <div className="mt-card-head"><div><h2>Needs your attention</h2><p>Select an item to open it</p></div></div>
+          <div className="mt-card-body">
+            <ul className="mt-tasks">
+              {tasks.map((t) => (
+                <li key={t.title}>
+                  <Link href={t.href}>
+                    <span className={"mt-task-box" + (t.count === 0 ? " is-done" : "")}>{t.count === 0 && <Icon name="check" size={13} />}</span>
+                    <span><span className="mt-task-title">{t.title}</span><span className="mt-task-note">{t.note}</span></span>
+                    <span className={"mt-pill" + (t.count > 0 ? " is-hot" : "")}>{t.count}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      </div>
   );
 }
