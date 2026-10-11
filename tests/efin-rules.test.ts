@@ -219,3 +219,47 @@ test("next steps come from recorded data and skip assignments for software clien
   const done = nextSteps({ org: org("client"), efin: baseEfin(), person, assignments: [], filings: [{ id: "f", efin_id: "e1", archived_at: null } as never] });
   assert.ok(done.every((s) => s.done));
 });
+
+import { displayAddress, displayPhone, formatAddress, formatEin, formatName, formatPhone, formatState, formatStreet, formatZip, maskEfinInput, maskEinInput, maskPhoneInput, maskPtinInput } from "../lib/efin/format.ts";
+
+test("phone numbers share one format and bad ones name their field", () => {
+  assert.equal(formatPhone("337-858-7792"), "(337) 858-7792");
+  assert.equal(formatPhone("1 (337) 858 7792"), "(337) 858-7792");
+  assert.equal(formatPhone("3378587792"), "(337) 858-7792");
+  assert.throws(() => formatPhone("858-7792"), (e: unknown) => e instanceof EfinRuleError && e.field === "person_phone");
+  assert.equal(displayPhone("337.858.7792"), "(337) 858-7792");
+  assert.equal(displayPhone("ext 5"), "ext 5");
+  assert.equal(displayPhone(null), "");
+});
+
+test("typing masks build the format as you go", () => {
+  assert.equal(maskPhoneInput("3378"), "(337) 8");
+  assert.equal(maskPhoneInput("33785877921234"), "(337) 858-7792");
+  assert.equal(maskEinInput("123456789"), "12-3456789");
+  assert.equal(maskEinInput("1"), "1");
+  assert.equal(maskEfinInput("12-34 56 78"), "123456");
+  assert.equal(maskPtinInput("p0123456789"), "P01234567");
+  assert.equal(maskPtinInput("01234567"), "P01234567");
+  assert.equal(formatEin("123456789"), "12-3456789");
+});
+
+test("addresses are cleaned the same way every time", () => {
+  assert.equal(formatStreet("3418 GREINWICH BOULEVARD"), "3418 Greinwich Blvd");
+  assert.equal(formatStreet("  100   n main street  suite 4"), "100 N Main St Ste 4");
+  assert.equal(formatStreet("PO BOX 12"), "PO Box 12");
+  assert.equal(formatStreet("12 5th avenue"), "12 5th Ave");
+  assert.deepEqual(formatAddress({ line1: "3418 greinwich blvd", city: "LAKE CHARLES", state: "la", zip: "706071234" }), { line1: "3418 Greinwich Blvd", city: "Lake Charles", state: "LA", zip: "70607-1234" });
+  assert.throws(() => formatState("Louisiana"), (e: unknown) => e instanceof EfinRuleError && e.field === "state");
+  assert.throws(() => formatZip("7060"), (e: unknown) => e instanceof EfinRuleError && e.field === "zip");
+  assert.equal(formatZip(""), "");
+  assert.equal(displayAddress({ line1: "3418 Greinwich Blvd", city: "Lake Charles", state: "LA", zip: "70607" }), "3418 Greinwich Blvd, Lake Charles, LA 70607");
+  assert.equal(displayAddress({ city: "Dallas", state: "TX" }), "Dallas, TX");
+  assert.equal(formatName("  Krystal   Esters "), "Krystal Esters");
+});
+
+import { structureLabel } from "../lib/efin/text.ts";
+test("business types read correctly", () => {
+  assert.equal(structureLabel("llc"), "LLC");
+  assert.equal(structureLabel("s_corporation"), "S corporation");
+  assert.equal(structureLabel(null), "");
+});

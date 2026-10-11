@@ -1,3 +1,4 @@
+import { FormattedInput } from "../formatted-input";
 import { ActionForm } from "../action-form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -5,15 +6,14 @@ import { requireAdmin } from "@/lib/admin";
 import { Badge, EmptyRow, Flash, label, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 import { availableTransitions, roleLabel, tracksTeam } from "@/lib/efin/rules.ts";
 import { loadEfinAudit, loadSnapshot, problemsFor } from "@/lib/efin/service";
-import { ASSIGNMENT_ROLES, EFIN_STATUSES } from "@/lib/efin/types.ts";
-import { addMemberAction, saveLocationAction, changeAssignmentAction, requestAssignmentAction, saveFilingAction, updateEfinAction } from "../actions";
+import { ASSIGNMENT_ROLES } from "@/lib/efin/types.ts";
+import { addMemberAction, changeAssignmentAction, requestAssignmentAction, saveFilingAction } from "../actions";
 import { orgName, personName, Select, VERIFY_OPTIONS, Verified } from "../parts";
-import { EroAdmin } from "../ero-admin";
-import { AddEfinForm } from "../add-efin-form";
 import { FirmHeader, OverviewCards } from "../firm-card";
 import { Icon, type IconName } from "@/components/admin/icons";
 import { nextSteps } from "@/lib/efin/steps.ts";
 import { words } from "@/lib/efin/text.ts";
+import { displayPhone } from "@/lib/efin/format.ts";
 
 const TABS: readonly (readonly [string, string, IconName])[] = [
   ["overview", "Overview", "dashboard"],
@@ -38,7 +38,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
   if (!efin) notFound();
   const org = s.orgs.find((o) => o.id === efin.organization_id);
   const teamTracked = org ? tracksTeam(org.relationship) : true;
-  const tabs = TABS.map(([k, n, i]) => [k, k === "team" && !teamTracked ? "Locations" : n, i] as const);
+  const tabs = TABS.filter(([k]) => teamTracked || k !== "team");
   const wanted = LEGACY_TAB[sp.tab ?? ""] ?? sp.tab;
   const tab = tabs.some(([k]) => k === wanted) ? (wanted as string) : "overview";
   const base = `/efin/${id}`;
@@ -63,49 +63,10 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
       {tab === "overview" && (
         <>
           {org && <OverviewCards s={s} org={org} efin={efin} base={base} activity={history} />}
-          <h2 className="efin-manage-title" id="manage">Manage this firm</h2>
-          {org && (
-            <section className="monarch-panel">
-              <div className="monarch-panel-head"><div><h2>EFINs for {org.legal_name}</h2><p>Every EFIN recorded for this ERO.</p></div></div>
-              <ul className="efin-eflist">
-                {s.efins.filter((e) => e.organization_id === org.id).map((e) => (
-                  <li key={e.id}>{e.id === id ? <b className="efin-mask">••{e.efin_last4}</b> : <Link href={`/efin/${e.id}`} className="efin-mask">••{e.efin_last4}</Link>}<Badge value={e.internal_status === "pending_verification" ? "pending" : e.internal_status} /><span className="monarch-muted">{e.recorded_expiration ? `renews ${e.recorded_expiration}` : "no renewal date"}{e.archived_at ? " · archived" : ""}</span></li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {org && !org.archived_at && (
-            <details className="efin-edit" open={sp.edit === "efin"}>
-              <summary>Add another EFIN</summary>
-              <div className="efin-edit-body"><AddEfinForm s={s} org={org} back={here} /></div>
-            </details>
-          )}
-          {!efin.archived_at && (
-            <details className="efin-edit" open={sp.edit === "efin"}>
-              <summary>Update this EFIN</summary>
-              <div className="efin-edit-body">
-              <ActionForm action={updateEfinAction} className="monarch-form">
-                <input type="hidden" name="id" value={id} /><input type="hidden" name="back" value={here} />
-                <label>Correct the EFIN number <small className="monarch-muted">(leave empty to keep ••{efin.efin_last4})</small><input name="efin" inputMode="numeric" autoComplete="off" maxLength={8} placeholder="Only if it was typed wrong" /></label>
-                <label>Filing office for this EFIN<Select name="location_id" value={efin.location_id} empty="Not set" options={s.locations.filter((l) => l.organization_id === efin.organization_id && !l.archived_at).map((l) => ({ value: l.id, label: l.name }))} /></label>
-                <label>Internal status<Select name="internal_status" value={efin.internal_status} options={EFIN_STATUSES.map((v) => ({ value: v, label: label(v) }))} /></label>
-                <label>Verification<Select name="external_status" value={efin.external_status} options={VERIFY_OPTIONS} /></label>
-                <label>Verification source<input name="verification_source" defaultValue={efin.verification_source ?? ""} maxLength={300} /></label>
-                <label>Renewal / expiration date<input type="date" name="recorded_expiration" defaultValue={efin.recorded_expiration ?? ""} /></label>
-                <label className="monarch-check is-wide"><input type="checkbox" name="expiration_verified" defaultChecked={efin.expiration_verified} /> This date is verified. The original deadline is kept in the history when a date changes.</label>
-                <label className="is-wide">Reason for a status change (required when the status changes)<input name="reason" maxLength={1000} /></label>
-                <label className="is-wide">Notes<textarea name="notes" rows={3} maxLength={4000} defaultValue={efin.notes ?? ""} /></label>
-                <label className="monarch-check is-wide"><input type="checkbox" name="confirm" /> I confirm moving this EFIN to suspended or inactive (high-impact).</label>
-                <div className="is-wide"><button className="monarch-primary" type="submit">Save changes</button></div>
-              </ActionForm>
-              </div>
-            </details>
-          )}
-          {org && <EroAdmin s={s} org={org} efin={efin} back={here} openSection={sp.edit} />}
         </>
       )}
 
-      {tab === "team" && (
+      {tab === "team" && teamTracked && (
         <>
           {teamTracked && (
             <>
@@ -116,7 +77,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
               <tbody>{orgRoles.length === 0 ? <EmptyRow colSpan={5}>No team members recorded yet.</EmptyRow> : orgRoles.map((r) => {
                 const ptin = s.credentials.find((c) => c.person_id === r.person_id && c.kind === "ptin" && !c.archived_at);
                 const person = s.people.find((p) => p.id === r.person_id);
-                return <tr key={r.id}><td><b>{person?.full_name ?? "—"}</b></td><td>{person?.email ?? "—"}{person?.phone && <div className="monarch-muted">{person.phone}</div>}</td><td>{roleLabel(r.role)}</td><td><Verified value={r.verification_status} /></td><td>{ptin ? <>P••••{ptin.identifier_last4} <Verified value={ptin.verification_status} /></> : <span className="monarch-muted">None recorded</span>}</td></tr>;
+                return <tr key={r.id}><td><b>{person?.full_name ?? "—"}</b></td><td>{person?.email ?? "—"}{person?.phone && <div className="monarch-muted">{displayPhone(person.phone)}</div>}</td><td>{roleLabel(r.role)}</td><td><Verified value={r.verification_status} /></td><td>{ptin ? <>P••••{ptin.identifier_last4} <Verified value={ptin.verification_status} /></> : <span className="monarch-muted">None recorded</span>}</td></tr>;
               })}</tbody>
             </table></div>
           </section>
@@ -127,10 +88,10 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
               <label>Full name<input name="person_name" required maxLength={200} /></label>
               <label>Role<Select name="role" required value="tax_preparer" options={ASSIGNMENT_ROLES.map((r) => ({ value: r, label: roleLabel(r) }))} /></label>
               <label>Email<input name="person_email" type="email" maxLength={254} /></label>
-              <label>Phone<input name="person_phone" type="tel" maxLength={40} /></label>
+              <label>Phone<FormattedInput kind="phone" name="person_phone"  /></label>
               <label>Office<Select name="location_id" empty="Whole business" options={s.locations.filter((l) => l.organization_id === efin.organization_id).map((l) => ({ value: l.id, label: l.name }))} /></label>
               <label>How was this role confirmed?<Select name="role_verification" value="unverified" options={VERIFY_OPTIONS} /></label>
-              <label>PTIN (optional)<input name="ptin" autoComplete="off" maxLength={12} placeholder="P01234567" /></label>
+              <label>PTIN (optional)<FormattedInput kind="ptin" name="ptin"  /></label>
               <label>PTIN confirmed?<Select name="ptin_verification" value="unverified" options={VERIFY_OPTIONS} /></label>
               <label>PTIN source<input name="ptin_source" maxLength={300} /></label>
               <label>PTIN renewal date<input type="date" name="ptin_expires_on" /></label>
@@ -139,26 +100,6 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
           </section>
             </>
           )}
-          <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Locations</h2><p>Every office this ERO operates from.</p></div></div>
-            <div className="monarch-table-wrap"><table>
-              <thead><tr><th>OFFICE</th><th>ADDRESS</th><th>PRIMARY</th></tr></thead>
-              <tbody>{s.locations.filter((l) => l.organization_id === efin.organization_id && !l.archived_at).map((l) => <tr key={l.id}><td><b>{l.name}</b></td><td>{[l.address.line1, l.address.city, l.address.state, l.address.zip].filter(Boolean).join(", ") || "—"}</td><td>{l.is_primary ? "Yes" : ""}</td></tr>)}</tbody>
-            </table></div>
-          </section>
-          <section className="monarch-panel monarch-pad">
-            <h2 style={{ marginTop: 0 }}>Add a location</h2>
-            <ActionForm action={saveLocationAction} className="monarch-form">
-              <input type="hidden" name="organization_id" value={efin.organization_id} /><input type="hidden" name="back" value={here} />
-              <label>Office name<input name="name" required maxLength={200} /></label>
-              <label>Street address<input name="line1" maxLength={200} /></label>
-              <label>City<input name="city" maxLength={100} /></label>
-              <label>State<input name="state" maxLength={2} /></label>
-              <label>ZIP<input name="zip" maxLength={10} /></label>
-              <label className="monarch-check is-wide"><input type="checkbox" name="is_primary" /> This is the primary office</label>
-              <div className="is-wide"><button className="monarch-primary" type="submit">Add location</button></div>
-            </ActionForm>
-          </section>
         </>
       )}
 

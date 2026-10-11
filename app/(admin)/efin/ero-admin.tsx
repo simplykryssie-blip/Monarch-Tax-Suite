@@ -1,10 +1,12 @@
+import { FormattedInput } from "./formatted-input";
 import { ActionForm } from "./action-form";
-import { archiveEfinAction, archiveOrganizationAction, deleteEfinAction, deleteOrganizationAction, restoreEfinAction, restoreOrganizationAction, updateLocationAction, updateOrganizationAction, updatePersonAction } from "./actions";
+import { archiveEfinAction, archiveOrganizationAction, deleteEfinAction, deleteOrganizationAction, restoreEfinAction, restoreOrganizationAction, updateOrganizationAction, updatePersonAction } from "./actions";
 import { Select } from "./parts";
+import { displayPhone } from "@/lib/efin/format.ts";
+import { STRUCTURE_OPTIONS } from "@/lib/efin/text.ts";
 import type { Snapshot } from "@/lib/efin/service";
 import type { EfinRow, OrgRow } from "@/lib/efin/types";
 
-const STRUCTURES = ["llc", "corporation", "s_corporation", "partnership", "sole_proprietorship", "nonprofit", "other"].map((v) => ({ value: v, label: v.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) }));
 export const RELATIONSHIP_OPTIONS = [
   { value: "client", label: "Software / service client (no team or PTINs)" },
   { value: "partner", label: "Partner (I may manage some of their preparers)" },
@@ -15,7 +17,6 @@ export const RELATIONSHIP_OPTIONS = [
 /** Edit, archive, restore and delete controls for an ERO (business) and, when given, one of its EFINs. */
 export function EroAdmin({ s, org, efin, back, openSection }: { s: Snapshot; org: OrgRow; efin?: EfinRow; back: string; openSection?: string }) {
   const person = s.people.find((p) => p.id === (efin?.ero_person_id ?? org.administrator_person_id));
-  const locations = s.locations.filter((l) => l.organization_id === org.id && !l.archived_at);
   const addr = org.primary_address ?? {};
   const efinCount = s.efins.filter((e) => e.organization_id === org.id).length;
   return (
@@ -27,15 +28,15 @@ export function EroAdmin({ s, org, efin, back, openSection }: { s: Snapshot; org
           <input type="hidden" name="id" value={org.id} /><input type="hidden" name="back" value={back} />
           <label>Legal name<input name="legal_name" required maxLength={200} defaultValue={org.legal_name} /></label>
           <label>Doing business as<input name="dba_name" maxLength={200} defaultValue={org.dba_name ?? ""} /></label>
-          <label>Business structure<Select name="business_structure" value={org.business_structure} empty="Not set" options={STRUCTURES} /></label>
-          <label>EIN {org.ein_last4 && <small className="monarch-muted">(on file: ••-•••{org.ein_last4}; enter a new one only to replace it)</small>}<input name="ein" inputMode="numeric" autoComplete="off" maxLength={11} placeholder="12-3456789" /></label>
+          <label>Business structure<Select name="business_structure" value={org.business_structure} empty="Not set" options={STRUCTURE_OPTIONS} /></label>
+          <label>EIN {org.ein_last4 && <small className="monarch-muted">(on file: ••-•••{org.ein_last4}; enter a new one only to replace it)</small>}<FormattedInput kind="ein" name="ein"  /></label>
           <label>Relationship to you<Select name="relationship" value={org.relationship} options={RELATIONSHIP_OPTIONS} /></label>
           <label>Reason for changing the relationship<input name="reason" maxLength={1000} placeholder="Only needed if you change it" /></label>
           <label>Agreement<Select name="agreement_status" value={org.agreement_status} options={["pending", "active", "suspended", "ended"].map((v) => ({ value: v, label: v.replace(/^\w/, (c) => c.toUpperCase()) }))} /></label>
           <label>Street address<input name="line1" maxLength={200} defaultValue={addr.line1 ?? ""} /></label>
           <label>City<input name="city" maxLength={100} defaultValue={addr.city ?? ""} /></label>
-          <label>State<input name="state" maxLength={2} defaultValue={addr.state ?? ""} /></label>
-          <label>ZIP<input name="zip" maxLength={10} defaultValue={addr.zip ?? ""} /></label>
+          <label>State<FormattedInput kind="state" name="state" defaultValue={addr.state ?? ""}  /></label>
+          <label>ZIP<FormattedInput kind="zip" name="zip" defaultValue={addr.zip ?? ""}  /></label>
           <label className="is-wide">Notes<textarea name="notes" rows={2} maxLength={4000} defaultValue={org.notes ?? ""} /></label>
           <p className="efin-note is-wide" style={{ padding: 0 }}>Changing the relationship is recorded in the history. It never changes who can see anything.</p>
           <div className="is-wide"><button className="monarch-primary" type="submit">Save ERO</button></div>
@@ -51,33 +52,12 @@ export function EroAdmin({ s, org, efin, back, openSection }: { s: Snapshot; org
             <input type="hidden" name="person_id" value={person.id} /><input type="hidden" name="back" value={back} />
             <label>Full name<input name="person_name" required maxLength={200} defaultValue={person.full_name} /></label>
             <label>Email<input name="person_email" type="email" maxLength={254} defaultValue={person.email ?? ""} /></label>
-            <label>Phone<input name="person_phone" type="tel" maxLength={40} defaultValue={person.phone ?? ""} /></label>
+            <label>Phone<FormattedInput kind="phone" name="person_phone" defaultValue={displayPhone(person.phone)}  /></label>
             <div className="is-wide"><button className="monarch-primary" type="submit">Save contact</button></div>
           </ActionForm>
           </div>
         </details>
       )}
-
-      <details className="efin-edit">
-        <summary>Locations</summary>
-        <div className="efin-edit-body">
-          <p className="monarch-muted" style={{ margin: 0 }}>Rename, move the primary marker, or remove a location (it stays in the history).</p>
-          {locations.length === 0 && <p className="monarch-muted">No locations yet.</p>}
-          {locations.map((l) => (
-            <ActionForm key={l.id} action={updateLocationAction} className="monarch-form">
-              <input type="hidden" name="location_id" value={l.id} /><input type="hidden" name="back" value={back} />
-              <label>Name<input name="name" required maxLength={200} defaultValue={l.name} /></label>
-              <label>Street address<input name="line1" maxLength={200} defaultValue={l.address.line1 ?? ""} /></label>
-              <label>City<input name="city" maxLength={100} defaultValue={l.address.city ?? ""} /></label>
-              <label>State<input name="state" maxLength={2} defaultValue={l.address.state ?? ""} /></label>
-              <label>ZIP<input name="zip" maxLength={10} defaultValue={l.address.zip ?? ""} /></label>
-              <label className="monarch-check"><input type="checkbox" name="is_primary" defaultChecked={l.is_primary} /> Primary office</label>
-              <label className="monarch-check"><input type="checkbox" name="remove" /> Remove this location</label>
-              <div className="is-wide"><button className="monarch-secondary efin-small" type="submit">Save location</button></div>
-            </ActionForm>
-          ))}
-        </div>
-      </details>
 
       <details className="efin-edit" open={openSection === "more"}>
         <summary>Archive or delete</summary>

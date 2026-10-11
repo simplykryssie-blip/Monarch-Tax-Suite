@@ -16,7 +16,7 @@ export const PAGES: SearchHit[] = [
   { id: "p-inst", group: "Pages", title: "Installations", detail: "My Store", href: "/installations" },
   { id: "p-efin", group: "Pages", title: "EFIN dashboard", detail: "EFIN Management", href: "/efin" },
   { id: "p-efin-list", group: "Pages", title: "EROs & EFINs", detail: "EFIN Management", href: "/efin/list" },
-  { id: "p-efin-new", group: "Pages", title: "Add an ERO", detail: "EFIN Management", href: "/efin/new" },
+  { id: "p-efin-new", group: "Pages", title: "Add a firm", detail: "EFIN Management", href: "/efin/new" },
   { id: "p-efin-ren", group: "Pages", title: "EFIN renewals & compliance", detail: "EFIN Management", href: "/efin/renewals" },
   { id: "p-efin-his", group: "Pages", title: "EFIN history", detail: "EFIN Management", href: "/efin/history" },
   { id: "p-auto", group: "Pages", title: "Automation", detail: "Operations", href: "/automation" },

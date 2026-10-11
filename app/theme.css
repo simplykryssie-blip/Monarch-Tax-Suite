@@ -559,3 +559,39 @@ a.mt-section:hover:before{opacity:1}
 .efin-card .monarch-table-wrap th:last-child,.efin-card .monarch-table-wrap td:last-child{padding-right:22px}
 .efin-timeline li{grid-template-columns:170px 1fr}
 .efin-grid-3{align-items:stretch}
+.efin-edit-title{font-family:var(--font-display);font-size:clamp(26px,3vw,34px);font-weight:700;margin:8px 0 6px}
+.efin-span{grid-column:1 / -1}
+.efin-inline-actions{display:inline-flex;gap:14px;margin-left:14px}
+.efin-overview .efin-timeline li{grid-template-columns:170px 1fr}
+.efin-loc-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:4px 0 14px}
+.efin-loc-sum{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-family:var(--font-ui);font-size:16px}
+.efin-loc-sum small{flex-basis:100%;font-size:13.5px;font-weight:400;color:var(--muted)}
+
+/* ---------- firm onboarding wizard ---------- */
+.efin-wiz{display:grid;grid-template-columns:200px minmax(0,1fr);gap:40px;align-items:start}
+.efin-steps-nav{list-style:none;margin:0;padding:0;display:grid;gap:4px;position:sticky;top:90px}
+.efin-steps-nav button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:transparent;padding:10px 4px;font:inherit;font-size:14.5px;font-weight:600;color:var(--muted);cursor:pointer}
+.efin-steps-nav button:disabled{cursor:default;opacity:.7}
+.efin-steps-nav span{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--line);font-size:13px;color:var(--muted);background:#fff;flex-shrink:0}
+.efin-steps-nav .is-now button{color:var(--ink)}
+.efin-steps-nav .is-now span{border-color:#c8a24a;color:var(--ink);box-shadow:0 0 0 3px rgba(200,162,74,.18)}
+.efin-steps-nav .is-done span{border-color:#c8a24a;background:#c8a24a;color:#fff}
+.efin-wiz-body{max-width:760px;display:grid;gap:18px}
+.efin-wiz-step h2{font-family:var(--font-display);font-size:26px;font-weight:700;margin:0 0 6px}
+.efin-wiz-step h3{font-size:16px;margin:0 0 6px}
+.efin-wiz-step .monarch-form{margin-top:16px}
+.efin-wiz-step[hidden]{display:none}
+.efin-extra{margin-top:22px;padding-top:18px;border-top:1px solid var(--line-2)}
+.efin-note-soft{margin-top:20px;font-size:14px;color:var(--muted)}
+.efin-rel{display:grid;gap:10px;margin:18px 0 6px}
+.efin-rel label{display:grid;grid-template-columns:22px 1fr;gap:2px 12px;align-items:start;padding:14px 16px;border:1px solid var(--line);border-radius:14px;cursor:pointer}
+.efin-rel label.is-on{border-color:#c8a24a;box-shadow:0 0 0 3px rgba(200,162,74,.14)}
+.efin-rel input{grid-row:1 / span 2;margin-top:3px;accent-color:#111}
+.efin-rel small{grid-column:2;color:var(--muted);font-size:13px}
+.efin-wiz-foot{display:flex;justify-content:space-between;gap:12px;padding-top:18px;border-top:1px solid var(--line-2)}
+.efin-review{margin:18px 0 0;display:grid}
+.efin-review>div{display:grid;grid-template-columns:120px 1fr;gap:12px;padding:14px 0;border-top:1px solid var(--line-2);font-size:15px}
+.efin-review>div:first-child{border-top:0}
+.efin-review dt{color:var(--muted);font-size:13.5px}
+.efin-review dd{margin:0}
+@media(max-width:860px){.efin-wiz{grid-template-columns:1fr;gap:18px}.efin-steps-nav{position:static;grid-auto-flow:column;overflow-x:auto}.efin-steps-nav button{white-space:nowrap}}

@@ -8,6 +8,7 @@ import { assignmentProblems, EfinRuleError, forField, last4, tracksTeam, normali
 import type { AssignmentRole, AssignmentRow, AssignmentState, AuditRow, CredentialRow, EfinRow, FilingRow, LocationRow, OrgRow, PersonRow, RenewalTaskRow, RoleRow, Verification } from "./types.ts";
 import { ASSIGNMENT_ROLES, EFIN_STATUSES, VERIFICATION } from "./types.ts";
 import { words } from "./text.ts";
+import { formatAddress, formatPhone, type Address } from "./format.ts";
 
 // Server-side EFIN data access. Every function here runs with the service role, so callers (server actions and pages) must
 // call requireAdmin() first. Sensitive identifiers (EFIN, EIN, PTIN) are encrypted with AAD naming the row and field, a
@@ -34,6 +35,17 @@ const text = (v: unknown, max: number, label: string, required = false) => {
   if (s.length > max) throw new EfinRuleError(`${label} is too long (${max} characters at most).`);
   return s || null;
 };
+/** Address, phone and email in the one canonical format (see format.ts). Field names are tagged so a form can mark the right box. */
+const addr = (form: FormData, pfx = "", sfx = ""): Address =>
+  formatAddress(
+    { line1: text(form.get(`${pfx}line1${sfx}`), 200, "Address") ?? "", city: text(form.get(`${pfx}city${sfx}`), 100, "City") ?? "", state: text(form.get(`${pfx}state${sfx}`), 40, "State") ?? "", zip: text(form.get(`${pfx}zip${sfx}`), 12, "ZIP") ?? "" },
+    { state: `${pfx}state${sfx}`, zip: `${pfx}zip${sfx}` },
+  );
+const phoneOf = (v: FormDataEntryValue | null, field: string) => {
+  const s = String(v ?? "").trim();
+  return s ? formatPhone(s, field) : null;
+};
+const lower = (v: string | null) => (v ? v.toLowerCase() : v);
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], label: string): T => {
   const s = String(v ?? "");
   if (!(allowed as readonly string[]).includes(s)) throw new EfinRuleError(`${label} is not valid.`);
@@ -142,7 +154,7 @@ export async function saveLocation(actor: Actor, form: FormData) {
   const row = unwrap(await client.from("office_locations").insert({
     organization_id: organizationId,
     name: text(form.get("name"), 200, "Office name", true),
-    address: { line1: text(form.get("line1"), 200, "Address") ?? "", city: text(form.get("city"), 100, "City") ?? "", state: text(form.get("state"), 2, "State") ?? "", zip: text(form.get("zip"), 10, "ZIP") ?? "" },
+    address: addr(form),
     is_primary: isPrimary,
   }).select("id, name").single() as never) as { id: string; name: string };
   await audit(actor, { type: "location.created", targetType: "location", targetId: row.id, organizationId, changes: { name: row.name, is_primary: isPrimary } });
@@ -150,7 +162,7 @@ export async function saveLocation(actor: Actor, form: FormData) {
 
 // ------------------------------------------------------------------------------------------ people / credentials
 // ---------------------------------------------------------------------------------------- one-step ERO onboarding
-const addressFrom = (form: FormData) => ({ line1: text(form.get("line1"), 200, "Address") ?? "", city: text(form.get("city"), 100, "City") ?? "", state: text(form.get("state"), 2, "State") ?? "", zip: text(form.get("zip"), 10, "ZIP") ?? "" });
+const addressFrom = (form: FormData) => addr(form);
 const dupMessage = (e: { code?: string; message: string }) => {
   if (e.code === "23505") return new EfinRuleError(/efin/i.test(e.message) ? "That EFIN is already recorded. Open the existing ERO instead." : /credential|ptin/i.test(e.message) ? "That PTIN is already recorded for someone." : "Something with those details is already recorded.");
   return new Error(e.message);
@@ -169,7 +181,7 @@ export async function onboardEro(actor: Actor, form: FormData): Promise<string> 
   const ids = { org: randomUUID(), loc: randomUUID(), person: randomUUID(), efin: randomUUID(), cred: ptin ? randomUUID() : null };
   const efinVerification = oneOf(form.get("efin_verification") || "unverified", VERIFICATION, "EFIN verification");
   const expiration = forField("recorded_expiration", () => day(form.get("recorded_expiration"), "Expiration date"));
-  const email = forField("person_email", () => text(form.get("person_email"), 254, "Email"));
+  const email = forField("person_email", () => lower(text(form.get("person_email"), 254, "Email")));
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new EfinRuleError("That email address does not look right.", "person_email");
   const payload = {
     actor_id: actor.id, actor_email: actor.email,
@@ -182,7 +194,7 @@ export async function onboardEro(actor: Actor, form: FormData): Promise<string> 
     agreement_status: oneOf(form.get("agreement_status") || "pending", ["pending", "active", "suspended", "ended"] as const, "Agreement status"),
     org_notes: text(form.get("notes"), 4000, "Notes"),
     office_name: text(form.get("office_name") || "Main office", 200, "Office name", true),
-    person_name: forField("person_name", () => text(form.get("person_name"), 200, "ERO name", true)), person_email: email, person_phone: text(form.get("person_phone"), 40, "Phone"),
+    person_name: forField("person_name", () => text(form.get("person_name"), 200, "ERO name", true)), person_email: email, person_phone: phoneOf(form.get("person_phone"), "person_phone"),
     role_verification: oneOf(form.get("role_verification") || "unverified", VERIFICATION, "Role verification"),
     ptin_encrypted: ptin ? s.encrypt(ptin, `credential:${ids.cred}:identifier`) : null, ptin_last4: ptin ? last4(ptin) : null, ptin_hash: ptin ? s.hashIdentifier("ptin", ptin) : null,
     ptin_verification: oneOf(form.get("ptin_verification") || "unverified", VERIFICATION, "PTIN verification"), ptin_source: text(form.get("ptin_source"), 300, "PTIN source"), ptin_expires_on: day(form.get("ptin_expires_on"), "PTIN date"),
@@ -191,7 +203,7 @@ export async function onboardEro(actor: Actor, form: FormData): Promise<string> 
     recorded_expiration: expiration, expiration_verified: Boolean(expiration) && form.get("expiration_verified") === "on",
     tax_year: form.get("tax_year") ? Number(form.get("tax_year")) : null, efin_notes: null,
     // Additional locations for an ERO with several offices (up to five extra, blanks ignored).
-    extra_offices: [0, 1, 2, 3, 4].map((i) => ({ name: text(form.get(`extra_name_${i}`), 200, "Location name"), address: { line1: text(form.get(`extra_line1_${i}`), 200, "Address") ?? "", city: text(form.get(`extra_city_${i}`), 100, "City") ?? "", state: text(form.get(`extra_state_${i}`), 2, "State") ?? "", zip: text(form.get(`extra_zip_${i}`), 10, "ZIP") ?? "" } })).filter((o) => o.name),
+    extra_offices: [0, 1, 2, 3, 4].map((i) => ({ name: text(form.get(`extra_name_${i}`), 200, "Location name"), address: addr(form, "extra_", `_${i}`) })).filter((o) => o.name),
   };
   const { error } = await db().rpc("efin_onboard", { p: payload });
   if (error) { const m = dupMessage(error); if (m instanceof EfinRuleError && !m.field) m.field = /efin/i.test(error.message) ? "efin" : /ptin|credential/i.test(error.message) ? "ptin" : undefined; throw m; }
@@ -207,11 +219,11 @@ export async function addMember(actor: Actor, form: FormData) {
   const ptinRaw = String(form.get("ptin") ?? "").trim();
   const ptin = ptinRaw ? normalizePtin(ptinRaw) : null;
   const credId = ptin ? randomUUID() : null;
-  const email = text(form.get("person_email"), 254, "Email");
+  const email = lower(text(form.get("person_email"), 254, "Email"));
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new EfinRuleError("That email address does not look right.");
   const payload = {
     actor_id: actor.id, actor_email: actor.email, org_id: uuid(form.get("organization_id"), "organization"), person_id: randomUUID(), cred_id: credId,
-    person_name: text(form.get("person_name"), 200, "Name", true), person_email: email, person_phone: text(form.get("person_phone"), 40, "Phone"),
+    person_name: text(form.get("person_name"), 200, "Name", true), person_email: email, person_phone: phoneOf(form.get("person_phone"), "person_phone"),
     role: oneOf(form.get("role"), ASSIGNMENT_ROLES, "Role"), loc_id: form.get("location_id") ? uuid(form.get("location_id"), "office") : null,
     role_verification: oneOf(form.get("role_verification") || "unverified", VERIFICATION, "Verification"),
     ptin_encrypted: ptin ? s.encrypt(ptin, `credential:${credId}:identifier`) : null, ptin_last4: ptin ? last4(ptin) : null, ptin_hash: ptin ? s.hashIdentifier("ptin", ptin) : null,
@@ -354,9 +366,9 @@ export async function updateOrganization(actor: Actor, form: FormData) {
 
 export async function updatePerson(actor: Actor, form: FormData) {
   const id = uuid(form.get("person_id"), "person");
-  const email = forField("person_email", () => text(form.get("person_email"), 254, "Email"));
+  const email = forField("person_email", () => lower(text(form.get("person_email"), 254, "Email")));
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new EfinRuleError("That email address does not look right.", "person_email");
-  const row = { full_name: forField("person_name", () => text(form.get("person_name"), 200, "Name", true)), email, phone: text(form.get("person_phone"), 40, "Phone"), updated_by: actor.id };
+  const row = { full_name: forField("person_name", () => text(form.get("person_name"), 200, "Name", true)), email, phone: phoneOf(form.get("person_phone"), "person_phone"), updated_by: actor.id };
   unwrap(await db().from("people").update(row).eq("id", id) as never);
   await audit(actor, { type: "person.updated", targetType: "person", targetId: id, changes: { fields: ["full_name", "email", "phone"] } });
 }
