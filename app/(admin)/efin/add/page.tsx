@@ -10,7 +10,7 @@ export default async function NewEfin({ searchParams }: { searchParams: Promise<
   const result = await load(loadSnapshot);
   return (
     <>
-      <PageTitle title="Add another EFIN" back={{ href: "/efin", label: "EROs" }}>For an ERO already in your list. The number is encrypted when saved. Only the last four digits are kept readable. Recording an EFIN here does not apply for, renew or verify it with the IRS.</PageTitle>
+      <PageTitle title="Add another EFIN" back={{ href: "/efin/list", label: "EROs & EFINs" }}>For an ERO already in your list. The number is encrypted when saved. Only the last four digits are kept readable. Recording an EFIN here does not apply for, renew or verify it with the IRS.</PageTitle>
       <Flash {...await searchParams} />
       {!result.ok ? <SetupRequired message={result.message} /> : result.data.orgs.length === 0 ? (
         <div className="monarch-notice"><b>FIRST STEP</b> Add the ERO this EFIN belongs to by choosing <Link href="/efin/new">Add an ERO</Link>.</div>

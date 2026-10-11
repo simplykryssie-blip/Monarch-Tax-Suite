@@ -9,7 +9,10 @@ Service-bureau CRM module under **My Office → EFIN Management** (`/efin`). The
 | Business rules (pure, tested) | `lib/efin/rules.ts`, `lib/efin/exceptions.ts`, `tests/efin-rules.test.ts` |
 | Data access, encryption, audit | `lib/efin/service.ts` |
 | Daily renewal sweep | `lib/efin/renewals.ts`, run from `/api/automation/run` (same `CRON_SECRET` scheduler) |
-| UI | `app/(admin)/efin/*`: **EROs** (contacts-style list), **Add an ERO** (one form), ERO/EFIN profile (Overview, Office & Team, Office Assignments, Filing Relationships, Documents, Renewals, Activity History), Renewals & compliance, History |
+| UI | `app/(admin)/efin/*`: **Dashboard** (KPIs, status donut, overview, upcoming renewals, activity, filing software, quick actions), **EROs & EFINs** (contacts-style list), **Add an ERO** (one form), ERO/EFIN profile (Overview, Office & Team, Office Assignments, Filing Relationships, Documents, Renewals, Activity History), Renewals & compliance, History |
+
+## Dashboard and multiple locations
+`/efin` is the dashboard. Every figure is derived from recorded, verified data (`lib/efin/metrics.ts`, tested). There are deliberately no return counts, filing totals or growth percentages, because Monarch has no verified source for them. An ERO can have any number of locations: add up to five extra on the Add-an-ERO form, or add more later from the ERO's Office & Team tab; each EFIN has a "filing office" you can change, and assignments can be pinned to a location.
 
 ## One place for everything
 EFIN Management works like a contacts list of your EROs. **Add an ERO** is a single form (business, office, ERO/Responsible Official with optional PTIN, EFIN, expiration) saved by one database function (`efin_onboard`) in one transaction, so a failure such as a duplicate EFIN saves nothing. It also creates a draft ERO assignment. Everything afterwards happens on the ERO's page: add team members and PTINs (`efin_add_member`, also atomic), add offices, request/approve/suspend/revoke assignments, add filing providers. Renewals and History stay separate. Separate Offices, People and Assignments pages no longer exist; "Assignments to review" opens the list filtered to pending reviews.

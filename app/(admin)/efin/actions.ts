@@ -62,9 +62,9 @@ export const updateEfinAction = async (form: FormData) =>
   });
 
 export const archiveEfinAction = async (form: FormData) =>
-  mutate(back(form, "/efin"), async (a) => {
+  mutate(back(form, "/efin/list"), async (a) => {
     await archiveEfin(a, form);
-    return { to: "/efin", notice: "EFIN archived. Its history is kept." };
+    return { to: "/efin/list", notice: "EFIN archived. Its history is kept." };
   });
 
 export const saveLocationAction = async (form: FormData) =>

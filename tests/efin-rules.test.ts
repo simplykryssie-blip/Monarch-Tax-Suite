@@ -146,3 +146,18 @@ test("high-severity exceptions sort first", () => {
   const out = run([baseEfin({ id: "a", external_status: "unverified" }), baseEfin({ id: "b", ero_person_id: null })]);
   assert.equal(out[0].severity, "high");
 });
+
+import { bucketFor, statusBreakdown } from "../lib/efin/metrics.ts";
+
+test("dashboard status buckets use recorded, verified data only", () => {
+  const e = (over: Partial<EfinRow>) => baseEfin(over);
+  assert.equal(bucketFor(e({}), "2026-10-11"), "active");
+  assert.equal(bucketFor(e({ recorded_expiration: "2026-11-15" }), "2026-10-11"), "expiring");
+  assert.equal(bucketFor(e({ recorded_expiration: "2026-11-15", expiration_verified: false }), "2026-10-11"), "active");
+  assert.equal(bucketFor(e({ recorded_expiration: "2026-09-01" }), "2026-10-11"), "review");
+  assert.equal(bucketFor(e({ internal_status: "renewal_review" }), "2026-10-11"), "review");
+  assert.equal(bucketFor(e({ internal_status: "pending_verification" }), "2026-10-11"), "pending");
+  assert.equal(bucketFor(e({ internal_status: "suspended", recorded_expiration: "2026-09-01" }), "2026-10-11"), "inactive");
+  const b = statusBreakdown([e({}), e({ archived_at: "2026-01-01" }), e({ internal_status: "inactive" })], "2026-10-11");
+  assert.deepEqual(b, { active: 1, expiring: 0, review: 0, pending: 0, inactive: 1 });
+});

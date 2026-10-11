@@ -9,7 +9,7 @@ export default async function AddEro({ searchParams }: { searchParams: Promise<{
   await requireAdmin();
   return (
     <>
-      <PageTitle title="Add an ERO" back={{ href: "/efin", label: "EROs" }}>Everything for a new ERO in one place. It is saved together or not at all. Sensitive numbers are encrypted when saved, and only the last four digits stay readable.</PageTitle>
+      <PageTitle title="Add an ERO" back={{ href: "/efin/list", label: "EROs & EFINs" }}>Everything for a new ERO in one place. It is saved together or not at all. Sensitive numbers are encrypted when saved, and only the last four digits stay readable.</PageTitle>
       <Flash {...await searchParams} />
       <form action={onboardEroAction}>
         <section className="monarch-panel monarch-pad">
@@ -24,7 +24,7 @@ export default async function AddEro({ searchParams }: { searchParams: Promise<{
           </div>
         </section>
         <section className="monarch-panel monarch-pad">
-          <h2 style={{ marginTop: 0 }}>2. Office</h2>
+          <h2 style={{ marginTop: 0 }}>2. Office locations</h2>
           <div className="monarch-form">
             <label>Office name<input name="office_name" maxLength={200} defaultValue="Main office" /></label>
             <label>Street address<input name="line1" maxLength={200} /></label>
@@ -32,6 +32,18 @@ export default async function AddEro({ searchParams }: { searchParams: Promise<{
             <label>State<input name="state" maxLength={2} /></label>
             <label>ZIP<input name="zip" maxLength={10} /></label>
           </div>
+          <details style={{ marginTop: 18 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 650 }}>This ERO has more locations</summary>
+            <p className="monarch-muted">Add up to five more now, or add them later from the ERO&apos;s page. Leave unused rows blank.</p>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div className="monarch-form" key={i} style={{ marginBottom: 12 }}>
+                <label>Location {i + 2} name<input name={`extra_name_${i}`} maxLength={200} /></label>
+                <label>Street address<input name={`extra_line1_${i}`} maxLength={200} /></label>
+                <label>City<input name={`extra_city_${i}`} maxLength={100} /></label>
+                <label>State<input name={`extra_state_${i}`} maxLength={2} /></label>
+              </div>
+            ))}
+          </details>
         </section>
         <section className="monarch-panel monarch-pad">
           <h2 style={{ marginTop: 0 }}>3. ERO / Responsible Official</h2>

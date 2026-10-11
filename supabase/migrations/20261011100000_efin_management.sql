@@ -384,6 +384,9 @@ begin
   insert into organizations (id, legal_name, dba_name, business_structure, ein_encrypted, ein_last4, primary_address, relationship, agreement_status, onboarding_status, notes, created_by, updated_by)
   values (org, p->>'legal_name', nullif(p->>'dba_name',''), nullif(p->>'business_structure',''), nullif(p->>'ein_encrypted',''), nullif(p->>'ein_last4',''), coalesce(p->'address','{}'::jsonb), coalesce(p->>'relationship','partner'), coalesce(p->>'agreement_status','pending'), 'in_progress', nullif(p->>'org_notes',''), actor, actor);
   insert into office_locations (id, organization_id, name, address, is_primary) values (loc, org, p->>'office_name', coalesce(p->'address','{}'::jsonb), true);
+  -- Additional locations (optional): [{name, address}]
+  insert into office_locations (organization_id, name, address)
+  select org, x->>'name', coalesce(x->'address','{}'::jsonb) from jsonb_array_elements(coalesce(p->'extra_offices','[]'::jsonb)) x where nullif(x->>'name','') is not null;
   insert into people (id, full_name, email, phone, created_by, updated_by) values (per, p->>'person_name', nullif(p->>'person_email',''), nullif(p->>'person_phone',''), actor, actor);
   update organizations set administrator_person_id = per where id = org;
   insert into organization_roles (organization_id, person_id, role, location_id, verification_status, created_by) values (org, per, 'ero', loc, coalesce(p->>'role_verification','unverified'), actor);

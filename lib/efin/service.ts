@@ -176,6 +176,8 @@ export async function onboardEro(actor: Actor, form: FormData): Promise<string> 
     efin_verification: efinVerification, efin_source: text(form.get("efin_source"), 300, "EFIN source"),
     recorded_expiration: expiration, expiration_verified: Boolean(expiration) && form.get("expiration_verified") === "on",
     tax_year: form.get("tax_year") ? Number(form.get("tax_year")) : null, efin_notes: null,
+    // Additional locations for an ERO with several offices (up to five extra, blanks ignored).
+    extra_offices: [0, 1, 2, 3, 4].map((i) => ({ name: text(form.get(`extra_name_${i}`), 200, "Location name"), address: { line1: text(form.get(`extra_line1_${i}`), 200, "Address") ?? "", city: text(form.get(`extra_city_${i}`), 100, "City") ?? "", state: text(form.get(`extra_state_${i}`), 2, "State") ?? "", zip: text(form.get(`extra_zip_${i}`), 10, "ZIP") ?? "" } })).filter((o) => o.name),
   };
   const { error } = await db().rpc("efin_onboard", { p: payload });
   if (error) throw dupMessage(error);
@@ -240,7 +242,13 @@ export async function updateEfin(actor: Actor, form: FormData) {
   const expiration = day(form.get("recorded_expiration"), "Expiration date");
   if (status !== before.internal_status && ["suspended", "inactive"].includes(status) && form.get("confirm") !== "on") throw new EfinRuleError("Changing an EFIN to suspended or inactive is high-impact. Tick the confirmation box.");
   if (status !== before.internal_status && !String(form.get("reason") ?? "").trim()) throw new EfinRuleError("Add a reason for the status change.");
+  const locationId = form.get("location_id") ? uuid(form.get("location_id"), "office") : null;
+  if (locationId) {
+    const { data: loc } = await client.from("office_locations").select("organization_id").eq("id", locationId).maybeSingle();
+    if (!loc || loc.organization_id !== before.organization_id) throw new EfinRuleError("That location belongs to a different business.");
+  }
   const next = {
+    location_id: locationId,
     internal_status: status,
     external_status: external,
     external_verified_at: external === "unverified" ? null : external === before.external_status ? before.external_verified_at : new Date().toISOString(),
@@ -252,7 +260,7 @@ export async function updateEfin(actor: Actor, form: FormData) {
   };
   unwrap(await client.from("efin_records").update(next).eq("id", id) as never);
   const changed: Record<string, { from: unknown; to: unknown }> = {};
-  for (const k of ["internal_status", "external_status", "recorded_expiration", "expiration_verified", "verification_source"] as const) {
+  for (const k of ["location_id", "internal_status", "external_status", "recorded_expiration", "expiration_verified", "verification_source"] as const) {
     if ((before as Record<string, unknown>)[k] !== (next as Record<string, unknown>)[k]) changed[k] = { from: (before as Record<string, unknown>)[k], to: (next as Record<string, unknown>)[k] };
   }
   await audit(actor, { type: "efin.updated", targetType: "efin", targetId: id, organizationId: before.organization_id, changes: changed, reason: text(form.get("reason"), 1000, "Reason") });

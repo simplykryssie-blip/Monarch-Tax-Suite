@@ -41,7 +41,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
   const people = s.people.filter((p) => !p.archived_at);
   return (
     <>
-      <PageTitle title={`EFIN ending ${efin.efin_last4}`} back={{ href: "/efin", label: "EROs" }}>{orgName(s.orgs, efin.organization_id)}{efin.archived_at && " · Archived"}</PageTitle>
+      <PageTitle title={`EFIN ending ${efin.efin_last4}`} back={{ href: "/efin/list", label: "EROs & EFINs" }}>{orgName(s.orgs, efin.organization_id)}{efin.archived_at && " · Archived"}</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       <nav className="efin-tabs" aria-label="EFIN sections">
         {TABS.map(([k, name]) => <Link key={k} href={`/efin/${id}?tab=${k}`} className={tab === k ? "is-on" : ""}>{name}</Link>)}
@@ -54,7 +54,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
             <dl className="efin-facts">
               <div><dt>EFIN</dt><dd><RevealEfin id={id} last4={efin.efin_last4} /></dd></div>
               <div><dt>Organization</dt><dd>{orgName(s.orgs, efin.organization_id)}</dd></div>
-              <div><dt>Office</dt><dd>{s.locations.find((l) => l.id === efin.location_id)?.name ?? "—"}</dd></div>
+              <div><dt>Filing office</dt><dd>{s.locations.find((l) => l.id === efin.location_id)?.name ?? "—"}{s.locations.filter((l) => l.organization_id === efin.organization_id && !l.archived_at).length > 1 && <small className="monarch-muted"> · {s.locations.filter((l) => l.organization_id === efin.organization_id && !l.archived_at).length} locations in total</small>}</dd></div>
               <div><dt>ERO / Responsible Official</dt><dd>{personName(s.people, efin.ero_person_id)}</dd></div>
               <div><dt>Verification</dt><dd><Verified value={efin.external_status} /> {efin.external_verified_at && <small className="monarch-muted">{when(efin.external_verified_at)}</small>}</dd></div>
               <div><dt>Source</dt><dd>{efin.verification_source ?? "—"}</dd></div>
@@ -69,6 +69,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
               <h2 style={{ marginTop: 0 }}>Update record</h2>
               <form action={updateEfinAction} className="monarch-form">
                 <input type="hidden" name="id" value={id} /><input type="hidden" name="back" value={here} />
+                <label>Filing office for this EFIN<Select name="location_id" value={efin.location_id} empty="Not set" options={s.locations.filter((l) => l.organization_id === efin.organization_id && !l.archived_at).map((l) => ({ value: l.id, label: l.name }))} /></label>
                 <label>Internal status<Select name="internal_status" value={efin.internal_status} options={EFIN_STATUSES.map((v) => ({ value: v, label: label(v) }))} /></label>
                 <label>Verification<Select name="external_status" value={efin.external_status} options={VERIFY_OPTIONS} /></label>
                 <label>Verification source<input name="verification_source" defaultValue={efin.verification_source ?? ""} maxLength={300} /></label>
@@ -127,14 +128,14 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
             </form>
           </section>
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Offices</h2><p>Locations for this business.</p></div></div>
+            <div className="monarch-panel-head"><div><h2>Locations</h2><p>Every office this ERO operates from.</p></div></div>
             <div className="monarch-table-wrap"><table>
               <thead><tr><th>OFFICE</th><th>ADDRESS</th><th>PRIMARY</th></tr></thead>
               <tbody>{s.locations.filter((l) => l.organization_id === efin.organization_id && !l.archived_at).map((l) => <tr key={l.id}><td><b>{l.name}</b></td><td>{[l.address.line1, l.address.city, l.address.state, l.address.zip].filter(Boolean).join(", ") || "—"}</td><td>{l.is_primary ? "Yes" : ""}</td></tr>)}</tbody>
             </table></div>
           </section>
           <section className="monarch-panel monarch-pad">
-            <h2 style={{ marginTop: 0 }}>Add an office</h2>
+            <h2 style={{ marginTop: 0 }}>Add a location</h2>
             <form action={saveLocationAction} className="monarch-form">
               <input type="hidden" name="organization_id" value={efin.organization_id} /><input type="hidden" name="back" value={here} />
               <label>Office name<input name="name" required maxLength={200} /></label>
@@ -143,7 +144,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
               <label>State<input name="state" maxLength={2} /></label>
               <label>ZIP<input name="zip" maxLength={10} /></label>
               <label className="monarch-check is-wide"><input type="checkbox" name="is_primary" /> This is the primary office</label>
-              <div className="is-wide"><button className="monarch-primary" type="submit">Add office</button></div>
+              <div className="is-wide"><button className="monarch-primary" type="submit">Add location</button></div>
             </form>
           </section>
         </>
