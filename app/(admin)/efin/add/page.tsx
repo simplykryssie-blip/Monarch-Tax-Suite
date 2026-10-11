@@ -14,8 +14,8 @@ export default async function NewEfin({ searchParams }: { searchParams: Promise<
     <>
       <PageTitle title="Add an EFIN" back={{ href: "/efin/list", label: "EROs & EFINs" }}>{org ? `For ${org.legal_name}. ` : "For an ERO already in your list. "}The number is encrypted when saved, and only the last four digits stay readable. Recording an EFIN here does not apply for, renew or verify it with the IRS.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
-      {!result.ok ? <SetupRequired message={result.message} /> : result.data.orgs.length === 0 ? (
-        <div className="monarch-notice"><b>FIRST STEP</b> Add the ERO this EFIN belongs to by choosing <Link href="/efin/new">Add an ERO</Link>.</div>
+      {!result.ok ? <SetupRequired message={result.message} module="efin" /> : result.data.orgs.length === 0 ? (
+        <div className="monarch-notice"><b>FIRST STEP</b> Add the firm this EFIN belongs to by choosing <Link href="/efin/new">Add a firm</Link>.</div>
       ) : (
         <div className="efin-flow"><section className="monarch-panel monarch-pad"><AddEfinForm s={result.data} org={org} /></section></div>
       )}

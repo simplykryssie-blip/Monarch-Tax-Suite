@@ -22,7 +22,7 @@ const NAV: Entry[] = [
       { label: "Home", icon: "dashboard", href: "/" },
       { label: "Firms", icon: "firms" },
       {
-        label: "EFIN Management",
+        label: "My Service Bureau",
         icon: "licenses",
         items: [
           { label: "Dashboard", icon: "dashboard", href: "/efin" },
@@ -55,7 +55,7 @@ const NAV: Entry[] = [
       { label: "Support", icon: "support" },
       { label: "Marketing", icon: "marketing" },
       { label: "Reports", icon: "reports" },
-      { label: "Settings", icon: "settings" },
+      { label: "Settings", icon: "settings", href: "/bureau/settings" },
     ],
   },
 ];

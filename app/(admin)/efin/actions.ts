@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { EfinRuleError } from "@/lib/efin/rules.ts";
-import { addMember, archiveEfin, archiveOrganization, bulkApply, changeAssignment, completeRenewal, createEfin, deleteEfin, deleteOrganization, onboardEro, requestAssignment, restoreEfin, restoreOrganization, saveFiling, saveLocation, updateEfin, updateLocation, updateOrganization, updatePerson, type Actor } from "@/lib/efin/service";
+import { addMember, addOption, archiveEfin, archiveOrganization, bulkApply, changeAssignment, completeRenewal, createEfin, deleteDocument, deleteEfin, deleteOrganization, onboardEro, removeOption, requestAssignment, restoreEfin, restoreOrganization, saveFiling, saveLocation, setFirmOptions, setOptionActive, uploadDocument, updateEfin, updateLocation, updateOrganization, updatePerson, type Actor } from "@/lib/efin/service";
 
 // Every action re-checks administrator access on the server, validates input, and writes an audit event inside the service.
 // Browser roles have no write access to these tables at all (row level security), so this is the only write path.
@@ -43,6 +43,7 @@ async function mutate(back: string, fn: (actor: Actor) => Promise<{ to?: string;
     return { error: setupMessage(e) ?? "That did not work. Nothing was changed. Please try again." };
   }
   revalidatePath("/efin", "layout");
+  revalidatePath("/bureau/settings");
   redirect(target);
 }
 
@@ -187,4 +188,45 @@ export const bulkAction = async (form: FormData) =>
     const skipped = r.skipped.length ? ` Skipped ${r.skipped.length}: ${r.skipped.slice(0, 3).map((x) => `${x.label} (${x.why})`).join("; ")}${r.skipped.length > 3 ? "…" : ""}` : "";
     if (r.done === 0 && r.skipped.length) throw new EfinRuleError(`Nothing was changed.${skipped}`);
     return { notice: `Done for ${r.done} row${r.done === 1 ? "" : "s"}.${skipped}`.slice(0, 600) };
+  });
+
+// ---- Settings: your tax software and bank product lists
+export const addOptionAction = async (form: FormData) =>
+  mutate("/bureau/settings", async (a) => {
+    await addOption(a, form);
+    return { notice: "Added to your list." };
+  });
+
+export const toggleOptionAction = async (form: FormData) =>
+  mutate("/bureau/settings", async (a) => {
+    const active = form.get("active") === "yes";
+    await setOptionActive(a, String(form.get("id") ?? ""), active);
+    return { notice: active ? "Restored. It shows in the onboarding again." : "Hidden from new firms. Firms that already use it keep it." };
+  });
+
+export const removeOptionAction = async (form: FormData) =>
+  mutate("/bureau/settings", async (a) => {
+    confirmed(form, "removing this item");
+    const r = await removeOption(a, String(form.get("id") ?? ""));
+    return { notice: r === "deleted" ? "Removed from your list." : "Some firms use it, so it was hidden instead of removed." };
+  });
+
+export const setFirmOptionsAction = async (form: FormData) =>
+  mutate(back(form, "/efin/list"), async (a) => {
+    await setFirmOptions(a, form);
+    return { notice: "Saved." };
+  });
+
+// ---- Firm documents
+export const uploadDocumentAction = async (form: FormData) =>
+  mutate(back(form, "/efin/list"), async (a) => {
+    await uploadDocument(a, form);
+    return { notice: "Document uploaded. It is stored privately and only reachable through a short-lived link." };
+  });
+
+export const deleteDocumentAction = async (form: FormData) =>
+  mutate(back(form, "/efin/list"), async (a) => {
+    confirmed(form, "deleting this document");
+    await deleteDocument(a, String(form.get("id") ?? ""));
+    return { notice: "Document deleted." };
   });

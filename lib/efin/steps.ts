@@ -9,7 +9,7 @@ export function nextSteps(d: { org: OrgRow; efin?: EfinRow; person?: PersonRow; 
   const { org, efin, person } = d;
   const steps: Step[] = [];
   if (!efin) return [{ key: "efin", label: "Record this firm's EFIN", done: false, tab: "filing" }];
-  steps.push({ key: "verify", label: "Verify the EFIN and record how it was confirmed", done: efin.external_status !== "unverified", tab: "overview" });
+  steps.push({ key: "verify", label: "Confirm the EFIN and record how it was confirmed", done: efin.external_status === "verified" || efin.external_status === "manually_verified", tab: "overview" });
   steps.push({ key: "renewal", label: "Record the renewal date and mark it verified", done: Boolean(efin.recorded_expiration && efin.expiration_verified), tab: "renewals" });
   steps.push({ key: "contact", label: "Add the contact's email and phone", done: Boolean(person?.email && person?.phone), tab: "overview" });
   if (tracksTeam(org.relationship)) {

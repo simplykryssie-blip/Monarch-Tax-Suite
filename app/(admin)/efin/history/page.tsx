@@ -8,7 +8,7 @@ export default async function History() {
   return (
     <>
       <PageTitle title="History">An append-only record of changes and sensitive reads. It cannot be edited or deleted, by anyone, from the application or the database API.</PageTitle>
-      {!result.ok ? <SetupRequired message={result.message} /> : (
+      {!result.ok ? <SetupRequired message={result.message} module="efin" /> : (
         <section className="monarch-panel">
           <div className="monarch-table-wrap"><table>
             <thead><tr><th>WHEN</th><th>WHO</th><th>EVENT</th><th>TARGET</th><th>REASON</th></tr></thead>

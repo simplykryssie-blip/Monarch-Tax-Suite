@@ -21,7 +21,7 @@ export default async function EfinRegistry({ searchParams }: { searchParams: Pro
       <PageTitle title="EROs & EFINs">Your EROs and their EFINs in one list, like contacts. Open one to edit it, see its locations and renewals, and, for your own office and partners, its team. Dates and verification are what you recorded here, not a live IRS status.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? (
-        <SetupRequired message={result.message} />
+        <SetupRequired message={result.message} module="efin" />
       ) : (
         (() => {
           const s = result.data;
@@ -51,7 +51,7 @@ export default async function EfinRegistry({ searchParams }: { searchParams: Pro
             <div className="efin-flow"><section className="monarch-panel">
               <div className="monarch-panel-head">
                 <div><h2>{sp.review ? "Assignments waiting for review" : showArchived ? "Archived" : "All EROs"}</h2><p>EFINs are shown masked. Open one to reveal the full number (the reveal is logged).</p></div>
-                <Link className="monarch-primary" href="/efin/new"><Icon name="plus" size={16} /> Add an ERO</Link>
+                <Link className="monarch-primary" href="/efin/new"><Icon name="plus" size={16} /> Add a firm</Link>
               </div>
               <form className="efin-filter" method="get" action="/efin/list">
                 <input name="q" defaultValue={sp.q ?? ""} placeholder="Search name, business or last 4" aria-label="Search EFINs" />

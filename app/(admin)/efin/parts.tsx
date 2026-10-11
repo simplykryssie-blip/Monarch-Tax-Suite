@@ -15,8 +15,9 @@ export function Kpi({ href, icon, title, value, sub }: { href: string; icon: Ico
 
 /** How trustworthy a recorded fact is. Never reads as an IRS result. */
 export function Verified({ value }: { value: string }) {
-  const text = value === "manually_verified" ? "Manually verified" : value === "verified" ? "Verified" : value === "not_applicable" ? "Not applicable" : "Unverified";
-  return <span className={"monarch-badge " + (value === "unverified" ? "pending" : value === "not_applicable" ? "skipped" : "verified")}>{text}</span>;
+  const text = value === "verified" || value === "manually_verified" ? "Confirmed" : value === "pending" ? "Pending confirmation" : value === "not_applicable" ? "Not applicable" : "Unconfirmed";
+  const cls = value === "verified" || value === "manually_verified" ? "verified" : value === "pending" ? "pending" : "skipped";
+  return <span className={"monarch-badge " + cls}>{text}</span>;
 }
 
 export const orgName = (orgs: OrgRow[], id: string | null) => orgs.find((o) => o.id === id)?.legal_name ?? "—";
@@ -25,7 +26,7 @@ export { label };
 
 export function Select({ name, options, value, empty, required }: { name: string; options: { value: string; label: string }[]; value?: string | null; empty?: string; required?: boolean }) {
   return (
-    <select name={name} defaultValue={value ?? ""} required={required}>
+    <select name={name} defaultValue={value === "manually_verified" ? "verified" : (value ?? "")} required={required}>
       {empty !== undefined && <option value="">{empty}</option>}
       {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
@@ -33,7 +34,7 @@ export function Select({ name, options, value, empty, required }: { name: string
 }
 
 export const VERIFY_OPTIONS = [
-  { value: "unverified", label: "Unverified" },
-  { value: "manually_verified", label: "Manually verified (I checked it myself)" },
-  { value: "verified", label: "Verified (from a source I can name)" },
+  { value: "unverified", label: "Unconfirmed" },
+  { value: "pending", label: "Pending confirmation" },
+  { value: "verified", label: "Confirmed" },
 ];

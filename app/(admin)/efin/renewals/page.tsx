@@ -16,7 +16,7 @@ export default async function Renewals({ searchParams }: { searchParams: Promise
     <>
       <PageTitle title="Renewals & compliance">Reminders run daily at 60, 30, 14 and 7 days before a verified renewal date, once per person per stage. A missed date opens a compliance review; nothing is invalidated automatically.</PageTitle>
       <Flash {...sp} />
-      {!result.ok ? <SetupRequired message={result.message} /> : (() => {
+      {!result.ok ? <SetupRequired message={result.message} module="efin" /> : (() => {
         const s = result.data;
         const open = s.tasks.filter((t) => ["open", "urgent", "escalated", "overdue"].includes(t.status));
         const exceptions = complianceExceptions({ ...s, today });

@@ -219,3 +219,77 @@ test("next steps come from recorded data and skip assignments for software clien
   const done = nextSteps({ org: org("client"), efin: baseEfin(), person, assignments: [], filings: [{ id: "f", efin_id: "e1", archived_at: null } as never] });
   assert.ok(done.every((s) => s.done));
 });
+
+import { displayAddress, displayPhone, formatAddress, formatEin, formatName, formatPhone, formatState, formatStreet, formatZip, maskEfinInput, maskEinInput, maskPhoneInput, maskPtinInput } from "../lib/efin/format.ts";
+
+test("phone numbers share one format and bad ones name their field", () => {
+  assert.equal(formatPhone("337-858-7792"), "(337) 858-7792");
+  assert.equal(formatPhone("1 (337) 858 7792"), "(337) 858-7792");
+  assert.equal(formatPhone("3378587792"), "(337) 858-7792");
+  assert.throws(() => formatPhone("858-7792"), (e: unknown) => e instanceof EfinRuleError && e.field === "person_phone");
+  assert.equal(displayPhone("337.858.7792"), "(337) 858-7792");
+  assert.equal(displayPhone("ext 5"), "ext 5");
+  assert.equal(displayPhone(null), "");
+});
+
+test("typing masks build the format as you go", () => {
+  assert.equal(maskPhoneInput("3378"), "(337) 8");
+  assert.equal(maskPhoneInput("33785877921234"), "(337) 858-7792");
+  assert.equal(maskEinInput("123456789"), "12-3456789");
+  assert.equal(maskEinInput("1"), "1");
+  assert.equal(maskEfinInput("12-34 56 78"), "123456");
+  assert.equal(maskPtinInput("p0123456789"), "P01234567");
+  assert.equal(maskPtinInput("01234567"), "P01234567");
+  assert.equal(formatEin("123456789"), "12-3456789");
+});
+
+test("addresses are cleaned the same way every time", () => {
+  assert.equal(formatStreet("3418 GREINWICH BOULEVARD"), "3418 Greinwich Blvd");
+  assert.equal(formatStreet("  100   n main street  suite 4"), "100 N Main St Ste 4");
+  assert.equal(formatStreet("PO BOX 12"), "PO Box 12");
+  assert.equal(formatStreet("12 5th avenue"), "12 5th Ave");
+  assert.deepEqual(formatAddress({ line1: "3418 greinwich blvd", city: "LAKE CHARLES", state: "la", zip: "706071234" }), { line1: "3418 Greinwich Blvd", city: "Lake Charles", state: "LA", zip: "70607-1234" });
+  assert.throws(() => formatState("Louisiana"), (e: unknown) => e instanceof EfinRuleError && e.field === "state");
+  assert.throws(() => formatZip("7060"), (e: unknown) => e instanceof EfinRuleError && e.field === "zip");
+  assert.equal(formatZip(""), "");
+  assert.equal(displayAddress({ line1: "3418 Greinwich Blvd", city: "Lake Charles", state: "LA", zip: "70607" }), "3418 Greinwich Blvd, Lake Charles, LA 70607");
+  assert.equal(displayAddress({ city: "Dallas", state: "TX" }), "Dallas, TX");
+  assert.equal(formatName("  Krystal   Esters "), "Krystal Esters");
+});
+
+import { structureLabel } from "../lib/efin/text.ts";
+test("business types read correctly", () => {
+  assert.equal(structureLabel("llc"), "LLC");
+  assert.equal(structureLabel("s_corporation"), "S corporation");
+  assert.equal(structureLabel(null), "");
+});
+
+import { checkUpload, safeFileName } from "../lib/efin/files.ts";
+
+test("uploads are checked by size, extension, declared type and the file's own first bytes", () => {
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
+  assert.deepEqual(checkUpload({ name: "W-9 form.PDF", size: 1000, type: "application/pdf" }, pdf), { name: "W-9_form.PDF", contentType: "application/pdf" });
+  assert.throws(() => checkUpload({ name: "a.pdf", size: 5 * 1024 * 1024, type: "application/pdf" }, pdf), /4 MB/);
+  assert.throws(() => checkUpload({ name: "a.exe", size: 10, type: "" }, pdf), /PDF, PNG, JPG or DOCX/);
+  assert.throws(() => checkUpload({ name: "a.pdf", size: 10, type: "image/png" }, pdf), /does not match/);
+  assert.throws(() => checkUpload({ name: "a.pdf", size: 10, type: "application/pdf" }, new Uint8Array([1, 2, 3, 4])), /real PDF/);
+  assert.throws(() => checkUpload({ name: "a.pdf", size: 0, type: "application/pdf" }, pdf), /Choose a file/);
+  assert.equal(safeFileName("../../etc/passwd"), "passwd");
+  assert.equal(safeFileName("C:\\x\\my file (1).png"), "my_file_1_.png");
+});
+
+test("pending confirmation is not done in the next-steps checklist", () => {
+  const org = { id: "o1", relationship: "client" } as never;
+  const pend = nextSteps({ org, efin: baseEfin({ external_status: "pending" }), person: undefined, assignments: [], filings: [] });
+  assert.equal(pend.find((s) => s.key === "verify")?.done, false);
+  const ok = nextSteps({ org, efin: baseEfin({ external_status: "verified" }), person: undefined, assignments: [], filings: [] });
+  assert.equal(ok.find((s) => s.key === "verify")?.done, true);
+});
+
+import { hasLiveHistory } from "../lib/efin/rules.ts";
+test("only never-live EFINs can be permanently deleted", () => {
+  assert.equal(hasLiveHistory([]), false);
+  assert.equal(hasLiveHistory([{ state: "draft", activated_at: null }, { state: "pending_review", activated_at: null }, { state: "approved", activated_at: null }]), false);
+  for (const state of ["active", "suspended", "revoked", "expired"] as const) assert.equal(hasLiveHistory([{ state, activated_at: null }]), true);
+  assert.equal(hasLiveHistory([{ state: "draft", activated_at: "2026-01-01T00:00:00Z" }]), true);
+});
