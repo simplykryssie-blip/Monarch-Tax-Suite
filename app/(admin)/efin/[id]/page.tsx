@@ -8,8 +8,10 @@ import { loadEfinAudit, loadSnapshot, problemsFor } from "@/lib/efin/service";
 import { ASSIGNMENT_ROLES, EFIN_STATUSES } from "@/lib/efin/types.ts";
 import { addMemberAction, saveLocationAction, changeAssignmentAction, requestAssignmentAction, saveFilingAction, updateEfinAction } from "../actions";
 import { orgName, personName, Select, VERIFY_OPTIONS, Verified } from "../parts";
-import { RevealEfin } from "../reveal";
 import { EroAdmin } from "../ero-admin";
+import { AddEfinForm } from "../add-efin-form";
+import { ContactHeader } from "../contact-header";
+import { words } from "@/lib/efin/text.ts";
 
 const TABS = [
   ["overview", "Overview"],
@@ -46,32 +48,48 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
   const people = s.people.filter((p) => !p.archived_at);
   return (
     <>
-      <PageTitle title={`EFIN ending ${efin.efin_last4}`} back={{ href: "/efin/list", label: "EROs & EFINs" }}>{orgName(s.orgs, efin.organization_id)}{efin.archived_at && " · Archived"}</PageTitle>
+      <Link className="monarch-back" href="/efin/list">← EROs &amp; EFINs</Link>
+      {org ? <ContactHeader s={s} org={org} efin={efin} /> : <PageTitle title={`EFIN ending ${efin.efin_last4}`}>{orgName(s.orgs, efin.organization_id)}</PageTitle>}
       <Flash notice={sp.notice} error={sp.error} />
       <nav className="efin-tabs" aria-label="EFIN sections">
         {tabs.map(([k, name]) => <Link key={k} href={`/efin/${id}?tab=${k}`} className={tab === k ? "is-on" : ""}>{name}</Link>)}
       </nav>
+      <div className="efin-flow">
 
       {tab === "overview" && (
         <>
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Overview</h2><p>What is recorded for this EFIN.</p></div><Badge value={efin.internal_status === "pending_verification" ? "pending" : efin.internal_status} /></div>
+            <div className="monarch-panel-head"><div><h2>Details</h2><p>What is recorded for this EFIN.</p></div></div>
             <dl className="efin-facts">
-              <div><dt>EFIN</dt><dd><RevealEfin id={id} last4={efin.efin_last4} /></dd></div>
-              <div><dt>Organization</dt><dd>{orgName(s.orgs, efin.organization_id)}</dd></div>
-              <div><dt>Filing office</dt><dd>{s.locations.find((l) => l.id === efin.location_id)?.name ?? "—"}{s.locations.filter((l) => l.organization_id === efin.organization_id && !l.archived_at).length > 1 && <small className="monarch-muted"> · {s.locations.filter((l) => l.organization_id === efin.organization_id && !l.archived_at).length} locations in total</small>}</dd></div>
-              <div><dt>ERO / Responsible Official</dt><dd>{personName(s.people, efin.ero_person_id)}</dd></div>
-              <div><dt>Verification</dt><dd><Verified value={efin.external_status} /> {efin.external_verified_at && <small className="monarch-muted">{when(efin.external_verified_at)}</small>}</dd></div>
-              <div><dt>Source</dt><dd>{efin.verification_source ?? "—"}</dd></div>
-              <div><dt>Recorded renewal date</dt><dd>{efin.recorded_expiration ?? "Not recorded"}{efin.recorded_expiration && <> <small className="monarch-muted">{efin.expiration_verified ? "verified" : "not verified"} · {daysUntil(efin.recorded_expiration, today)} days</small></>}</dd></div>
+              <div><dt>Filing office</dt><dd>{s.locations.find((l) => l.id === efin.location_id)?.name ?? "—"}</dd></div>
+              <div><dt>Verification source</dt><dd>{efin.verification_source ?? "—"}</dd></div>
+              <div><dt>Renewal date</dt><dd>{efin.recorded_expiration ? <>{efin.recorded_expiration} <small className="monarch-muted">{efin.expiration_verified ? "verified" : "not verified"} · {daysUntil(efin.recorded_expiration, today)} days</small></> : "Not recorded"}</dd></div>
               <div><dt>Tax year</dt><dd>{efin.tax_year ?? "—"}</dd></div>
               <div><dt>Added</dt><dd>{when(efin.created_at)}</dd></div>
+              {efin.notes && <div style={{ gridColumn: "1 / -1" }}><dt>Notes</dt><dd>{efin.notes}</dd></div>}
             </dl>
             <p className="efin-note">Verification here means someone recorded checking it. Monarch does not read live IRS status and never marks an EFIN approved on its own.</p>
           </section>
+          {org && (
+            <section className="monarch-panel">
+              <div className="monarch-panel-head"><div><h2>EFINs for {org.legal_name}</h2><p>Every EFIN recorded for this ERO.</p></div></div>
+              <ul className="efin-eflist">
+                {s.efins.filter((e) => e.organization_id === org.id).map((e) => (
+                  <li key={e.id}>{e.id === id ? <b className="efin-mask">••{e.efin_last4}</b> : <Link href={`/efin/${e.id}`} className="efin-mask">••{e.efin_last4}</Link>}<Badge value={e.internal_status === "pending_verification" ? "pending" : e.internal_status} /><span className="monarch-muted">{e.recorded_expiration ? `renews ${e.recorded_expiration}` : "no renewal date"}{e.archived_at ? " · archived" : ""}</span></li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {org && !org.archived_at && (
+            <details className="efin-edit">
+              <summary>Add another EFIN</summary>
+              <div className="efin-edit-body"><AddEfinForm s={s} org={org} back={here} /></div>
+            </details>
+          )}
           {!efin.archived_at && (
-            <section className="monarch-panel monarch-pad">
-              <h2 style={{ marginTop: 0 }}>Update record</h2>
+            <details className="efin-edit">
+              <summary>Update this EFIN</summary>
+              <div className="efin-edit-body">
               <ActionForm action={updateEfinAction} className="monarch-form">
                 <input type="hidden" name="id" value={id} /><input type="hidden" name="back" value={here} />
                 <label>Correct the EFIN number <small className="monarch-muted">(leave empty to keep ••{efin.efin_last4})</small><input name="efin" inputMode="numeric" autoComplete="off" maxLength={8} placeholder="Only if it was typed wrong" /></label>
@@ -86,7 +104,8 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
                 <label className="monarch-check is-wide"><input type="checkbox" name="confirm" /> I confirm moving this EFIN to suspended or inactive (high-impact).</label>
                 <div className="is-wide"><button className="monarch-primary" type="submit">Save changes</button></div>
               </ActionForm>
-            </section>
+              </div>
+            </details>
           )}
           {org && <EroAdmin s={s} org={org} efin={efin} back={here} />}
         </>
@@ -243,12 +262,13 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
           </table></div>
         </section>
       )}
+      </div>
     </>
   );
 }
 
 const summarize = (c: Record<string, unknown>) =>
-  Object.entries(c).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => `${k.replace(/_/g, " ")}: ${typeof v === "object" ? Object.entries(v as Record<string, unknown>).map(([a, b]) => (b && typeof b === "object" ? `${a} ${(b as { from?: unknown }).from} → ${(b as { to?: unknown }).to}` : `${a}`)).join(", ") : String(v)}`).join(" · ");
+  Object.entries(c).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => `${words(k)}: ${typeof v === "object" ? Object.entries(v as Record<string, unknown>).map(([a, b]) => (b && typeof b === "object" ? `${a} ${(b as { from?: unknown }).from} → ${(b as { to?: unknown }).to}` : `${a}`)).join(", ") : String(v)}`).join(" · ");
 
 function TransitionForms({ a, back }: { a: { id: string; state: Parameters<typeof availableTransitions>[0] }; back: string }) {
   const ts = availableTransitions(a.state);

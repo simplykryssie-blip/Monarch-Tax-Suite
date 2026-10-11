@@ -1,3 +1,4 @@
+import { sentence, words } from "./text.ts";
 import { REMINDER_STAGES, type AssignmentRole, type AssignmentRow, type AssignmentState, type CredentialRow, type EfinRow, type EfinStatus, type RenewalTaskRow, type RoleRow } from "./types.ts";
 
 // Pure business rules for EFIN management. No database, no clock reads: callers pass "today" so every rule is testable.
@@ -91,7 +92,7 @@ export const availableTransitions = (from: AssignmentState) => TRANSITIONS[from]
 export function findTransition(from: AssignmentState, to: AssignmentState): Transition {
   const t = TRANSITIONS[from].find((x) => x.to === to);
   if (!t) {
-    throw new EfinRuleError(from === "revoked" ? "A revoked assignment cannot be reactivated. Create a new assignment request instead." : `An assignment cannot move from ${from.replace(/_/g, " ")} to ${to.replace(/_/g, " ")}.`);
+    throw new EfinRuleError(from === "revoked" ? "A revoked assignment cannot be reactivated. Create a new assignment request instead." : `An assignment cannot move from ${words(from)} to ${words(to)}.`);
   }
   return t;
 }
@@ -135,7 +136,7 @@ export function assignmentProblems(ctx: Pick<TransitionContext, "assignment" | "
   if (a.role !== "bureau_administrator" && !a.person_id) problems.push("Choose the person this assignment is for.");
   if (a.person_id && a.role !== "bureau_administrator") {
     const held = ctx.roles.some((r) => r.status === "active" && r.person_id === a.person_id && r.organization_id === a.organization_id && r.role === a.role);
-    if (!held) problems.push(`This person does not hold the ${a.role.replace(/_/g, " ")} role at this organization yet. Record it under People first.`);
+    if (!held) problems.push(`This person does not hold the ${words(a.role)} role at this organization yet. Record it under People first.`);
   }
   // A PTIN is recorded evidence that a preparer has one. It never authorizes e-file on its own.
   if (a.role === "tax_preparer" && a.person_id) {
@@ -210,7 +211,7 @@ export function dueReminderStage(dueOn: string, today: string): number | null {
   return reached.length ? reached[0] : null;
 }
 
-export const roleLabel = (r: AssignmentRole) => r.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+export const roleLabel = (r: AssignmentRole) => sentence(r);
 
 export const isEfinStatus = (v: string): v is EfinStatus => ["draft", "pending_verification", "active", "renewal_review", "inactive", "suspended"].includes(v);
 

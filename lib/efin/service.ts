@@ -7,6 +7,7 @@ import { serviceClient } from "../admin";
 import { assignmentProblems, EfinRuleError, forField, last4, tracksTeam, normalizeEfin, normalizeEin, normalizePtin, parseDay, planTransition, todayIso } from "./rules.ts";
 import type { AssignmentRole, AssignmentRow, AssignmentState, AuditRow, CredentialRow, EfinRow, FilingRow, LocationRow, OrgRow, PersonRow, RenewalTaskRow, RoleRow, Verification } from "./types.ts";
 import { ASSIGNMENT_ROLES, EFIN_STATUSES, VERIFICATION } from "./types.ts";
+import { words } from "./text.ts";
 
 // Server-side EFIN data access. Every function here runs with the service role, so callers (server actions and pages) must
 // call requireAdmin() first. Sensitive identifiers (EFIN, EIN, PTIN) are encrypted with AAD naming the row and field, a
@@ -222,12 +223,12 @@ export async function addMember(actor: Actor, form: FormData) {
 
 // ------------------------------------------------------------------------------------------------------ EFINs
 export async function createEfin(actor: Actor, form: FormData): Promise<string> {
-  const efin = normalizeEfin(String(form.get("efin") ?? ""));
+  const efin = forField("efin", () => normalizeEfin(String(form.get("efin") ?? "")));
   const s = secrets();
   const id = randomUUID();
   const organizationId = uuid(form.get("organization_id"), "organization");
   const external = oneOf(form.get("external_status") || "unverified", VERIFICATION, "Verification");
-  const expiration = day(form.get("recorded_expiration"), "Expiration date");
+  const expiration = forField("recorded_expiration", () => day(form.get("recorded_expiration"), "Expiration date"));
   const { error } = await db().from("efin_records").insert({
     id, efin_encrypted: s.encrypt(efin, `efin:${id}:efin`), efin_last4: last4(efin), efin_hash: s.hashIdentifier("efin", efin),
     organization_id: organizationId,
@@ -243,7 +244,7 @@ export async function createEfin(actor: Actor, form: FormData): Promise<string> 
     notes: text(form.get("notes"), 4000, "Notes"),
     created_by: actor.id, updated_by: actor.id,
   });
-  if (error) throw error.code === "23505" ? new EfinRuleError("That EFIN is already recorded. Open the existing record instead.") : new Error(error.message);
+  if (error) throw error.code === "23505" ? new EfinRuleError("That EFIN is already recorded. Open the existing record instead.", "efin") : new Error(error.message);
   await audit(actor, { type: "efin.created", targetType: "efin", targetId: id, organizationId, changes: { last4: last4(efin), external_status: external, recorded_expiration: expiration } });
   return id;
 }
@@ -515,7 +516,7 @@ export async function changeAssignment(actor: Actor, form: FormData): Promise<{ 
     changes: { efin_id: a.efin_id, role: a.role, person_id: a.person_id, previous_state: a.state, new_state: plan.to, self_approval: plan.selfApproval || undefined },
     reason: reason.trim() || null,
   });
-  return { efinId: a.efin_id, message: `Assignment ${plan.to.replace(/_/g, " ")}.` };
+  return { efinId: a.efin_id, message: `Assignment ${words(plan.to)}.` };
 }
 
 /** Surfaces what is blocking an assignment, for the UI to show before someone clicks. */

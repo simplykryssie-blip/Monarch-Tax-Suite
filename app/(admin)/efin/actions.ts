@@ -15,6 +15,19 @@ const withParam = (path: string, key: "notice" | "error", message: string) => {
   return `${base}${base.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(message)}${hash ? `#${hash}` : ""}`;
 };
 
+/**
+ * Tells "the database is behind the app" apart from ordinary failures, and names the file to run.
+ * (A check-constraint error also contains the word "relation", so matching on that alone gave a wrong "tables missing" message.)
+ */
+function setupMessage(e: unknown): string | null {
+  const code = (e as { code?: string } | null)?.code ?? "";
+  const msg = e instanceof Error ? e.message : String((e as { message?: string } | null)?.message ?? "");
+  if (code === "23514" || /violates check constraint/i.test(msg)) return "The database does not accept that value yet because it is behind the app. Run supabase/migrations/20261012090000_efin_management_update.sql on this database, then try again. Nothing was changed.";
+  if (code === "PGRST202" || code === "42883" || /could not find the function|function .* does not exist/i.test(msg)) return "The database is missing a function this feature needs. Run supabase/migrations/20261012090000_efin_management_update.sql on this database, then try again. Nothing was changed.";
+  if (code === "42P01" || code === "PGRST205" || /schema cache|relation .* does not exist/i.test(msg)) return "The EFIN Management database tables are not installed yet. Run supabase/migrations/20261011100000_efin_management.sql first.";
+  return null;
+}
+
 export type FormResult = { error: string; field?: string } | undefined;
 
 /** On success: redirect with a notice. On a problem: RETURN the message (and the field) so the form keeps everything the user typed. */
@@ -27,7 +40,7 @@ async function mutate(back: string, fn: (actor: Actor) => Promise<{ to?: string;
   } catch (e) {
     if (e instanceof EfinRuleError) return { error: e.message, field: e.field };
     console.error(`efin action failed: ${sanitizeError(e, 200)}`);
-    return { error: e instanceof Error && /relation|schema cache|does not exist/i.test(e.message) ? "The EFIN Management database tables are not installed yet. Apply the EFIN migration first." : "That did not work. Nothing was changed. Please try again." };
+    return { error: setupMessage(e) ?? "That did not work. Nothing was changed. Please try again." };
   }
   revalidatePath("/efin", "layout");
   redirect(target);

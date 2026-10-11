@@ -20,8 +20,9 @@ export function EroAdmin({ s, org, efin, back }: { s: Snapshot; org: OrgRow; efi
   const efinCount = s.efins.filter((e) => e.organization_id === org.id).length;
   return (
     <>
-      <section className="monarch-panel monarch-pad">
-        <h2 style={{ marginTop: 0 }}>Edit ERO</h2>
+      <details className="efin-edit">
+        <summary>Edit ERO</summary>
+        <div className="efin-edit-body">
         <ActionForm action={updateOrganizationAction} className="monarch-form">
           <input type="hidden" name="id" value={org.id} /><input type="hidden" name="back" value={back} />
           <label>Legal name<input name="legal_name" required maxLength={200} defaultValue={org.legal_name} /></label>
@@ -39,11 +40,13 @@ export function EroAdmin({ s, org, efin, back }: { s: Snapshot; org: OrgRow; efi
           <p className="efin-note is-wide" style={{ padding: 0 }}>Changing the relationship is recorded in the history. It never changes who can see anything.</p>
           <div className="is-wide"><button className="monarch-primary" type="submit">Save ERO</button></div>
         </ActionForm>
-      </section>
+      </div>
+      </details>
 
       {person && (
-        <section className="monarch-panel monarch-pad">
-          <h2 style={{ marginTop: 0 }}>ERO contact</h2>
+        <details className="efin-edit">
+          <summary>ERO contact</summary>
+          <div className="efin-edit-body">
           <ActionForm action={updatePersonAction} className="monarch-form">
             <input type="hidden" name="person_id" value={person.id} /><input type="hidden" name="back" value={back} />
             <label>Full name<input name="person_name" required maxLength={200} defaultValue={person.full_name} /></label>
@@ -51,12 +54,14 @@ export function EroAdmin({ s, org, efin, back }: { s: Snapshot; org: OrgRow; efi
             <label>Phone<input name="person_phone" type="tel" maxLength={40} defaultValue={person.phone ?? ""} /></label>
             <div className="is-wide"><button className="monarch-primary" type="submit">Save contact</button></div>
           </ActionForm>
-        </section>
+          </div>
+        </details>
       )}
 
-      <section className="monarch-panel">
-        <div className="monarch-panel-head"><div><h2>Edit locations</h2><p>Rename, move the primary marker, or remove a location (it stays in the history).</p></div></div>
-        <div style={{ padding: "0 24px 22px", display: "grid", gap: 14 }}>
+      <details className="efin-edit">
+        <summary>Locations</summary>
+        <div className="efin-edit-body">
+          <p className="monarch-muted" style={{ margin: 0 }}>Rename, move the primary marker, or remove a location (it stays in the history).</p>
           {locations.length === 0 && <p className="monarch-muted">No locations yet.</p>}
           {locations.map((l) => (
             <ActionForm key={l.id} action={updateLocationAction} className="monarch-form">
@@ -72,10 +77,11 @@ export function EroAdmin({ s, org, efin, back }: { s: Snapshot; org: OrgRow; efi
             </ActionForm>
           ))}
         </div>
-      </section>
+      </details>
 
-      <section className="monarch-panel monarch-pad">
-        <h2 style={{ marginTop: 0 }}>Archive or delete</h2>
+      <details className="efin-edit">
+        <summary>Archive or delete</summary>
+        <div className="efin-edit-body">
         <p className="monarch-muted">Archiving hides a record and stops reminders; it can be restored and keeps its history. Deleting is permanent and is allowed only for records that never went live in an assignment. The history log of the deletion is kept.</p>
         {efin && (
           <div style={{ display: "grid", gap: 14, marginBottom: 18 }}>
@@ -115,7 +121,8 @@ export function EroAdmin({ s, org, efin, back }: { s: Snapshot; org: OrgRow; efi
             <button className="monarch-secondary is-danger efin-small" type="submit">Delete ERO permanently</button>
           </ActionForm>
         </div>
-      </section>
+        </div>
+      </details>
     </>
   );
 }

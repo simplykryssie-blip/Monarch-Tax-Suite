@@ -1,4 +1,5 @@
 import { daysUntil, renewalTracking } from "./rules.ts";
+import { words } from "./text.ts";
 import type { AssignmentRow, CredentialRow, EfinRow, FilingRow, OrgRow, PersonRow } from "./types.ts";
 
 // Compliance exceptions: things a reviewer should look at. Each is derived from recorded data only; nothing here
@@ -49,7 +50,7 @@ export function complianceExceptions(d: Input): ComplianceException[] {
     else if (c.verification_status === "unverified") out.push({ kind: "credential_unverified", severity: "low", subjectType: "credential", subjectId: c.id, organizationId: null, title: `${c.kind.toUpperCase()} for ${who}`, detail: "Recorded but not verified.", href: "/efin" });
   }
   for (const a of d.assignments) {
-    if (a.state === "pending_review" && daysUntil(a.requested_at.slice(0, 10), d.today) < -7) out.push({ kind: "stale_review", severity: "medium", subjectType: "assignment", subjectId: a.id, organizationId: a.organization_id, title: `${a.role.replace(/_/g, " ")} assignment`, detail: `Requested ${a.requested_at.slice(0, 10)} and still waiting for review.`, href: `/efin/${a.efin_id}?tab=assignments` });
+    if (a.state === "pending_review" && daysUntil(a.requested_at.slice(0, 10), d.today) < -7) out.push({ kind: "stale_review", severity: "medium", subjectType: "assignment", subjectId: a.id, organizationId: a.organization_id, title: `${words(a.role)} assignment`, detail: `Requested ${a.requested_at.slice(0, 10)} and still waiting for review.`, href: `/efin/${a.efin_id}?tab=assignments` });
   }
   const rank = { high: 0, medium: 1, low: 2 } as const;
   return out.sort((a, b) => rank[a.severity] - rank[b.severity]);

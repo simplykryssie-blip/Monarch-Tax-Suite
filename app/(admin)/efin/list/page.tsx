@@ -48,10 +48,10 @@ export default async function EfinRegistry({ searchParams }: { searchParams: Pro
           );
           const archivedCount = s.efins.filter((e) => e.archived_at).length + s.orgs.filter((o) => o.archived_at).length;
           return (
-            <section className="monarch-panel">
+            <div className="efin-flow"><section className="monarch-panel">
               <div className="monarch-panel-head">
                 <div><h2>{sp.review ? "Assignments waiting for review" : showArchived ? "Archived" : "All EROs"}</h2><p>EFINs are shown masked. Open one to reveal the full number (the reveal is logged).</p></div>
-                <div className="efin-actions"><Link className="monarch-secondary" href="/efin/add">Add another EFIN</Link><Link className="monarch-primary" href="/efin/new"><Icon name="plus" size={16} /> Add an ERO</Link></div>
+                <Link className="monarch-primary" href="/efin/new"><Icon name="plus" size={16} /> Add an ERO</Link>
               </div>
               <form className="efin-filter" method="get" action="/efin/list">
                 <input name="q" defaultValue={sp.q ?? ""} placeholder="Search name, business or last 4" aria-label="Search EFINs" />
@@ -91,7 +91,7 @@ export default async function EfinRegistry({ searchParams }: { searchParams: Pro
                 </table>
               </div>
               {shown.length > 0 && <BulkBar />}
-            </section>
+            </section></div>
           );
         })()
       )}

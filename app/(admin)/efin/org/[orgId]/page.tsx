@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
-import { Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
+import { Flash, load, SetupRequired } from "@/components/admin/ui";
 import { loadSnapshot } from "@/lib/efin/service";
 import { EroAdmin } from "../../ero-admin";
+import { ContactHeader } from "../../contact-header";
+import { AddEfinForm } from "../../add-efin-form";
 
 /** An ERO that has no EFIN yet (or whose EFINs are all elsewhere): edit it, delete it, or add its first EFIN. */
 export default async function EroPage({ params, searchParams }: { params: Promise<{ orgId: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -17,10 +19,18 @@ export default async function EroPage({ params, searchParams }: { params: Promis
   const first = result.data.efins.find((e) => e.organization_id === orgId && !e.archived_at);
   return (
     <>
-      <PageTitle title={org.legal_name} back={{ href: "/efin/list", label: "EROs & EFINs" }}>{org.archived_at ? "Archived. " : ""}{first ? "" : "No EFIN recorded yet. "}{first && <Link href={`/efin/${first.id}`}>Open its EFIN</Link>}</PageTitle>
+      <Link className="monarch-back" href="/efin/list">← EROs &amp; EFINs</Link>
+      <ContactHeader s={result.data} org={org} />
       <Flash {...sp} />
-      {!org.archived_at && <div className="monarch-notice"><b>NEXT</b> <Link href="/efin/add">Add an EFIN</Link> for this ERO.</div>}
-      <EroAdmin s={result.data} org={org} back={`/efin/org/${orgId}`} />
+      <div className="efin-flow">
+        {!org.archived_at && (
+          <details className="efin-edit" open={!first}>
+            <summary>Add an EFIN</summary>
+            <div className="efin-edit-body"><AddEfinForm s={result.data} org={org} back={`/efin/org/${orgId}`} /></div>
+          </details>
+        )}
+        <EroAdmin s={result.data} org={org} back={`/efin/org/${orgId}`} />
+      </div>
     </>
   );
 }

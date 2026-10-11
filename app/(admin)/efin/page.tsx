@@ -109,7 +109,7 @@ export default async function EfinDashboard({ searchParams }: { searchParams: Pr
                     <div className="monarch-panel-head"><div><h2>Quick actions</h2></div></div>
                     <div className="efin-qa">
                       <Link href="/efin/new"><Icon name="plus" size={20} /> Add an ERO</Link>
-                      <Link href="/efin/add"><Icon name="licenses" size={20} /> Add another EFIN</Link>
+                      <Link href="/efin/list"><Icon name="licenses" size={20} /> All EROs &amp; EFINs</Link>
                       <Link href="/efin/list?review=1"><Icon name="check" size={20} /> {review} to review</Link>
                       <Link href="/efin/renewals#exceptions"><Icon name="support" size={20} /> {exceptions.length} exceptions</Link>
                     </div>

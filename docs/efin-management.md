@@ -14,6 +14,12 @@ Service-bureau CRM module under **My Office → EFIN Management** (`/efin`). The
 ## Dashboard and multiple locations
 `/efin` is the dashboard. Every figure is derived from recorded, verified data (`lib/efin/metrics.ts`, tested). There are deliberately no return counts, filing totals or growth percentages, because Monarch has no verified source for them. An ERO can have any number of locations: add up to five extra on the Add-an-ERO form, or add more later from the ERO's Office & Team tab; each EFIN has a "filing office" you can change, and assignments can be pinned to a location.
 
+## Updating a database that ran an earlier version
+If a database already ran an earlier `20261011100000_efin_management.sql` (for example a test or preview project), run `supabase/migrations/20261012090000_efin_management_update.sql` on it. It is safe to run repeatedly. It adds the `client` relationship value and replaces/creates the save and delete functions. The app now says exactly which file to run when the database is behind (a missing value or function), instead of the misleading "tables not installed" message.
+
+## Layout
+ERO pages read like a contact card: a header with the business, contact, address, locations and the EFIN at a glance, then flowing sections separated by hairlines. Edit tools sit in collapsible sections ("Add another EFIN", "Update this EFIN", "Edit ERO", "Locations", "Archive or delete") instead of stacked boxes. "Add another EFIN" lives on the ERO's own page, not on the main list. ERO, EFIN and PTIN are always capitalized in display text (`lib/efin/text.ts`).
+
 ## Editing, deleting, bulk actions, and who gets a team
 - **Relationship decides what is tracked.** `internal` = your own tax office and `partner` = businesses whose preparers you may manage: both keep a team, PTINs and ERO assignments. `client` = a business that only bought software or services from you: no team, PTINs or assignments are kept, the Team and Assignments tabs are hidden, the server refuses to add them, and a hidden PTIN box is ignored. A relationship change needs a reason and is audited; it never changes who can see anything.
 - **Forms keep what you typed.** A rejected save (for example a mistyped EIN) shows the message, marks the field, and leaves everything else untouched. This holds for every EFIN form.

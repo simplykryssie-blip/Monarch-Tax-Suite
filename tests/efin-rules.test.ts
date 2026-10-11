@@ -189,3 +189,17 @@ test("clients are never flagged for a missing ERO assignment", () => {
   assert.deepEqual(run([efin], { orgs: [org("client")] }).filter((x) => x.kind === "no_ero"), []);
   assert.equal(run([efin], { orgs: [org("partner")] }).filter((x) => x.kind === "no_ero").length, 1);
 });
+
+import { acronyms, sentence, words } from "../lib/efin/text.ts";
+import { roleLabel } from "../lib/efin/rules.ts";
+
+test("ERO, EFIN and PTIN are always capitalized in display text", () => {
+  assert.equal(acronyms("add an ero and an efin; ptins and efins and eros"), "add an ERO and an EFIN; PTINs and EFINs and EROs");
+  assert.equal(sentence("efin_created"), "EFIN created");
+  assert.equal(words("ero"), "ERO");
+  assert.equal(roleLabel("ero"), "ERO");
+  assert.equal(roleLabel("responsible_official"), "Responsible official");
+  assert.equal(acronyms("hero zero"), "hero zero"); // whole words only
+  const found = run([baseEfin({ ero_person_id: null })], { assignments: [{ id: "a", efin_id: "e1", organization_id: "o1", person_id: null, role: "ero", state: "pending_review", requested_at: "2026-01-01T00:00:00Z" } as never] });
+  assert.ok(found.some((x) => /^ERO assignment$/.test(x.title)));
+});

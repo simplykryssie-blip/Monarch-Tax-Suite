@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FlashToast } from "./flash-toast";
 import { Icon } from "./icons";
+import { sentence } from "@/lib/efin/text.ts";
 import { SetupRequiredError } from "@/lib/commerce/supabase-repo.ts";
 
 export function money(cents: number | null, currency = "usd") {
@@ -13,7 +14,7 @@ export function when(iso: string | null) {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" }).format(new Date(iso));
 }
 
-export const label = (value: string | null | undefined) => (value ? value.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) : "—");
+export const label = (value: string | null | undefined) => (value ? sentence(value) : "—");
 
 export function Badge({ value }: { value: string }) {
   return <span className={"monarch-badge " + value.replace(/_/g, "-")}>{label(value)}</span>;

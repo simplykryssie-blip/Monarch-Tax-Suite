@@ -19,6 +19,7 @@ export default async function AddEro({ searchParams }: { searchParams: Promise<{
     <>
       <PageTitle title="Add an ERO" back={{ href: "/efin/list", label: "EROs & EFINs" }}>Everything for a new ERO in one place. It is saved together or not at all. Sensitive numbers are encrypted when saved, and only the last four digits stay readable.</PageTitle>
       <Flash {...await searchParams} />
+      <div className="efin-flow">
       <ActionForm action={onboardEroAction}>
         <section className="monarch-panel monarch-pad">
           <h2 style={{ marginTop: 0 }}>1. Business</h2>
@@ -85,6 +86,7 @@ export default async function AddEro({ searchParams }: { searchParams: Promise<{
           <button className="monarch-primary" type="submit">Save ERO</button>
         </section>
       </ActionForm>
+      </div>
     </>
   );
 }
