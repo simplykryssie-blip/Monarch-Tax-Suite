@@ -52,7 +52,7 @@ While a product is published, edits still only need to keep it sellable: price, 
 - Terms section 6 (Transfers) now matches. It previously allowed transfers with written approval.
 - `LEGAL_VERSION` is `2026-10-11`, so orders from now on record this text.
 - The page keeps its "Draft for review" banner and counsel notes until counsel signs off.
-- **Still for the owner:** each product's own Terms text (edited in the admin) still says "All sales are final except where a refund is required…" and allows transfers with approval. Update both products before publishing.
+- Both products' own Terms text in production was updated on 2026-10-11, at the owner's request, to the same policy: "All sales are final. Monarch Tax Suite does not offer refunds, exchanges, or transfers. License keys are issued to the purchaser only and may not be transferred to another individual or business." Their other paragraphs were left unchanged.
 
 ## Test evidence (`npm test`, 306 passing; new cases in `tests/storefront-checkout.test.ts`)
 
