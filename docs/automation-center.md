@@ -37,7 +37,7 @@ The customer's email contains `/setup?t=<token>`. The token is random (256-bit),
 | `RESEND_API_KEY` | Sending email | Existing variable. (`RESEND_SECRET_KEY` is accepted as a fallback.) Server only. |
 | `MONARCH_EMAIL_FROM` | Sender | **Required.** e.g. `Monarch Tax Suite <notifications@your-verified-domain>`. No default is assumed. |
 | `MONARCH_EMAIL_REPLY_TO` | Replies | Optional. |
-| `MONARCH_SUPPORT_EMAIL` | Footer/support address | Optional, defaults to info@monarchtaxsuite.com. |
+| `MONARCH_SUPPORT_EMAIL` | Footer/support address | Optional, defaults to support@monarchtaxsuite.com. |
 | `AUTOMATION_ADMIN_EMAIL` | "Send to support" steps | Optional, defaults to the support address. |
 | `AUTOMATION_TEST_RECIPIENTS` | Preview/dev | Comma-separated. **Outside Production, email is sent only to these addresses.** |
 | `MONARCH_ENCRYPTION_KEY` | Setup-link sessions | Already used by the CRM features. Do not rotate casually. |

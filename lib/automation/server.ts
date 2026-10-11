@@ -15,7 +15,7 @@ const env = () => process.env;
 
 export function automationConfig(): AutomationConfig {
   const e = env();
-  const support = e.MONARCH_SUPPORT_EMAIL?.trim() || "info@monarchtaxsuite.com";
+  const support = e.MONARCH_SUPPORT_EMAIL?.trim() || "support@monarchtaxsuite.com";
   const vercel = e.VERCEL_ENV;
   return {
     origin: () => appOrigin(),
