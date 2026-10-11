@@ -15,9 +15,20 @@ async function assertBillingModel(repo: CommerceRepo, productId: string | null, 
   }
 }
 
-/** Customers only ever see published products. */
-export function isStorefrontVisible(product: Pick<Product, "status">): boolean {
+/**
+ * Only published products can be bought. Checked server-side when a checkout starts and again when the payment
+ * arrives, so a draft, unpublished or archived product is never sold through an old link or a forged request.
+ */
+export function isPurchasable(product: Pick<Product, "status">): boolean {
   return product.status === "published";
+}
+
+/**
+ * Customers only ever see published products. Annual update products are sold only through the license update
+ * checkout (/update), never as a storefront purchase, so they are not listed.
+ */
+export function isStorefrontVisible(product: Pick<Product, "status" | "category">): boolean {
+  return isPurchasable(product) && product.category !== "software_update";
 }
 
 export async function createProduct(repo: CommerceRepo, input: NewProduct): Promise<Product> {

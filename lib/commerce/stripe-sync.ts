@@ -1,3 +1,4 @@
+import { isPurchasable } from "./catalog.ts";
 import { primaryImage } from "./images.ts";
 import { ValidationError } from "./validation.ts";
 import type { CommerceRepo, ImageStore, Product } from "./types.ts";
@@ -12,6 +13,7 @@ import type { CommerceRepo, ImageStore, Product } from "./types.ts";
 
 export type StripePort = {
   updateProduct(id: string, params: { name: string; description?: string; images?: string[]; active: boolean }): Promise<{ id: string }>;
+  setProductActive(id: string, active: boolean): Promise<{ id: string }>;
   createProduct(params: { name: string; description?: string; images?: string[]; metadata: Record<string, string> }): Promise<{ id: string }>;
   createPrice(params: {
     product: string;
@@ -50,10 +52,27 @@ export async function syncStripeProductInfo(repo: CommerceRepo, store: ImageStor
   if (!product) throw new ValidationError("Product not found.");
   if (!product.stripe_product_id) throw new ValidationError("This product is not linked to a Stripe product yet.");
   try {
-    await stripe.updateProduct(product.stripe_product_id, { ...(await displayInfo(repo, store, product)), active: product.status !== "archived" });
-    return record(repo, product.id, { ok: true, message: `Stripe product ${product.stripe_product_id} updated (name, description, image). Prices unchanged.` });
+    await stripe.updateProduct(product.stripe_product_id, { ...(await displayInfo(repo, store, product)), active: isPurchasable(product) });
+    return record(repo, product.id, { ok: true, message: `Stripe product ${product.stripe_product_id} updated (name, description, image, ${isPurchasable(product) ? "active" : "inactive"}). Prices unchanged.` });
   } catch (e) {
     return record(repo, product.id, { ok: false, message: errorText(e) });
+  }
+}
+
+/**
+ * Keeps the linked Stripe product's active flag in step with publishing: only a published product is active in
+ * Stripe, so payment links and checkouts for drafts, unpublished and archived products stop taking payments.
+ * Called after every status change. A failure is recorded on the product and never undoes the status change.
+ */
+export async function syncStripeAvailability(repo: CommerceRepo, stripe: StripePort, productId: string): Promise<SyncResult | null> {
+  const product = await repo.getProduct(productId);
+  if (!product?.stripe_product_id) return null;
+  const active = isPurchasable(product);
+  try {
+    await stripe.setProductActive(product.stripe_product_id, active);
+    return record(repo, product.id, { ok: true, message: `Stripe product ${product.stripe_product_id} is now ${active ? "active" : "inactive (no new payments)"}.` });
+  } catch (e) {
+    return record(repo, product.id, { ok: false, message: `Could not set the Stripe product ${active ? "active" : "inactive"}: ${errorText(e)}` });
   }
 }
 

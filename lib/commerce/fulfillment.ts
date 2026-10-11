@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { generateEmbedId } from "./embed.ts";
 import { generateLicenseKey, hashLicenseKey, licenseKeyPrefix } from "./license-keys.ts";
 import { PLATFORM_GUIDES } from "./platforms.ts";
+import { isPurchasable } from "./catalog.ts";
 import { applyPaidUpdate, latestAvailable, reverseUpdate } from "./versions.ts";
 import { normalizeDomain, normalizeEmail, normalizeWebsiteUrl, ValidationError } from "./validation.ts";
 import {
@@ -177,6 +178,12 @@ async function restrictLicenseForOrder(repo: CommerceRepo, order: Order, status:
   if (installation) await repo.addInstallationEvent({ installation_id: installation.id, from_status: installation.status, to_status: installation.status, note: `License ${status}: ${reason}`, actor_id: null });
 }
 
+/** Orders flagged "Review:" were paid but are never fulfilled automatically; an administrator decides. */
+export const needsReview = (o: Pick<Order, "notes">) => (o.notes ?? "").startsWith("Review:");
+
+const notSellableNote = (product: Pick<Product, "status">) =>
+  `Review: the product was ${product.status} (not published) when this payment arrived, so nothing was delivered automatically. Refund the customer or fulfil the order manually.`;
+
 async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSession, paid: boolean): Promise<EventOutcome> {
   if (session.metadata?.purpose === "annual_update") return handleUpdateCheckout(deps, session, paid);
   const { repo } = deps;
@@ -196,6 +203,9 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
 
   const paymentIntentId = idOf(session.payment_intent);
   if (!paymentIntentId) return { status: "ignored", detail: "Checkout has no payment intent (not a one-time payment)." };
+  // Checked again at payment time: a product unpublished after the buyer opened checkout, or one bought through an
+  // old payment link, is never fulfilled automatically. The payment is still recorded so it can be reviewed.
+  const notSellable = !isPurchasable(product);
   const rawEmail = session.customer_details?.email;
   if (!rawEmail) throw new Error(`Checkout ${session.id} has no customer email.`);
 
@@ -218,7 +228,7 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
     verification_method: "stripe_webhook",
     verified_by: null,
     verified_at: at,
-    notes: null,
+    notes: notSellable ? notSellableNote(product) : null,
     paid_at: paid ? at : null,
     refunded_at: null,
   });
@@ -226,7 +236,7 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
 
   let current = order;
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
-  if (current.payment_status === "paid") {
+  if (current.payment_status === "paid" && !needsReview(current)) {
     const { license } = await ensureFulfillment(repo, current, product, null, detailsFromMetadata(session.metadata));
     // Only reached for a signature-verified, paid order. The event key is per order, so Stripe retries or a second
     // event for the same payment cannot start the onboarding workflow twice.
@@ -262,9 +272,12 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
   // A license revoked between checkout and payment is never upgraded; the payment is flagged for a refund.
   const revoked = license.status === "revoked";
   // The paid line item must be the catalog's Annual Update product.
-  const updateProductIds = (await repo.listProducts()).filter((p) => p.category === "software_update" && p.stripe_product_id).map((p) => p.stripe_product_id!);
+  const updateProducts = (await repo.listProducts()).filter((p) => p.category === "software_update" && p.stripe_product_id);
   const paidProductIds = await deps.listCheckoutProductIds(session.id);
-  const wrongProduct = !paidProductIds.some((id) => updateProductIds.includes(id));
+  const paidUpdateProducts = updateProducts.filter((p) => paidProductIds.includes(p.stripe_product_id!));
+  const wrongProduct = paidUpdateProducts.length === 0;
+  // The update product must still be published when the payment arrives, not only when checkout started.
+  const notSellable = !wrongProduct && !paidUpdateProducts.some(isPurchasable);
   // A second, separate payment for an update this license already received is flagged for a refund.
   const priorPaid = (await repo.listOrders()).find(
     (o) => o.order_type === "annual_update" && o.license_id === license.id && o.tax_year === taxYear && o.provider_payment_intent_id !== paymentIntentId && o.payment_status === "paid",
@@ -294,6 +307,8 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
         ? `Review: duplicate payment; this license already paid for the ${taxYear} update (order ${priorPaid.id}). Refund the customer.`
       : wrongProduct
         ? "Review: the paid item is not the Annual Tax-Year Update product; update not applied automatically."
+      : notSellable
+        ? notSellableNote(paidUpdateProducts[0])
       : priceMismatch
         ? `Review: paid ${amount} ${session.currency ?? ""} does not match the ${taxYear} update price; update not applied automatically.`
         : null,
@@ -303,7 +318,7 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
   if (order.license_id !== license.id) throw new Error(`Payment intent ${paymentIntentId} is already recorded for another order.`);
   let current = order;
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
-  if (current.payment_status === "paid" && !current.notes?.startsWith("Review:")) await applyPaidUpdate(repo, current, null);
+  if (current.payment_status === "paid" && !needsReview(current)) await applyPaidUpdate(repo, current, null);
   return { status: "processed", detail: `Update order ${current.id} is ${current.payment_status}.` };
 }
 
@@ -351,10 +366,13 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
       if (order.payment_status === "pending") {
         const paidOrder = await setOrderPayment(repo, order, "paid", at);
         if (paidOrder.order_type === "annual_update") {
-          if (!paidOrder.notes?.startsWith("Review:")) await applyPaidUpdate(repo, paidOrder, null);
+          if (!needsReview(paidOrder)) await applyPaidUpdate(repo, paidOrder, null);
         } else {
           const product = await repo.getProduct(paidOrder.product_id);
-          if (product) await ensureFulfillment(repo, paidOrder, product, null);
+          if (product && !needsReview(paidOrder)) {
+            if (isPurchasable(product)) await ensureFulfillment(repo, paidOrder, product, null);
+            else await repo.updateOrder(paidOrder.id, { notes: notSellableNote(product) });
+          }
         }
       }
       return { status: "processed", detail: `Order ${order.id} paid.` };

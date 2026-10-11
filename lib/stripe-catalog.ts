@@ -1,8 +1,9 @@
 import "server-only";
 import type Stripe from "stripe";
-import { stripeClient } from "./admin";
+import { commerceRepo, stripeClient } from "./admin";
 import { modeFromKey, StripeLookupError, type StripeCatalogPort } from "./commerce/stripe-verify.ts";
 import type { StripePriceFacts } from "./commerce/types.ts";
+import { syncStripeAvailability, type StripePort } from "./commerce/stripe-sync.ts";
 
 // Server-only adapter from the Stripe SDK to StripeCatalogPort. The secret
 // key stays in process.env on the server; only its mode (live/test) is used
@@ -83,4 +84,30 @@ export function stripeCatalogPort(): StripeCatalogPort | null {
       }
     },
   };
+}
+
+/** Stripe SDK adapter for the explicit product sync operations. */
+export function stripeSyncPort(stripe: Stripe): StripePort {
+  return {
+    updateProduct: (id, params) => stripe.products.update(id, params),
+    setProductActive: (id, active) => stripe.products.update(id, { active }),
+    // Idempotency keys stop a double-submit from creating two Stripe objects.
+    createProduct: (params) => stripe.products.create(params, { idempotencyKey: `monarch-product-${params.metadata.monarch_product_id}` }),
+    createPrice: (params) =>
+      stripe.prices.create(params, {
+        idempotencyKey: `monarch-price-${params.metadata.monarch_product_id}-${params.unit_amount}-${params.currency}-${params.recurring?.interval ?? "once"}`,
+      }),
+  };
+}
+
+/**
+ * After a status change, sets the linked Stripe product active only when it is published. Returns a sentence to
+ * append to the administrator's notice; the status change itself always stands.
+ */
+export async function stripeAvailabilityNote(productId: string): Promise<string> {
+  const stripe = stripeClient();
+  if (!stripe) return "";
+  const result = await syncStripeAvailability(commerceRepo(), stripeSyncPort(stripe), productId);
+  if (!result) return "";
+  return result.ok ? ` ${result.message}` : ` Warning: ${result.message} Payments may still be accepted in Stripe until this is fixed; use "Update Stripe product info" to try again.`;
 }
