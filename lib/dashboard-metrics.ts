@@ -81,3 +81,26 @@ export function niceTicks(max: number, target = 4, integer = false): number[] {
   for (let v = 0; v <= max + step * 0.999; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
   return ticks;
 }
+
+export type Change = { kind: "up" | "down" | "flat" | "new" | "none"; pct: number };
+
+/** This period against the one before it. "new" means there was nothing before; "none" means nothing in either. */
+export function change(current: number, previous: number): Change {
+  if (current === 0 && previous === 0) return { kind: "none", pct: 0 };
+  if (previous === 0) return { kind: "new", pct: 0 };
+  const pct = Math.round(((current - previous) / previous) * 100);
+  return { kind: pct > 0 ? "up" : pct < 0 ? "down" : "flat", pct: Math.abs(pct) };
+}
+
+/** Month-over-month change of a per-month series (last point against the one before it). */
+export function monthOverMonth(series: SeriesPoint[]): Change {
+  const n = series.length;
+  return change(series[n - 1]?.value ?? 0, series[n - 2]?.value ?? 0);
+}
+
+/** Records added this month against last month, from a cumulative series. */
+export function growthOverMonth(cumulative: SeriesPoint[]): Change {
+  const n = cumulative.length;
+  const v = (i: number) => cumulative[i]?.value ?? 0;
+  return change(v(n - 1) - v(n - 2), v(n - 2) - v(n - 3));
+}

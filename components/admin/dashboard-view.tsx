@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { computeMetrics } from "@/lib/commerce/fulfillment.ts";
 import { ago, buildActivity, type ActivityItem } from "@/lib/activity.ts";
-import { cumulativeByMonth, countBy, ordersByMonth, revenueByMonth } from "@/lib/dashboard-metrics.ts";
+import { cumulativeByMonth, countBy, monthOverMonth, ordersByMonth, revenueByMonth, type Change } from "@/lib/dashboard-metrics.ts";
 import type { Customer, Installation, License, Order, Product } from "@/lib/commerce/types.ts";
 import { AreaChart, BarChart, BarRows, Sparkline } from "./charts";
 import { Icon, type IconName } from "./icons";
@@ -12,12 +12,14 @@ export type Extras = { domains: number; crm: number; completed: number; runs: { 
 
 const FEED_ICON: Record<ActivityItem["kind"], IconName> = { customer: "customers", order: "orders", installation: "installs", email: "automation", alert: "support" };
 
-export function DashboardView({ data, x }: { data: Data; x: Extras }) {
+export function DashboardView({ data, x, months = 12 }: { data: Data; x: Extras; months?: number }) {
   const { now } = data;
   const m = computeMetrics(data);
   const revenue = Object.entries(m.revenueByCurrency);
-  const revSeries = revenueByMonth(data.orders, now);
-  const orderSeries = ordersByMonth(data.orders, now);
+  const revYear = revenueByMonth(data.orders, now);
+  const ordYear = ordersByMonth(data.orders, now);
+  const revSeries = revYear.slice(-months);
+  const orderSeries = ordYear.slice(-months);
   const customerSeries = cumulativeByMonth(data.customers, now);
   const licenseSeries = cumulativeByMonth(data.licenses, now);
   const customersById = new Map(data.customers.map((c) => [c.id, c]));
@@ -41,10 +43,10 @@ export function DashboardView({ data, x }: { data: Data; x: Extras }) {
   return (
     <>
       <div className="mt-kpis">
-        <Kpi href="/orders" icon="orders" title="Net revenue" value={revenue.length ? revenue.map(([c, v]) => money(v, c)).join(" · ") : money(0)} sub={`${money(netNow)} this month`} series={revSeries.map((p) => p.value)} sparkLabel="Revenue, last 12 months" />
-        <Kpi href="/orders" icon="products" title="Paid orders" value={String(m.paidOrders)} sub="Verified sales, excluding internal licenses" series={orderSeries.map((p) => p.value)} sparkLabel="Orders, last 12 months" />
-        <Kpi href="/licenses" icon="licenses" title="Active licenses" value={String(m.activeLicenses)} suffix={`of ${total}`} sub={m.pendingLicenses ? `${m.pendingLicenses} waiting for a key` : "All keys issued"} series={licenseSeries.map((p) => p.value)} sparkLabel="Licenses, growth over 12 months" />
-        <Kpi href="/customers" icon="customers" title="Customers" value={String(m.customers)} sub={`${m.openInstallations} open installation${m.openInstallations === 1 ? "" : "s"}`} series={customerSeries.map((p) => p.value)} sparkLabel="Customers, growth over 12 months" />
+        <Kpi href="/orders" icon="orders" title="Net revenue" value={revenue.length ? revenue.map(([c, v]) => money(v, c)).join(" · ") : money(0)} sub={`${money(netNow)} this month`} series={revYear.map((p) => p.value)} delta={pctChip(monthOverMonth(revYear))} sparkLabel="Revenue, last 12 months" />
+        <Kpi href="/orders" icon="products" title="Paid orders" value={String(m.paidOrders)} sub="Verified sales, excluding internal licenses" series={ordYear.map((p) => p.value)} delta={pctChip(monthOverMonth(ordYear))} sparkLabel="Orders, last 12 months" />
+        <Kpi href="/licenses" icon="licenses" title="Active licenses" value={String(m.activeLicenses)} suffix={`of ${total}`} sub={m.pendingLicenses ? `${m.pendingLicenses} waiting for a key` : "All keys issued"} series={licenseSeries.map((p) => p.value)} delta={addedChip(licenseSeries)} sparkLabel="Licenses, growth over 12 months" />
+        <Kpi href="/customers" icon="customers" title="Customers" value={String(m.customers)} sub={`${m.openInstallations} open installation${m.openInstallations === 1 ? "" : "s"}`} series={customerSeries.map((p) => p.value)} delta={addedChip(customerSeries)} sparkLabel="Customers, growth over 12 months" />
       </div>
 
       <div className="mt-quick">
@@ -57,8 +59,11 @@ export function DashboardView({ data, x }: { data: Data; x: Extras }) {
       <div className="mt-grid-2">
         <section className="mt-card">
           <div className="mt-card-head">
-            <div><h2>Revenue</h2><p>Net of refunds, last 12 months</p></div>
-            <Link className="mt-card-link" href="/orders">View orders →</Link>
+            <div><h2>Revenue</h2><p>Net of refunds, last {months} months</p></div>
+            <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+              <div className="mt-seg" role="group" aria-label="Range">{[3, 6, 12].map((n) => <Link key={n} href={n === 12 ? "/" : `/?range=${n}`} className={n === months ? "is-on" : ""} scroll={false}>{n}M</Link>)}</div>
+              <Link className="mt-card-link" href="/orders">View orders →</Link>
+            </div>
           </div>
           <div className="mt-card-body"><AreaChart points={revSeries} format={dollars} label="Net revenue per month" /></div>
         </section>
@@ -84,7 +89,7 @@ export function DashboardView({ data, x }: { data: Data; x: Extras }) {
 
       <div className="mt-grid-3">
         <section className="mt-card">
-          <div className="mt-card-head"><div><h2>Orders</h2><p>Paid sales per month</p></div></div>
+          <div className="mt-card-head"><div><h2>Orders</h2><p>Paid sales, last {months} months</p></div></div>
           <div className="mt-card-body"><BarChart points={orderSeries} format={(v) => String(v)} label="Paid orders per month" /></div>
         </section>
         <section className="mt-card">
@@ -197,12 +202,33 @@ export function DashboardView({ data, x }: { data: Data; x: Extras }) {
   );
 }
 
-function Kpi({ href, icon, title, value, suffix, sub, series, sparkLabel }: { href: string; icon: IconName; title: string; value: string; suffix?: string; sub: string; series: number[]; sparkLabel: string }) {
+type Chip = { text: string; tone: "up" | "down" | "flat"; title: string } | null;
+
+/** Revenue and orders: percentage against last month. */
+function pctChip(c: Change): Chip {
+  if (c.kind === "none") return null;
+  if (c.kind === "new") return { text: "New", tone: "up", title: "Nothing in the previous month" };
+  if (c.kind === "flat") return { text: "No change", tone: "flat", title: "Same as last month" };
+  return { text: `${c.kind === "up" ? "▲" : "▼"} ${c.pct}%`, tone: c.kind, title: "Compared with last month" };
+}
+
+/** Customers and licenses: how many were added this month. */
+function addedChip(cumulative: { value: number }[]): Chip {
+  const n = (cumulative.at(-1)?.value ?? 0) - (cumulative.at(-2)?.value ?? 0);
+  return n > 0 ? { text: `+${n} this month`, tone: "up", title: "Added this month" } : null;
+}
+
+function DeltaChip({ c }: { c: Chip }) {
+  if (!c) return null;
+  return <span className={"mt-delta" + (c.tone === "up" ? " is-up" : c.tone === "down" ? " is-down" : "")} title={c.title}>{c.text}</span>;
+}
+
+function Kpi({ href, icon, title, value, suffix, sub, series, sparkLabel, delta }: { href: string; icon: IconName; title: string; value: string; suffix?: string; sub: string; series: number[]; sparkLabel: string; delta: Chip }) {
   return (
     <Link href={href} className="mt-kpi">
       <div className="mt-kpi-top"><span>{title}</span><span className="mt-kpi-ico"><Icon name={icon} size={17} /></span></div>
       <div className="mt-kpi-value">{value}{suffix && <small> {suffix}</small>}</div>
-      <div className="mt-kpi-sub">{sub}</div>
+      <div className="mt-kpi-sub"><DeltaChip c={delta} />{sub}</div>
       <div className="mt-kpi-foot"><span className="mt-kpi-go">Open <Icon name="arrow" size={14} /></span><Sparkline values={series} label={sparkLabel} /></div>
     </Link>
   );

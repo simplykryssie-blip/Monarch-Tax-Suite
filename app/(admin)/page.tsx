@@ -9,8 +9,10 @@ import { load, SetupRequired } from "@/components/admin/ui";
 
 const clock = () => new Date();
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
   await requireAdmin();
+  const { range } = await searchParams;
+  const months = range === "3" ? 3 : range === "6" ? 6 : 12;
   const repo = commerceRepo();
   const result = await load(async () => {
     const [customers, orders, products, licenses, installations] = await Promise.all([repo.listCustomers(), repo.listOrders(), repo.listProducts(), repo.listLicenses(), repo.listInstallations()]);
@@ -32,7 +34,7 @@ export default async function DashboardPage() {
           <Link className="monarch-secondary" href="/orders/reconcile">Reconcile a payment</Link>
         </div>
       </div>
-      {!result.ok ? <SetupRequired message={result.message} /> : <DashboardView data={{ ...result.data, now }} x={await extras(result.data.licenses)} />}
+      {!result.ok ? <SetupRequired message={result.message} /> : <DashboardView data={{ ...result.data, now }} x={await extras(result.data.licenses)} months={months} />}
     </>
   );
 }

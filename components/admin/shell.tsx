@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { signOut } from "@/lib/auth-actions";
 import { Icon, type IconName } from "./icons";
 import { BrandMark, Wordmark } from "./brand";
+import { CommandPalette } from "./command-palette";
 
 type Leaf = { label: string; icon: IconName; href?: string };
 type Branch = { label: string; icon: IconName; items: (Leaf | Branch)[] };
@@ -105,22 +106,79 @@ function Group({ entry, depth, pathname, open, toggle, close }: { entry: Entry; 
   );
 }
 
-export function AdminShell({ email, logoSrc, today, children }: { email: string; logoSrc?: string | null; today: string; children: React.ReactNode }) {
+export type Alert = { title: string; note: string; href: string; count: number };
+
+/** A dropdown that closes on outside click or Escape. `trigger` renders the button; children render the panel. */
+function Popover({ trigger, children }: { trigger: (open: boolean, toggle: () => void) => React.ReactNode; children: (close: () => void) => React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const click = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", click);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", click);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  return (
+    <div className="mt-pop-wrap" ref={ref}>
+      {trigger(open, () => setOpen((o) => !o))}
+      {open && children(() => setOpen(false))}
+    </div>
+  );
+}
+
+const STORE_KEY = "mt-collapsed";
+const subscribe = (cb: () => void) => {
+  window.addEventListener("storage", cb);
+  window.addEventListener("mt-collapsed-change", cb);
+  return () => {
+    window.removeEventListener("storage", cb);
+    window.removeEventListener("mt-collapsed-change", cb);
+  };
+};
+const readCollapsed = () => {
+  try {
+    return localStorage.getItem(STORE_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+export function AdminShell({ email, logoSrc, today, alerts = [], children }: { email: string; logoSrc?: string | null; today: string; alerts?: Alert[]; children: React.ReactNode }) {
   const pathname = usePathname();
   const [menu, setMenu] = useState(false);
   // Every section starts open; the owner can collapse any of them.
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (key: string) => setOpen((o) => ({ ...o, [key]: !(o[key] ?? true) }));
+  const collapsed = useSyncExternalStore(subscribe, readCollapsed, () => false);
+  const flip = () => {
+    try {
+      localStorage.setItem(STORE_KEY, collapsed ? "0" : "1");
+    } catch {
+      // storage may be blocked; the sidebar then just does not remember
+    }
+    window.dispatchEvent(new Event("mt-collapsed-change"));
+  };
   const initial = (email[0] ?? "M").toUpperCase();
+  const attention = alerts.filter((a) => a.count > 0);
+  const total = attention.reduce((n, a) => n + a.count, 0);
 
   return (
-    <div className="mt-shell">
+    <div className={"mt-shell" + (collapsed ? " is-collapsed" : "")}>
       <aside className={"mt-sidebar" + (menu ? " is-open" : "")}>
         <Link href="/" className="mt-brand" onClick={() => setMenu(false)} aria-label="Monarch Tax Suite home">
           <span className="mt-brand-plate">
             {logoSrc ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoSrc} alt="Monarch Tax Suite" width={1000} height={253} />
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="mt-logo-full" src={logoSrc} alt="Monarch Tax Suite" width={1000} height={253} />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="mt-logo-small" src="/brand/mark.png" alt="" width={420} height={282} />
+              </>
             ) : (
               <>
                 <BrandMark size={46} />
@@ -132,28 +190,59 @@ export function AdminShell({ email, logoSrc, today, children }: { email: string;
         <nav className="mt-nav-scroll" aria-label="Main">
           {NAV.map((e) => <Group key={e.label} entry={e} depth={0} pathname={pathname} open={open} toggle={toggle} close={() => setMenu(false)} />)}
         </nav>
-        <div className="mt-user">
-          <div className="mt-avatar">{initial}</div>
-          <div>
-            <b>Administrator</b>
-            <small>{email}</small>
-          </div>
-        </div>
+        <button type="button" className="mt-collapse" onClick={flip} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand" : "Collapse"}>
+          <Icon name="collapse" size={16} />
+          <span>Collapse</span>
+        </button>
       </aside>
       {menu && <button className="mt-scrim" onClick={() => setMenu(false)} aria-label="Close menu" />}
       <main className="mt-main">
         <header className="mt-topbar">
           <button className="mt-hamburger" onClick={() => setMenu(!menu)} aria-label="Open menu"><Icon name="menu" size={22} /></button>
           <div className="mt-crumb">{crumb(pathname)}</div>
+          <CommandPalette />
           <span className="mt-date">{today}</span>
           <Link href="/orders/internal" className="mt-new"><Icon name="plus" size={15} /><span>New license</span></Link>
-          <div className="mt-chip" title={email}>
-            <div className="mt-avatar">{initial}</div>
-            <div><b>Administrator</b><small>Owner</small></div>
-          </div>
-          <form action={signOut}>
-            <button type="submit" className="mt-signout"><Icon name="signout" size={16} /><span>Sign out</span></button>
-          </form>
+
+          <Popover
+            trigger={(open, toggle) => (
+              <button type="button" className="mt-iconbtn" onClick={toggle} aria-label={total ? `${total} items need attention` : "Notifications"} aria-expanded={open}>
+                <Icon name="bell" size={19} />
+                {total > 0 && <i className="mt-dot" />}
+              </button>
+            )}
+          >
+            {(close) => (
+              <div className="mt-pop" role="menu">
+                <div className="mt-pop-title">Needs your attention</div>
+                {attention.length === 0 ? <p className="mt-pop-empty">You are all caught up.</p> : attention.map((a) => (
+                  <Link key={a.title} href={a.href} onClick={close} className="mt-pop-item" role="menuitem">
+                    <span><b>{a.title}</b><small>{a.note}</small></span>
+                    <span className="mt-pill is-hot">{a.count}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Popover>
+
+          <Popover
+            trigger={(open, toggle) => (
+              <button type="button" className="mt-chip" onClick={toggle} aria-expanded={open} aria-label="Account menu">
+                <div className="mt-avatar">{initial}</div>
+                <div><b>Administrator</b><small>Owner</small></div>
+                <Icon name="chevron" size={13} />
+              </button>
+            )}
+          >
+            {() => (
+              <div className="mt-pop is-narrow" role="menu">
+                <div className="mt-pop-title">{email}</div>
+                <form action={signOut}>
+                  <button type="submit" className="mt-pop-item" role="menuitem"><span><b>Sign out</b></span><Icon name="signout" size={16} /></button>
+                </form>
+              </div>
+            )}
+          </Popover>
         </header>
         <div className="mt-content">
           {children}

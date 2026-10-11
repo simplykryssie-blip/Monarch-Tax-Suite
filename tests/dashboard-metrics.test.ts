@@ -58,3 +58,35 @@ test("activity feed merges real events newest first, skips internal and pending 
   assert.equal(ago("2026-10-11T11:00:00Z", now), "1 hour ago");
   assert.equal(ago("2026-10-11T11:59:50Z", now), "just now");
 });
+
+import { searchRecords } from "../lib/search.ts";
+
+test("search matches every term across names, emails, order numbers and pages, and returns nothing for blank input", () => {
+  const data = {
+    customers: [{ id: "c1", email: "danica_mckethan@hotmail.com", full_name: "Danica Mckethan" } as never],
+    orders: [order({ id: "o1", order_number: 1004, customer_id: "c1", product_id: "p1" })],
+    licenses: [{ id: "l1", customer_id: "c1", key_prefix: "MTS-GH6H3", status: "active" } as never],
+    products: [{ id: "p1", name: "Monarch Basic Tax Calculator", slug: "monarch-basic", status: "published" } as never],
+    installations: [],
+  };
+  assert.deepEqual(searchRecords(data, "   "), []);
+  assert.equal(searchRecords(data, "danica hotmail").filter((h) => h.group === "Customers").length, 1);
+  assert.ok(searchRecords(data, "1004").some((h) => h.group === "Orders"));
+  assert.ok(searchRecords(data, "GH6H3").some((h) => h.href === "/licenses/l1"));
+  assert.ok(searchRecords(data, "calculator").some((h) => h.group === "Products"));
+  assert.ok(searchRecords(data, "automation").some((h) => h.group === "Pages"));
+  assert.equal(searchRecords(data, "zzzz nothing").length, 0);
+});
+
+import { change, growthOverMonth, monthOverMonth } from "../lib/dashboard-metrics.ts";
+
+test("period-over-period change handles zero, growth and decline", () => {
+  assert.deepEqual(change(0, 0), { kind: "none", pct: 0 });
+  assert.deepEqual(change(5, 0), { kind: "new", pct: 0 });
+  assert.deepEqual(change(150, 100), { kind: "up", pct: 50 });
+  assert.deepEqual(change(50, 100), { kind: "down", pct: 50 });
+  assert.deepEqual(change(100, 100), { kind: "flat", pct: 0 });
+  const pts = (...v: number[]) => v.map((value, i) => ({ key: String(i), label: String(i), value }));
+  assert.equal(monthOverMonth(pts(0, 100, 200)).pct, 100);
+  assert.equal(growthOverMonth(pts(1, 3, 6)).pct, 50);
+});
