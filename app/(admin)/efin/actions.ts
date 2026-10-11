@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { EfinRuleError } from "@/lib/efin/rules.ts";
-import { addMember, addOption, archiveEfin, archiveOrganization, bulkApply, changeAssignment, completeRenewal, createEfin, deleteDocument, deleteEfin, deleteOrganization, onboardEro, removeOption, requestAssignment, restoreEfin, restoreOrganization, saveFiling, saveLocation, setFirmOptions, setOptionActive, uploadDocument, updateEfin, updateLocation, updateOrganization, updatePerson, type Actor } from "@/lib/efin/service";
+import { addMember, addOfficial, addOption, archiveEfin, archiveOrganization, bulkApply, changeAssignment, completeRenewal, createEfin, deleteDocument, deleteEfin, deleteOrganization, onboardEro, removeOption, requestAssignment, restoreEfin, restoreOrganization, saveFiling, saveLocation, setFirmOptions, setOptionActive, uploadDocument, updateEfin, updateLocation, updateOrganization, updatePerson, type Actor } from "@/lib/efin/service";
 
 // Every action re-checks administrator access on the server, validates input, and writes an audit event inside the service.
 // Browser roles have no write access to these tables at all (row level security), so this is the only write path.
@@ -230,4 +230,10 @@ export const deleteDocumentAction = async (form: FormData) =>
     confirmed(form, "deleting this document");
     await deleteDocument(a, String(form.get("id") ?? ""));
     return { notice: "Document deleted." };
+  });
+
+export const addOfficialAction = async (form: FormData) =>
+  mutate(back(form, "/efin/list"), async (a) => {
+    await addOfficial(a, form);
+    return { notice: "Added." };
   });

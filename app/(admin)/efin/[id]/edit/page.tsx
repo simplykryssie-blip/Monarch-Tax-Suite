@@ -5,7 +5,7 @@ import { Badge, Flash, label, load, SetupRequired } from "@/components/admin/ui"
 import { Icon } from "@/components/admin/icons";
 import { loadSnapshot } from "@/lib/efin/service";
 import { EFIN_STATUSES } from "@/lib/efin/types.ts";
-import { setFirmOptionsAction, updateEfinAction } from "../../actions";
+import { addOfficialAction, setFirmOptionsAction, updateEfinAction } from "../../actions";
 import { ActionForm } from "../../action-form";
 import { AddEfinForm } from "../../add-efin-form";
 import { EroAdmin } from "../../ero-admin";
@@ -39,6 +39,20 @@ export default async function EditFirm({ params, searchParams }: { params: Promi
       <p className="monarch-muted" style={{ marginTop: 0 }}>Changes are recorded in the activity history. <Link href={`/efin/${id}`} className="efin-card-link efin-nopopup">Back to the firm</Link></p>
       <Flash notice={sp.notice} error={sp.error} />
       <div className="efin-flow">
+        <details className="efin-edit" open={sp.open === "officials"}>
+          <summary>Responsible Official &amp; Principals</summary>
+          <div className="efin-edit-body">
+            <p className="monarch-muted" style={{ margin: 0 }}>The Responsible Official answers for the firm&apos;s e-file activity. Principals are the owners or officers on the application. They are often the same person, but a firm can have a different Responsible Official and several principals. Principals only show on the firm once one is added.</p>
+            <ActionForm action={addOfficialAction} className="monarch-form">
+              <input type="hidden" name="organization_id" value={org.id} /><input type="hidden" name="back" value={here} />
+              <label>Role<Select name="role" value="principal" options={[{ value: "principal", label: "Principal" }, { value: "responsible_official", label: "Responsible Official" }]} /></label>
+              <label>Full name<input name="person_name" required maxLength={200} /></label>
+              <label>Email<input name="person_email" type="email" maxLength={254} /></label>
+              <label>Phone<FormattedInput kind="phone" name="person_phone" /></label>
+              <div className="is-wide"><button className="monarch-primary" type="submit">Add</button></div>
+            </ActionForm>
+          </div>
+        </details>
         <details className="efin-edit" open={sp.open === "software"}>
           <summary>Software &amp; banking</summary>
           <div className="efin-edit-body">

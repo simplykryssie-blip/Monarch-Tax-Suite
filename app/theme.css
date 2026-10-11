@@ -627,3 +627,10 @@ html[data-popup] .mt-sidebar,html[data-popup] .mt-topbar,html[data-popup] .mt-fo
 html[data-popup] .mt-main{margin-left:0!important;width:100%!important}
 html[data-popup] .mt-content{padding:22px 26px 28px;max-width:none}
 html[data-popup] body{background:#fff}
+.mt-group-link{display:flex;align-items:center;gap:0;padding-right:8px}
+.mt-group-go{display:flex;align-items:center;gap:12px;flex:1;min-width:0;color:inherit;text-decoration:none;padding:10px 0}
+.mt-group-toggle{border:0;background:transparent;cursor:pointer;color:inherit;padding:8px;border-radius:8px;display:grid;place-items:center}
+.mt-group-toggle:hover{background:#f4f4f4}
+.efin-cardlist{padding:0 22px 6px}
+.efin-cardlist li{align-items:baseline}
+.efin-cardlist li .efin-card-link{margin-left:auto}

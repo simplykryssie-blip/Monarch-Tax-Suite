@@ -4,7 +4,7 @@ import { Icon, type IconName } from "@/components/admin/icons";
 import { daysUntil, roleLabel, tracksTeam } from "@/lib/efin/rules.ts";
 import type { Snapshot } from "@/lib/efin/service";
 import type { Step } from "@/lib/efin/steps.ts";
-import type { AuditRow, EfinRow, OrgRow } from "@/lib/efin/types";
+import type { EfinRow, OrgRow } from "@/lib/efin/types";
 import { displayAddress, displayPhone } from "@/lib/efin/format.ts";
 import { structureLabel } from "@/lib/efin/text.ts";
 import { Verified } from "./parts";
@@ -98,22 +98,24 @@ export function FirmHeader({ s, org, efin, steps, base }: { s: Snapshot; org: Or
   );
 }
 
-/** The overview tab: one details card (business + EFIN & officials), the team, and recent activity. Everything else is a tab or the Edit page. */
-export function OverviewCards({ s, org, efin, base, activity }: { s: Snapshot; org: OrgRow; efin?: EfinRow; base: string; activity: AuditRow[] }) {
+/** The overview tab: firm details, then locations and documents as their own cards, then the team. Activity lives on its own tab. */
+export function OverviewCards({ s, org, efin, base }: { s: Snapshot; org: OrgRow; efin?: EfinRow; base: string }) {
   const team = tracksTeam(org.relationship);
   const person = s.people.find((p) => p.id === (efin?.ero_person_id ?? org.administrator_person_id));
   const roles = s.roles.filter((r) => r.organization_id === org.id && r.status === "active");
   const names = (role: string) => roles.filter((r) => r.role === role).map((r) => s.people.find((p) => p.id === r.person_id)?.full_name).filter(Boolean) as string[];
+  const principals = names("principal");
   const locations = s.locations.filter((l) => l.organization_id === org.id && !l.archived_at);
-  const where = efin ? `${base}/edit?open=` : `${base}?edit=`;
-  const locBase = `/efin/locations/${org.id}${efin ? `?from=${efin.id}` : ""}`;
-  const locAdd = `/efin/locations/${org.id}?add=1${efin ? `&from=${efin.id}` : ""}`;
-  const docBase = `/efin/documents/${org.id}${efin ? `?from=${efin.id}` : ""}`;
-  const docAdd = `/efin/documents/${org.id}?add=1${efin ? `&from=${efin.id}` : ""}#upload`;
   const docs = s.documents.filter((d) => d.subject_type === "organization" && d.subject_id === org.id);
+  const where = efin ? `${base}/edit?open=` : `${base}?edit=`;
+  const query = efin ? `?from=${efin.id}` : "";
+  const locBase = `/efin/locations/${org.id}${query}`;
+  const locAdd = `/efin/locations/${org.id}?add=1${efin ? `&from=${efin.id}` : ""}#add`;
+  const docBase = `/efin/documents/${org.id}${query}`;
+  const docAdd = `/efin/documents/${org.id}?add=1${efin ? `&from=${efin.id}` : ""}#upload`;
   const used = (kind: string) => s.options.filter((o) => o.kind === kind && s.orgOptions.some((x) => x.organization_id === org.id && x.option_id === o.id)).map((o) => o.name).join(", ");
   const none = <span className="monarch-muted">Not recorded</span>;
-  const structure = org.business_structure ? structureLabel(org.business_structure) : null;
+  const choose = efin ? <PopupLink className="efin-card-link" href={`${where}software`} title="Software & banking">Choose</PopupLink> : <Link className="efin-card-link" href={`${where}software#manage`}>Choose</Link>;
   return (
     <div className="efin-grid efin-overview">
       <section className="efin-card efin-span">
@@ -122,39 +124,49 @@ export function OverviewCards({ s, org, efin, base, activity }: { s: Snapshot; o
           <dl className="efin-kv">
             <div><dt>Relationship</dt><dd>{REL_LABEL[org.relationship] ?? org.relationship}</dd></div>
             <div><dt>Agreement</dt><dd>{label(org.agreement_status)}</dd></div>
-            <div><dt>Business type</dt><dd>{structure ?? none}</dd></div>
+            <div><dt>Business type</dt><dd>{org.business_structure ? structureLabel(org.business_structure) : none}</dd></div>
             <div><dt>EIN</dt><dd className="efin-mask">{org.ein_last4 ? `••-•••${org.ein_last4}` : none}</dd></div>
-            <div>
-              <dt>Documents</dt>
-              <dd>{docs.length} document{docs.length === 1 ? "" : "s"}
-                <span className="efin-inline-actions"><PopupLink className="efin-card-link" href={docBase} title="Documents">View</PopupLink><PopupLink className="efin-card-link" href={docAdd} title="Upload a document">+ Upload</PopupLink></span>
-              </dd>
-            </div>
-            <div>
-              <dt>Locations</dt>
-              <dd>{locations.length} location{locations.length === 1 ? "" : "s"}
-                <span className="efin-inline-actions"><PopupLink className="efin-card-link" href={locBase} title="Locations">View</PopupLink><PopupLink className="efin-card-link" href={locAdd} title="Add a location">+ Add</PopupLink></span>
-              </dd>
-            </div>
+            <div><dt>Tax software</dt><dd>{used("tax_software") || choose}</dd></div>
+            <div><dt>Bank products</dt><dd>{used("bank_product") || choose}</dd></div>
           </dl>
           <dl className="efin-kv">
             <div><dt>ERO</dt><dd>{(names("ero")[0] ?? person?.full_name) || none}</dd></div>
             <div><dt>Responsible Official</dt><dd>{names("responsible_official").join(", ") || none}</dd></div>
-            <div><dt>Principal(s)</dt><dd>{names("principal").join(", ") || none}</dd></div>
+            {principals.length > 0 && <div><dt>Principal(s)</dt><dd>{principals.join(", ")}</dd></div>}
             <div><dt>Filing office</dt><dd>{(efin && s.locations.find((l) => l.id === efin.location_id)?.name) || none}</dd></div>
-            <div><dt>Tax software</dt><dd>{used("tax_software") || (efin ? <PopupLink className="efin-card-link" href={`${where}software`} title="Software & banking">Choose</PopupLink> : <Link className="efin-card-link" href={`${where}software#manage`}>Choose</Link>)}</dd></div>
-            <div><dt>Bank products</dt><dd>{used("bank_product") || (efin ? <PopupLink className="efin-card-link" href={`${where}software`} title="Software & banking">Choose</PopupLink> : <Link className="efin-card-link" href={`${where}software#manage`}>Choose</Link>)}</dd></div>
           </dl>
         </div>
       </section>
 
+      <section className="efin-card">
+        <CardHead icon="office" title="Locations" sub={`${locations.length} location${locations.length === 1 ? "" : "s"}`} href={locBase} popup="Locations" action="Manage" />
+        <ul className="efin-eflist efin-cardlist">
+          {locations.length === 0 ? <li className="monarch-muted">No locations recorded.</li> : locations.slice(0, 4).map((l) => (
+            <li key={l.id}><b>{l.name}</b>{l.is_primary && <span className="efin-tag">Primary</span>}<span className="monarch-muted">{addressLine(l.address) || "No address"}</span></li>
+          ))}
+          {locations.length > 4 && <li className="monarch-muted">and {locations.length - 4} more</li>}
+        </ul>
+        <PopupLink className="efin-add" href={locAdd} title="Add a location"><Icon name="plus" size={16} /> Add location</PopupLink>
+      </section>
+
+      <section className="efin-card">
+        <CardHead icon="document" title="Documents" sub={`${docs.length} document${docs.length === 1 ? "" : "s"}`} href={docBase} popup="Documents" action="Manage" />
+        <ul className="efin-eflist efin-cardlist">
+          {docs.length === 0 ? <li className="monarch-muted">No documents uploaded.</li> : docs.slice(0, 4).map((d) => (
+            <li key={d.id}><b>{d.title}</b><span className="monarch-muted">{d.kind} · {when(d.created_at)}</span><a className="efin-card-link" href={`/efin/documents/file/${d.id}`}>Download</a></li>
+          ))}
+          {docs.length > 4 && <li className="monarch-muted">and {docs.length - 4} more</li>}
+        </ul>
+        <PopupLink className="efin-add" href={docAdd} title="Upload a document"><Icon name="plus" size={16} /> Upload document</PopupLink>
+      </section>
+
       {team && (
-        <section className="efin-card">
+        <section className="efin-card efin-span">
           <CardHead icon="customers" title="Team" sub="PTINs are individual credentials." href={`${base}?tab=team`} action="Manage" />
           <div className="monarch-table-wrap"><table>
             <thead><tr><th>NAME</th><th>ROLE</th><th>PTIN</th></tr></thead>
             <tbody>
-              {roles.length === 0 ? <tr><td colSpan={3} className="monarch-empty">No team members yet.</td></tr> : roles.slice(0, 4).map((r) => {
+              {roles.length === 0 ? <tr><td colSpan={3} className="monarch-empty">No team members yet.</td></tr> : roles.slice(0, 5).map((r) => {
                 const ptin = s.credentials.find((c) => c.person_id === r.person_id && c.kind === "ptin" && !c.archived_at);
                 return <tr key={r.id}><td><b>{s.people.find((p) => p.id === r.person_id)?.full_name ?? "—"}</b></td><td>{roleLabel(r.role)}</td><td>{ptin ? `P••••${ptin.identifier_last4}` : <span className="monarch-muted">None</span>}</td></tr>;
               })}
@@ -163,15 +175,6 @@ export function OverviewCards({ s, org, efin, base, activity }: { s: Snapshot; o
           <Link className="efin-add" href={`${base}?tab=team#add-member`}><Icon name="plus" size={16} /> Add team member</Link>
         </section>
       )}
-
-      <section className={"efin-card" + (team ? "" : " efin-span")}>
-        <CardHead icon="history" title="Recent activity" href={`${base}?tab=history`} action="View all" />
-        <ol className="efin-timeline">
-          {activity.length === 0 ? <li className="monarch-muted">Nothing recorded yet.</li> : activity.slice(0, 3).map((h) => (
-            <li key={h.id}><time>{when(h.occurred_at)}</time><div><b>{label(h.event_type.replace(/\./g, " "))}</b>{h.reason && <small>{h.reason}</small>}</div></li>
-          ))}
-        </ol>
-      </section>
     </div>
   );
 }

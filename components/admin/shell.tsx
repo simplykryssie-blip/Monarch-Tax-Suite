@@ -9,7 +9,7 @@ import { BrandMark, Wordmark } from "./brand";
 import { CommandPalette } from "./command-palette";
 
 type Leaf = { label: string; icon: IconName; href?: string };
-type Branch = { label: string; icon: IconName; items: (Leaf | Branch)[] };
+type Branch = { label: string; icon: IconName; href?: string; items: (Leaf | Branch)[] };
 type Entry = Leaf | Branch;
 const isBranch = (e: Entry): e is Branch => "items" in e;
 
@@ -22,13 +22,13 @@ const NAV: Entry[] = [
       { label: "Home", icon: "dashboard", href: "/" },
       { label: "Firms", icon: "firms" },
       {
+        // Clicking the name opens the dashboard; the arrow opens or closes the list below it.
         label: "My Service Bureau",
         icon: "licenses",
+        href: "/efin",
         items: [
-          { label: "Dashboard", icon: "dashboard", href: "/efin" },
-          { label: "EROs & EFINs", icon: "licenses", href: "/efin/list" },
+          { label: "EROs & EFINs", icon: "firms", href: "/efin/list" },
           { label: "Renewals", icon: "bell", href: "/efin/renewals" },
-          { label: "History", icon: "reports", href: "/efin/history" },
         ],
       },
       {
@@ -55,7 +55,14 @@ const NAV: Entry[] = [
       { label: "Support", icon: "support" },
       { label: "Marketing", icon: "marketing" },
       { label: "Reports", icon: "reports" },
-      { label: "Settings", icon: "settings", href: "/bureau/settings" },
+      {
+        label: "Settings",
+        icon: "settings",
+        items: [
+          { label: "Software & banking", icon: "settings", href: "/bureau/settings" },
+          { label: "History", icon: "reports", href: "/bureau/settings/history" },
+        ],
+      },
     ],
   },
 ];
@@ -103,11 +110,23 @@ function Group({ entry, depth, pathname, open, toggle, close }: { entry: Entry; 
   const expanded = open[key] ?? true;
   return (
     <div className={"mt-group depth-" + depth}>
-      <button type="button" className={"mt-group-head" + (containsActive ? " has-active" : "")} onClick={() => toggle(key)} aria-expanded={expanded} style={{ paddingLeft: 14 + depth * 14 }}>
-        <Icon name={entry.icon} size={depth === 0 ? 19 : 18} />
-        <span>{entry.label}</span>
-        <i className={"mt-caret" + (expanded ? " is-open" : "")}><Icon name="chevron" size={14} /></i>
-      </button>
+      {entry.href ? (
+        <div className={"mt-group-head mt-group-link" + (containsActive ? " has-active" : "")} style={{ paddingLeft: 14 + depth * 14 }}>
+          <Link href={entry.href} onClick={close} className="mt-group-go" aria-current={pathname === entry.href ? "page" : undefined}>
+            <Icon name={entry.icon} size={depth === 0 ? 19 : 18} />
+            <span>{entry.label}</span>
+          </Link>
+          <button type="button" className="mt-group-toggle" onClick={() => toggle(key)} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} ${entry.label}`}>
+            <i className={"mt-caret" + (expanded ? " is-open" : "")}><Icon name="chevron" size={14} /></i>
+          </button>
+        </div>
+      ) : (
+        <button type="button" className={"mt-group-head" + (containsActive ? " has-active" : "")} onClick={() => toggle(key)} aria-expanded={expanded} style={{ paddingLeft: 14 + depth * 14 }}>
+          <Icon name={entry.icon} size={depth === 0 ? 19 : 18} />
+          <span>{entry.label}</span>
+          <i className={"mt-caret" + (expanded ? " is-open" : "")}><Icon name="chevron" size={14} /></i>
+        </button>
+      )}
       {expanded && (
         <div className="mt-group-body">
           {entry.items.map((c) => <Group key={c.label} entry={c} depth={depth + 1} pathname={pathname} open={open} toggle={toggle} close={close} />)}
