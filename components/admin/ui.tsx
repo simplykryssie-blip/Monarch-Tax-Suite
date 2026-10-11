@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { FlashToast } from "./flash-toast";
+import { Icon } from "./icons";
 import { SetupRequiredError } from "@/lib/commerce/supabase-repo.ts";
 
 export function money(cents: number | null, currency = "usd") {
@@ -34,16 +36,14 @@ export function PageTitle({ title, children, back }: { title: string; children?:
 
 /** Renders ?notice= / ?error= messages set by server actions after a redirect. */
 export function Flash({ notice, error }: { notice?: string; error?: string }) {
-  if (error) return <div className="monarch-alert is-error" role="alert">{error}</div>;
-  if (notice) return <div className="monarch-alert" role="status">{notice}</div>;
-  return null;
+  return <FlashToast notice={notice} error={error} />;
 }
 
 export function EmptyRow({ colSpan, children }: { colSpan: number; children: React.ReactNode }) {
   return (
     <tr>
       <td colSpan={colSpan} className="monarch-empty">
-        {children}
+        <div className="mt-empty"><Icon name="check" size={22} /><span>{children}</span></div>
       </td>
     </tr>
   );

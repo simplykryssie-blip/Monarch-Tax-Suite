@@ -84,6 +84,9 @@ export function SetupForms({ highlevelAvailable, pending, linked = false }: { hi
 
       {v && status && (
         <>
+          <ol className="mt-stepper" style={{ padding: 0, margin: 0 }} aria-label="Setup progress">
+            {v.onboarding.steps.map((st) => <li key={st.key} className={st.done ? "is-done" : ""}><i /><span>{st.done ? "✓ " : ""}{st.label}</span></li>)}
+          </ol>
           <p ref={topRef} className="intg-status" data-state={status.key}><b>{status.label}</b> {status.detail}</p>
 
           <section className="intg-step">
