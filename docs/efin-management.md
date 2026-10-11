@@ -22,6 +22,15 @@ Service-bureau CRM module under **My Office → EFIN Management** (`/efin`). The
 ## Updating a database that ran an earlier version
 If a database already ran an earlier `20261011100000_efin_management.sql` (for example a test or preview project), run `supabase/migrations/20261012090000_efin_management_update.sql` on it. It is safe to run repeatedly. It adds the `client` relationship value and replaces the save functions. Permanent-delete functions are in `20261012100000_efin_delete_functions.sql`. The app now says exactly which file to run when the database is behind (a missing value or function), instead of the misleading "tables not installed" message.
 
+## My Workspace (`/workspace`)
+Under My Office, "Firms" is now **My Workspace**: your own EFIN (firms marked "My own tax office"), the **Partner EROs** attached to it (an assignment to one of your EFINs marks a partner "attached"), and every **PTIN** working under your office and partners. **Add PTIN** is on that page: choose the firm, then either an existing person without a PTIN or a new person (saved together with their role and PTIN in one step). PTINs are encrypted, shown masked, linked to the person, never authorize e-file, and can be removed (kept in the history). Software/service clients are never listed and cannot receive PTINs. PTIN renewal dates show how many days remain; there are no emailed PTIN reminders yet.
+
+## Layout (latest)
+- **Menu:** "My Service Bureau" opens the dashboard (no separate Dashboard item or in-page tab bar); under it are EROs & EFINs and Renewals. **History** (the activity log) lives under Settings (`/bureau/settings/history`); the old `/efin/history` address redirects there.
+- **Firm page tabs:** Overview, Team (own office and partners only), EFIN & Filing, Activity. Renewals are part of EFIN & Filing.
+- **Overview:** Firm details, then Locations and Documents as their own cards, then Team. Principal(s) show only once someone is added (Edit firm > Responsible Official & Principals). Recent activity appears only on the Activity tab.
+- **EFIN & Filing** shows what was entered in onboarding: EFIN status and confirmation, tax year, next review date, filing office, and the tax software chosen (saved as filing records with the EFIN's tax year, status unconfirmed). Choosing software later on the Edit page fills in any missing filing records too.
+
 ## Pop-ups (keeping your place)
 Pages you open from a button on a firm or the onboarding (Settings, Locations, Documents, Edit firm, Software & banking) open in a pop-up over the current page. Closing it returns you exactly where you were, with anything half-typed intact, and refreshes the page behind it so new items appear. Cmd/Ctrl-click opens a normal tab. If a pop-up lands on the firm list (for example after a delete), it closes and the page follows. The pop-up is an iframe of the same site: `/efin/*` and `/bureau/*` send `X-Frame-Options: SAMEORIGIN` and `frame-ancestors 'self'`, so only this site can frame them. Confirmations (delete, archive) use an in-page dialog instead of the browser's blocking prompt.
 

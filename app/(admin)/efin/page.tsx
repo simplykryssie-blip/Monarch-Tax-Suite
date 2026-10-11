@@ -72,7 +72,7 @@ export default async function EfinDashboard({ searchParams }: { searchParams: Pr
                   </section>
 
                   <section className="monarch-panel">
-                    <div className="monarch-panel-head"><div><h2>Recent activity</h2><p>The latest recorded changes.</p></div><Link className="mt-card-link" href="/efin/history">View all</Link></div>
+                    <div className="monarch-panel-head"><div><h2>Recent activity</h2><p>The latest recorded changes.</p></div><Link className="mt-card-link" href="/bureau/settings/history">View all</Link></div>
                     <div className="monarch-table-wrap"><table>
                       <thead><tr><th>WHEN</th><th>WHO</th><th>EVENT</th></tr></thead>
                       <tbody>{activity.length === 0 ? <EmptyRow colSpan={3}>No activity yet.</EmptyRow> : activity.map((h) => <tr key={h.id}><td>{when(h.occurred_at)}</td><td>{h.actor_email ?? "System"}</td><td><b>{label(h.event_type.replace(/\./g, " "))}</b></td></tr>)}</tbody>

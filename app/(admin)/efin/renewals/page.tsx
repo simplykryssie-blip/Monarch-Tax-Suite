@@ -28,7 +28,7 @@ export default async function Renewals({ searchParams }: { searchParams: Promise
                 <thead><tr><th>TASK</th><th>DUE</th><th>DAYS</th><th>STATUS</th><th>COMPLETE (WITH EVIDENCE)</th></tr></thead>
                 <tbody>{open.length === 0 ? <EmptyRow colSpan={5}>No open renewals. Tasks are created from verified renewal dates on your EFINs.</EmptyRow> : open.map((t) => (
                   <tr key={t.id}>
-                    <td><Link href={`/efin/${t.subject_id}?tab=renewals`}><b>{t.title}</b></Link></td><td>{t.due_on}{t.due_on !== t.original_due_on && <small className="monarch-muted"> (was {t.original_due_on})</small>}</td>
+                    <td><Link href={`/efin/${t.subject_id}?tab=filing#renewals`}><b>{t.title}</b></Link></td><td>{t.due_on}{t.due_on !== t.original_due_on && <small className="monarch-muted"> (was {t.original_due_on})</small>}</td>
                     <td>{daysUntil(t.due_on, today)}</td><td><Badge value={t.status} /></td>
                     <td>
                       <ActionForm action={completeRenewalAction} className="efin-actions">

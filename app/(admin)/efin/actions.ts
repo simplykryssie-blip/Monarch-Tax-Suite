@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { EfinRuleError } from "@/lib/efin/rules.ts";
-import { addMember, addOption, archiveEfin, archiveOrganization, bulkApply, changeAssignment, completeRenewal, createEfin, deleteDocument, deleteEfin, deleteOrganization, onboardEro, removeOption, requestAssignment, restoreEfin, restoreOrganization, saveFiling, saveLocation, setFirmOptions, setOptionActive, uploadDocument, updateEfin, updateLocation, updateOrganization, updatePerson, type Actor } from "@/lib/efin/service";
+import { addMember, addOfficial, addOption, addPtin, archivePtin, archiveEfin, archiveOrganization, bulkApply, changeAssignment, completeRenewal, createEfin, deleteDocument, deleteEfin, deleteOrganization, onboardEro, removeOption, requestAssignment, restoreEfin, restoreOrganization, saveFiling, saveLocation, setFirmOptions, setOptionActive, uploadDocument, updateEfin, updateLocation, updateOrganization, updatePerson, type Actor } from "@/lib/efin/service";
 
 // Every action re-checks administrator access on the server, validates input, and writes an audit event inside the service.
 // Browser roles have no write access to these tables at all (row level security), so this is the only write path.
@@ -45,6 +45,7 @@ async function mutate(back: string, fn: (actor: Actor) => Promise<{ to?: string;
   }
   revalidatePath("/efin", "layout");
   revalidatePath("/bureau/settings");
+  revalidatePath("/workspace");
   redirect(target);
 }
 
@@ -230,4 +231,24 @@ export const deleteDocumentAction = async (form: FormData) =>
     confirmed(form, "deleting this document");
     await deleteDocument(a, String(form.get("id") ?? ""));
     return { notice: "Document deleted." };
+  });
+
+export const addOfficialAction = async (form: FormData) =>
+  mutate(back(form, "/efin/list"), async (a) => {
+    await addOfficial(a, form);
+    return { notice: "Added." };
+  });
+
+// ---- My Workspace: PTINs
+export const addPtinAction = async (form: FormData) =>
+  mutate("/workspace", async (a) => {
+    await addPtin(a, form);
+    return { notice: "PTIN added. It is recorded as a separate protected credential and does not authorize e-file by itself." };
+  });
+
+export const archivePtinAction = async (form: FormData) =>
+  mutate("/workspace", async (a) => {
+    confirmed(form, "removing this PTIN");
+    await archivePtin(a, String(form.get("id") ?? ""));
+    return { notice: "PTIN removed from your list. It is kept in the history." };
   });

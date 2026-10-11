@@ -233,6 +233,8 @@ export async function onboardEro(actor: Actor, form: FormData): Promise<string> 
   };
   const { error } = await db().rpc("efin_onboard", { p: payload });
   if (error) { const m = dupMessage(error); if (m instanceof EfinRuleError && !m.field) m.field = /efin/i.test(error.message) ? "efin" : /ptin|credential/i.test(error.message) ? "ptin" : undefined; throw m; }
+  // Software picked during onboarding becomes this EFIN's filing records, so the EFIN & Filing tab is already filled in.
+  try { await syncFilingFromOptions(ids.org); } catch (e) { console.error(`efin: could not prefill filing software: ${e instanceof Error ? e.message : "unknown"}`); }
   return ids.efin;
 }
 
@@ -243,7 +245,7 @@ export async function addMember(actor: Actor, form: FormData) {
   if (!orgRow) throw new EfinNotFound("That business could not be found.");
   if (!tracksTeam(orgRow.relationship)) throw new EfinRuleError(NO_TEAM);
   const ptinRaw = String(form.get("ptin") ?? "").trim();
-  const ptin = ptinRaw ? normalizePtin(ptinRaw) : null;
+  const ptin = ptinRaw ? forField("ptin", () => normalizePtin(ptinRaw)) : null;
   const credId = ptin ? randomUUID() : null;
   const email = lower(text(form.get("person_email"), 254, "Email"));
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new EfinRuleError("That email address does not look right.");
@@ -719,6 +721,7 @@ export async function setFirmOptions(actor: Actor, form: FormData) {
     const valid = unwrap(await client.from("bureau_options").select("id").in("id", ids).eq("active", true) as never) as { id: string }[];
     if (valid.length) unwrap(await client.from("organization_options").insert(valid.map((o) => ({ organization_id: orgId, option_id: o.id }))) as never);
   }
+  await syncFilingFromOptions(orgId);
   await audit(actor, { type: "organization.options_set", targetType: "organization", targetId: orgId, organizationId: orgId, changes: { count: ids.length } });
 }
 
@@ -768,4 +771,101 @@ export async function deleteDocument(actor: Actor, docId: string) {
   if (doc.storage_path) await client.storage.from(DOC_BUCKET).remove([doc.storage_path]);
   unwrap(await client.from("compliance_documents").delete().eq("id", id) as never);
   await audit(actor, { type: "document.deleted", targetType: "document", targetId: id, organizationId: doc.subject_id, changes: { title: doc.title } });
+}
+
+/**
+ * Makes sure every tax software the firm uses has a filing record on each of its live EFINs (provider, tax year from the EFIN,
+ * status unconfirmed). Only adds what is missing; never changes or removes anything already recorded.
+ */
+export async function syncFilingFromOptions(orgId: string) {
+  const c = db();
+  const chosen = await soft<{ option_id: string }>(c.from("organization_options").select("option_id").eq("organization_id", orgId));
+  if (chosen.length === 0) return;
+  const software = await soft<{ id: string; name: string }>(c.from("bureau_options").select("id, name").eq("kind", "tax_software").in("id", chosen.map((x) => x.option_id)));
+  if (software.length === 0) return;
+  const efins = unwrap(await c.from("efin_records").select("id, tax_year").eq("organization_id", orgId).is("archived_at", null) as never) as { id: string; tax_year: number | null }[];
+  if (efins.length === 0) return;
+  const existing = unwrap(await c.from("filing_relationships").select("efin_id, software_provider").in("efin_id", efins.map((e) => e.id)).is("archived_at", null) as never) as { efin_id: string; software_provider: string }[];
+  const have = new Set(existing.map((f) => `${f.efin_id}|${f.software_provider.toLowerCase()}`));
+  const rows = efins.flatMap((e) => software.filter((o) => !have.has(`${e.id}|${o.name.toLowerCase()}`)).map((o) => ({ efin_id: e.id, organization_id: orgId, software_provider: o.name, tax_year: e.tax_year, external_auth_status: "unverified" })));
+  if (rows.length) unwrap(await c.from("filing_relationships").insert(rows) as never);
+}
+
+/** Adds a Responsible Official or Principal to a firm (any relationship, including software clients). */
+export async function addOfficial(actor: Actor, form: FormData) {
+  const orgId = uuid(form.get("organization_id"), "ERO");
+  const role = oneOf(form.get("role"), ["responsible_official", "principal"] as const, "Role");
+  const name = forField("person_name", () => text(form.get("person_name"), 200, "Name", true)) as string;
+  const email = lower(forField("person_email", () => text(form.get("person_email"), 254, "Email")));
+  if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new EfinRuleError("That email address does not look right.", "person_email");
+  const phone = phoneOf(form.get("person_phone"), "person_phone");
+  const client = db();
+  const org = unwrap(await client.from("organizations").select("id").eq("id", orgId).maybeSingle() as never) as { id: string } | null;
+  if (!org) throw new EfinNotFound("That ERO could not be found.");
+  const personId = randomUUID();
+  unwrap(await client.from("people").insert({ id: personId, full_name: name, email, phone, created_by: actor.id, updated_by: actor.id }) as never);
+  const r = await client.from("organization_roles").insert({ organization_id: orgId, person_id: personId, role, verification_status: oneOf(form.get("verification_status") || "unverified", VERIFICATION, "Confirmation"), created_by: actor.id });
+  if (r.error) {
+    await client.from("people").delete().eq("id", personId); // do not leave a person without a role
+    throw new Error(r.error.message);
+  }
+  await audit(actor, { type: "role.created", targetType: "person", targetId: personId, organizationId: orgId, changes: { role, full_name: name } });
+}
+
+// ------------------------------------------------------------------------------------------------ PTINs (My Workspace)
+/**
+ * Adds a PTIN to a firm that keeps a team (your own office or a partner). Either a brand-new person (saved together with
+ * their role and PTIN in one step) or an existing person who has no PTIN yet. A PTIN is a separate protected credential
+ * linked to the person; recording it never authorizes e-file by itself.
+ */
+export async function addPtin(actor: Actor, form: FormData) {
+  const orgId = uuid(form.get("organization_id"), "firm");
+  const client = db();
+  const org = unwrap(await client.from("organizations").select("id, relationship").eq("id", orgId).maybeSingle() as never) as { id: string; relationship: string } | null;
+  if (!org) throw new EfinNotFound("That firm could not be found.");
+  if (!tracksTeam(org.relationship)) throw new EfinRuleError(NO_TEAM, "organization_id");
+  if (!String(form.get("ptin") ?? "").trim()) throw new EfinRuleError("Enter the PTIN.", "ptin");
+  const existing = String(form.get("person_id") ?? "").trim();
+  if (!existing) {
+    if (!String(form.get("person_name") ?? "").trim()) throw new EfinRuleError("Enter the preparer's name, or choose someone already on your list.", "person_name");
+    await addMember(actor, form);
+    return;
+  }
+  const personId = uuid(existing, "person");
+  const person = unwrap(await client.from("people").select("id, full_name").eq("id", personId).maybeSingle() as never) as { id: string; full_name: string } | null;
+  if (!person) throw new EfinNotFound("That person could not be found.");
+  const has = unwrap(await client.from("professional_credentials").select("id").eq("person_id", personId).eq("kind", "ptin").is("archived_at", null) as never) as { id: string }[];
+  if (has.length) throw new EfinRuleError(`${person.full_name} already has a PTIN on file. Remove it first if it is wrong.`, "person_id");
+  const ptin = forField("ptin", () => normalizePtin(String(form.get("ptin") ?? "")));
+  const sec = secrets();
+  const credId = randomUUID();
+  const verification = oneOf(form.get("ptin_verification") || "unverified", VERIFICATION, "PTIN status");
+  const confirmed = verification === "manually_verified" || verification === "verified";
+  const ins = await client.from("professional_credentials").insert({
+    id: credId, person_id: personId, kind: "ptin",
+    identifier_encrypted: sec.encrypt(ptin, `credential:${credId}:identifier`), identifier_last4: last4(ptin), identifier_hash: sec.hashIdentifier("ptin", ptin),
+    verification_status: verification, verification_source: text(form.get("ptin_source"), 300, "How it was confirmed"),
+    verified_at: confirmed ? new Date().toISOString() : null, verified_by: confirmed ? actor.id : null,
+    expires_on: forField("ptin_expires_on", () => day(form.get("ptin_expires_on"), "PTIN renewal date")),
+  });
+  if (ins.error) throw ins.error.code === "23505" ? new EfinRuleError("That PTIN is already recorded for someone.", "ptin") : new Error(ins.error.message);
+  // Make sure the person works at this firm.
+  const roles = unwrap(await client.from("organization_roles").select("id").eq("organization_id", orgId).eq("person_id", personId).eq("status", "active") as never) as { id: string }[];
+  if (roles.length === 0) {
+    const r = await client.from("organization_roles").insert({ organization_id: orgId, person_id: personId, role: oneOf(form.get("role") || "tax_preparer", ASSIGNMENT_ROLES, "Role"), verification_status: "unverified", created_by: actor.id });
+    if (r.error) {
+      await client.from("professional_credentials").delete().eq("id", credId); // do not leave a PTIN without a firm
+      throw new Error(r.error.message);
+    }
+  }
+  await audit(actor, { type: "credential.created", targetType: "credential", targetId: credId, organizationId: orgId, changes: { kind: "ptin", last4: last4(ptin), person_id: personId, verification_status: verification } });
+}
+
+/** Removes a PTIN record from your lists (kept in the history). */
+export async function archivePtin(actor: Actor, credentialId: string) {
+  const id = uuid(credentialId, "PTIN");
+  const { data, error } = await db().from("professional_credentials").update({ archived_at: new Date().toISOString() }).eq("id", id).is("archived_at", null).select("person_id, identifier_last4").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new EfinNotFound("That PTIN could not be found, or it was already removed.");
+  await audit(actor, { type: "credential.archived", targetType: "credential", targetId: id, changes: { kind: "ptin", last4: data.identifier_last4, person_id: data.person_id } });
 }
