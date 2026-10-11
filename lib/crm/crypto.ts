@@ -7,7 +7,7 @@ import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, ti
 //    and field, so ciphertext cannot be moved between tenants or fields.
 //  - Embed lead tokens: HMAC-SHA256. Visitor IPs: keyed hash for rate limiting only.
 
-type Purpose = "encryption" | "embed-token" | "ip-hash" | "setup-session";
+type Purpose = "encryption" | "embed-token" | "ip-hash" | "setup-session" | "identifier-hash";
 
 export class CrmSecrets {
   private keys = new Map<Purpose, Buffer>();
@@ -51,13 +51,13 @@ export class CrmSecrets {
   }
 
   /** Signs a JSON payload: base64url(payload).base64url(hmac). */
-  sign(purpose: Exclude<Purpose, "encryption" | "ip-hash">, payload: object): string {
+  sign(purpose: Exclude<Purpose, "encryption" | "ip-hash" | "identifier-hash">, payload: object): string {
     const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
     return `${body}.${this.mac(purpose, body)}`;
   }
 
   /** Verifies a signed payload; returns null when tampered, malformed or expired (field `e`, epoch seconds). */
-  verify<T extends { e: number }>(purpose: Exclude<Purpose, "encryption" | "ip-hash">, token: string | undefined | null, nowMs = Date.now()): T | null {
+  verify<T extends { e: number }>(purpose: Exclude<Purpose, "encryption" | "ip-hash" | "identifier-hash">, token: string | undefined | null, nowMs = Date.now()): T | null {
     if (!token || token.length > 2048) return null;
     const [body, mac] = token.split(".");
     if (!body || !mac) return null;
@@ -75,6 +75,11 @@ export class CrmSecrets {
   /** Keyed hash of a visitor IP for rate limiting; the IP itself is never stored. */
   hashIp(ip: string): string {
     return createHmac("sha256", this.key("ip-hash")).update(ip).digest("hex");
+  }
+
+  /** Keyed hash of a sensitive identifier (EFIN, PTIN) so duplicates are detected without storing it readable. */
+  hashIdentifier(kind: string, value: string): string {
+    return createHmac("sha256", this.key("identifier-hash")).update(`${kind}:${value}`).digest("hex");
   }
 
   private mac(purpose: Purpose, body: string): string {

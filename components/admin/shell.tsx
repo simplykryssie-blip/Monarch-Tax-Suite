@@ -22,6 +22,16 @@ const NAV: Entry[] = [
       { label: "Home", icon: "dashboard", href: "/" },
       { label: "Firms", icon: "firms" },
       {
+        label: "EFIN Management",
+        icon: "licenses",
+        items: [
+          { label: "Dashboard", icon: "dashboard", href: "/efin" },
+          { label: "EROs & EFINs", icon: "licenses", href: "/efin/list" },
+          { label: "Renewals", icon: "bell", href: "/efin/renewals" },
+          { label: "History", icon: "reports", href: "/efin/history" },
+        ],
+      },
+      {
         label: "My Store",
         icon: "store",
         items: [

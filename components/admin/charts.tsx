@@ -103,3 +103,36 @@ export function BarRows({ rows, total, empty }: { rows: BarRow[]; total?: number
     </div>
   );
 }
+
+export type DonutSlice = { label: string; value: number; color: string; href?: string };
+
+/** Ring chart with the total in the centre. The legend beside it repeats every value as text, so colour is never the only cue. */
+export function Donut({ slices, centre, caption }: { slices: DonutSlice[]; centre: string; caption: string }) {
+  const total = slices.reduce((n, s) => n + s.value, 0);
+  const R = 52, C = 2 * Math.PI * R;
+  let offset = 0;
+  return (
+    <div className="efin-donut">
+      <svg viewBox="0 0 140 140" role="img" aria-label={`${caption}: ${slices.map((s) => `${s.label} ${s.value}`).join(", ")}`}>
+        <circle cx={70} cy={70} r={R} fill="none" stroke="#efefef" strokeWidth={14} />
+        {total > 0 && slices.filter((s) => s.value > 0).map((s) => {
+          const len = (s.value / total) * C;
+          const seg = <circle key={s.label} cx={70} cy={70} r={R} fill="none" stroke={s.color} strokeWidth={14} strokeDasharray={`${Math.max(len - 2, 0.5)} ${C - Math.max(len - 2, 0.5)}`} strokeDashoffset={-offset} transform="rotate(-90 70 70)"><title>{`${s.label}: ${s.value}`}</title></circle>;
+          offset += len;
+          return seg;
+        })}
+        <text x={70} y={68} textAnchor="middle" fontSize={26} fontWeight={700} fill="#111">{centre}</text>
+        <text x={70} y={86} textAnchor="middle" fontSize={9.5} fill="#6b6b6b">{caption}</text>
+      </svg>
+      <ul>
+        {slices.map((s) => (
+          <li key={s.label}>
+            <span className="efin-dot" style={{ background: s.color }} />
+            {s.href ? <Link href={s.href}>{s.label}</Link> : <span>{s.label}</span>}
+            <b>{s.value}</b>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
