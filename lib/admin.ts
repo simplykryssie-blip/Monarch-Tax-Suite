@@ -8,6 +8,7 @@ import { serviceClient } from "./supabase/service";
 import { decideAdmin } from "./commerce/authz.ts";
 import { SupabaseCommerceRepo, SupabaseImageStore } from "./commerce/supabase-repo.ts";
 import { SupabaseFileStore, SupabaseProductFilesRepo } from "./commerce/supabase-files.ts";
+import { SupabaseServiceOrdersRepo } from "./commerce/supabase-services.ts";
 
 export { serviceClient };
 
@@ -18,6 +19,11 @@ export function commerceRepo() {
 /** Product image storage (service role; call only after requireAdmin for writes). */
 export function imageStore() {
   return new SupabaseImageStore(serviceClient());
+}
+
+/** Service orders for the current tenant (Monarch until Phase 2 Step 0). */
+export function serviceOrdersRepo() {
+  return new SupabaseServiceOrdersRepo(serviceClient());
 }
 
 /** Product files (code bundles and other deliverables): private storage plus the file and download records. */

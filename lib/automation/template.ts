@@ -16,6 +16,11 @@ export const VARIABLES: Record<string, string> = {
   installation_status: "The calculator installation status",
   embed_instructions: "Step-by-step embed instructions with the calculator code",
   failure_reason: "A plain-language reason for a failed delivery",
+  product_name: "The product the customer bought",
+  service_deliverable: "Services: what the customer receives",
+  service_owner: "Services: who delivers it",
+  service_response_time: "Services: the expected response time",
+  service_next_step: "Services: the next step on the service order",
   support_email: "Monarch Tax Suite support email",
   app_url: "The Monarch Tax Suite website address",
 };
@@ -98,6 +103,11 @@ export const SAMPLE_VALUES: Record<string, string> = {
   installation_status: "active",
   embed_instructions: "SAMPLE: add a Custom Code block to your page and paste the calculator code shown in your setup page.",
   failure_reason: "SAMPLE: GoHighLevel access expired. Reconnect it from your setup page.",
+  product_name: "Sample Bureau Setup Review",
+  service_deliverable: "SAMPLE: a written review of your bureau setup",
+  service_owner: "SAMPLE: Monarch support",
+  service_response_time: "SAMPLE: 2 business days",
+  service_next_step: "SAMPLE: we will email you to confirm the details",
   support_email: "support@monarchtaxsuite.com",
   app_url: "https://monarch-tax-suite.vercel.app",
 };
