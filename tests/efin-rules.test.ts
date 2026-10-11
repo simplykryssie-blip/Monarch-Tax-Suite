@@ -1,0 +1,148 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { assignmentLapsed, availableTransitions, daysUntil, dueReminderStage, EfinRuleError, findTransition, maskEfin, maskPtin, normalizeEfin, normalizePtin, planRenewalTasks, planTransition, renewalTracking, urgencyFor, type TransitionContext } from "../lib/efin/rules.ts";
+import type { RenewalTaskRow } from "../lib/efin/types.ts";
+
+const ctx = (over: Partial<TransitionContext> & { state?: TransitionContext["assignment"]["state"] } = {}): TransitionContext => ({
+  assignment: { state: over.state ?? "draft", role: "ero", person_id: "p1", organization_id: "o1", requested_by: "u1", effective_from: null, effective_to: null },
+  efin: { internal_status: "active", archived_at: null, organization_id: "o1" },
+  actorId: "u2",
+  to: over.to ?? "pending_review",
+  reason: "",
+  confirmed: false,
+  roles: [{ organization_id: "o1", person_id: "p1", role: "ero", status: "active" }],
+  credentials: [],
+  ...over,
+});
+
+test("identifiers are validated and masked", () => {
+  assert.equal(normalizeEfin("12-3456"), "123456");
+  assert.throws(() => normalizeEfin("12345"), EfinRuleError);
+  assert.equal(normalizePtin("p 0123 4567".replace(/ /g, "")), "P01234567");
+  assert.throws(() => normalizePtin("01234567"), EfinRuleError);
+  assert.equal(maskEfin("3456"), "••3456");
+  assert.equal(maskPtin("4567"), "P••••4567");
+  assert.ok(!maskEfin("3456").includes("12"));
+});
+
+test("a revoked assignment can never be reactivated", () => {
+  assert.deepEqual(availableTransitions("revoked"), []);
+  assert.throws(() => findTransition("revoked", "active"), /cannot be reactivated/);
+  assert.throws(() => findTransition("expired", "active"), EfinRuleError);
+});
+
+test("assignments follow the workflow and skip no step", () => {
+  assert.throws(() => findTransition("draft", "active"), EfinRuleError);
+  assert.throws(() => findTransition("pending_review", "active"), EfinRuleError);
+  assert.equal(planTransition(ctx({ state: "draft", to: "pending_review" })).action, "submit");
+  assert.equal(planTransition(ctx({ state: "pending_review", to: "approved" })).action, "approve");
+});
+
+test("high-impact changes need confirmation and a reason", () => {
+  assert.throws(() => planTransition(ctx({ state: "active", to: "suspended", reason: "Compliance hold pending review" })), /high-impact/);
+  assert.throws(() => planTransition(ctx({ state: "active", to: "suspended", confirmed: true })), /reason is required/);
+  const plan = planTransition(ctx({ state: "active", to: "suspended", confirmed: true, reason: "Compliance hold pending review" }));
+  assert.equal(plan.highImpact, true);
+  assert.throws(() => planTransition(ctx({ state: "active", to: "revoked", confirmed: true })), /reason is required/);
+});
+
+test("approving your own request needs a recorded reason", () => {
+  assert.throws(() => planTransition(ctx({ state: "pending_review", to: "approved", actorId: "u1" })), /your own request/);
+  assert.equal(planTransition(ctx({ state: "pending_review", to: "approved", actorId: "u1", reason: "Sole administrator" })).selfApproval, true);
+});
+
+test("a person must hold the role, and a preparer needs a recorded PTIN", () => {
+  assert.throws(() => planTransition(ctx({ roles: [] })), /does not hold/);
+  const prep = ctx({ roles: [{ organization_id: "o1", person_id: "p1", role: "tax_preparer", status: "active" }] });
+  prep.assignment.role = "tax_preparer";
+  assert.throws(() => planTransition(prep), /PTIN/);
+  prep.credentials = [{ person_id: "p1", kind: "ptin", archived_at: null }];
+  assert.equal(planTransition(prep).action, "submit");
+  prep.credentials = [{ person_id: "p1", kind: "ptin", archived_at: "2026-01-01" }];
+  assert.throws(() => planTransition(prep), /PTIN/);
+});
+
+test("an inactive or archived EFIN cannot receive assignments", () => {
+  const c = ctx(); c.efin.internal_status = "suspended";
+  assert.throws(() => planTransition(c), /suspended/);
+  const d = ctx(); d.efin.archived_at = "2026-01-01";
+  assert.throws(() => planTransition(d), /archived/);
+});
+
+test("date helpers and lapse detection", () => {
+  assert.equal(daysUntil("2026-12-31", "2026-12-01"), 30);
+  assert.equal(daysUntil("2026-12-01", "2026-12-02"), -1);
+  assert.throws(() => daysUntil("12/31/2026", "2026-12-01"), EfinRuleError);
+  assert.equal(assignmentLapsed({ state: "active", effective_to: "2026-01-01" }, "2026-01-02"), true);
+  assert.equal(assignmentLapsed({ state: "suspended", effective_to: "2026-01-01" }, "2026-01-02"), false);
+});
+
+test("urgency escalates as the deadline nears and turns overdue after it", () => {
+  assert.equal(urgencyFor(40), "open");
+  assert.equal(urgencyFor(14), "urgent");
+  assert.equal(urgencyFor(7), "escalated");
+  assert.equal(urgencyFor(0), "escalated");
+  assert.equal(urgencyFor(-1), "overdue");
+});
+
+test("reminders fire at 60/30/14/7 days, once a stage, never a burst after downtime", () => {
+  const due = "2026-12-31";
+  assert.equal(dueReminderStage(due, "2026-11-01"), 60);
+  assert.equal(dueReminderStage(due, "2026-10-31"), null);
+  assert.equal(dueReminderStage(due, "2026-12-01"), 30);
+  assert.equal(dueReminderStage(due, "2026-12-17"), 14);
+  assert.equal(dueReminderStage(due, "2026-12-24"), 7);
+  // job was down for a week: only the latest reached stage
+  assert.equal(dueReminderStage(due, "2026-12-20"), 14);
+  assert.equal(dueReminderStage(due, "2027-01-02"), 0);
+});
+
+const efin = (over: Partial<Parameters<typeof planRenewalTasks>[0][number]> = {}) => ({ id: "e1", organization_id: "o1", efin_last4: "1234", recorded_expiration: "2026-12-31", expiration_verified: true, internal_status: "active" as const, archived_at: null, ...over });
+const task = (over: Partial<RenewalTaskRow> = {}): RenewalTaskRow => ({ id: "t1", subject_type: "efin", subject_id: "e1", organization_id: "o1", title: "Renew", due_on: "2026-12-31", original_due_on: "2026-12-31", status: "open", completed_at: null, completion_note: null, evidence_note: null, ...over });
+
+test("renewal tracking only trusts a recorded, verified date", () => {
+  assert.deepEqual(renewalTracking(efin()), { track: true });
+  assert.deepEqual(renewalTracking(efin({ recorded_expiration: null })), { track: false, reason: "missing_date" });
+  assert.deepEqual(renewalTracking(efin({ expiration_verified: false })), { track: false, reason: "unverified_date" });
+  assert.deepEqual(renewalTracking(efin({ internal_status: "suspended" })), { track: false, reason: "suspended" });
+  assert.deepEqual(renewalTracking(efin({ archived_at: "2026-01-01" })), { track: false, reason: "archived" });
+});
+
+test("renewal task planning creates, updates on a changed date, and cancels when tracking stops", () => {
+  assert.deepEqual(planRenewalTasks([efin()], [], "2026-10-01").map((p) => p.kind), ["create"]);
+  assert.deepEqual(planRenewalTasks([efin()], [task()], "2026-10-01"), []);
+  const moved = planRenewalTasks([efin({ recorded_expiration: "2027-01-31" })], [task()], "2026-10-01");
+  assert.deepEqual(moved, [{ kind: "update", taskId: "t1", dueOn: "2027-01-31", status: "open" }]);
+  assert.equal(planRenewalTasks([efin({ internal_status: "suspended" })], [task()], "2026-10-01")[0].kind, "cancel");
+  assert.equal(planRenewalTasks([], [task()], "2026-10-01")[0].kind, "cancel");
+  // a completed task is not touched and does not block a new cycle
+  assert.deepEqual(planRenewalTasks([efin()], [task({ status: "done" })], "2026-10-01").map((p) => p.kind), ["create"]);
+  // passing the deadline marks it overdue without inventing a new date
+  assert.deepEqual(planRenewalTasks([efin()], [task()], "2027-01-05"), [{ kind: "update", taskId: "t1", dueOn: "2026-12-31", status: "overdue" }]);
+});
+
+import { complianceExceptions } from "../lib/efin/exceptions.ts";
+import type { EfinRow } from "../lib/efin/types.ts";
+
+const baseEfin = (over: Partial<EfinRow> = {}): EfinRow => ({ id: "e1", efin_last4: "1234", organization_id: "o1", location_id: null, ero_person_id: "p1", internal_status: "active", external_status: "manually_verified", external_verified_at: null, verification_source: null, recorded_expiration: "2027-06-30", expiration_verified: true, tax_year: 2026, notes: null, archived_at: null, archived_reason: null, created_at: "", updated_at: "", ...over });
+const run = (efins: EfinRow[], extra: Partial<Parameters<typeof complianceExceptions>[0]> = {}) => complianceExceptions({ efins, assignments: [], filings: [], credentials: [], people: [], orgs: [], today: "2026-10-11", ...extra });
+
+test("a healthy EFIN raises no exceptions", () => {
+  assert.deepEqual(run([baseEfin()]), []);
+});
+
+test("exceptions describe recorded data only and never claim IRS status", () => {
+  const kinds = (e: EfinRow) => run([e]).map((x) => x.kind);
+  assert.deepEqual(kinds(baseEfin({ recorded_expiration: null, expiration_verified: false })), ["missing_expiration"]);
+  assert.deepEqual(kinds(baseEfin({ expiration_verified: false })), ["unverified_expiration"]);
+  assert.deepEqual(kinds(baseEfin({ recorded_expiration: "2026-09-01" })), ["past_deadline"]);
+  assert.deepEqual(kinds(baseEfin({ ero_person_id: null })), ["no_ero"]);
+  assert.deepEqual(kinds(baseEfin({ external_status: "unverified" })), ["efin_unverified"]);
+  assert.deepEqual(kinds(baseEfin({ archived_at: "2026-01-01", ero_person_id: null })), []);
+  for (const x of run([baseEfin({ recorded_expiration: "2026-09-01" })])) assert.ok(!/approved by the IRS|accepted/i.test(x.detail));
+});
+
+test("high-severity exceptions sort first", () => {
+  const out = run([baseEfin({ id: "a", external_status: "unverified" }), baseEfin({ id: "b", ero_person_id: null })]);
+  assert.equal(out[0].severity, "high");
+});

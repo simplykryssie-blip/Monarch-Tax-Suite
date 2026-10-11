@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { automationDeps } from "@/lib/automation/server";
 import { runDue } from "@/lib/automation/engine.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
+import { runRenewalSweep } from "@/lib/efin/renewals";
 
 // Scheduler endpoint: processes due retries. Protected by CRON_SECRET (Vercel Cron sends it as
 // "Authorization: Bearer <CRON_SECRET>"; any other scheduler can do the same). It sends no email by itself:
@@ -17,7 +18,15 @@ async function handle(request: Request) {
   if (!given || !same(given, secret)) return new Response("Unauthorized", { status: 401 });
   try {
     const { processed } = await runDue(automationDeps(), 25);
-    return Response.json({ processed });
+    // EFIN renewal sweep: reconciles renewal tasks and sends due reminders. Isolated so a missing EFIN migration cannot break retries.
+    let efin: unknown = null;
+    try {
+      efin = await runRenewalSweep();
+    } catch (e) {
+      console.error(`efin-renewals: ${sanitizeError(e, 160)}`);
+      efin = { error: "EFIN renewal sweep failed or is not set up yet" };
+    }
+    return Response.json({ processed, efin });
   } catch (e) {
     console.error(`automation-run: ${sanitizeError(e, 160)}`);
     return new Response("Run failed", { status: 500 });
