@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import { onboardEroAction, type FormResult } from "./actions";
 import { FormattedInput } from "./formatted-input";
+import { PopupLink } from "./popup-link";
 import { displayAddress, displayPhone, formatCity, formatStreet } from "@/lib/efin/format.ts";
 import { STRUCTURE_OPTIONS, structureLabel } from "@/lib/efin/text.ts";
 
@@ -229,7 +229,7 @@ export function OnboardingWizard({ options }: { options: Opt[] }) {
           <h2>Software &amp; banking</h2>
           <p className="monarch-muted">What this firm uses, from the lists in Settings.</p>
           {options.length === 0 ? (
-            <p className="efin-note-soft">Your lists are empty. <Link href="/bureau/settings" target="_blank" className="efin-card-link">Add your tax software and bank products in Settings</Link>, then reload this page. You can also choose them later from the firm.</p>
+            <p className="efin-note-soft">Your lists are empty. <PopupLink href="/bureau/settings" title="Settings" className="efin-card-link">Add your tax software and bank products in Settings</PopupLink>. It opens over this page, so nothing you have typed is lost; the lists appear here when you close it. You can also choose them later from the firm.</p>
           ) : (
             (["tax_software", "bank_product"] as const).map((kind) => {
               const list = options.filter((o) => o.kind === kind);

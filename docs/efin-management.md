@@ -21,6 +21,9 @@ Service-bureau CRM module under **My Office → EFIN Management** (`/efin`). The
 ## Updating a database that ran an earlier version
 If a database already ran an earlier `20261011100000_efin_management.sql` (for example a test or preview project), run `supabase/migrations/20261012090000_efin_management_update.sql` on it. It is safe to run repeatedly. It adds the `client` relationship value and replaces the save functions. Permanent-delete functions are in `20261012100000_efin_delete_functions.sql`. The app now says exactly which file to run when the database is behind (a missing value or function), instead of the misleading "tables not installed" message.
 
+## Pop-ups (keeping your place)
+Pages you open from a button on a firm or the onboarding (Settings, Locations, Documents, Edit firm, Software & banking) open in a pop-up over the current page. Closing it returns you exactly where you were, with anything half-typed intact, and refreshes the page behind it so new items appear. Cmd/Ctrl-click opens a normal tab. If a pop-up lands on the firm list (for example after a delete), it closes and the page follows. The pop-up is an iframe of the same site: `/efin/*` and `/bureau/*` send `X-Frame-Options: SAMEORIGIN` and `frame-ancestors 'self'`, so only this site can frame them. Confirmations (delete, archive) use an in-page dialog instead of the browser's blocking prompt.
+
 ## Latest changes (confirmation wording, responsible party, settings lists, documents)
 - **Renamed** "EFIN Management" to **My Service Bureau** (URLs still start with `/efin`).
 - **Confirmation wording:** Unconfirmed / Pending confirmation / Confirmed (older "manually verified" rows show as Confirmed). Nothing is described as an IRS result.

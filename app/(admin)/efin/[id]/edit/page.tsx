@@ -11,6 +11,7 @@ import { AddEfinForm } from "../../add-efin-form";
 import { EroAdmin } from "../../ero-admin";
 import { FormattedInput } from "../../formatted-input";
 import { Select, VERIFY_OPTIONS } from "../../parts";
+import { PopupLink } from "../../popup-link";
 
 /** Everything that changes a firm lives here, so the firm page itself stays a calm summary. */
 export default async function EditFirm({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ open?: string; notice?: string; error?: string }> }) {
@@ -35,14 +36,14 @@ export default async function EditFirm({ params, searchParams }: { params: Promi
         <b>Edit</b>
       </nav>
       <h1 className="efin-edit-title">Edit {org.legal_name}</h1>
-      <p className="monarch-muted" style={{ marginTop: 0 }}>Changes are recorded in the activity history. <Link href={`/efin/${id}`} className="efin-card-link">Back to the firm</Link></p>
+      <p className="monarch-muted" style={{ marginTop: 0 }}>Changes are recorded in the activity history. <Link href={`/efin/${id}`} className="efin-card-link efin-nopopup">Back to the firm</Link></p>
       <Flash notice={sp.notice} error={sp.error} />
       <div className="efin-flow">
         <details className="efin-edit" open={sp.open === "software"}>
           <summary>Software &amp; banking</summary>
           <div className="efin-edit-body">
             {s.options.filter((o) => o.active).length === 0 ? (
-              <p className="monarch-muted" style={{ margin: 0 }}>Your lists are empty. <Link className="efin-card-link" href="/bureau/settings">Add your tax software and bank products in Settings</Link> first.</p>
+              <p className="monarch-muted" style={{ margin: 0 }}>Your lists are empty. <PopupLink className="efin-card-link" href="/bureau/settings" title="Settings">Add your tax software and bank products in Settings</PopupLink> first.</p>
             ) : (
               <ActionForm action={setFirmOptionsAction} className="efin-optform">
                 <input type="hidden" name="organization_id" value={org.id} /><input type="hidden" name="back" value={here} />
