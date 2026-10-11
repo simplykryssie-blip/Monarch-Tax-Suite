@@ -105,7 +105,7 @@ function Group({ entry, depth, pathname, open, toggle, close }: { entry: Entry; 
   );
 }
 
-export function AdminShell({ email, logoSrc, children }: { email: string; logoSrc?: string | null; children: React.ReactNode }) {
+export function AdminShell({ email, logoSrc, today, children }: { email: string; logoSrc?: string | null; today: string; children: React.ReactNode }) {
   const pathname = usePathname();
   const [menu, setMenu] = useState(false);
   // Every section starts open; the owner can collapse any of them.
@@ -117,8 +117,17 @@ export function AdminShell({ email, logoSrc, children }: { email: string; logoSr
     <div className="mt-shell">
       <aside className={"mt-sidebar" + (menu ? " is-open" : "")}>
         <Link href="/" className="mt-brand" onClick={() => setMenu(false)} aria-label="Monarch Tax Suite home">
-          <BrandMark src={logoSrc} size={46} />
-          <Wordmark />
+          <span className="mt-brand-plate">
+            {logoSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoSrc} alt="Monarch Tax Suite" width={1000} height={253} />
+            ) : (
+              <>
+                <BrandMark size={46} />
+                <Wordmark />
+              </>
+            )}
+          </span>
         </Link>
         <nav className="mt-nav-scroll" aria-label="Main">
           {NAV.map((e) => <Group key={e.label} entry={e} depth={0} pathname={pathname} open={open} toggle={toggle} close={() => setMenu(false)} />)}
@@ -136,6 +145,12 @@ export function AdminShell({ email, logoSrc, children }: { email: string; logoSr
         <header className="mt-topbar">
           <button className="mt-hamburger" onClick={() => setMenu(!menu)} aria-label="Open menu"><Icon name="menu" size={22} /></button>
           <div className="mt-crumb">{crumb(pathname)}</div>
+          <span className="mt-date">{today}</span>
+          <Link href="/orders/internal" className="mt-new"><Icon name="plus" size={15} /><span>New license</span></Link>
+          <div className="mt-chip" title={email}>
+            <div className="mt-avatar">{initial}</div>
+            <div><b>Administrator</b><small>Owner</small></div>
+          </div>
           <form action={signOut}>
             <button type="submit" className="mt-signout"><Icon name="signout" size={16} /><span>Sign out</span></button>
           </form>

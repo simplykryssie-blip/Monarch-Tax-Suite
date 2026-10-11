@@ -44,3 +44,17 @@ test("axis ticks are round numbers and integer-only for counts", () => {
   assert.ok(niceTicks(7500).every((t) => t % 500 === 0));
   assert.ok(niceTicks(1, 3, true).every((t) => Number.isInteger(t)));
 });
+
+import { ago, buildActivity } from "../lib/activity.ts";
+
+test("activity feed merges real events newest first, skips internal and pending orders, and is empty when nothing happened", () => {
+  const now = new Date("2026-10-11T12:00:00Z");
+  assert.deepEqual(buildActivity({ customers: [], orders: [], products: [], installations: [] }, []), []);
+  const feed = buildActivity(
+    { customers: [{ id: "c", email: "a@b.co", full_name: "Ann", created_at: "2026-10-10T00:00:00Z" } as never], orders: [order({ payment_status: "pending" }), order({ customer_id: "c", paid_at: "2026-10-11T10:00:00Z" })], products: [], installations: [] },
+    [{ id: "x", at: "2026-10-11T11:00:00Z", kind: "email", title: "Automation ran", detail: "W" }],
+  );
+  assert.deepEqual(feed.map((f) => f.kind), ["email", "order", "customer"]);
+  assert.equal(ago("2026-10-11T11:00:00Z", now), "1 hour ago");
+  assert.equal(ago("2026-10-11T11:59:50Z", now), "just now");
+});

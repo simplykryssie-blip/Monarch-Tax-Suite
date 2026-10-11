@@ -11,5 +11,5 @@ function logoSrc() {
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const admin = await requireAdmin();
-  return <AdminShell email={admin.email} logoSrc={logoSrc()}>{children}</AdminShell>;
+  return <AdminShell email={admin.email} logoSrc={logoSrc()} today={new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" }).format(new Date())}>{children}</AdminShell>;
 }

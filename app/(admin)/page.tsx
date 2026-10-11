@@ -49,6 +49,7 @@ async function extras(licenses: License[]): Promise<Extras> {
       Promise.all(ids.map((id) => crm.repo.getLiveConnection(id))),
       auto.repo.listExecutions({ limit: 200 }),
     ]);
+    const workflows = new Map((await auto.repo.listWorkflows()).map((w) => [w.id, w.name]));
     const since = Date.now() - 30 * 86_400_000;
     const recent = executions.filter((e) => !e.is_test && Date.parse(e.created_at) >= since);
     return {
@@ -57,9 +58,16 @@ async function extras(licenses: License[]): Promise<Extras> {
       completed: profiles.filter((p) => p?.completed_at).length,
       runs: { ok: recent.filter((e) => e.status === "succeeded").length, failed: recent.filter((e) => e.status === "failed").length, waiting: recent.filter((e) => e.status === "retrying" || e.status === "queued").length },
       available: true,
+      feed: executions.filter((e) => !e.is_test && e.status !== "queued").slice(0, 12).map((e) => ({
+        id: `x:${e.id}`,
+        at: e.finished_at ?? e.created_at,
+        kind: e.status === "failed" ? ("alert" as const) : ("email" as const),
+        title: e.status === "failed" ? "Automation failed" : e.status === "retrying" ? "Automation retrying" : "Automation ran",
+        detail: workflows.get(e.workflow_id) ?? "Workflow",
+      })),
     };
   } catch {
-    return { domains: 0, crm: 0, completed: 0, runs: { ok: 0, failed: 0, waiting: 0 }, available: false };
+    return { domains: 0, crm: 0, completed: 0, runs: { ok: 0, failed: 0, waiting: 0 }, available: false, feed: [] };
   }
 }
 
