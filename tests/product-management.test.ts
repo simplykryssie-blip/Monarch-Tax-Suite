@@ -13,6 +13,7 @@ import {
   uploadProductImage,
   validateImage,
 } from "../lib/commerce/images.ts";
+import { verifyCatalogProduct, type StripeCatalogPort } from "../lib/commerce/stripe-verify.ts";
 import { createStripePrice, createStripeProduct, priceSyncState, syncStripeAvailability, syncStripeProductInfo, type StripePort } from "../lib/commerce/stripe-sync.ts";
 import { handleStripeEvent, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
 import { parseFeatures, parseMetadata, parseProductForm, ValidationError } from "../lib/commerce/validation.ts";
@@ -303,6 +304,31 @@ describe("explicit Stripe sync", () => {
     assert.deepEqual(calls, ["active:prod_TESTCALC123:true", "active:prod_TESTCALC123:false", "active:prod_TESTCALC123:true", "active:prod_TESTCALC123:false"]);
     const unlinked = await createProduct(repo, { ...BASE, slug: "unlinked", stripe_product_id: null, stripe_price_id: null });
     assert.equal(await syncStripeAvailability(repo, port, unlinked.id), null);
+  });
+
+  test("publishing refreshes the saved Stripe check, so it never shows the draft's inactive state", async () => {
+    const { repo, product } = await setup();
+    await makeSellable(repo, product.id);
+    let active = false;
+    const port: StripePort = { ...mockStripe().port, async setProductActive(id, a) { active = a; return { id }; } };
+    const catalog: StripeCatalogPort = {
+      mode: "live",
+      async getProduct(id) { return { id, name: "Calc", active, livemode: true }; },
+      async getPrice(id) { return { id, product_id: "prod_TESTCALC123", product_name: "Calc", product_active: active, active: true, currency: "usd", unit_amount: 7500, type: "one_time", interval: null, livemode: true }; },
+      async listActivePrices() { return []; },
+      async createOneTimePrice() { throw new Error("not used"); },
+    };
+    // Checked while a draft: inactive in Stripe, as expected.
+    await verifyCatalogProduct(repo, catalog, product.id);
+    assert.equal((await repo.getProduct(product.id))?.stripe_verification?.product?.active, false);
+    // Publish: Stripe is switched on and the saved check is refreshed in the same step.
+    await setProductStatus(repo, product.id, "published");
+    const result = await syncStripeAvailability(repo, port, product.id, catalog);
+    assert.match(result!.message, /now active\. Stripe check: verified\./);
+    const after = (await repo.getProduct(product.id))!;
+    assert.equal(after.stripe_verification?.product?.active, true);
+    assert.equal(after.stripe_verification?.ok, true);
+    assert.deepEqual(after.stripe_verification?.issues, []);
   });
 
   test("a failed Stripe deactivation is recorded, and the status change stands", async () => {

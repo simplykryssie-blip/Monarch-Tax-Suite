@@ -1,4 +1,5 @@
 import { isPurchasable } from "./catalog.ts";
+import { verifyCatalogProduct, type StripeCatalogPort } from "./stripe-verify.ts";
 import { primaryImage } from "./images.ts";
 import { ValidationError } from "./validation.ts";
 import type { CommerceRepo, ImageStore, Product } from "./types.ts";
@@ -47,13 +48,14 @@ async function displayInfo(repo: CommerceRepo, store: ImageStore, product: Produ
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : "Stripe request failed.");
 
-export async function syncStripeProductInfo(repo: CommerceRepo, store: ImageStore, stripe: StripePort, productId: string): Promise<SyncResult> {
+export async function syncStripeProductInfo(repo: CommerceRepo, store: ImageStore, stripe: StripePort, productId: string, catalog?: StripeCatalogPort | null): Promise<SyncResult> {
   const product = await repo.getProduct(productId);
   if (!product) throw new ValidationError("Product not found.");
   if (!product.stripe_product_id) throw new ValidationError("This product is not linked to a Stripe product yet.");
   try {
     await stripe.updateProduct(product.stripe_product_id, { ...(await displayInfo(repo, store, product)), active: isPurchasable(product) });
-    return record(repo, product.id, { ok: true, message: `Stripe product ${product.stripe_product_id} updated (name, description, image, ${isPurchasable(product) ? "active" : "inactive"}). Prices unchanged.` });
+    const result = await record(repo, product.id, { ok: true, message: `Stripe product ${product.stripe_product_id} updated (name, description, image, ${isPurchasable(product) ? "active" : "inactive"}). Prices unchanged.` });
+    return { ...result, message: result.message + (await refreshVerification(repo, catalog, product.id)) };
   } catch (e) {
     return record(repo, product.id, { ok: false, message: errorText(e) });
   }
@@ -64,15 +66,30 @@ export async function syncStripeProductInfo(repo: CommerceRepo, store: ImageStor
  * Stripe, so payment links and checkouts for drafts, unpublished and archived products stop taking payments.
  * Called after every status change. A failure is recorded on the product and never undoes the status change.
  */
-export async function syncStripeAvailability(repo: CommerceRepo, stripe: StripePort, productId: string): Promise<SyncResult | null> {
+export async function syncStripeAvailability(repo: CommerceRepo, stripe: StripePort, productId: string, catalog?: StripeCatalogPort | null): Promise<SyncResult | null> {
   const product = await repo.getProduct(productId);
   if (!product?.stripe_product_id) return null;
   const active = isPurchasable(product);
   try {
     await stripe.setProductActive(product.stripe_product_id, active);
-    return record(repo, product.id, { ok: true, message: `Stripe product ${product.stripe_product_id} is now ${active ? "active" : "inactive (no new payments)"}.` });
+    const result = await record(repo, product.id, { ok: true, message: `Stripe product ${product.stripe_product_id} is now ${active ? "active" : "inactive (no new payments)"}.` });
+    return { ...result, message: result.message + (await refreshVerification(repo, catalog, product.id)) };
   } catch (e) {
     return record(repo, product.id, { ok: false, message: `Could not set the Stripe product ${active ? "active" : "inactive"}: ${errorText(e)}` });
+  }
+}
+
+/**
+ * After a change in Stripe, re-reads the product and price so the saved Stripe check never shows a state from
+ * before the change (for example "inactive" from while the product was a draft). Never fails the change itself.
+ */
+async function refreshVerification(repo: CommerceRepo, catalog: StripeCatalogPort | null | undefined, productId: string): Promise<string> {
+  if (!catalog) return "";
+  try {
+    const snap = await verifyCatalogProduct(repo, catalog, productId);
+    return snap.ok ? " Stripe check: verified." : ` Stripe check: action needed: ${snap.issues.join(" ")}`;
+  } catch {
+    return " The Stripe check could not be refreshed; use Verify with Stripe.";
   }
 }
 
