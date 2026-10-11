@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { MemoryRepo, published } from "./memory-repo.ts";
+import { MemoryRepo, published, seedCheckout } from "./memory-repo.ts";
 import { createProduct } from "../lib/commerce/catalog.ts";
 import {
   authorizeDomain,
@@ -33,7 +33,8 @@ const PRODUCT: NewProduct = {
 
 async function purchased(metadata: Record<string, string> = {}) {
   const repo = new MemoryRepo();
-  await published(repo, await createProduct(repo, PRODUCT));
+  const product = await published(repo, await createProduct(repo, PRODUCT));
+  await seedCheckout(repo, "cs_1", product.id);
   await handleStripeEvent(
     { repo, listCheckoutProductIds: async () => ["prod_TESTCALC123"] },
     {

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { LEGAL_LAST_UPDATED } from "@/lib/legal";
 
 export const SUPPORT_EMAIL = "info@monarchtaxsuite.com";
-export const LEGAL_LAST_UPDATED = "October 9, 2026";
 
 /** Shared shell for the Terms, Privacy and Refund pages. Every legal page is a draft until the owner and counsel approve it. */
 export function LegalPage({ title, children }: { title: string; children: ReactNode }) {

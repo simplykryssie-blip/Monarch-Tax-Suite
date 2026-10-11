@@ -181,9 +181,30 @@ export type Order = {
   notes: string | null;
   paid_at: string | null;
   refunded_at: string | null;
+  /** The Terms / Refund Policy version the buyer accepted at storefront checkout; null for other orders. */
+  terms_version?: string | null;
+  terms_accepted_at?: string | null;
   created_at: string;
   updated_at: string;
 };
+
+/** A Stripe Checkout Session started by the storefront. The webhook fulfils only sessions recorded here. */
+export type StorefrontCheckout = {
+  id: string;
+  product_id: string;
+  stripe_session_id: string;
+  stripe_price_id: string;
+  amount_cents: number;
+  currency: string;
+  installation_type: InstallationType | null;
+  terms_version: string;
+  terms_accepted_at: string;
+  status: "open" | "completed" | "expired";
+  expires_at: string;
+  completed_at: string | null;
+  created_at: string;
+};
+export type NewStorefrontCheckout = Omit<StorefrontCheckout, "id" | "status" | "completed_at" | "created_at">;
 
 export type License = {
   id: string;
@@ -305,6 +326,11 @@ export interface CommerceRepo {
   /** Most recent recorded update Checkout Session for a license and tax year that has not expired. */
   findOpenUpdateCheckout(licenseId: string, taxYear: number, now: string): Promise<{ stripe_session_id: string; expires_at: string } | null>;
   recordUpdateCheckout(input: { license_id: string; tax_year: number; stripe_session_id: string; expires_at: string }): Promise<void>;
+  recordStorefrontCheckout(input: NewStorefrontCheckout): Promise<StorefrontCheckout>;
+  findStorefrontCheckout(stripeSessionId: string): Promise<StorefrontCheckout | null>;
+  updateStorefrontCheckout(id: string, patch: Partial<Pick<StorefrontCheckout, "status" | "completed_at">>): Promise<StorefrontCheckout>;
+  /** Newest first. With a product id, only that product's checkouts. */
+  listStorefrontCheckouts(limit: number, productId?: string): Promise<StorefrontCheckout[]>;
   getOrder(id: string): Promise<Order | null>;
   findOrderByPaymentIntent(paymentIntentId: string): Promise<Order | null>;
   /** Inserts unless an order with the same payment intent exists; returns the existing one then. */

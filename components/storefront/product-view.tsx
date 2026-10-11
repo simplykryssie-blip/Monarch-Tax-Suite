@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 // Customer-facing product page. Pure presentation: used by the public /shop
 // pages, the admin preview, and the editor's live preview, so all three match.
 
@@ -34,19 +36,12 @@ export function formatPrice(p: Pick<StorefrontProduct, "price_cents" | "currency
   return p.payment_type === "recurring" && p.billing_interval ? `${amount} / ${p.billing_interval}` : `${amount} one-time`;
 }
 
-function safeCheckoutUrl(url: string | undefined): string | null {
-  if (!url) return null;
-  try {
-    const u = new URL(url);
-    return u.protocol === "https:" ? u.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-export function ProductView({ product, images, preview = false }: { product: StorefrontProduct; images: StorefrontImage[]; preview?: boolean }) {
+/**
+ * `purchase` is the storefront's buy form (server-started checkout). Without it the page offers to contact Monarch;
+ * pasted payment links (the old `checkout_url` setting) are never shown.
+ */
+export function ProductView({ product, images, preview = false, purchase }: { product: StorefrontProduct; images: StorefrontImage[]; preview?: boolean; purchase?: ReactNode }) {
   const [hero, ...rest] = images;
-  const checkout = preview ? null : safeCheckoutUrl(product.metadata.checkout_url);
   return (
     <article className="sf">
       <div className="sf-grid">
@@ -77,8 +72,8 @@ export function ProductView({ product, images, preview = false }: { product: Sto
           <div className="sf-cta">
             {preview ? (
               <button type="button" disabled title="Preview only — purchasing is disabled">Purchase (preview only)</button>
-            ) : checkout ? (
-              <a href={checkout} rel="noopener">Purchase</a>
+            ) : purchase ? (
+              purchase
             ) : (
               <a href={`mailto:info@monarchtaxsuite.com?subject=${encodeURIComponent(product.name)}`}>Contact us to purchase</a>
             )}

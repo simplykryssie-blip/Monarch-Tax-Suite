@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { MemoryRepo, published } from "./memory-repo.ts";
+import { MemoryRepo, published, seedCheckout, makeSellable } from "./memory-repo.ts";
 import { createProduct, editProduct, setProductStatus } from "../lib/commerce/catalog.ts";
 import {
   authorizeDomain,
@@ -36,6 +36,8 @@ async function setup({ publish = true } = {}) {
   const repo = new MemoryRepo();
   const draft = await createProduct(repo, CALCULATOR);
   const product = publish ? await published(repo, draft) : draft;
+  // Every purchase event in this file pays storefront session cs_test_1.
+  await seedCheckout(repo, "cs_test_1", product.id);
   const deps: FulfillmentDeps = { repo, listCheckoutProductIds: async () => ["prod_TESTCALC123"] };
   return { repo, product, deps };
 }
@@ -79,6 +81,8 @@ describe("products", () => {
 
   test("publish, unpublish, archive lifecycle and publish blockers", async () => {
     const { repo, product } = await setup({ publish: false });
+    await assert.rejects(setProductStatus(repo, product.id, "published"), /Add a product image\. Create or verify the Stripe price/);
+    await makeSellable(repo, product.id);
     assert.equal((await setProductStatus(repo, product.id, "published")).status, "published");
     assert.equal((await setProductStatus(repo, product.id, "unpublished")).status, "unpublished");
     assert.equal((await setProductStatus(repo, product.id, "archived")).status, "archived");
