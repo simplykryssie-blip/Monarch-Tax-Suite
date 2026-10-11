@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { appOrigin, commerceRepo, requireAdmin, stripeClient } from "@/lib/admin";
-import { stripeAvailabilityNote } from "@/lib/stripe-catalog";
+import { closeOpenCheckoutsNote, stripeAvailabilityNote } from "@/lib/stripe-catalog";
 import { setProductStatus } from "@/lib/commerce/catalog.ts";
 import {
   authorizeDomain,
@@ -76,7 +76,7 @@ export async function setProductStatusAction(form: FormData) {
   const productId = id(form);
   await mutate(`/products/${productId}`, async () => {
     const product = await setProductStatus(commerceRepo(), productId, parseProductStatus(str(form, "status")));
-    return { notice: `Product is now ${product.status}.${await stripeAvailabilityNote(product.id)}` };
+    return { notice: `Product is now ${product.status}.${await stripeAvailabilityNote(product.id)}${await closeOpenCheckoutsNote(product.id)}` };
   });
 }
 

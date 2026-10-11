@@ -3,6 +3,7 @@ import { generateEmbedId } from "./embed.ts";
 import { generateLicenseKey, hashLicenseKey, licenseKeyPrefix } from "./license-keys.ts";
 import { PLATFORM_GUIDES } from "./platforms.ts";
 import { isPurchasable } from "./catalog.ts";
+import { checkoutMismatch } from "./storefront-checkout.ts";
 import { applyPaidUpdate, latestAvailable, reverseUpdate } from "./versions.ts";
 import { normalizeDomain, normalizeEmail, normalizeWebsiteUrl, ValidationError } from "./validation.ts";
 import {
@@ -206,6 +207,9 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
   // Checked again at payment time: a product unpublished after the buyer opened checkout, or one bought through an
   // old payment link, is never fulfilled automatically. The payment is still recorded so it can be reviewed.
   const notSellable = !isPurchasable(product);
+  // Only a session the storefront started, paid at the amount it recorded, is fulfilled automatically.
+  const checkout = await repo.findStorefrontCheckout(session.id);
+  const mismatch = checkoutMismatch(checkout, session, product.id);
   const rawEmail = session.customer_details?.email;
   if (!rawEmail) throw new Error(`Checkout ${session.id} has no customer email.`);
 
@@ -224,14 +228,16 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
     license_id: null,
     tax_year: null,
     previous_tax_year: null,
-    installation_type: installationTypeFrom(session.metadata, product),
+    installation_type: checkout?.installation_type ?? installationTypeFrom(session.metadata, product),
     verification_method: "stripe_webhook",
     verified_by: null,
     verified_at: at,
-    notes: notSellable ? notSellableNote(product) : null,
+    notes: notSellable ? notSellableNote(product) : mismatch ? `Review: ${mismatch}, so nothing was delivered automatically. Refund the customer or fulfil the order manually.` : null,
     paid_at: paid ? at : null,
     refunded_at: null,
+    ...(checkout ? { terms_version: checkout.terms_version, terms_accepted_at: checkout.terms_accepted_at } : {}),
   });
+  if (checkout && paid && checkout.status !== "completed") await repo.updateStorefrontCheckout(checkout.id, { status: "completed", completed_at: at });
   if (order.customer_id !== customer.id) throw new Error(`Payment intent ${paymentIntentId} is already attached to a different customer.`);
 
   let current = order;
@@ -352,6 +358,10 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
       return handleCheckoutSession(deps, object as CheckoutSession, true);
     case "checkout.session.async_payment_failed":
     case "checkout.session.expired": {
+      if (event.type === "checkout.session.expired") {
+        const checkout = await repo.findStorefrontCheckout((object as CheckoutSession).id);
+        if (checkout?.status === "open") await repo.updateStorefrontCheckout(checkout.id, { status: "expired" });
+      }
       const pi = idOf((object as CheckoutSession).payment_intent);
       const order = pi ? await repo.findOrderByPaymentIntent(pi) : null;
       if (!order) return { status: "ignored", detail: "No order for this checkout." };

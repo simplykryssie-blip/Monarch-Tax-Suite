@@ -15,10 +15,12 @@ import type {
   NewOrder,
   NewProduct,
   NewProductVersion,
+  NewStorefrontCheckout,
   Order,
   Product,
   ProductImage,
   ProductVersion,
+  StorefrontCheckout,
   VersionChange,
 } from "./types.ts";
 
@@ -150,6 +152,16 @@ export class SupabaseCommerceRepo implements CommerceRepo {
   }
   async recordUpdateCheckout(input: { license_id: string; tax_year: number; stripe_session_id: string; expires_at: string }) {
     unwrap(await this.db.from("update_checkout_sessions").insert(input));
+  }
+  async recordStorefrontCheckout(input: NewStorefrontCheckout) {
+    return unwrap(await this.db.from("storefront_checkouts").insert(input).select("*").single()) as StorefrontCheckout;
+  }
+  findStorefrontCheckout(stripeSessionId: string) { return this.one<StorefrontCheckout>("storefront_checkouts", "stripe_session_id", stripeSessionId); }
+  updateStorefrontCheckout(id: string, patch: Partial<StorefrontCheckout>) { return this.patch<StorefrontCheckout>("storefront_checkouts", id, patch); }
+  async listStorefrontCheckouts(limit: number, productId?: string) {
+    let q = this.db.from("storefront_checkouts").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (productId) q = q.eq("product_id", productId);
+    return unwrap(await q) as StorefrontCheckout[];
   }
   getOrder(id: string) { return this.one<Order>("orders", "id", id); }
   findOrderByPaymentIntent(pi: string) { return this.one<Order>("orders", "provider_payment_intent_id", pi); }

@@ -34,7 +34,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   if (!result.ok) return <SetupRequired message={result.message} />;
   const { product, versions, changes, images } = result.data;
   if (!product) notFound();
-  const blockers = publishBlockers(product);
+  const blockers = publishBlockers(product, images.length);
   const store = imageStore();
   const managed = orderedImages(images).map((i) => ({ id: i.id, url: store.publicUrl(i.storage_path), alt: i.alt_text, is_primary: i.is_primary, width: i.width, height: i.height, size_bytes: i.size_bytes }));
   const archived = product.status === "archived";

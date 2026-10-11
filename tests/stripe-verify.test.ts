@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { MemoryRepo, published } from "./memory-repo.ts";
+import { MemoryRepo, published, seedCheckout } from "./memory-repo.ts";
 import { createProduct, setProductStatus } from "../lib/commerce/catalog.ts";
 import { handleStripeEvent, issueLicenseKey, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
 import { createVersion, editVersion, setVersionStatus } from "../lib/commerce/versions.ts";
@@ -255,6 +255,7 @@ async function customerWithUpdate() {
   const { repo, calc } = env;
   const deps: FulfillmentDeps = { repo, listCheckoutProductIds: async (sid) => (sid.startsWith("cs_buy") ? [CALC_PRODUCT] : [UPDATE_PRODUCT]) };
   const buy = (id: string, pi: string, email: string) => ({ id, type: "checkout.session.completed", data: { object: { id: `cs_buy_${id}`, payment_status: "paid", payment_intent: pi, amount_total: 7500, currency: "usd", customer: null, customer_details: { email }, metadata: {} } } });
+  for (const id of ["evt_a", "evt_b"]) await seedCheckout(repo, `cs_buy_${id}`, calc.id);
   await handleStripeEvent(deps, buy("evt_a", "pi_BUYA0000001", "a@example.com"));
   await handleStripeEvent(deps, buy("evt_b", "pi_BUYB0000001", "b@example.com"));
   const [licA, licB] = repo.licenses;

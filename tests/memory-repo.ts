@@ -7,12 +7,14 @@ import type {
   InstallationEvent,
   License,
   LicenseEvent,
+  NewStorefrontCheckout,
   Order,
   ImageStore,
   ImageType,
   Product,
   ProductImage,
   ProductVersion,
+  StorefrontCheckout,
   VersionChange,
 } from "../lib/commerce/types.ts";
 
@@ -106,6 +108,18 @@ export class MemoryRepo implements CommerceRepo {
     if (this.checkouts.some((c) => c.stripe_session_id === input.stripe_session_id)) throw new Error("duplicate session");
     this.checkouts.push({ ...input, created_at: this.ts() });
   }
+  storefrontCheckouts: StorefrontCheckout[] = [];
+  async recordStorefrontCheckout(input: NewStorefrontCheckout) {
+    if (this.storefrontCheckouts.some((c) => c.stripe_session_id === input.stripe_session_id)) throw new Error("duplicate session");
+    const row: StorefrontCheckout = { ...input, id: randomUUID(), status: "open", completed_at: null, created_at: this.ts() };
+    this.storefrontCheckouts.push(row);
+    return this.clone(row);
+  }
+  async findStorefrontCheckout(stripeSessionId: string) { return this.clone(this.storefrontCheckouts.find((c) => c.stripe_session_id === stripeSessionId) ?? null); }
+  async updateStorefrontCheckout(id: string, patch: Partial<StorefrontCheckout>) { return this.patch(this.storefrontCheckouts, id, patch); }
+  async listStorefrontCheckouts(limit: number, productId?: string) {
+    return this.clone(this.storefrontCheckouts.filter((c) => !productId || c.product_id === productId).slice(-limit).reverse());
+  }
   async getOrder(id: string) { return this.clone(this.orders.find((o) => o.id === id) ?? null); }
   async findOrderByPaymentIntent(pi: string) { return this.clone(this.orders.find((o) => o.provider_payment_intent_id === pi) ?? null); }
   async createOrder(input: Omit<Order, "id" | "order_number" | "created_at" | "updated_at">) {
@@ -194,4 +208,31 @@ export class MemoryImageStore implements ImageStore {
 /** Publishes a catalog product directly (fixtures): only published products are sold and fulfilled. */
 export async function published(repo: MemoryRepo, product: Product): Promise<Product> {
   return repo.updateProduct(product.id, { status: "published" });
+}
+
+/**
+ * Records a storefront checkout for a session id (fixtures), as startStorefrontCheckout does: the webhook fulfils only
+ * sessions the storefront started, at the amount recorded here.
+ */
+export async function seedCheckout(repo: MemoryRepo, sessionId: string, productId: string, amountCents = 7500, installationType: StorefrontCheckout["installation_type"] = null) {
+  return repo.recordStorefrontCheckout({
+    product_id: productId,
+    stripe_session_id: sessionId,
+    stripe_price_id: "price_TESTSEED",
+    amount_cents: amountCents,
+    currency: "usd",
+    installation_type: installationType,
+    terms_version: "2026-10-09",
+    terms_accepted_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+  });
+}
+
+/** Gives a product what publishing requires (fixtures): a Stripe-verified price and a product image. */
+export async function makeSellable(repo: MemoryRepo, productId: string): Promise<Product> {
+  const p = (await repo.getProduct(productId))!;
+  if (!(await repo.listProductImages([productId])).length) {
+    await repo.addProductImage({ product_id: productId, storage_path: `products/${productId}/seed.png`, content_type: "image/png", size_bytes: 100, width: 800, height: 600, alt_text: null, is_primary: true, sort_order: 0, created_by: null });
+  }
+  return repo.updateProduct(productId, { stripe_price_id: p.stripe_price_id ?? "price_TESTSELLABLE", stripe_price_cents: p.price_cents });
 }

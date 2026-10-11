@@ -8,3 +8,11 @@
 export const LEGAL_PAGES_APPROVED: boolean = true;
 
 export const LEGAL_PATHS = ["/terms", "/privacy", "/refunds"] as const;
+
+/**
+ * The version of the Terms and Refund Policy a buyer accepts at checkout. It is recorded on the checkout and on the
+ * order, so every order shows which text the buyer agreed to. Change it, and the "Last updated" date, whenever the
+ * Terms or Refund Policy text changes.
+ */
+export const LEGAL_VERSION = "2026-10-11";
+export const LEGAL_LAST_UPDATED = "October 11, 2026";

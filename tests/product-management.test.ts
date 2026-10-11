@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { MemoryImageStore, MemoryRepo } from "./memory-repo.ts";
+import { MemoryImageStore, MemoryRepo, makeSellable } from "./memory-repo.ts";
 import { createProduct, duplicateProduct, editProduct, isPurchasable, isStorefrontVisible, setProductStatus } from "../lib/commerce/catalog.ts";
 import {
   imageDimensions,
@@ -157,7 +157,7 @@ describe("product editing", () => {
       features: "- 2025 and 2026 tax years\n• Child Tax Credit\n\n",
       terms: "Lifetime license for the purchased tax year.",
       disclaimer: "Estimates only.",
-      metadata: "checkout_url: https://buy.stripe.com/test\nSupport Email: info@monarchtaxsuite.com",
+      metadata: "Service Owner: Monarch support\nSupport Email: info@monarchtaxsuite.com",
       stripe_product_id: "prod_TESTCALC123",
       stripe_price_id: "price_TESTCALC123",
     }).forEach(([k, v]) => form.set(k, v));
@@ -165,7 +165,7 @@ describe("product editing", () => {
     const saved = await editProduct(repo, product.id, parseProductForm(form));
     assert.equal(saved.description, "Line one.\n\nLine two.");
     assert.deepEqual(saved.features, ["2025 and 2026 tax years", "Child Tax Credit"]);
-    assert.deepEqual(saved.metadata, { checkout_url: "https://buy.stripe.com/test", support_email: "info@monarchtaxsuite.com" });
+    assert.deepEqual(saved.metadata, { service_owner: "Monarch support", support_email: "info@monarchtaxsuite.com" });
     assert.equal(saved.id, product.id);
     assert.equal(saved.stripe_product_id, "prod_TESTCALC123");
   });
@@ -198,6 +198,7 @@ describe("product editing", () => {
 
   test("duplicate creates a draft without Stripe links and copies images", async () => {
     const { repo, store, product } = await setup();
+    await repo.updateProduct(product.id, { stripe_price_cents: 7500 }); // verified price; the image is uploaded below
     const img = await uploadProductImage(repo, store, product.id, upload(png()), "admin");
     await setProductStatus(repo, product.id, "published");
     const copy = await duplicateProduct(repo, store, product.id, "admin");
@@ -233,6 +234,7 @@ describe("product editing", () => {
 describe("storefront visibility", () => {
   test("only published products are customer-visible", async () => {
     const { repo, product } = await setup();
+    await makeSellable(repo, product.id);
     assert.equal(isStorefrontVisible(product), false);
     const published = await setProductStatus(repo, product.id, "published");
     assert.equal(isStorefrontVisible(published), true);
@@ -250,6 +252,7 @@ describe("storefront visibility", () => {
 
   test("saving a published product keeps it sellable", async () => {
     const { repo, product } = await setup();
+    await makeSellable(repo, product.id);
     await setProductStatus(repo, product.id, "published");
     await assert.rejects(editProduct(repo, product.id, { ...BASE, price_cents: null }), /stay sellable/);
   });
@@ -290,6 +293,7 @@ describe("explicit Stripe sync", () => {
 
   test("only a published product is active in Stripe, following every status change", async () => {
     const { repo, product } = await setup();
+    await makeSellable(repo, product.id);
     const { port, calls } = mockStripe();
     for (const status of ["published", "unpublished", "published", "archived"] as const) {
       await setProductStatus(repo, product.id, status);
@@ -303,6 +307,7 @@ describe("explicit Stripe sync", () => {
 
   test("a failed Stripe deactivation is recorded, and the status change stands", async () => {
     const { repo, product } = await setup();
+    await makeSellable(repo, product.id);
     await setProductStatus(repo, product.id, "published");
     await setProductStatus(repo, product.id, "unpublished");
     const port: StripePort = { ...mockStripe().port, async setProductActive() { throw new Error("Stripe unavailable"); } };
