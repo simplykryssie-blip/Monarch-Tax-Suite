@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { MemoryRepo } from "./memory-repo.ts";
+import { MemoryRepo, published } from "./memory-repo.ts";
 import { createProduct, editProduct, setProductStatus } from "../lib/commerce/catalog.ts";
 import {
   authorizeDomain,
@@ -31,9 +31,11 @@ const CALCULATOR: NewProduct = {
   status: "draft",
 };
 
-async function setup() {
+/** Most tests sell the product, so it is published unless a test needs the draft. */
+async function setup({ publish = true } = {}) {
   const repo = new MemoryRepo();
-  const product = await createProduct(repo, CALCULATOR);
+  const draft = await createProduct(repo, CALCULATOR);
+  const product = publish ? await published(repo, draft) : draft;
   const deps: FulfillmentDeps = { repo, listCheckoutProductIds: async () => ["prod_TESTCALC123"] };
   return { repo, product, deps };
 }
@@ -60,7 +62,7 @@ function checkoutCompleted(eventId: string, pi = "pi_TEST000001", extra: Record<
 
 describe("products", () => {
   test("create, edit and persist across reloads", async () => {
-    const { repo, product } = await setup();
+    const { repo, product } = await setup({ publish: false });
     assert.equal(product.status, "draft");
     const edited = await editProduct(repo, product.id, { ...CALCULATOR, name: "Monarch Basic Tax Calculator 2026" });
     assert.equal(edited.name, "Monarch Basic Tax Calculator 2026");
@@ -76,7 +78,7 @@ describe("products", () => {
   });
 
   test("publish, unpublish, archive lifecycle and publish blockers", async () => {
-    const { repo, product } = await setup();
+    const { repo, product } = await setup({ publish: false });
     assert.equal((await setProductStatus(repo, product.id, "published")).status, "published");
     assert.equal((await setProductStatus(repo, product.id, "unpublished")).status, "unpublished");
     assert.equal((await setProductStatus(repo, product.id, "archived")).status, "archived");
@@ -143,6 +145,47 @@ describe("stripe fulfillment", () => {
     assert.equal(repo.orders.length, 1);
     assert.equal(repo.licenses.length, 1);
     assert.equal(repo.installations.length, 1);
+  });
+
+  test("M4: a payment for a draft product is recorded for review and never fulfilled", async () => {
+    const { repo, deps } = await setup({ publish: false });
+    const emitted: string[] = [];
+    const out = await handleStripeEvent({ ...deps, emit: async (e) => void emitted.push(e.type) }, checkoutCompleted("evt_1"));
+    assert.equal(out.status, "processed");
+    assert.equal(repo.orders.length, 1, "the payment is kept on record");
+    assert.equal(repo.orders[0].payment_status, "paid");
+    assert.match(repo.orders[0].notes ?? "", /^Review: the product was draft \(not published\)/);
+    assert.equal(repo.licenses.length, 0);
+    assert.equal(repo.installations.length, 0);
+    assert.deepEqual(emitted, [], "no onboarding email for an unfulfilled order");
+    // A replay or a second event for the same payment still delivers nothing.
+    await handleStripeEvent(deps, { id: "evt_2", type: "payment_intent.succeeded", data: { object: { id: "pi_TEST000001" } } });
+    await handleStripeEvent(deps, { ...checkoutCompleted("evt_3"), type: "checkout.session.async_payment_succeeded" });
+    assert.equal(repo.orders.length, 1);
+    assert.equal(repo.licenses.length, 0);
+  });
+
+  test("M4: a product unpublished after the buyer opened checkout is not fulfilled when the payment arrives", async () => {
+    const { repo, deps, product } = await setup();
+    // Checkout opened while published, payment still processing.
+    await handleStripeEvent(deps, checkoutCompleted("evt_1", "pi_TEST000003", { payment_status: "unpaid" }));
+    await setProductStatus(repo, product.id, "unpublished");
+    await handleStripeEvent(deps, { id: "evt_2", type: "payment_intent.succeeded", data: { object: { id: "pi_TEST000003" } } });
+    assert.equal(repo.orders[0].payment_status, "paid");
+    assert.match(repo.orders[0].notes ?? "", /^Review: the product was unpublished/);
+    assert.equal(repo.licenses.length, 0);
+    // Archived products are refused the same way.
+    await setProductStatus(repo, product.id, "archived");
+    await handleStripeEvent(deps, checkoutCompleted("evt_3", "pi_TEST000004"));
+    assert.match(repo.orders[1].notes ?? "", /^Review: the product was archived/);
+    assert.equal(repo.licenses.length, 0);
+  });
+
+  test("M4: a published product is still fulfilled normally", async () => {
+    const { repo, deps } = await setup();
+    await handleStripeEvent(deps, checkoutCompleted("evt_1"));
+    assert.equal(repo.orders[0].notes, null);
+    assert.equal(repo.licenses.length, 1);
   });
 
   test("unpaid checkout and failed payment do not grant access", async () => {

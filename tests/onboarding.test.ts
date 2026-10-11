@@ -90,6 +90,35 @@ describe("setup email lifecycle", () => {
     await assert.rejects(requestInvite(s.deps, r.license!.id, { adminId: ADMIN }), ValidationError);
   });
 
+  test("M3: a double-click, or the administrator and customer asking together, sends one setup email", async () => {
+    const s = await setup();
+    const r = await s.license();
+    const before = s.email.sent.length;
+    const [a, b] = await Promise.all([requestInvite(s.deps, r.license!.id, { adminId: ADMIN }), requestInvite(s.deps, r.license!.id, { adminId: null })]);
+    assert.deepEqual([a.sent, b.sent].sort(), [false, true]);
+    assert.equal([a, b].find((x) => !x.sent)!.reason, "already_requested");
+    assert.equal(s.email.sent.length, before + 1);
+    // That email carried a new link, so asking again is a new request.
+    s.advance(1000);
+    assert.equal((await requestInvite(s.deps, r.license!.id, { adminId: ADMIN })).sent, true);
+    assert.equal(s.email.sent.length, before + 2);
+  });
+
+  test("M3: a resend whose email failed before a link was made does not block the next request", async () => {
+    const s = await setup();
+    const r = await s.license();
+    const before = s.email.sent.length;
+    const tpl = (await s.repo.listTemplates()).find((t) => t.template_key === "onboarding_welcome")!;
+    await s.repo.updateTemplate(tpl.id, { active: false });
+    s.advance(1000);
+    assert.equal((await requestInvite(s.deps, r.license!.id, { adminId: ADMIN })).sent, true);
+    assert.equal(s.email.sent.length, before, "switched-off template: nothing sent");
+    await s.repo.updateTemplate(tpl.id, { active: true });
+    s.advance(1000);
+    assert.equal((await requestInvite(s.deps, r.license!.id, { adminId: ADMIN })).sent, true);
+    assert.equal(s.email.sent.length, before + 1);
+  });
+
   test("the customer's 'new link' form sends only to the licensed address and reveals nothing about unknown ones", async () => {
     const s = await setup();
     await s.license("owner@example.com");

@@ -190,3 +190,8 @@ export class MemoryImageStore implements ImageStore {
   }
   publicUrl(path: string) { return `https://storage.test/product-images/${path}`; }
 }
+
+/** Publishes a catalog product directly (fixtures): only published products are sold and fulfilled. */
+export async function published(repo: MemoryRepo, product: Product): Promise<Product> {
+  return repo.updateProduct(product.id, { status: "published" });
+}

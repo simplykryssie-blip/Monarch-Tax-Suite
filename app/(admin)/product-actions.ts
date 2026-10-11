@@ -2,14 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type Stripe from "stripe";
 import { commerceRepo, imageStore, requireAdmin, stripeClient } from "@/lib/admin";
 import { createProduct, duplicateProduct, editProduct, setProductStatus } from "@/lib/commerce/catalog.ts";
 import { removeProductImage, setPrimaryImage, updateImageAlt, uploadProductImage } from "@/lib/commerce/images.ts";
 import { createStripePrice, createStripeProduct, syncStripeProductInfo, type StripePort, type SyncResult } from "@/lib/commerce/stripe-sync.ts";
 import { parseProductForm, ValidationError } from "@/lib/commerce/validation.ts";
 import { checkVersionPrice, createVersionPrice, linkVersionPrice, verifyCatalogProduct, type StripeCatalogPort } from "@/lib/commerce/stripe-verify.ts";
-import { stripeCatalogPort } from "@/lib/stripe-catalog";
+import { stripeAvailabilityNote, stripeCatalogPort, stripeSyncPort } from "@/lib/stripe-catalog";
 
 // Product editor, image and Stripe actions. Every action re-checks
 // administrator access server-side before touching data or storage.
@@ -40,7 +39,7 @@ export async function saveProductAction(_prev: SaveProductState, form: FormData)
     if (publish && product.status !== "published") {
       try {
         await setProductStatus(repo, product.id, "published");
-        target = notice(`/products/${product.id}`, "notice", "Product saved and published.");
+        target = notice(`/products/${product.id}`, "notice", `Product saved and published.${await stripeAvailabilityNote(product.id)}`);
       } catch (error) {
         if (!(error instanceof ValidationError)) throw error;
         // The edits are saved; only publishing was refused.
@@ -133,18 +132,6 @@ export async function updateImageAltAction(_prev: ImageActionState, form: FormDa
 
 // ------------------------------------------------------------------ Stripe
 
-function stripePort(stripe: Stripe): StripePort {
-  return {
-    updateProduct: (id, params) => stripe.products.update(id, params),
-    // Idempotency keys stop a double-submit from creating two Stripe objects.
-    createProduct: (params) => stripe.products.create(params, { idempotencyKey: `monarch-product-${params.metadata.monarch_product_id}` }),
-    createPrice: (params) =>
-      stripe.prices.create(params, {
-        idempotencyKey: `monarch-price-${params.metadata.monarch_product_id}-${params.unit_amount}-${params.currency}-${params.recurring?.interval ?? "once"}`,
-      }),
-  };
-}
-
 async function stripeAction(form: FormData, run: (port: StripePort, productId: string) => Promise<SyncResult>) {
   await requireAdmin();
   const productId = uuid(form, "id");
@@ -155,7 +142,7 @@ async function stripeAction(form: FormData, run: (port: StripePort, productId: s
     target = notice(back, "error", "Stripe is not connected: STRIPE_SECRET_KEY is not configured, so nothing was sent to Stripe.");
   } else {
     try {
-      const result = await run(stripePort(stripe), productId);
+      const result = await run(stripeSyncPort(stripe), productId);
       target = notice(back, result.ok ? "notice" : "error", result.ok ? result.message : `Stripe sync failed: ${result.message}`);
     } catch (error) {
       if (!(error instanceof ValidationError)) throw error;

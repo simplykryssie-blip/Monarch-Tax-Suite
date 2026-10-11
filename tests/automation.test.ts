@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { MemoryRepo } from "./memory-repo.ts";
+import { MemoryRepo, published } from "./memory-repo.ts";
 import { MemoryAutomationRepo } from "./automation-memory.ts";
 import { createProduct } from "../lib/commerce/catalog.ts";
 import { createInternalLicense, handleStripeEvent, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
@@ -36,7 +36,7 @@ class FakeEmail implements EmailSender {
 
 async function setup(env: "production" | "preview" = "production", testRecipients: string[] = []) {
   const commerce = new MemoryRepo();
-  const product = await createProduct(commerce, CALCULATOR);
+  const product = await published(commerce, await createProduct(commerce, CALCULATOR));
   const repo = new MemoryAutomationRepo();
   const email = new FakeEmail();
   let clock = Date.parse("2026-10-10T12:00:00Z");

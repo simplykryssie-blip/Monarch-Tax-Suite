@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { appOrigin, commerceRepo, requireAdmin, stripeClient } from "@/lib/admin";
+import { stripeAvailabilityNote } from "@/lib/stripe-catalog";
 import { setProductStatus } from "@/lib/commerce/catalog.ts";
 import {
   authorizeDomain,
@@ -75,7 +76,7 @@ export async function setProductStatusAction(form: FormData) {
   const productId = id(form);
   await mutate(`/products/${productId}`, async () => {
     const product = await setProductStatus(commerceRepo(), productId, parseProductStatus(str(form, "status")));
-    return { notice: `Product is now ${product.status}.` };
+    return { notice: `Product is now ${product.status}.${await stripeAvailabilityNote(product.id)}` };
   });
 }
 
@@ -356,6 +357,7 @@ export async function resendSetupEmailAction(form: FormData) {
       console.error(`resend setup email failed: ${error instanceof Error ? error.message.slice(0, 160) : "unknown"}`);
       throw new ValidationError("The setup email could not be requested. Check that the Automation Center database migration is applied.");
     }
+    if (result.reason === "already_requested") return { notice: "A setup email with the current link was already requested, so no second copy was sent. Its delivery status shows in the Onboarding panel." };
     if (!result.sent) throw new ValidationError("A setup email was already requested several times in the last hour. Please wait before sending another.");
     return { notice: "Setup email requested. Its delivery status shows in the Onboarding panel." };
   });
