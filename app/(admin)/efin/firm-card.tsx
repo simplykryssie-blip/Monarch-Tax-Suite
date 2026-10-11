@@ -35,8 +35,8 @@ export function FirmHeader({ s, org, efin, steps, base }: { s: Snapshot; org: Or
   return (
     <>
       <nav className="efin-crumbs" aria-label="Breadcrumb">
-        <Link href="/efin" aria-label="EFIN Management"><Icon name="home" size={16} /></Link>
-        <Link href="/efin">EFIN Management</Link><span>›</span>
+        <Link href="/efin" aria-label="My Service Bureau"><Icon name="home" size={16} /></Link>
+        <Link href="/efin">My Service Bureau</Link><span>›</span>
         <Link href="/efin/list">Firms</Link><span>›</span>
         <b>{org.legal_name}</b>
       </nav>
@@ -71,7 +71,7 @@ export function FirmHeader({ s, org, efin, steps, base }: { s: Snapshot; org: Or
               <div><span>EFIN</span><RevealEfin id={efin.id} last4={efin.efin_last4} /></div>
               <div><span>Status</span><Badge value={statusValue(efin)} /></div>
               <div><span>Verification</span><Verified value={efin.external_status} /></div>
-              <div><span>Renewal</span>{efin.recorded_expiration ? <>{efin.recorded_expiration}{left !== null && <small className="monarch-muted"> · {left < 0 ? `${-left} days past` : `${left} days`}</small>}</> : <span className="monarch-muted">Not recorded</span>}</div>
+              <div><span>Next review</span>{efin.recorded_expiration ? <>{efin.recorded_expiration}{left !== null && <small className="monarch-muted"> · {left < 0 ? `${-left} days past` : `${left} days`}</small>}</> : <span className="monarch-muted">Not recorded</span>}</div>
             </div>
           ) : (
             <p className="monarch-muted" style={{ margin: 0 }}>No EFIN recorded for this firm yet.</p>
@@ -107,6 +107,10 @@ export function OverviewCards({ s, org, efin, base, activity }: { s: Snapshot; o
   const where = efin ? `${base}/edit?open=` : `${base}?edit=`;
   const locBase = `/efin/locations/${org.id}${efin ? `?from=${efin.id}` : ""}`;
   const locAdd = `/efin/locations/${org.id}?add=1${efin ? `&from=${efin.id}` : ""}`;
+  const docBase = `/efin/documents/${org.id}${efin ? `?from=${efin.id}` : ""}`;
+  const docAdd = `/efin/documents/${org.id}?add=1${efin ? `&from=${efin.id}` : ""}#upload`;
+  const docs = s.documents.filter((d) => d.subject_type === "organization" && d.subject_id === org.id);
+  const used = (kind: string) => s.options.filter((o) => o.kind === kind && s.orgOptions.some((x) => x.organization_id === org.id && x.option_id === o.id)).map((o) => o.name).join(", ");
   const none = <span className="monarch-muted">Not recorded</span>;
   const structure = org.business_structure ? structureLabel(org.business_structure) : null;
   return (
@@ -120,6 +124,12 @@ export function OverviewCards({ s, org, efin, base, activity }: { s: Snapshot; o
             <div><dt>Business type</dt><dd>{structure ?? none}</dd></div>
             <div><dt>EIN</dt><dd className="efin-mask">{org.ein_last4 ? `••-•••${org.ein_last4}` : none}</dd></div>
             <div>
+              <dt>Documents</dt>
+              <dd>{docs.length} document{docs.length === 1 ? "" : "s"}
+                <span className="efin-inline-actions"><Link className="efin-card-link" href={docBase}>View</Link><Link className="efin-card-link" href={docAdd}>+ Upload</Link></span>
+              </dd>
+            </div>
+            <div>
               <dt>Locations</dt>
               <dd>{locations.length} location{locations.length === 1 ? "" : "s"}
                 <span className="efin-inline-actions"><Link className="efin-card-link" href={locBase}>View</Link><Link className="efin-card-link" href={locAdd}>+ Add</Link></span>
@@ -131,7 +141,8 @@ export function OverviewCards({ s, org, efin, base, activity }: { s: Snapshot; o
             <div><dt>Responsible Official</dt><dd>{names("responsible_official").join(", ") || none}</dd></div>
             <div><dt>Principal(s)</dt><dd>{names("principal").join(", ") || none}</dd></div>
             <div><dt>Filing office</dt><dd>{(efin && s.locations.find((l) => l.id === efin.location_id)?.name) || none}</dd></div>
-            <div><dt>Verification source</dt><dd>{efin?.verification_source ?? none}</dd></div>
+            <div><dt>Tax software</dt><dd>{used("tax_software") || <Link className="efin-card-link" href={`${where}software${efin ? "" : "#manage"}`}>Choose</Link>}</dd></div>
+            <div><dt>Bank products</dt><dd>{used("bank_product") || <Link className="efin-card-link" href={`${where}software${efin ? "" : "#manage"}`}>Choose</Link>}</dd></div>
           </dl>
         </div>
       </section>

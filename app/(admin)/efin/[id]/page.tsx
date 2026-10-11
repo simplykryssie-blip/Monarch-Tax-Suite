@@ -19,7 +19,6 @@ const TABS: readonly (readonly [string, string, IconName])[] = [
   ["overview", "Overview", "dashboard"],
   ["team", "Team", "customers"],
   ["filing", "EFIN & Filing", "licenses"],
-  ["documents", "Documents", "document"],
   ["renewals", "Renewals", "calendar"],
   ["history", "Activity", "history"],
 ];
@@ -147,9 +146,9 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Filing relationships</h2><p>Which software provider is set up to file with this EFIN. Each line shows how it was confirmed. Monarch does not sync with any provider, so nothing here is live.</p></div></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>PROVIDER</th><th>PRODUCT</th><th>TAX YEAR</th><th>AUTHORIZATION</th><th>SOURCE</th><th>NEXT STEP</th></tr></thead>
-              <tbody>{filings.length === 0 ? <EmptyRow colSpan={6}>No software providers recorded for this EFIN.</EmptyRow> : filings.map((f) => (
-                <tr key={f.id}><td><b>{f.software_provider}</b></td><td>{f.software_product ?? "—"}</td><td>{f.tax_year ?? "—"}</td><td><Verified value={f.external_auth_status} /></td><td>{f.verification_source ?? "—"}</td><td style={{ whiteSpace: "normal" }}>{f.remediation_note ?? (f.external_auth_status === "unverified" ? "Confirm with the provider and record how." : "—")}</td></tr>
+              <thead><tr><th>PROVIDER</th><th>PRODUCT</th><th>TAX YEAR</th><th>STATUS</th><th>SOFTWARE RENEWS</th><th>SOURCE</th><th>NEXT STEP</th></tr></thead>
+              <tbody>{filings.length === 0 ? <EmptyRow colSpan={7}>No software providers recorded for this EFIN.</EmptyRow> : filings.map((f) => (
+                <tr key={f.id}><td><b>{f.software_provider}</b></td><td>{f.software_product ?? "—"}</td><td>{f.tax_year ?? "—"}</td><td><Verified value={f.external_auth_status} /></td><td>{f.renews_on ?? "—"}</td><td>{f.verification_source ?? "—"}</td><td style={{ whiteSpace: "normal" }}>{f.remediation_note ?? (f.external_auth_status === "unverified" ? "Confirm with the provider and record how." : "—")}</td></tr>
               ))}</tbody>
             </table></div>
           </section>
@@ -158,12 +157,13 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
               <h2 style={{ marginTop: 0 }}>Add a provider</h2>
               <ActionForm action={saveFilingAction} className="monarch-form">
                 <input type="hidden" name="efin_id" value={id} /><input type="hidden" name="back" value={here} />
-                <label>Software provider<input name="software_provider" required maxLength={120} /></label>
+                <label>Software provider<input name="software_provider" list="bureau-software" required maxLength={120} placeholder="Choose from your list or type" /><datalist id="bureau-software">{s.options.filter((o) => o.kind === "tax_software" && o.active).map((o) => <option key={o.id} value={o.name} />)}</datalist></label>
                 <label>Product<input name="software_product" maxLength={120} /></label>
                 <label>Tax year<input name="tax_year" type="number" min={2000} max={2100} /></label>
-                <label>Authorization status<Select name="external_auth_status" value="unverified" options={[...VERIFY_OPTIONS, { value: "not_applicable", label: "Not applicable" }]} /></label>
+                <label>Status<Select name="external_auth_status" value="unverified" options={[...VERIFY_OPTIONS, { value: "not_applicable", label: "Not applicable" }]} /></label>
+                <label>Software renewal date<input type="date" name="renews_on" /></label>
                 <label className="is-wide">How it was confirmed<input name="verification_source" maxLength={300} /></label>
-                <label className="is-wide">Next step if unverified<input name="remediation_note" maxLength={1000} /></label>
+                <label className="is-wide">Next step if unconfirmed<input name="remediation_note" maxLength={1000} /></label>
                 <div className="is-wide"><button className="monarch-primary" type="submit">Save</button></div>
               </ActionForm>
             </section>
@@ -171,19 +171,12 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
         </>
       )}
 
-      {tab === "documents" && (
-        <section className="monarch-panel">
-          <div className="monarch-panel-head"><div><h2>Documents</h2><p>Supporting files for this EFIN.</p></div></div>
-          <div className="monarch-table-wrap"><table><tbody><EmptyRow colSpan={1}>Document upload is not part of this release. Record where each document is kept in the verification source of the EFIN, assignment or credential. Uploads need a private storage bucket and are planned as the next stage.</EmptyRow></tbody></table></div>
-        </section>
-      )}
-
       {tab === "renewals" && (
         <section className="monarch-panel">
           <div className="monarch-panel-head"><div><h2>Renewals</h2><p>Reminders go out 60, 30, 14 and 7 days before a verified date, once each. Past the date the EFIN is moved to compliance review; it is never invalidated automatically.</p></div><Link className="monarch-secondary" href="/efin/renewals">All renewals</Link></div>
           <div className="monarch-table-wrap"><table>
             <thead><tr><th>TASK</th><th>DUE</th><th>ORIGINAL DEADLINE</th><th>STATUS</th></tr></thead>
-            <tbody>{tasks.length === 0 ? <EmptyRow colSpan={4}>No renewal task. One is created automatically once a verified renewal date is recorded.</EmptyRow> : tasks.map((t) => <tr key={t.id}><td><b>{t.title}</b></td><td>{t.due_on}</td><td>{t.original_due_on}</td><td><Badge value={t.status} /></td></tr>)}</tbody>
+            <tbody>{tasks.length === 0 ? <EmptyRow colSpan={4}>No task yet. One is created once a confirmed review date is recorded.</EmptyRow> : tasks.map((t) => <tr key={t.id}><td><b>{t.title}</b></td><td>{t.due_on}</td><td>{t.original_due_on}</td><td><Badge value={t.status} /></td></tr>)}</tbody>
           </table></div>
         </section>
       )}

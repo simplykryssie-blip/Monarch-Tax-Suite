@@ -9,7 +9,7 @@ export type AssignmentRole = (typeof ASSIGNMENT_ROLES)[number];
 export const EFIN_STATUSES = ["draft", "pending_verification", "active", "renewal_review", "inactive", "suspended"] as const;
 export type EfinStatus = (typeof EFIN_STATUSES)[number];
 
-export const VERIFICATION = ["unverified", "manually_verified", "verified"] as const;
+export const VERIFICATION = ["unverified", "pending", "manually_verified", "verified"] as const;
 export type Verification = (typeof VERIFICATION)[number];
 
 export const REMINDER_STAGES = [60, 30, 14, 7] as const;
@@ -92,7 +92,7 @@ export type AssignmentRow = {
   end_reason: string | null;
 };
 
-export type FilingRow = { id: string; efin_id: string; organization_id: string; software_provider: string; software_product: string | null; tax_year: number | null; external_auth_status: Verification | "not_applicable"; verification_source: string | null; last_verified_at: string | null; remediation_note: string | null; archived_at: string | null };
+export type FilingRow = { id: string; efin_id: string; organization_id: string; software_provider: string; software_product: string | null; tax_year: number | null; renews_on?: string | null; external_auth_status: Verification | "not_applicable"; verification_source: string | null; last_verified_at: string | null; remediation_note: string | null; archived_at: string | null };
 
 export type RenewalTaskRow = {
   id: string;
@@ -109,3 +109,8 @@ export type RenewalTaskRow = {
 };
 
 export type AuditRow = { id: string; occurred_at: string; actor_id: string | null; actor_email: string | null; event_type: string; target_type: string | null; target_id: string | null; organization_id: string | null; changes: Record<string, unknown>; reason: string | null };
+
+export type OptionRow = { id: string; kind: "tax_software" | "bank_product"; name: string; notes: string | null; active: boolean; sort_order: number };
+export type OrgOptionRow = { organization_id: string; option_id: string };
+export type DocRow = { id: string; subject_type: string; subject_id: string; kind: string; title: string; storage_path: string | null; verification_status: Verification; expires_on: string | null; notes: string | null; archived_at: string | null; created_at: string };
+export const DOC_KINDS = ["IRS acceptance letter", "EFIN application", "Service agreement", "W-9", "Photo ID", "Bank product agreement", "Other"] as const;

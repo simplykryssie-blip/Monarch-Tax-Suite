@@ -19,7 +19,7 @@ export default async function EfinDashboard({ searchParams }: { searchParams: Pr
   const today = todayIso();
   return (
     <>
-      <PageTitle title="EFIN Management">Manage your EROs, their EFINs, locations, team and renewals in one place. Everything shown is what you recorded, with how it was verified, not a live IRS status.</PageTitle>
+      <PageTitle title="My Service Bureau">Manage your EROs, their EFINs, locations, team and renewals in one place. Everything shown is what you recorded, with how it was verified, not a live IRS status.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? (
         <SetupRequired message={result.message} module="efin" />

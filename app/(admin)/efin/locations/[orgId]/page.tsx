@@ -28,8 +28,8 @@ export default async function Locations({ params, searchParams }: { params: Prom
   return (
     <>
       <nav className="efin-crumbs" aria-label="Breadcrumb">
-        <Link href="/efin" aria-label="EFIN Management"><Icon name="home" size={16} /></Link>
-        <Link href="/efin">EFIN Management</Link><span>›</span>
+        <Link href="/efin" aria-label="My Service Bureau"><Icon name="home" size={16} /></Link>
+        <Link href="/efin">My Service Bureau</Link><span>›</span>
         <Link href="/efin/list">Firms</Link><span>›</span>
         <Link href={firmHref}>{org.legal_name}</Link><span>›</span>
         <b>Locations</b>

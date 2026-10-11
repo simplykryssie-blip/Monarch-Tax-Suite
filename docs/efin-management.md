@@ -1,4 +1,4 @@
-# EFIN Management (Phase 1 foundation)
+# My Service Bureau (EFIN management)
 
 Service-bureau CRM module under **My Office → EFIN Management** (`/efin`). The public storefront and VerexaHQ are untouched.
 
@@ -20,6 +20,16 @@ Service-bureau CRM module under **My Office → EFIN Management** (`/efin`). The
 
 ## Updating a database that ran an earlier version
 If a database already ran an earlier `20261011100000_efin_management.sql` (for example a test or preview project), run `supabase/migrations/20261012090000_efin_management_update.sql` on it. It is safe to run repeatedly. It adds the `client` relationship value and replaces the save functions. Permanent-delete functions are in `20261012100000_efin_delete_functions.sql`. The app now says exactly which file to run when the database is behind (a missing value or function), instead of the misleading "tables not installed" message.
+
+## Latest changes (confirmation wording, responsible party, settings lists, documents)
+- **Renamed** "EFIN Management" to **My Service Bureau** (URLs still start with `/efin`).
+- **Confirmation wording:** Unconfirmed / Pending confirmation / Confirmed (older "manually verified" rows show as Confirmed). Nothing is described as an IRS result.
+- **Responsible party:** in Add a firm, a box says the ERO is also the EFIN's responsible party. Untick it to enter the responsible party's own name, email and phone; it is saved as a Responsible Official.
+- **Dates:** an EFIN has no fixed expiration like a PTIN, so the field is now "Next review date" (when you want to re-check the firm's e-file application, or a date the IRS gave you). PTINs keep a renewal date. Software has its own renewal date on the filing record. Confirm any IRS-specific timing with IRS e-Services.
+- **Settings** (`/bureau/settings`, Operations > Settings): your lists of tax software and bank products. The onboarding step "Software" and the firm's Edit page use them.
+- **Documents:** upload and download live under Firm details (View / + Upload), not a tab. Private storage bucket `firm-documents`, 4 MB limit, PDF/PNG/JPG/DOCX checked by content, signed 60-second links, every upload/download/delete audited.
+- **Review step** lists everything entered, with an Edit link per section.
+- **Database:** `20261012110000_efin_firm_options_documents.sql` adds the third confirmation state, the lists, the bucket and the new save function. The app still works without it (new features show empty or ask for it); apply it to use them.
 
 ## Formatting, locations and onboarding
 - **One format everywhere** (`lib/efin/format.ts`): phone `(337) 858-7792`, EIN `12-3456789`, EFIN six digits, PTIN `P01234567`, state `LA`, ZIP `70607` or `70607-1234`, street and city in proper case with standard abbreviations (`3418 Greinwich Blvd`). Boxes format as you type; the server applies the same rules on save (and rejects a bad phone, state or ZIP with the field marked); display code formats older values too.

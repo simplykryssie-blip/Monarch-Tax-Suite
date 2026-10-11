@@ -595,3 +595,15 @@ a.mt-section:hover:before{opacity:1}
 .efin-review dt{color:var(--muted);font-size:13.5px}
 .efin-review dd{margin:0}
 @media(max-width:860px){.efin-wiz{grid-template-columns:1fr;gap:18px}.efin-steps-nav{position:static;grid-auto-flow:column;overflow-x:auto}.efin-steps-nav button{white-space:nowrap}}
+.efin-same{display:grid;grid-template-columns:22px 1fr;gap:12px;align-items:start;margin-top:18px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;cursor:pointer}
+.efin-same input{margin-top:3px;accent-color:#111}
+.efin-same small{display:block;color:var(--muted);font-size:13px;font-weight:400;margin-top:2px}
+.efin-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px 18px;margin-top:10px}
+.efin-review-block{padding:14px 0;border-top:1px solid var(--line-2)}
+.efin-review-block:first-of-type{border-top:0}
+.efin-review-head{display:flex;justify-content:space-between;align-items:center}
+.efin-review-head h3{font-size:15px;margin:0}
+.efin-linkbtn{background:none;border:0;border-bottom:1.5px solid var(--gold);padding:0 0 1px;cursor:pointer;font:inherit;font-size:13.5px;font-weight:650;color:var(--ink)}
+.efin-review{margin:8px 0 0}
+.efin-review>div{grid-template-columns:170px 1fr;padding:7px 0;border-top:0;font-size:14.5px}
+.efin-optform{display:grid;gap:18px}.efin-optform h3{font-size:15px;margin:0 0 4px}

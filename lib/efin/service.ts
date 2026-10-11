@@ -5,10 +5,11 @@ import { CrmSecrets } from "../crm/crypto.ts";
 import { unwrap } from "../commerce/supabase-repo.ts";
 import { serviceClient } from "../admin";
 import { assignmentProblems, EfinRuleError, forField, last4, tracksTeam, normalizeEfin, normalizeEin, normalizePtin, parseDay, planTransition, todayIso } from "./rules.ts";
-import type { AssignmentRole, AssignmentRow, AssignmentState, AuditRow, CredentialRow, EfinRow, FilingRow, LocationRow, OrgRow, PersonRow, RenewalTaskRow, RoleRow, Verification } from "./types.ts";
-import { ASSIGNMENT_ROLES, EFIN_STATUSES, VERIFICATION } from "./types.ts";
+import type { AssignmentRole, AssignmentRow, AssignmentState, AuditRow, CredentialRow, DocRow, EfinRow, FilingRow, LocationRow, OptionRow, OrgOptionRow, OrgRow, PersonRow, RenewalTaskRow, RoleRow, Verification } from "./types.ts";
+import { ASSIGNMENT_ROLES, DOC_KINDS, EFIN_STATUSES, VERIFICATION } from "./types.ts";
 import { words } from "./text.ts";
 import { formatAddress, formatPhone, type Address } from "./format.ts";
+import { checkUpload, MAX_DOC_BYTES, safeFileName } from "./files.ts";
 
 // Server-side EFIN data access. Every function here runs with the service role, so callers (server actions and pages) must
 // call requireAdmin() first. Sensitive identifiers (EFIN, EIN, PTIN) are encrypted with AAD naming the row and field, a
@@ -104,6 +105,10 @@ export type Snapshot = {
   assignments: AssignmentRow[];
   filings: FilingRow[];
   tasks: RenewalTaskRow[];
+  /** Your tax software and bank product lists, what each firm uses, and firm documents. Empty until the options migration is applied. */
+  options: OptionRow[];
+  orgOptions: OrgOptionRow[];
+  documents: DocRow[];
 };
 
 /** Everything the module screens need. The data set is small (one service bureau), so one snapshot keeps pages consistent. */
@@ -117,7 +122,7 @@ export async function loadSnapshot(): Promise<Snapshot> {
     c.from("professional_credentials").select(CRED_COLS),
     c.from("organization_roles").select("id, organization_id, person_id, role, location_id, status, start_date, end_date, verification_status, verification_note"),
     c.from("efin_assignments").select("*").order("requested_at", { ascending: false }),
-    c.from("filing_relationships").select("id, efin_id, organization_id, software_provider, software_product, tax_year, external_auth_status, verification_source, last_verified_at, remediation_note, archived_at"),
+    c.from("filing_relationships").select("*"),
     c.from("renewal_tasks").select("*").order("due_on"),
   ]);
   return {
@@ -130,7 +135,20 @@ export async function loadSnapshot(): Promise<Snapshot> {
     assignments: unwrap(assignments as never) as AssignmentRow[],
     filings: unwrap(filings as never) as FilingRow[],
     tasks: unwrap(tasks as never) as RenewalTaskRow[],
+    options: await soft<OptionRow>(c.from("bureau_options").select("id, kind, name, notes, active, sort_order").order("sort_order").order("name")),
+    orgOptions: await soft<OrgOptionRow>(c.from("organization_options").select("organization_id, option_id")),
+    documents: await soft<DocRow>(c.from("compliance_documents").select("id, subject_type, subject_id, kind, title, storage_path, verification_status, expires_on, notes, archived_at, created_at").is("archived_at", null).order("created_at", { ascending: false })),
   };
+}
+
+/** Optional tables: if the latest migration has not been applied yet, treat them as empty instead of breaking every page. */
+async function soft<T>(q: PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }>): Promise<T[]> {
+  const { data, error } = await q;
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205" || error.code === "42703" || /schema cache|does not exist/i.test(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []) as T[];
 }
 
 export async function loadAudit(opts: { targetId?: string; limit?: number } = {}): Promise<AuditRow[]> {
@@ -183,7 +201,15 @@ export async function onboardEro(actor: Actor, form: FormData): Promise<string> 
   const expiration = forField("recorded_expiration", () => day(form.get("recorded_expiration"), "Expiration date"));
   const email = forField("person_email", () => lower(text(form.get("person_email"), 254, "Email")));
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new EfinRuleError("That email address does not look right.", "person_email");
+  // Responsible party: the same person as the ERO (default), or someone else with their own details.
+  const sameResponsible = form.get("responsible_same") !== "no";
+  const respName = sameResponsible ? null : forField("resp_name", () => text(form.get("resp_name"), 200, "Responsible party's name", true));
+  const respEmail = sameResponsible ? null : lower(forField("resp_email", () => text(form.get("resp_email"), 254, "Email")));
+  if (respEmail && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(respEmail)) throw new EfinRuleError("That email address does not look right.", "resp_email");
+  const respPhone = sameResponsible ? null : phoneOf(form.get("resp_phone"), "resp_phone");
+  const optionIds = [...new Set(form.getAll("option_ids").map(String))].filter((v) => UUID.test(v)).slice(0, 60);
   const payload = {
+    responsible_same: sameResponsible, resp_person_id: sameResponsible ? null : randomUUID(), resp_name: respName, resp_email: respEmail, resp_phone: respPhone, option_ids: optionIds,
     actor_id: actor.id, actor_email: actor.email,
     org_id: ids.org, loc_id: ids.loc, person_id: ids.person, efin_id: ids.efin, cred_id: ids.cred,
     legal_name: forField("legal_name", () => text(form.get("legal_name"), 200, "Legal name", true)), dba_name: text(form.get("dba_name"), 200, "Doing business as"),
@@ -248,7 +274,7 @@ export async function createEfin(actor: Actor, form: FormData): Promise<string> 
     ero_person_id: form.get("ero_person_id") ? uuid(form.get("ero_person_id"), "person") : null,
     internal_status: "pending_verification",
     external_status: external,
-    external_verified_at: external === "unverified" ? null : new Date().toISOString(),
+    external_verified_at: external === "unverified" || external === "pending" ? null : new Date().toISOString(),
     verification_source: text(form.get("verification_source"), 300, "Verification source"),
     recorded_expiration: expiration,
     expiration_verified: Boolean(expiration) && form.get("expiration_verified") === "on",
@@ -293,7 +319,7 @@ export async function updateEfin(actor: Actor, form: FormData) {
     location_id: locationId,
     internal_status: status,
     external_status: external,
-    external_verified_at: external === "unverified" ? null : external === before.external_status ? before.external_verified_at : new Date().toISOString(),
+    external_verified_at: external === "unverified" || external === "pending" ? null : external === before.external_status ? before.external_verified_at : new Date().toISOString(),
     verification_source: text(form.get("verification_source"), 300, "Verification source"),
     recorded_expiration: expiration,
     expiration_verified: Boolean(expiration) && form.get("expiration_verified") === "on",
@@ -544,7 +570,7 @@ export async function saveFiling(actor: Actor, form: FormData) {
   const client = db();
   const efin = unwrap(await client.from("efin_records").select("organization_id").eq("id", efinId).maybeSingle() as never) as { organization_id: string } | null;
   if (!efin) throw new EfinNotFound("That EFIN could not be found.");
-  const status = oneOf(form.get("external_auth_status") || "unverified", ["unverified", "manually_verified", "verified", "not_applicable"] as const, "Authorization status");
+  const status = oneOf(form.get("external_auth_status") || "unverified", ["unverified", "pending", "manually_verified", "verified", "not_applicable"] as const, "Authorization status");
   const row = unwrap(await client.from("filing_relationships").insert({
     efin_id: efinId, organization_id: efin.organization_id,
     software_provider: text(form.get("software_provider"), 120, "Software provider", true),
@@ -553,6 +579,7 @@ export async function saveFiling(actor: Actor, form: FormData) {
     external_auth_status: status,
     verification_source: text(form.get("verification_source"), 300, "Verification source"),
     last_verified_at: status === "manually_verified" || status === "verified" ? new Date().toISOString() : null,
+    ...(String(form.get("renews_on") ?? "").trim() ? { renews_on: day(form.get("renews_on"), "Software renewal date") } : {}),
     remediation_note: text(form.get("remediation_note"), 1000, "Remediation note"),
   }).select("id").single() as never) as { id: string };
   await audit(actor, { type: "filing_relationship.created", targetType: "filing_relationship", targetId: row.id, organizationId: efin.organization_id, changes: { efin_id: efinId, external_auth_status: status } });
@@ -578,3 +605,96 @@ export async function completeRenewal(actor: Actor, form: FormData) {
 
 export { todayIso, tracksTeam };
 export type { Verification, AssignmentRole };
+
+// ------------------------------------------------------------------------------------- tax software & bank options
+const OPTION_KINDS = ["tax_software", "bank_product"] as const;
+
+/** Adds an item to your list of tax software or bank products (Settings). Names are unique per list, ignoring capitals. */
+export async function addOption(actor: Actor, form: FormData) {
+  const kind = oneOf(form.get("kind"), OPTION_KINDS, "List");
+  const name = forField("name", () => text(form.get("name"), 120, "Name", true)) as string;
+  const { data, error } = await db().from("bureau_options").insert({ kind, name, notes: text(form.get("notes"), 500, "Notes") }).select("id").single();
+  if (error) throw error.code === "23505" ? new EfinRuleError(`${name} is already on that list.`, "name") : error.code === "42P01" || error.code === "PGRST205" ? error : new Error(error.message);
+  await audit(actor, { type: "option.created", targetType: "option", targetId: data.id as string, changes: { kind, name } });
+}
+
+export async function setOptionActive(actor: Actor, optionId: string, active: boolean) {
+  const id = uuid(optionId, "item");
+  unwrap(await db().from("bureau_options").update({ active }).eq("id", id) as never);
+  await audit(actor, { type: active ? "option.restored" : "option.hidden", targetType: "option", targetId: id });
+}
+
+/** Removes an item. If any firm uses it, it is hidden instead so those firms keep their record. */
+export async function removeOption(actor: Actor, optionId: string): Promise<"deleted" | "hidden"> {
+  const id = uuid(optionId, "item");
+  const client = db();
+  const { count } = await client.from("organization_options").select("option_id", { count: "exact", head: true }).eq("option_id", id);
+  if ((count ?? 0) > 0) {
+    await setOptionActive(actor, id, false);
+    return "hidden";
+  }
+  unwrap(await client.from("bureau_options").delete().eq("id", id) as never);
+  await audit(actor, { type: "option.deleted", targetType: "option", targetId: id });
+  return "deleted";
+}
+
+/** Which of the lists a firm uses. Replaces the firm's current choices. */
+export async function setFirmOptions(actor: Actor, form: FormData) {
+  const orgId = uuid(form.get("organization_id"), "ERO");
+  const ids = [...new Set(form.getAll("option_ids").map(String))].filter((v) => UUID.test(v));
+  const client = db();
+  unwrap(await client.from("organization_options").delete().eq("organization_id", orgId) as never);
+  if (ids.length) {
+    const valid = unwrap(await client.from("bureau_options").select("id").in("id", ids).eq("active", true) as never) as { id: string }[];
+    if (valid.length) unwrap(await client.from("organization_options").insert(valid.map((o) => ({ organization_id: orgId, option_id: o.id }))) as never);
+  }
+  await audit(actor, { type: "organization.options_set", targetType: "organization", targetId: orgId, organizationId: orgId, changes: { count: ids.length } });
+}
+
+// ------------------------------------------------------------------------------------------------ firm documents
+export const DOC_BUCKET = "firm-documents";
+export { MAX_DOC_BYTES };
+
+/** Uploads a file for a firm. Checks size, extension, declared type and the file's own first bytes. Private bucket, served only by signed links. */
+export async function uploadDocument(actor: Actor, form: FormData) {
+  const orgId = uuid(form.get("organization_id"), "ERO");
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new EfinRuleError("Choose a file to upload.", "file");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const { name, contentType } = checkUpload(file, bytes);
+  const kind = oneOf(form.get("kind") || "Other", DOC_KINDS, "Document type");
+  const title = forField("title", () => text(form.get("title") || name.replace(/\.[^.]+$/, ""), 200, "Title", true)) as string;
+  const id = randomUUID();
+  const path = `${orgId}/${id}/${name}`;
+  const client = db();
+  const up = await client.storage.from(DOC_BUCKET).upload(path, bytes, { contentType, upsert: false });
+  if (up.error) throw /bucket not found/i.test(up.error.message) ? new Error("relation firm-documents bucket does not exist (schema cache)") : new Error(up.error.message);
+  const ins = await client.from("compliance_documents").insert({ id, subject_type: "organization", subject_id: orgId, kind, title, storage_path: path, notes: text(form.get("notes"), 2000, "Notes"), verification_status: oneOf(form.get("verification_status") || "unverified", VERIFICATION, "Confirmation"), created_by: actor.id });
+  if (ins.error) {
+    await client.storage.from(DOC_BUCKET).remove([path]); // do not leave an orphan file
+    throw new Error(ins.error.message);
+  }
+  await audit(actor, { type: "document.uploaded", targetType: "document", targetId: id, organizationId: orgId, changes: { kind, title, bytes: file.size } });
+}
+
+/** A short-lived link to one document. The download is recorded first; if that cannot be recorded, no link is given. */
+export async function documentLink(actor: Actor, docId: string): Promise<string> {
+  const id = uuid(docId, "document");
+  const client = db();
+  const doc = unwrap(await client.from("compliance_documents").select("id, subject_id, storage_path, title").eq("id", id).is("archived_at", null).maybeSingle() as never) as { id: string; subject_id: string; storage_path: string | null; title: string } | null;
+  if (!doc?.storage_path) throw new EfinNotFound("That document could not be found.");
+  await audit(actor, { type: "document.downloaded", targetType: "document", targetId: id, organizationId: doc.subject_id, changes: { title: doc.title } });
+  const { data, error } = await client.storage.from(DOC_BUCKET).createSignedUrl(doc.storage_path, 60, { download: safeFileName(doc.storage_path.split("/").pop() ?? "document") });
+  if (error || !data) throw new Error(error?.message ?? "Could not create the link.");
+  return data.signedUrl;
+}
+
+export async function deleteDocument(actor: Actor, docId: string) {
+  const id = uuid(docId, "document");
+  const client = db();
+  const doc = unwrap(await client.from("compliance_documents").select("id, subject_id, storage_path, title").eq("id", id).maybeSingle() as never) as { id: string; subject_id: string; storage_path: string | null; title: string } | null;
+  if (!doc) throw new EfinNotFound("That document could not be found.");
+  if (doc.storage_path) await client.storage.from(DOC_BUCKET).remove([doc.storage_path]);
+  unwrap(await client.from("compliance_documents").delete().eq("id", id) as never);
+  await audit(actor, { type: "document.deleted", targetType: "document", targetId: id, organizationId: doc.subject_id, changes: { title: doc.title } });
+}

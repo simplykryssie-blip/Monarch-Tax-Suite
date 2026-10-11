@@ -263,3 +263,25 @@ test("business types read correctly", () => {
   assert.equal(structureLabel("s_corporation"), "S corporation");
   assert.equal(structureLabel(null), "");
 });
+
+import { checkUpload, safeFileName } from "../lib/efin/files.ts";
+
+test("uploads are checked by size, extension, declared type and the file's own first bytes", () => {
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
+  assert.deepEqual(checkUpload({ name: "W-9 form.PDF", size: 1000, type: "application/pdf" }, pdf), { name: "W-9_form.PDF", contentType: "application/pdf" });
+  assert.throws(() => checkUpload({ name: "a.pdf", size: 5 * 1024 * 1024, type: "application/pdf" }, pdf), /4 MB/);
+  assert.throws(() => checkUpload({ name: "a.exe", size: 10, type: "" }, pdf), /PDF, PNG, JPG or DOCX/);
+  assert.throws(() => checkUpload({ name: "a.pdf", size: 10, type: "image/png" }, pdf), /does not match/);
+  assert.throws(() => checkUpload({ name: "a.pdf", size: 10, type: "application/pdf" }, new Uint8Array([1, 2, 3, 4])), /real PDF/);
+  assert.throws(() => checkUpload({ name: "a.pdf", size: 0, type: "application/pdf" }, pdf), /Choose a file/);
+  assert.equal(safeFileName("../../etc/passwd"), "passwd");
+  assert.equal(safeFileName("C:\\x\\my file (1).png"), "my_file_1_.png");
+});
+
+test("pending confirmation is not done in the next-steps checklist", () => {
+  const org = { id: "o1", relationship: "client" } as never;
+  const pend = nextSteps({ org, efin: baseEfin({ external_status: "pending" }), person: undefined, assignments: [], filings: [] });
+  assert.equal(pend.find((s) => s.key === "verify")?.done, false);
+  const ok = nextSteps({ org, efin: baseEfin({ external_status: "verified" }), person: undefined, assignments: [], filings: [] });
+  assert.equal(ok.find((s) => s.key === "verify")?.done, true);
+});
