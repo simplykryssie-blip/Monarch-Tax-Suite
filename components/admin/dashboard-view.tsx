@@ -5,7 +5,7 @@ import { cumulativeByMonth, countBy, ordersByMonth, revenueByMonth } from "@/lib
 import type { Customer, Installation, License, Order, Product } from "@/lib/commerce/types.ts";
 import { AreaChart, BarChart, BarRows, Sparkline } from "./charts";
 import { Icon, type IconName } from "./icons";
-import { Badge, EmptyRow, label, money, when } from "./ui";
+import { Badge, EmptyRow, label, money } from "./ui";
 
 export type Data = { customers: Customer[]; orders: Order[]; products: Product[]; licenses: License[]; installations: Installation[]; now: Date };
 export type Extras = { domains: number; crm: number; completed: number; runs: { ok: number; failed: number; waiting: number }; available: boolean; feed: ActivityItem[] };
@@ -60,7 +60,7 @@ export function DashboardView({ data, x }: { data: Data; x: Extras }) {
             <div><h2>Revenue</h2><p>Net of refunds, last 12 months</p></div>
             <Link className="mt-card-link" href="/orders">View orders →</Link>
           </div>
-          <div className="mt-card-body"><AreaChart points={revSeries} format={dollars} label="Net revenue per month" id="rev" /></div>
+          <div className="mt-card-body"><AreaChart points={revSeries} format={dollars} label="Net revenue per month" /></div>
         </section>
         <section className="mt-card">
           <div className="mt-card-head">
@@ -157,16 +157,15 @@ export function DashboardView({ data, x }: { data: Data; x: Extras }) {
           </div>
           <div className="monarch-table-wrap">
             <table>
-              <thead><tr><th>Order</th><th>Customer</th><th>Product</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+              <thead><tr><th>Order</th><th>Customer</th><th>Product</th><th>Amount</th><th>Status</th></tr></thead>
               <tbody>
-                {recent.length === 0 ? <EmptyRow colSpan={6}>No orders yet. Orders appear when Stripe confirms a payment or you reconcile one.</EmptyRow> : recent.map((o) => (
+                {recent.length === 0 ? <EmptyRow colSpan={5}>No orders yet. Orders appear when Stripe confirms a payment or you reconcile one.</EmptyRow> : recent.map((o) => (
                   <tr key={o.id}>
                     <td>#{o.order_number}</td>
                     <td><Link href={`/customers/${o.customer_id}`}><b>{customersById.get(o.customer_id)?.full_name ?? customersById.get(o.customer_id)?.email}</b></Link></td>
                     <td>{productsById.get(o.product_id)?.name}</td>
                     <td><b>{money(o.amount_cents, o.currency)}</b></td>
                     <td><Badge value={o.payment_status} /></td>
-                    <td>{when(o.created_at)}</td>
                   </tr>
                 ))}
               </tbody>

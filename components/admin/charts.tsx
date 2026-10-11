@@ -22,7 +22,7 @@ export function Sparkline({ values, label }: { values: number[]; label: string }
   );
 }
 
-export function AreaChart({ points, format, label, id }: { points: SeriesPoint[]; format: Fmt; label: string; id: string }) {
+export function AreaChart({ points, format, label }: { points: SeriesPoint[]; format: Fmt; label: string }) {
   const W = 680, H = 270, L = 52, R = 14, T = 14, B = 34;
   const max = Math.max(...points.map((p) => p.value), 0);
   const ticks = niceTicks(max);
@@ -30,23 +30,15 @@ export function AreaChart({ points, format, label, id }: { points: SeriesPoint[]
   const x = (i: number) => L + (i * (W - L - R)) / Math.max(points.length - 1, 1);
   const y = (v: number) => T + (1 - v / top) * (H - T - B);
   const line = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(" ");
-  const area = `${line} L${x(points.length - 1).toFixed(1)} ${y(0)} L${x(0).toFixed(1)} ${y(0)} Z`;
   const summary = points.map((p) => `${p.label}: ${format(p.value)}`).join("; ");
   return (
     <svg className="mt-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${label}. ${summary}`}>
-      <defs>
-        <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#d4ae55" stopOpacity=".34" />
-          <stop offset="1" stopColor="#d4ae55" stopOpacity="0" />
-        </linearGradient>
-      </defs>
       {ticks.map((t) => (
         <g key={t}>
           <line className="grid" x1={L} x2={W - R} y1={y(t)} y2={y(t)} />
           <text x={L - 10} y={y(t) + 4} textAnchor="end">{format(t)}</text>
         </g>
       ))}
-      <path d={area} fill={`url(#${id}-fill)`} />
       <path d={line} fill="none" stroke="#b8902f" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" />
       {points.map((p, i) => (
         <g key={p.key}>
