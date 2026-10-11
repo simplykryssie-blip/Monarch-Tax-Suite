@@ -30,7 +30,8 @@ export default async function EfinDashboard({ searchParams }: { searchParams: Pr
           const breakdown = statusBreakdown(live, today);
           const exceptions = complianceExceptions({ ...s, today });
           const expiring = live.filter((e) => e.recorded_expiration && e.expiration_verified && daysUntil(e.recorded_expiration, today) >= 0 && daysUntil(e.recorded_expiration, today) <= EXPIRING_WINDOW_DAYS).sort((a, b) => (a.recorded_expiration as string).localeCompare(b.recorded_expiration as string));
-          const activeRoles = s.roles.filter((r) => r.status === "active");
+          const clientOrgs = new Set(s.orgs.filter((o) => o.relationship === "client").map((o) => o.id));
+          const activeRoles = s.roles.filter((r) => r.status === "active" && !clientOrgs.has(r.organization_id));
           const pros = new Set(activeRoles.map((r) => r.person_id)).size;
           const locations = s.locations.filter((l) => !l.archived_at && s.orgs.some((o) => o.id === l.organization_id && !o.archived_at));
           const review = s.assignments.filter((a) => a.state === "pending_review").length;
@@ -41,7 +42,7 @@ export default async function EfinDashboard({ searchParams }: { searchParams: Pr
             <>
               <div className="mt-kpis">
                 <Kpi href="/efin/list" icon="licenses" title="Total EFINs" value={live.length} sub={`${live.filter((e) => e.internal_status === "active").length} active`} />
-                <Kpi href="/efin/list" icon="user" title="Tax professionals" value={pros} sub={`${s.orgs.filter((o) => !o.archived_at).length} EROs on record`} />
+                <Kpi href="/efin/list" icon="user" title="Tax professionals" value={pros} sub="Your office and partners" />
                 <Kpi href="/efin/list" icon="office" title="Locations" value={locations.length} sub="Across all EROs" />
                 <Kpi href="/efin/renewals" icon="bell" title="Expiring soon" value={expiring.length} sub={`Within ${EXPIRING_WINDOW_DAYS} days, verified dates`} />
               </div>

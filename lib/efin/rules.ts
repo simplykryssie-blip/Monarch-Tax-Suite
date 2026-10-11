@@ -2,7 +2,24 @@ import { REMINDER_STAGES, type AssignmentRole, type AssignmentRow, type Assignme
 
 // Pure business rules for EFIN management. No database, no clock reads: callers pass "today" so every rule is testable.
 
-export class EfinRuleError extends Error {}
+export class EfinRuleError extends Error {
+  /** Name of the form field the message is about, so the form can mark it and keep everything else typed. */
+  field?: string;
+  constructor(message: string, field?: string) {
+    super(message);
+    this.field = field;
+  }
+}
+
+/** Runs a validator and tags any rule error with the field it belongs to. */
+export function forField<T>(field: string, fn: () => T): T {
+  try {
+    return fn();
+  } catch (e) {
+    if (e instanceof EfinRuleError && !e.field) e.field = field;
+    throw e;
+  }
+}
 
 // ------------------------------------------------------------------------------------------ identifiers
 /** An EFIN is six digits. Spaces and dashes are tolerated on input. */
@@ -196,3 +213,6 @@ export function dueReminderStage(dueOn: string, today: string): number | null {
 export const roleLabel = (r: AssignmentRole) => r.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
 export const isEfinStatus = (v: string): v is EfinStatus => ["draft", "pending_verification", "active", "renewal_review", "inactive", "suspended"].includes(v);
+
+/** Clients that only bought software or services: no team, PTIN or internal assignment records are kept for them. */
+export const tracksTeam = (relationship: string) => relationship !== "client";

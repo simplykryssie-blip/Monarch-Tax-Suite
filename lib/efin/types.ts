@@ -43,7 +43,7 @@ export type OrgRow = {
   business_structure: string | null;
   ein_last4: string | null;
   primary_address: Record<string, string>;
-  relationship: "internal" | "partner" | "other";
+  relationship: "internal" | "partner" | "client" | "other";
   agreement_status: "pending" | "active" | "suspended" | "ended";
   onboarding_status: "not_started" | "in_progress" | "complete";
   administrator_person_id: string | null;

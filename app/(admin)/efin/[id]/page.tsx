@@ -1,13 +1,15 @@
+import { ActionForm } from "../action-form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { Badge, EmptyRow, Flash, label, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
-import { availableTransitions, daysUntil, roleLabel, todayIso } from "@/lib/efin/rules.ts";
+import { availableTransitions, daysUntil, roleLabel, todayIso, tracksTeam } from "@/lib/efin/rules.ts";
 import { loadEfinAudit, loadSnapshot, problemsFor } from "@/lib/efin/service";
 import { ASSIGNMENT_ROLES, EFIN_STATUSES } from "@/lib/efin/types.ts";
-import { addMemberAction, saveLocationAction, archiveEfinAction, changeAssignmentAction, requestAssignmentAction, saveFilingAction, updateEfinAction } from "../actions";
+import { addMemberAction, saveLocationAction, changeAssignmentAction, requestAssignmentAction, saveFilingAction, updateEfinAction } from "../actions";
 import { orgName, personName, Select, VERIFY_OPTIONS, Verified } from "../parts";
 import { RevealEfin } from "../reveal";
+import { EroAdmin } from "../ero-admin";
 
 const TABS = [
   ["overview", "Overview"],
@@ -25,12 +27,15 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
   await requireAdmin();
   const { id } = await params;
   const sp = await searchParams;
-  const tab = TABS.some(([k]) => k === sp.tab) ? (sp.tab as string) : "overview";
   const result = await load(loadSnapshot);
   if (!result.ok) return <SetupRequired message={result.message} />;
   const s = result.data;
   const efin = s.efins.find((e) => e.id === id);
   if (!efin) notFound();
+  const org = s.orgs.find((o) => o.id === efin.organization_id);
+  const teamTracked = org ? tracksTeam(org.relationship) : true;
+  const tabs = TABS.filter(([k]) => teamTracked || (k !== "assignments")).map(([k, n]) => [k, k === "parties" && !teamTracked ? "Locations" : n] as const);
+  const tab = tabs.some(([k]) => k === sp.tab) ? (sp.tab as string) : "overview";
   const here = `/efin/${id}?tab=${tab}`;
   const assignments = s.assignments.filter((a) => a.efin_id === id);
   const filings = s.filings.filter((f) => f.efin_id === id && !f.archived_at);
@@ -44,7 +49,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
       <PageTitle title={`EFIN ending ${efin.efin_last4}`} back={{ href: "/efin/list", label: "EROs & EFINs" }}>{orgName(s.orgs, efin.organization_id)}{efin.archived_at && " · Archived"}</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       <nav className="efin-tabs" aria-label="EFIN sections">
-        {TABS.map(([k, name]) => <Link key={k} href={`/efin/${id}?tab=${k}`} className={tab === k ? "is-on" : ""}>{name}</Link>)}
+        {tabs.map(([k, name]) => <Link key={k} href={`/efin/${id}?tab=${k}`} className={tab === k ? "is-on" : ""}>{name}</Link>)}
       </nav>
 
       {tab === "overview" && (
@@ -67,8 +72,9 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
           {!efin.archived_at && (
             <section className="monarch-panel monarch-pad">
               <h2 style={{ marginTop: 0 }}>Update record</h2>
-              <form action={updateEfinAction} className="monarch-form">
+              <ActionForm action={updateEfinAction} className="monarch-form">
                 <input type="hidden" name="id" value={id} /><input type="hidden" name="back" value={here} />
+                <label>Correct the EFIN number <small className="monarch-muted">(leave empty to keep ••{efin.efin_last4})</small><input name="efin" inputMode="numeric" autoComplete="off" maxLength={8} placeholder="Only if it was typed wrong" /></label>
                 <label>Filing office for this EFIN<Select name="location_id" value={efin.location_id} empty="Not set" options={s.locations.filter((l) => l.organization_id === efin.organization_id && !l.archived_at).map((l) => ({ value: l.id, label: l.name }))} /></label>
                 <label>Internal status<Select name="internal_status" value={efin.internal_status} options={EFIN_STATUSES.map((v) => ({ value: v, label: label(v) }))} /></label>
                 <label>Verification<Select name="external_status" value={efin.external_status} options={VERIFY_OPTIONS} /></label>
@@ -79,26 +85,17 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
                 <label className="is-wide">Notes<textarea name="notes" rows={3} maxLength={4000} defaultValue={efin.notes ?? ""} /></label>
                 <label className="monarch-check is-wide"><input type="checkbox" name="confirm" /> I confirm moving this EFIN to suspended or inactive (high-impact).</label>
                 <div className="is-wide"><button className="monarch-primary" type="submit">Save changes</button></div>
-              </form>
+              </ActionForm>
             </section>
           )}
-          {!efin.archived_at && (
-            <section className="monarch-panel monarch-pad">
-              <h2 style={{ marginTop: 0 }}>Archive</h2>
-              <p className="monarch-muted">Archiving removes this EFIN from the registry and stops reminders. The record and its history are kept.</p>
-              <form action={archiveEfinAction} className="efin-actions">
-                <input type="hidden" name="id" value={id} /><input type="hidden" name="back" value={here} />
-                <input type="text" name="reason" required minLength={5} maxLength={500} placeholder="Reason" aria-label="Reason" />
-                <label className="efin-confirm"><input type="checkbox" name="confirm" required /> Confirm</label>
-                <button className="monarch-secondary is-danger efin-small" type="submit">Archive EFIN</button>
-              </form>
-            </section>
-          )}
+          {org && <EroAdmin s={s} org={org} efin={efin} back={here} />}
         </>
       )}
 
       {tab === "parties" && (
         <>
+          {teamTracked && (
+            <>
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Team</h2><p>People holding roles at {orgName(s.orgs, efin.organization_id)}. PTINs are separate credentials and never authorize e-file by themselves.</p></div></div>
             <div className="monarch-table-wrap"><table>
@@ -112,7 +109,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
           </section>
           <section className="monarch-panel monarch-pad">
             <h2 style={{ marginTop: 0 }}>Add a team member</h2>
-            <form action={addMemberAction} className="monarch-form">
+            <ActionForm action={addMemberAction} className="monarch-form">
               <input type="hidden" name="organization_id" value={efin.organization_id} /><input type="hidden" name="back" value={here} />
               <label>Full name<input name="person_name" required maxLength={200} /></label>
               <label>Role<Select name="role" required value="tax_preparer" options={ASSIGNMENT_ROLES.map((r) => ({ value: r, label: roleLabel(r) }))} /></label>
@@ -125,8 +122,10 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
               <label>PTIN source<input name="ptin_source" maxLength={300} /></label>
               <label>PTIN renewal date<input type="date" name="ptin_expires_on" /></label>
               <div className="is-wide"><button className="monarch-primary" type="submit">Add team member</button></div>
-            </form>
+            </ActionForm>
           </section>
+            </>
+          )}
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Locations</h2><p>Every office this ERO operates from.</p></div></div>
             <div className="monarch-table-wrap"><table>
@@ -136,7 +135,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
           </section>
           <section className="monarch-panel monarch-pad">
             <h2 style={{ marginTop: 0 }}>Add a location</h2>
-            <form action={saveLocationAction} className="monarch-form">
+            <ActionForm action={saveLocationAction} className="monarch-form">
               <input type="hidden" name="organization_id" value={efin.organization_id} /><input type="hidden" name="back" value={here} />
               <label>Office name<input name="name" required maxLength={200} /></label>
               <label>Street address<input name="line1" maxLength={200} /></label>
@@ -145,7 +144,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
               <label>ZIP<input name="zip" maxLength={10} /></label>
               <label className="monarch-check is-wide"><input type="checkbox" name="is_primary" /> This is the primary office</label>
               <div className="is-wide"><button className="monarch-primary" type="submit">Add location</button></div>
-            </form>
+            </ActionForm>
           </section>
         </>
       )}
@@ -174,7 +173,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
           {!efin.archived_at && (
             <section className="monarch-panel monarch-pad">
               <h2 style={{ marginTop: 0 }}>Request an assignment</h2>
-              <form action={requestAssignmentAction} className="monarch-form">
+              <ActionForm action={requestAssignmentAction} className="monarch-form">
                 <input type="hidden" name="efin_id" value={id} /><input type="hidden" name="organization_id" value={efin.organization_id} /><input type="hidden" name="back" value={here} />
                 <label>Role<Select name="role" required options={ASSIGNMENT_ROLES.map((r) => ({ value: r, label: roleLabel(r) }))} /></label>
                 <label>Person<Select name="person_id" empty="Choose a person" options={people.map((p) => ({ value: p.id, label: p.full_name }))} /></label>
@@ -183,7 +182,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
                 <label>Effective from<input type="date" name="effective_from" /></label>
                 <label>Effective to<input type="date" name="effective_to" /></label>
                 <div className="is-wide"><button className="monarch-primary" type="submit">Create draft</button></div>
-              </form>
+              </ActionForm>
             </section>
           )}
         </>
@@ -203,7 +202,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
           {!efin.archived_at && (
             <section className="monarch-panel monarch-pad">
               <h2 style={{ marginTop: 0 }}>Add a provider</h2>
-              <form action={saveFilingAction} className="monarch-form">
+              <ActionForm action={saveFilingAction} className="monarch-form">
                 <input type="hidden" name="efin_id" value={id} /><input type="hidden" name="back" value={here} />
                 <label>Software provider<input name="software_provider" required maxLength={120} /></label>
                 <label>Product<input name="software_product" maxLength={120} /></label>
@@ -212,7 +211,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
                 <label className="is-wide">How it was confirmed<input name="verification_source" maxLength={300} /></label>
                 <label className="is-wide">Next step if unverified<input name="remediation_note" maxLength={1000} /></label>
                 <div className="is-wide"><button className="monarch-primary" type="submit">Save</button></div>
-              </form>
+              </ActionForm>
             </section>
           )}
         </>
@@ -257,14 +256,14 @@ function TransitionForms({ a, back }: { a: { id: string; state: Parameters<typeo
   return (
     <div className="efin-actions">
       {ts.map((t) => (
-        <form key={t.to} action={changeAssignmentAction}>
+        <ActionForm key={t.to} action={changeAssignmentAction}>
           <input type="hidden" name="id" value={a.id} /><input type="hidden" name="to" value={t.to} /><input type="hidden" name="back" value={back} />
           {t.reasonRequired && <input type="text" name="reason" required minLength={5} maxLength={1000} placeholder="Reason" aria-label="Reason" />}
           {!t.reasonRequired && t.action === "approve" && <input type="text" name="reason" maxLength={1000} placeholder="Reason (needed to approve your own request)" aria-label="Reason" />}
           {!t.reasonRequired && t.action !== "approve" && <input type="hidden" name="reason" value="" />}
           {t.highImpact && <label className="efin-confirm"><input type="checkbox" name="confirm" required /> Confirm</label>}
           <button type="submit" className={"monarch-secondary efin-small" + (t.to === "revoked" || t.to === "suspended" ? " is-danger" : "")}>{ACTION_COPY[t.action] ?? t.action}</button>
-        </form>
+        </ActionForm>
       ))}
     </div>
   );

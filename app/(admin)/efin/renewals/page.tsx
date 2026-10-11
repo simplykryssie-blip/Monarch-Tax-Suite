@@ -1,3 +1,4 @@
+import { ActionForm } from "../action-form";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
 import { Badge, EmptyRow, Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
@@ -30,12 +31,12 @@ export default async function Renewals({ searchParams }: { searchParams: Promise
                     <td><Link href={`/efin/${t.subject_id}?tab=renewals`}><b>{t.title}</b></Link></td><td>{t.due_on}{t.due_on !== t.original_due_on && <small className="monarch-muted"> (was {t.original_due_on})</small>}</td>
                     <td>{daysUntil(t.due_on, today)}</td><td><Badge value={t.status} /></td>
                     <td>
-                      <form action={completeRenewalAction} className="efin-actions">
+                      <ActionForm action={completeRenewalAction} className="efin-actions">
                         <input type="hidden" name="id" value={t.id} />
                         <input type="date" name="new_due_on" required aria-label="New verified expiration date" />
                         <input type="text" name="evidence_note" required minLength={5} maxLength={1000} placeholder="What confirmed it" aria-label="Evidence" />
                         <button className="monarch-secondary efin-small" type="submit">Record renewal</button>
-                      </form>
+                      </ActionForm>
                     </td>
                   </tr>
                 ))}</tbody>

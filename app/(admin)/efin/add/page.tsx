@@ -1,3 +1,4 @@
+import { ActionForm } from "../action-form";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
 import { Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
@@ -16,7 +17,7 @@ export default async function NewEfin({ searchParams }: { searchParams: Promise<
         <div className="monarch-notice"><b>FIRST STEP</b> Add the ERO this EFIN belongs to by choosing <Link href="/efin/new">Add an ERO</Link>.</div>
       ) : (
         <section className="monarch-panel monarch-pad">
-          <form action={createEfinAction} className="monarch-form">
+          <ActionForm action={createEfinAction} className="monarch-form">
             <label>EFIN (six digits)<input name="efin" required inputMode="numeric" autoComplete="off" maxLength={8} placeholder="123456" /></label>
             <label>ERO / organization<Select name="organization_id" required options={result.data.orgs.filter((o) => !o.archived_at).map((o) => ({ value: o.id, label: o.legal_name }))} /></label>
             <label>Office<Select name="location_id" empty="Not set" options={result.data.locations.map((l) => ({ value: l.id, label: `${result.data.orgs.find((o) => o.id === l.organization_id)?.legal_name ?? ""} — ${l.name}` }))} /></label>
@@ -28,7 +29,7 @@ export default async function NewEfin({ searchParams }: { searchParams: Promise<
             <label className="monarch-check is-wide"><input type="checkbox" name="expiration_verified" /> I verified this date from a source. Reminders only run from verified dates.</label>
             <label className="is-wide">Notes<textarea name="notes" rows={3} maxLength={4000} /></label>
             <div className="is-wide"><button className="monarch-primary" type="submit">Save EFIN</button></div>
-          </form>
+          </ActionForm>
         </section>
       )}
     </>

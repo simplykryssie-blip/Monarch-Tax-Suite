@@ -12,7 +12,7 @@ const SUBNAV = [
 
 export function SubNav() {
   const path = usePathname();
-  const on = (href: string) => (href === "/efin" ? path === "/efin" : href === "/efin/list" ? path === "/efin/list" || path === "/efin/new" || path === "/efin/add" || /^\/efin\/[0-9a-f-]{36}/.test(path) : path.startsWith(href));
+  const on = (href: string) => (href === "/efin" ? path === "/efin" : href === "/efin/list" ? path === "/efin/list" || path === "/efin/new" || path === "/efin/add" || path.startsWith("/efin/org/") || /^\/efin\/[0-9a-f-]{36}/.test(path) : path.startsWith(href));
   return (
     <nav className="mt-seg efin-subnav" aria-label="EFIN Management sections">
       {SUBNAV.map((s) => <Link key={s.href} href={s.href} className={on(s.href) ? "is-on" : ""}>{s.label}</Link>)}

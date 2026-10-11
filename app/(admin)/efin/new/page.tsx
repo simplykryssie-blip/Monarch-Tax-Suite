@@ -1,8 +1,16 @@
+import { ActionForm } from "../action-form";
 import { requireAdmin } from "@/lib/admin";
 import { Flash, PageTitle } from "@/components/admin/ui";
 import { onboardEroAction } from "../actions";
 import { Select, VERIFY_OPTIONS } from "../parts";
+import { ShowWhen } from "../show-when";
 
+const RELATIONSHIPS = [
+  { value: "client", label: "Software / service client (no team or PTINs)" },
+  { value: "partner", label: "Partner (I may manage some of their preparers)" },
+  { value: "internal", label: "My own tax office (I manage its preparers)" },
+  { value: "other", label: "Other" },
+];
 const STRUCTURES = ["llc", "corporation", "s_corporation", "partnership", "sole_proprietorship", "nonprofit", "other"].map((v) => ({ value: v, label: v.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()) }));
 
 export default async function AddEro({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -11,7 +19,7 @@ export default async function AddEro({ searchParams }: { searchParams: Promise<{
     <>
       <PageTitle title="Add an ERO" back={{ href: "/efin/list", label: "EROs & EFINs" }}>Everything for a new ERO in one place. It is saved together or not at all. Sensitive numbers are encrypted when saved, and only the last four digits stay readable.</PageTitle>
       <Flash {...await searchParams} />
-      <form action={onboardEroAction}>
+      <ActionForm action={onboardEroAction}>
         <section className="monarch-panel monarch-pad">
           <h2 style={{ marginTop: 0 }}>1. Business</h2>
           <div className="monarch-form">
@@ -19,7 +27,7 @@ export default async function AddEro({ searchParams }: { searchParams: Promise<{
             <label>Doing business as<input name="dba_name" maxLength={200} /></label>
             <label>Business structure<Select name="business_structure" empty="Not set" options={STRUCTURES} /></label>
             <label>EIN<input name="ein" inputMode="numeric" autoComplete="off" maxLength={11} placeholder="12-3456789" /></label>
-            <label>Relationship<Select name="relationship" value="partner" options={[{ value: "internal", label: "Internal (my own office)" }, { value: "partner", label: "Partner" }, { value: "other", label: "Other" }]} /></label>
+            <label>Relationship to you<Select name="relationship" value="client" options={RELATIONSHIPS} /></label>
             <label>Agreement<Select name="agreement_status" value="pending" options={["pending", "active", "suspended", "ended"].map((v) => ({ value: v, label: v.replace(/^\w/, (c) => c.toUpperCase()) }))} /></label>
           </div>
         </section>
@@ -46,17 +54,21 @@ export default async function AddEro({ searchParams }: { searchParams: Promise<{
           </details>
         </section>
         <section className="monarch-panel monarch-pad">
-          <h2 style={{ marginTop: 0 }}>3. ERO / Responsible Official</h2>
+          <h2 style={{ marginTop: 0 }}>3. ERO / Responsible Official contact</h2>
           <div className="monarch-form">
             <label>Full name<input name="person_name" required maxLength={200} /></label>
             <label>Email<input name="person_email" type="email" maxLength={254} /></label>
             <label>Phone<input name="person_phone" type="tel" maxLength={40} /></label>
             <label>How was this role confirmed?<Select name="role_verification" value="unverified" options={VERIFY_OPTIONS} /></label>
-            <label>PTIN (optional, P + 8 digits)<input name="ptin" autoComplete="off" maxLength={12} placeholder="P01234567" /></label>
-            <label>PTIN confirmed?<Select name="ptin_verification" value="unverified" options={VERIFY_OPTIONS} /></label>
-            <label>PTIN source<input name="ptin_source" maxLength={300} /></label>
-            <label>PTIN renewal date<input type="date" name="ptin_expires_on" /></label>
           </div>
+          <ShowWhen name="relationship" hideFor={["client"]}>
+            <div className="monarch-form" style={{ marginTop: 16 }}>
+              <label>PTIN (optional, P + 8 digits)<input name="ptin" autoComplete="off" maxLength={12} placeholder="P01234567" /></label>
+              <label>PTIN confirmed?<Select name="ptin_verification" value="unverified" options={VERIFY_OPTIONS} /></label>
+              <label>PTIN source<input name="ptin_source" maxLength={300} /></label>
+              <label>PTIN renewal date<input type="date" name="ptin_expires_on" /></label>
+            </div>
+          </ShowWhen>
         </section>
         <section className="monarch-panel monarch-pad">
           <h2 style={{ marginTop: 0 }}>4. EFIN</h2>
@@ -69,10 +81,10 @@ export default async function AddEro({ searchParams }: { searchParams: Promise<{
             <label className="monarch-check is-wide"><input type="checkbox" name="expiration_verified" /> I verified this date from a source. Reminders only run from verified dates.</label>
             <label className="is-wide">Notes<textarea name="notes" rows={3} maxLength={4000} /></label>
           </div>
-          <p className="monarch-muted">Saving also creates a draft assignment of this person as ERO for this EFIN. You submit and approve it from the ERO&apos;s page.</p>
+          <p className="monarch-muted">For your own office and partners, saving also creates a draft ERO assignment you submit and approve from the ERO&apos;s page. Software or service clients get only the business, locations, contact and EFIN.</p>
           <button className="monarch-primary" type="submit">Save ERO</button>
         </section>
-      </form>
+      </ActionForm>
     </>
   );
 }

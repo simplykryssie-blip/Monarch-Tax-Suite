@@ -444,3 +444,8 @@ a.mt-section:hover:before{opacity:1}
 .efin-qa svg{color:var(--gold);flex-shrink:0}
 @media(max-width:1100px){.efin-dash{grid-template-columns:1fr}}
 @media(max-width:640px){.efin-qa{grid-template-columns:1fr}}
+.monarch-form [aria-invalid=true],.monarch-form input[aria-invalid=true],.monarch-form select[aria-invalid=true]{border-color:#a8322b!important;box-shadow:0 0 0 3px rgba(168,50,43,.14)!important}
+.efin-pending{font-size:13px;color:var(--muted);align-self:center}
+.efin-bulk{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:14px 24px;border-top:1px solid var(--line-2);background:#fff}
+.efin-bulk select,.efin-bulk input[type=text]{border:1px solid #d4d4d4;border-radius:10px;padding:8px 12px;font-size:13px;background:#fff}
+.efin-tag{display:inline-block;font-size:11.5px;font-weight:650;letter-spacing:.02em;color:var(--gold-deep);border:1px solid #e3d3a1;border-radius:99px;padding:2px 9px;margin-left:8px;vertical-align:middle}

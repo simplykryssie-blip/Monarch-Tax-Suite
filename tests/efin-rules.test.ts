@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assignmentLapsed, availableTransitions, daysUntil, dueReminderStage, EfinRuleError, findTransition, maskEfin, maskPtin, normalizeEfin, normalizePtin, planRenewalTasks, planTransition, renewalTracking, urgencyFor, type TransitionContext } from "../lib/efin/rules.ts";
+import { assignmentLapsed, availableTransitions, daysUntil, dueReminderStage, EfinRuleError, normalizeEin, findTransition, maskEfin, maskPtin, normalizeEfin, normalizePtin, planRenewalTasks, planTransition, renewalTracking, urgencyFor, type TransitionContext } from "../lib/efin/rules.ts";
 import type { RenewalTaskRow } from "../lib/efin/types.ts";
 
 const ctx = (over: Partial<TransitionContext> & { state?: TransitionContext["assignment"]["state"] } = {}): TransitionContext => ({
@@ -160,4 +160,32 @@ test("dashboard status buckets use recorded, verified data only", () => {
   assert.equal(bucketFor(e({ internal_status: "suspended", recorded_expiration: "2026-09-01" }), "2026-10-11"), "inactive");
   const b = statusBreakdown([e({}), e({ archived_at: "2026-01-01" }), e({ internal_status: "inactive" })], "2026-10-11");
   assert.deepEqual(b, { active: 1, expiring: 0, review: 0, pending: 0, inactive: 1 });
+});
+
+import { forField, tracksTeam } from "../lib/efin/rules.ts";
+
+test("software/service clients get no team, PTIN or assignment tracking; own office and partners do", () => {
+  assert.equal(tracksTeam("client"), false);
+  for (const r of ["internal", "partner", "other"]) assert.equal(tracksTeam(r), true);
+});
+
+test("a rule error names its field so the form can keep everything else the user typed", () => {
+  try {
+    forField("ein", () => normalizeEin("12-345"));
+    assert.fail("should have thrown");
+  } catch (e) {
+    assert.ok(e instanceof EfinRuleError);
+    assert.equal((e as EfinRuleError).field, "ein");
+    assert.match((e as Error).message, /nine digits/);
+  }
+  // an error that already names a field keeps it
+  try { forField("outer", () => { throw new EfinRuleError("x", "inner"); }); } catch (e) { assert.equal((e as EfinRuleError).field, "inner"); }
+  assert.equal(forField("ein", () => normalizeEin("12-3456789")), "123456789");
+});
+
+test("clients are never flagged for a missing ERO assignment", () => {
+  const org = (relationship: "client" | "partner") => ({ id: "o1", relationship, legal_name: "X" }) as never;
+  const efin = baseEfin({ ero_person_id: null });
+  assert.deepEqual(run([efin], { orgs: [org("client")] }).filter((x) => x.kind === "no_ero"), []);
+  assert.equal(run([efin], { orgs: [org("partner")] }).filter((x) => x.kind === "no_ero").length, 1);
 });

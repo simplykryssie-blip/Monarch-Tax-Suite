@@ -33,7 +33,8 @@ export function complianceExceptions(d: Input): ComplianceException[] {
     if (!t.track && t.reason === "unverified_date") out.push({ ...base, kind: "unverified_expiration", severity: "medium", title: name, detail: `${orgName(e.organization_id)}: a date is recorded but not marked verified, so no reminders run.` });
     if (t.track && e.recorded_expiration && daysUntil(e.recorded_expiration, d.today) < 0) out.push({ ...base, kind: "past_deadline", severity: "high", title: name, detail: `${orgName(e.organization_id)}: the recorded deadline ${e.recorded_expiration} has passed. Confirm its status; Monarch has not changed it.` });
     if (e.external_status === "unverified" && e.internal_status !== "draft") out.push({ ...base, kind: "efin_unverified", severity: "low", title: name, detail: `${orgName(e.organization_id)}: no one has recorded a verification of this EFIN with the IRS yet.` });
-    const hasEro = Boolean(e.ero_person_id) || d.assignments.some((a) => a.efin_id === e.id && ["ero", "responsible_official"].includes(a.role) && ["approved", "active"].includes(a.state));
+    const isClient = d.orgs.find((o) => o.id === e.organization_id)?.relationship === "client";
+    const hasEro = isClient || Boolean(e.ero_person_id) || d.assignments.some((a) => a.efin_id === e.id && ["ero", "responsible_official"].includes(a.role) && ["approved", "active"].includes(a.state));
     if (e.internal_status === "active" && !hasEro) out.push({ ...base, kind: "no_ero", severity: "high", title: name, detail: `${orgName(e.organization_id)}: an active EFIN needs a recorded ERO or Responsible Official.` });
   }
   const liveEfin = new Set(live.map((e) => e.id));

@@ -14,6 +14,13 @@ Service-bureau CRM module under **My Office → EFIN Management** (`/efin`). The
 ## Dashboard and multiple locations
 `/efin` is the dashboard. Every figure is derived from recorded, verified data (`lib/efin/metrics.ts`, tested). There are deliberately no return counts, filing totals or growth percentages, because Monarch has no verified source for them. An ERO can have any number of locations: add up to five extra on the Add-an-ERO form, or add more later from the ERO's Office & Team tab; each EFIN has a "filing office" you can change, and assignments can be pinned to a location.
 
+## Editing, deleting, bulk actions, and who gets a team
+- **Relationship decides what is tracked.** `internal` = your own tax office and `partner` = businesses whose preparers you may manage: both keep a team, PTINs and ERO assignments. `client` = a business that only bought software or services from you: no team, PTINs or assignments are kept, the Team and Assignments tabs are hidden, the server refuses to add them, and a hidden PTIN box is ignored. A relationship change needs a reason and is audited; it never changes who can see anything.
+- **Forms keep what you typed.** A rejected save (for example a mistyped EIN) shows the message, marks the field, and leaves everything else untouched. This holds for every EFIN form.
+- **Edit:** business, EIN (replace), ERO contact, locations (rename, primary, remove), EFIN details, and a mistyped EFIN number can be corrected (last four digits only appear in the history).
+- **Archive / restore / delete.** Archive is reversible and keeps history. Permanent delete is all-or-nothing and is refused for any EFIN that was ever used in a live assignment (archive it instead). A deletion leaves an audit event with no identifiers.
+- **Bulk actions** on the list: archive, restore, set status, delete, and export CSV (EFINs masked). Each row is handled and audited on its own; skipped rows are reported with the reason. Reason and confirmation are required and enforced on the server.
+
 ## One place for everything
 EFIN Management works like a contacts list of your EROs. **Add an ERO** is a single form (business, office, ERO/Responsible Official with optional PTIN, EFIN, expiration) saved by one database function (`efin_onboard`) in one transaction, so a failure such as a duplicate EFIN saves nothing. It also creates a draft ERO assignment. Everything afterwards happens on the ERO's page: add team members and PTINs (`efin_add_member`, also atomic), add offices, request/approve/suspend/revoke assignments, add filing providers. Renewals and History stay separate. Separate Offices, People and Assignments pages no longer exist; "Assignments to review" opens the list filtered to pending reviews.
 
