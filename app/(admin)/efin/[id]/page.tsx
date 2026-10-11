@@ -32,7 +32,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
   const { id } = await params;
   const sp = await searchParams;
   const result = await load(loadSnapshot);
-  if (!result.ok) return <SetupRequired message={result.message} />;
+  if (!result.ok) return <SetupRequired message={result.message} module="efin" />;
   const s = result.data;
   const efin = s.efins.find((e) => e.id === id);
   if (!efin) notFound();

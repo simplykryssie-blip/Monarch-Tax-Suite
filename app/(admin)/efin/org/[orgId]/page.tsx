@@ -13,7 +13,7 @@ export default async function EroPage({ params, searchParams }: { params: Promis
   const { orgId } = await params;
   const sp = await searchParams;
   const result = await load(loadSnapshot);
-  if (!result.ok) return <SetupRequired message={result.message} />;
+  if (!result.ok) return <SetupRequired message={result.message} module="efin" />;
   const org = result.data.orgs.find((o) => o.id === orgId);
   if (!org) notFound();
   const first = result.data.efins.find((e) => e.organization_id === orgId && !e.archived_at);

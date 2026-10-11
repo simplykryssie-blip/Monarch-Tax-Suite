@@ -21,7 +21,7 @@ export default async function EfinRegistry({ searchParams }: { searchParams: Pro
       <PageTitle title="EROs & EFINs">Your EROs and their EFINs in one list, like contacts. Open one to edit it, see its locations and renewals, and, for your own office and partners, its team. Dates and verification are what you recorded here, not a live IRS status.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? (
-        <SetupRequired message={result.message} />
+        <SetupRequired message={result.message} module="efin" />
       ) : (
         (() => {
           const s = result.data;
