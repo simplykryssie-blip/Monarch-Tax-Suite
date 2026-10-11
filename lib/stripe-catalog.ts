@@ -109,7 +109,7 @@ export function stripeSyncPort(stripe: Stripe): StripePort {
 export async function stripeAvailabilityNote(productId: string): Promise<string> {
   const stripe = stripeClient();
   if (!stripe) return "";
-  const result = await syncStripeAvailability(commerceRepo(), stripeSyncPort(stripe), productId);
+  const result = await syncStripeAvailability(commerceRepo(), stripeSyncPort(stripe), productId, stripeCatalogPort());
   if (!result) return "";
   return result.ok ? ` ${result.message}` : ` Warning: ${result.message} Payments may still be accepted in Stripe until this is fixed; use "Update Stripe product info" to try again.`;
 }
