@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { FullCalculator } from "@/components/calculator/full-calculator";
 import { FULL_TAX_YEAR } from "@/lib/calculator/full";
 import { EMBED_MESSAGES, hostFromHeader, isTopLevelNavigation } from "@/lib/commerce/embed.ts";
 import { loadEmbed } from "@/lib/embed-server";
+import { noteInstallation } from "@/lib/installation-server";
 import { issueEmbedToken, leadCaptureActive } from "@/lib/crm/leads.ts";
 import { crmDeps } from "@/lib/crm/server";
 import type { LeadCaptureConfig } from "@/components/calculator/lead-form";
@@ -51,6 +53,12 @@ export default async function EmbeddedCalculatorPage({ searchParams }: { searchP
         <p style={{ margin: 0, fontSize: 14 }}>This license does not include the 2026 tax year. Please contact Monarch Tax Suite.</p>
       </main>
     );
+  }
+  // The first live load on an authorized website marks the installation active. It runs after the page is sent,
+  // so it can never slow or break the calculator.
+  if (licenseId && host) {
+    const live = licenseId;
+    after(() => noteInstallation(live, { kind: "seen_live", host }));
   }
   // Only the tax years this license has paid for (its version and earlier) are offered.
   const leadCapture = licenseId ? await leadCaptureFor(licenseId, host) : undefined;

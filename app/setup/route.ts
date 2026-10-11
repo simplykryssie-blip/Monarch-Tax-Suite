@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { automationDeps, safeEmit, setupSecrets } from "@/lib/automation/server";
+import { noteInstallation } from "@/lib/installation-server";
 import { OPEN_MESSAGES, openSetupLink, SETUP_COOKIE } from "@/lib/automation/onboarding.ts";
 import { clientAddress, hashClient, windowStart } from "@/lib/commerce/rate-limit.ts";
 import { rateLimitStore } from "@/lib/rate-limit-server";
@@ -42,6 +43,7 @@ export async function GET(request: NextRequest) {
 
   // Opening the link is recorded as "started", never as "completed".
   if (opened.firstOpen) await safeEmit({ type: "onboarding.started", key: `onboarding:${opened.linkId}`, licenseId: opened.licenseId });
+  await noteInstallation(opened.licenseId, { kind: "setup_started" });
 
   const res = NextResponse.redirect(new URL("/integrations", request.url), 303);
   res.cookies.set(SETUP_COOKIE, opened.session, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/integrations", maxAge: opened.maxAgeSeconds });

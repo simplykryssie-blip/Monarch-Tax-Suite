@@ -101,7 +101,10 @@ export async function verifyCatalogProduct(repo: CommerceRepo, port: StripeCatal
       const p = await port.getProduct(product.stripe_product_id);
       snap.product = p;
       if (p.livemode !== (port.mode === "live")) snap.issues.push(`Stripe product ${p.id} is ${p.livemode ? "live" : "test"} mode, but the key is ${port.mode} mode.`);
-      if (!p.active) snap.issues.push(`Stripe product ${p.id} is archived (inactive).`);
+      // Only a published product is active in Stripe (set on every status change), so an inactive Stripe product is
+      // expected for a draft, unpublished or archived product and is a problem only once the product is published.
+      if (!p.active && product.status === "published") snap.issues.push(`Stripe product ${p.id} is archived (inactive), but this product is published, so it cannot be bought. Use "Update Stripe product info" to reactivate it.`);
+      else if (!p.active) snap.notes = [`Stripe product ${p.id} is inactive, as expected while this product is ${product.status}. Publishing reactivates it.`];
     }
     if (product.stripe_price_id) {
       const price = await port.getPrice(product.stripe_price_id);
