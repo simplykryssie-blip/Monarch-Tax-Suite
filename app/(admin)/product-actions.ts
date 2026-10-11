@@ -154,7 +154,7 @@ async function stripeAction(form: FormData, run: (port: StripePort, productId: s
 }
 
 export async function syncStripeProductInfoAction(form: FormData) {
-  await stripeAction(form, (port, productId) => syncStripeProductInfo(commerceRepo(), imageStore(), port, productId));
+  await stripeAction(form, (port, productId) => syncStripeProductInfo(commerceRepo(), imageStore(), port, productId, stripeCatalogPort()));
 }
 
 export async function createStripeProductAction(form: FormData) {

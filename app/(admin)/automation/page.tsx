@@ -2,14 +2,15 @@ import Link from "next/link";
 import { Badge, EmptyRow, Flash, load, PageTitle, when } from "@/components/admin/ui";
 import { dashboardStats } from "@/lib/automation/admin.ts";
 import { automationDeps, automationConfig } from "@/lib/automation/server";
+import { missingDefaults } from "@/lib/automation/defaults.ts";
 import { installDefaultsAction } from "./actions";
 
 export default async function AutomationOverview({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
   const { notice, error } = await searchParams;
   const deps = automationDeps();
   const result = await load(async () => {
-    const [stats, workflows] = await Promise.all([dashboardStats(deps.repo), deps.repo.listWorkflows()]);
-    return { stats, names: new Map(workflows.map((w) => [w.id, w.name])), total: workflows.length };
+    const [stats, workflows, missing] = await Promise.all([dashboardStats(deps.repo), deps.repo.listWorkflows(), missingDefaults(deps.repo)]);
+    return { stats, names: new Map(workflows.map((w) => [w.id, w.name])), total: workflows.length, missing };
   }).catch(() => null);
   const env = automationConfig().env;
   return (
@@ -21,11 +22,20 @@ export default async function AutomationOverview({ searchParams }: { searchParam
         <div className="monarch-notice"><b>DATABASE SETUP REQUIRED</b> Apply <code>supabase/migrations/20261010200000_automation_center.sql</code> to the Monarch Supabase project, then reload. Nothing else is affected until you do: payments, licenses and leads keep working.</div>
       ) : (
         <>
-          {result.data.total === 0 && (
+          {(result.data.missing.templates.length > 0 || result.data.missing.workflows.length > 0) && (
             <section className="monarch-panel" style={{ padding: 20 }}>
-              <h2>Start with the standard set</h2>
-              <p className="monarch-muted">Adds the standard email templates and workflows. Everything is added <b>paused</b>, so nothing is sent until you review and turn it on.</p>
-              <form action={installDefaultsAction}><button className="monarch-primary">Add standard templates and workflows</button></form>
+              <h2>{result.data.total === 0 ? "Start with the standard set" : "New standard templates and workflows are available"}</h2>
+              <p className="monarch-muted">
+                These are added as listed. Nothing you already have is changed, and templates or workflows you removed are not brought back unless they are listed here.
+                An <b>active</b> workflow starts sending its emails as soon as its event happens; pause any you want to review first.
+              </p>
+              <ul>
+                {result.data.missing.workflows.map((w) => <li key={w.key}>Workflow: {w.name} · <b>{w.status}</b></li>)}
+                {result.data.missing.templates.map((t) => <li key={t.key}>Template: {t.name}</li>)}
+              </ul>
+              <form action={installDefaultsAction}>
+                <button className="monarch-primary">Add {result.data.missing.workflows.length} workflow{result.data.missing.workflows.length === 1 ? "" : "s"} and {result.data.missing.templates.length} template{result.data.missing.templates.length === 1 ? "" : "s"}</button>
+              </form>
             </section>
           )}
           <div className="monarch-metrics">

@@ -232,6 +232,20 @@ export const DEFAULT_WORKFLOWS: DefaultWorkflow[] = [
   { key: "license_revoked", name: "License revoked: notice", description: "Emails the customer when an administrator revokes a license. Off by default.", trigger: "license.revoked", conditions: [], actions: email("license_revoked"), status: "paused" },
 ];
 
+export type MissingDefaults = {
+  templates: { key: string; name: string }[];
+  workflows: { key: string; name: string; status: WorkflowStatus }[];
+};
+
+/** Standard templates and workflows not installed yet, matched by key. Edited or archived ones count as installed; a deleted one is listed again. */
+export async function missingDefaults(repo: AutomationRepo): Promise<MissingDefaults> {
+  const templates: MissingDefaults["templates"] = [];
+  for (const t of DEFAULT_TEMPLATES) if (!(await repo.findTemplateByKey(t.key))) templates.push({ key: t.key, name: t.name });
+  const workflows: MissingDefaults["workflows"] = [];
+  for (const w of DEFAULT_WORKFLOWS) if (!(await repo.findWorkflowByKey(w.key))) workflows.push({ key: w.key, name: w.name, status: w.status });
+  return { templates, workflows };
+}
+
 export async function installDefaults(repo: AutomationRepo, actorId: string | null): Promise<{ templates: number; workflows: number }> {
   let templates = 0;
   let workflows = 0;
