@@ -1,6 +1,8 @@
 import "server-only";
 import type Stripe from "stripe";
-import { commerceRepo, stripeClient } from "./admin";
+import { appOrigin, commerceRepo, stripeClient } from "./admin";
+import { assessWebhooks, expectedWebhookUrl, webhookFix, type WebhookHealth } from "./commerce/webhook-health.ts";
+import { ValidationError } from "./commerce/validation.ts";
 import { modeFromKey, StripeLookupError, type StripeCatalogPort } from "./commerce/stripe-verify.ts";
 import type { StripePriceFacts } from "./commerce/types.ts";
 import { isPurchasable } from "./commerce/catalog.ts";
@@ -154,4 +156,35 @@ export async function closeOpenCheckoutsNote(productId: string): Promise<string>
     console.error(`closeOpenCheckouts ${productId}: ${e instanceof Error ? e.message.slice(0, 160) : "unknown"}`);
     return " Warning: open checkouts could not be checked; any payment for this product is still held for review.";
   }
+}
+
+/**
+ * The live state of this app's Stripe webhook. The one-click fix is offered only on the production deployment, so a
+ * Preview (test key) can never repoint an endpoint at an address it does not own.
+ */
+export async function loadWebhookHealth(): Promise<{ health: WebhookHealth; canFix: boolean } | { error: string }> {
+  const stripe = stripeClient();
+  if (!stripe) return { error: "Stripe is not connected, so the webhook cannot be checked." };
+  try {
+    const list = await stripe.webhookEndpoints.list({ limit: 100 });
+    const endpoints = list.data.map((e) => ({ id: e.id, url: e.url, status: e.status, enabled_events: e.enabled_events, livemode: e.livemode }));
+    const health = assessWebhooks(endpoints, expectedWebhookUrl(await appOrigin()));
+    return { health, canFix: process.env.VERCEL_ENV === "production" && health.state === "fixable" };
+  } catch (e) {
+    const err = e as { type?: string; message?: string };
+    return { error: err?.type === "StripePermissionError" ? "The Stripe key cannot read webhook endpoints (missing permission), so the webhook cannot be checked here." : `The webhook could not be checked: ${(err?.message ?? "Stripe request failed").slice(0, 200)}` };
+  }
+}
+
+/** Repoints the existing endpoint at this app (and adds missing events). Keeps the signing secret. */
+export async function fixWebhook(): Promise<string> {
+  const stripe = stripeClient();
+  const loaded = await loadWebhookHealth();
+  if (!stripe || "error" in loaded) throw new ValidationError("error" in loaded ? loaded.error : "Stripe is not connected.");
+  if (!loaded.canFix || loaded.health.state !== "fixable") throw new ValidationError(loaded.health.state === "ok" ? "The webhook is already correct." : "This webhook cannot be fixed automatically here; follow the steps shown.");
+  const { url, enabled_events } = webhookFix(loaded.health);
+  await stripe.webhookEndpoints.update(loaded.health.endpoint.id, { url, ...(enabled_events ? { enabled_events: enabled_events as Stripe.WebhookEndpointUpdateParams.EnabledEvent[] } : {}) });
+  const after = await loadWebhookHealth();
+  if ("error" in after || after.health.state !== "ok") throw new ValidationError("Stripe accepted the change, but the webhook still does not check out. Reload to see what remains.");
+  return `Webhook ${loaded.health.endpoint.id} now sends events to ${url}. Its signing secret is unchanged.`;
 }

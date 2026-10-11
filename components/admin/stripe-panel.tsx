@@ -1,5 +1,6 @@
 import { createStripePriceAction, createStripeProductAction, syncStripeProductInfoAction, verifyStripeMappingAction } from "@/app/(admin)/product-actions";
 import { StripeConfigLine, VerificationBlock, type StripeConfigView } from "./stripe-facts";
+import { WebhookHealth } from "./webhook-health";
 import { priceSyncState } from "@/lib/commerce/stripe-sync.ts";
 import type { Product } from "@/lib/commerce/types.ts";
 import { money, when } from "./ui";
@@ -33,6 +34,7 @@ export function StripePanel({ product, stripeConfigured, config }: { product: Pr
         new price, and existing prices, payment links and completed payments stay as they are. Order history is never rewritten.
       </p>
       <StripeConfigLine config={config} />
+      {stripeConfigured && <WebhookHealth />}
       <VerificationBlock v={product.stripe_verification} />
       <form action={verifyStripeMappingAction} className="monarch-inline-actions">
         <input type="hidden" name="product_id" value={product.id} />

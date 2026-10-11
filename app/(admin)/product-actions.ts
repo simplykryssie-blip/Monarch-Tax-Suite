@@ -8,7 +8,7 @@ import { removeProductImage, setPrimaryImage, updateImageAlt, uploadProductImage
 import { createStripePrice, createStripeProduct, syncStripeProductInfo, type StripePort, type SyncResult } from "@/lib/commerce/stripe-sync.ts";
 import { parseProductForm, ValidationError } from "@/lib/commerce/validation.ts";
 import { checkVersionPrice, createVersionPrice, linkVersionPrice, verifyCatalogProduct, type StripeCatalogPort } from "@/lib/commerce/stripe-verify.ts";
-import { stripeAvailabilityNote, stripeCatalogPort, stripeSyncPort } from "@/lib/stripe-catalog";
+import { fixWebhook, stripeAvailabilityNote, stripeCatalogPort, stripeSyncPort } from "@/lib/stripe-catalog";
 
 // Product editor, image and Stripe actions. Every action re-checks
 // administrator access server-side before touching data or storage.
@@ -228,4 +228,20 @@ export async function createVersionPriceAction(form: FormData) {
     const v = await createVersionPrice(commerceRepo(), port, uuid(form, "id"), form.get("confirm") === "on");
     return `New one-time Stripe price ${v.stripe_update_price_id} created on the Annual Update product and linked.`;
   });
+}
+
+/** Points the existing Stripe webhook endpoint at this app (keeps its signing secret). */
+export async function fixWebhookAction() {
+  await requireAdmin();
+  let message: string;
+  let ok = true;
+  try {
+    message = await fixWebhook();
+  } catch (error) {
+    if (!(error instanceof ValidationError)) throw error;
+    message = error.message;
+    ok = false;
+  }
+  revalidatePath("/", "layout");
+  redirect(`/products?${ok ? "notice" : "error"}=${encodeURIComponent(message)}`);
 }
