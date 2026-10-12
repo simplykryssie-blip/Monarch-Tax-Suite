@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { unwrap } from "../commerce/supabase-repo.ts";
-import { serviceClient } from "../admin";
+import { tenantDb } from "../admin";
 import { assignmentProblems, EfinRuleError, forField, hasLiveHistory, last4, tracksTeam, normalizeEfin, normalizeEin, normalizePtin, parseDay, planTransition, todayIso } from "./rules.ts";
 import type { AssignmentRole, AssignmentRow, AssignmentState, AuditRow, CredentialRow, DocRow, EfinRow, FilingRow, LocationRow, OptionRow, OrgOptionRow, OrgRow, PersonRow, RenewalTaskRow, RoleRow, Verification } from "./types.ts";
 import { ASSIGNMENT_ROLES, DOC_KINDS, EFIN_STATUSES, VERIFICATION } from "./types.ts";
@@ -16,7 +16,7 @@ import { checkUpload, MAX_DOC_BYTES, safeFileName } from "./files.ts";
 // last-4 is kept for display, and a keyed hash backs duplicate detection. None of them is ever written to the audit log.
 
 export type Actor = { id: string; email: string };
-const db = (): SupabaseClient => serviceClient();
+const db = (): SupabaseClient => tenantDb();
 
 function secrets(): CrmSecrets {
   const s = CrmSecrets.fromBase64(process.env.MONARCH_ENCRYPTION_KEY);

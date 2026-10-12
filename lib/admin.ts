@@ -4,31 +4,35 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Stripe from "stripe";
 import { createClient } from "./supabase/server";
-import { serviceClient } from "./supabase/service";
+import { platformClient, tenantClient } from "./supabase/service";
+import { currentTenantId } from "./tenants.ts";
 import { decideAdmin } from "./commerce/authz.ts";
 import { SupabaseCommerceRepo, SupabaseImageStore } from "./commerce/supabase-repo.ts";
 import { SupabaseFileStore, SupabaseProductFilesRepo } from "./commerce/supabase-files.ts";
 import { SupabaseServiceOrdersRepo } from "./commerce/supabase-services.ts";
 
-export { serviceClient };
+/** Database access for the current tenant (row-level security scoped to it). */
+export function tenantDb() {
+  return tenantClient(currentTenantId());
+}
 
 export function commerceRepo() {
-  return new SupabaseCommerceRepo(serviceClient());
+  return new SupabaseCommerceRepo(tenantDb());
 }
 
 /** Product image storage (service role; call only after requireAdmin for writes). */
 export function imageStore() {
-  return new SupabaseImageStore(serviceClient());
+  return new SupabaseImageStore(tenantDb());
 }
 
-/** Service orders for the current tenant (Monarch until Phase 2 Step 0). */
+/** Service orders for the current tenant. */
 export function serviceOrdersRepo() {
-  return new SupabaseServiceOrdersRepo(serviceClient());
+  return new SupabaseServiceOrdersRepo(tenantDb());
 }
 
 /** Product files (code bundles and other deliverables): private storage plus the file and download records. */
 export function productFilesDeps() {
-  const db = serviceClient();
+  const db = tenantDb();
   return { commerce: new SupabaseCommerceRepo(db), files: new SupabaseProductFilesRepo(db), store: new SupabaseFileStore(db) };
 }
 
@@ -41,7 +45,7 @@ export function stripeClient(): Stripe | null {
 type AdminLookup = "yes" | "no" | "setup_missing";
 
 async function lookupAdmin(userId: string): Promise<AdminLookup> {
-  const { data, error } = await serviceClient().from("admin_users").select("user_id").eq("user_id", userId).maybeSingle();
+  const { data, error } = await platformClient("admin_lookup").from("admin_users").select("user_id").eq("user_id", userId).maybeSingle();
   if (error) {
     // Missing table means the migration has not been applied: nobody is an admin yet.
     if (error.code === "42P01" || error.code === "PGRST205") return "setup_missing";

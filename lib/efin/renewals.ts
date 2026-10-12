@@ -3,7 +3,7 @@ import { automationConfig, automationDeps, integrationStatus } from "../automati
 import type { EmailSender } from "../automation/email.ts";
 import { esc } from "../automation/template.ts";
 import { sanitizeError } from "../automation/sanitize.ts";
-import { serviceClient } from "../admin";
+import { tenantDb } from "../admin";
 import { assignmentLapsed, daysUntil, dueReminderStage, planRenewalTasks, todayIso } from "./rules.ts";
 import { audit } from "./service";
 import type { AssignmentRow, EfinRow, RenewalTaskRow } from "./types.ts";
@@ -32,7 +32,7 @@ function reminderEmail(task: RenewalTaskRow, days: number, last4: string, link: 
 }
 
 export async function runRenewalSweep(opts: { today?: string; sender?: EmailSender; origin?: string } = {}): Promise<SweepSummary> {
-  const db = serviceClient();
+  const db = tenantDb();
   const today = opts.today ?? todayIso();
   const sender = opts.sender ?? automationDeps().email;
   const origin = opts.origin ?? process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://app.monarchtaxsuite.com";

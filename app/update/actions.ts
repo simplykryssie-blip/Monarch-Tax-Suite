@@ -1,13 +1,12 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { serviceClient } from "@/lib/supabase/service";
 import { SupabaseCommerceRepo } from "@/lib/commerce/supabase-repo.ts";
 import { lookupUpdate } from "@/lib/commerce/versions.ts";
 import { startUpdateCheckout, type CheckoutSessionPort } from "@/lib/commerce/update-checkout.ts";
 import { stripeCatalogPort } from "@/lib/stripe-catalog";
 import { ValidationError } from "@/lib/commerce/validation.ts";
-import { appOrigin, stripeClient } from "@/lib/admin";
+import { appOrigin, stripeClient, tenantDb } from "@/lib/admin";
 
 export type UpdateState = {
   error?: string;
@@ -22,7 +21,7 @@ const text = (form: FormData, name: string) => {
 /** Shows the customer's licensed version and any available update. */
 export async function checkUpdateAction(_prev: UpdateState, form: FormData): Promise<UpdateState> {
   try {
-    const { license, offer } = await lookupUpdate(new SupabaseCommerceRepo(serviceClient()), text(form, "license_key"));
+    const { license, offer } = await lookupUpdate(new SupabaseCommerceRepo(tenantDb()), text(form, "license_key"));
     return {
       info: offer.eligible
         ? { currentYear: offer.currentYear, latestYear: offer.version.tax_year, label: offer.version.label, priceCents: offer.priceCents, eligible: true, status: license.status }
@@ -68,7 +67,7 @@ export async function startUpdateCheckoutAction(form: FormData) {
         return { id: session.id, status, url: session.url };
       },
     };
-    ({ url } = await startUpdateCheckout(new SupabaseCommerceRepo(serviceClient()), catalog, sessions, { licenseKey: text(form, "license_key"), origin: await appOrigin() }));
+    ({ url } = await startUpdateCheckout(new SupabaseCommerceRepo(tenantDb()), catalog, sessions, { licenseKey: text(form, "license_key"), origin: await appOrigin() }));
   } catch (error) {
     if (error instanceof ValidationError) redirect(`/update?error=${encodeURIComponent(error.message)}`);
     throw error;

@@ -1,5 +1,5 @@
 import "server-only";
-import { appOrigin, commerceRepo, serviceClient, serviceOrdersRepo } from "../admin";
+import { appOrigin, commerceRepo, serviceOrdersRepo, tenantDb } from "../admin";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { SupabaseCrmRepo } from "../crm/supabase-repo.ts";
 import type { AutomationConfig, AutomationDeps, EmitInput } from "./engine.ts";
@@ -27,7 +27,7 @@ export function automationConfig(): AutomationConfig {
 }
 
 export function automationDeps(): AutomationDeps {
-  const db = serviceClient();
+  const db = tenantDb();
   return {
     repo: new SupabaseAutomationRepo(db),
     commerce: commerceRepo(),

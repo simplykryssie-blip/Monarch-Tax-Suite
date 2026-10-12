@@ -1,11 +1,10 @@
 "use server";
 
-import { serviceClient } from "@/lib/supabase/service";
 import { SupabaseCommerceRepo } from "@/lib/commerce/supabase-repo.ts";
 import { submitIntake } from "@/lib/commerce/fulfillment.ts";
 import { embedSnippet, embedUrl } from "@/lib/commerce/platforms.ts";
 import { cleanNote, parseInstallationType, parsePlatform, ValidationError } from "@/lib/commerce/validation.ts";
-import { appOrigin } from "@/lib/admin";
+import { appOrigin, tenantDb } from "@/lib/admin";
 import { safeEmit } from "@/lib/automation/server";
 import type { Platform } from "@/lib/commerce/types.ts";
 
@@ -22,7 +21,7 @@ export async function submitIntakeAction(_prev: IntakeState, form: FormData): Pr
   };
   try {
     const platform = parsePlatform(text("platform"));
-    const result = await submitIntake(new SupabaseCommerceRepo(serviceClient()), text("token"), {
+    const result = await submitIntake(new SupabaseCommerceRepo(tenantDb()), text("token"), {
       platform,
       platform_other: cleanNote(text("platform_other"), 80),
       website_url: text("website_url"),
