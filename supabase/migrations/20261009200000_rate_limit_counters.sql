@@ -1,6 +1,6 @@
 -- Durable rate-limit counters for public endpoints (currently /api/license/validate).
--- ADDITIVE ONLY: creates one table and one function. NOT YET APPLIED to production;
--- apply after owner approval. The application fails open if this table is missing.
+-- ADDITIVE ONLY: creates one table and one function. Applied to production on 2026-10-12
+-- with owner approval. The application fails open if this table is missing.
 -- No personal data: `bucket` holds a keyed hash of the client address or a public embed id.
 set local lock_timeout = '10s';
 
