@@ -1,4 +1,4 @@
-import { serviceClient } from "@/lib/supabase/service";
+import { tenantDb } from "@/lib/admin";
 import { SupabaseCommerceRepo } from "@/lib/commerce/supabase-repo.ts";
 import { getIntake } from "@/lib/commerce/fulfillment.ts";
 import { IntakeForm } from "@/components/install/intake-form";
@@ -7,7 +7,7 @@ import { IntakeForm } from "@/components/install/intake-form";
 // be installed. Shows no customer, order, or license details.
 export default async function InstallIntakePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const repo = new SupabaseCommerceRepo(serviceClient());
+  const repo = new SupabaseCommerceRepo(tenantDb());
   const installation = await getIntake(repo, token);
   const product = installation ? await repo.getProduct(installation.product_id) : null;
   return (

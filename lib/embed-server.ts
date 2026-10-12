@@ -1,5 +1,5 @@
 import "server-only";
-import { serviceClient } from "./supabase/service";
+import { tenantDb } from "./admin";
 import { SupabaseCommerceRepo } from "./commerce/supabase-repo.ts";
 import { decideEmbed, EMBED_ID_PATTERN, type EmbedDecision } from "./commerce/embed.ts";
 import { licensedYears } from "./commerce/versions.ts";
@@ -12,7 +12,7 @@ export async function loadEmbedDecision(embedId: string | null, requestHost: str
 /** Decision plus the tax years the license may use (its licensed version and earlier). */
 export async function loadEmbed(embedId: string | null, requestHost: string | null): Promise<{ decision: EmbedDecision; years: number[]; licenseId: string | null }> {
   if (!embedId || !EMBED_ID_PATTERN.test(embedId)) return { decision: decideEmbed(null, [], requestHost), years: [], licenseId: null };
-  const repo = new SupabaseCommerceRepo(serviceClient());
+  const repo = new SupabaseCommerceRepo(tenantDb());
   const license = await repo.findLicenseByEmbedId(embedId);
   const domains = license ? await repo.listDomains(license.id) : [];
   return { decision: decideEmbed(license, domains, requestHost), years: license ? licensedYears(license) : [], licenseId: license?.id ?? null };
