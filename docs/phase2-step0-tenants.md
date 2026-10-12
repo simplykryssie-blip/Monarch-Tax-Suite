@@ -48,17 +48,17 @@ Each check simulates a server request exactly as PostgREST runs it, inside a tra
 | Unknown or malformed tenant id | Refused (pass) |
 | Template key lookup in A | Finds only A's copy (pass) |
 | Signed-in member of A sees B's memberships | 0 visible (pass) |
-| Same template key installed in a second tenant | **Fail until the old global indexes are dropped** |
-| A updates, deletes or moves B's rows | **Not yet run** (see below) |
+| Same template key installed in a second tenant | Pass |
+| A updates, deletes or moves B's rows | Pass |
 
-The update, delete and drop statements couldn't be run from this session: the database tool waits for a confirmation nobody can answer here.
+**Gate passed: 48/48.** The full `supabase/tests/tenant_isolation.sql` run, after the old global indexes were dropped on the test project, was done in the SQL editor on 2026-10-12.
 
-**To finish the gate on the test project (`riuylqgpebchhinybxxz`):** open the SQL editor and run the "old global versions" block from the migration (the `drop constraint` / `drop index` lines). Then run `supabase/tests/tenant_isolation.sql` and confirm every row says `pass = true`.
+**End to end on Preview (test project):** the Preview deployment of this branch serves `/shop` normally. `pg_stat_statements` shows PostgREST ran its product query as `tenant_app`, so the request hook switches roles for real API traffic, not only in the SQL simulation.
 
 ## Rollout
 
-1. Test project: done, except the index drops above.
-2. Finish the gate (above).
+1. Test project: done, gate passed.
+2. Preview: verified (above).
 3. **Merge and deploy first.** The new code sends `x-tenant-id` on every request. Until the migration is applied the database ignores that header, so production behaves exactly as today.
 4. **Then production, with your approval:** apply the migration in the SQL editor in one go. Order matters: code from before this change doesn't send a tenant, so once the migration is on, its inserts would be refused.
 5. Check that the storefront, admin, a test-mode checkout on Preview, and the webhook health card all work.
