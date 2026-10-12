@@ -60,7 +60,9 @@ Each check simulates a server request exactly as PostgREST runs it, inside a tra
 1. Test project: done, gate passed.
 2. Preview: verified (above).
 3. **Merge and deploy first.** The new code sends `x-tenant-id` on every request. Until the migration is applied the database ignores that header, so production behaves exactly as today.
-4. **Then production, with your approval:** apply the migration in the SQL editor in one go. Order matters: code from before this change doesn't send a tenant, so once the migration is on, its inserts would be refused.
+4. **Then production, with your approval:** apply the migration in the SQL editor in one go. Order matters: code from before this change doesn't send a tenant, so once the migration is on, its inserts would be refused. Within the migration, turn the request hook on in the same transaction as the `tenant_id` defaults: the default takes the tenant from the hook, so in between, new rows are refused.
+
+**Applied to production on 2026-10-12**, in parts. The hook went on about a minute after the defaults; the database logs show no refused writes in that window. Old global indexes were dropped in the SQL editor afterwards. Verified: the shop loads, admin reads and writes run as `tenant_app`, every Monarch row is visible to it, and the Stripe endpoint is unchanged.
 5. Check that the storefront, admin, a test-mode checkout on Preview, and the webhook health card all work.
 
 To roll back the request hook: `alter role authenticator reset pgrst.db_pre_request; notify pgrst, 'reload config';`. The columns and backfill can stay.
@@ -80,6 +82,6 @@ This is a design decision for you; nothing in Step 0 depends on it.
 
 ## Noticed while inventorying (not changed)
 
-- Production has no `rate_limit_counters` table or `hit_rate_limit` function; the test project has them. Worth checking how rate limiting behaves there and applying `20261009200000_rate_limit_counters.sql` to production separately.
+- Production had no `rate_limit_counters` table or `hit_rate_limit` function, so every rate-limit call returned 404 and was allowed through. Applied to production on 2026-10-12 (see `docs/rate-limit-activation.md`).
 - The test project was missing the automation and onboarding migrations; they're applied now so it matches production.
 - `app/(app)/clients`, `engagements` and `tasks` query tables that exist in neither project (the older workspace prototype). They aren't tenant data today.
