@@ -84,16 +84,13 @@ Approved spec: PR #32, with the owner's final decisions. Migration: `supabase/mi
 | 11 | Second submission with the same EFIN links to the same firm; a duplicate PTIN fails only the firm step | Pass |
 | 12 | Workflow routes on `answer.filer_type` and fills `{{form.business_name}}`; non-matching answer doesn't run | Pass |
 | 13 | CSV masked, no file columns, formulas neutralized, export logged; submissions can't be deleted; links outside the tenant refused | Pass |
-| 14 | Database gate on the test project (`supabase/tests/forms_isolation.sql`), insert-only part: 5 tables isolated; insert into B refused; default tenant; can't number B's form; can't link a firm to B's customer; firm created in A; A submission on B's form refused | **11/11 pass** |
+| 14 | Database gate on the test project (`supabase/tests/forms_isolation.sql`), run by the owner in the SQL editor: 5 tables isolated; insert into B refused; default tenant; can't number or update B's form; can't link a firm to B's customer (on create or later, even as platform); firm created in A; A submission on B's form refused; answers locked; real submissions can't be deleted; spam can be emptied with its uploads; published versions frozen | **17/17 pass** (rolled back, nothing left) |
 | 15 | `firm_from_submission` on the real schema: firm, office, ERO + responsible official + preparer, PTIN, EFIN unconfirmed, draft assignment, audit events | Pass (rolled back) |
-
-**Still to run:** the 6 checks in `forms_isolation.sql` that use update or delete statements. These are locked submissions, kept submissions, emptying spam, frozen versions, updates across tenants, and linking a firm to another tenant's customer. My database connection can't run update or delete statements, so please run the whole file in the test project's SQL editor. It rolls itself back. All 17 checks should pass.
 
 ## Rollout
 
-1. Test project: migration applied; insert-only gate 11/11 passed.
-2. Luna runs the full `forms_isolation.sql` on test (17 checks).
-3. **Production migration: needs your approval.** It's additive.
-4. Merge and deploy. Then build the ERO application form in **Operations → Forms**, write its consent statement, map the respondent, customer and firm fields, and publish.
+1. Test project: migration applied; full gate 17/17 passed.
+2. **Production migration: needs your approval.** It's additive.
+3. Merge and deploy. Then build the ERO application form in **Operations → Forms**, write its consent statement, map the respondent, customer and firm fields, and publish.
 
 Out of scope, as specified: the ERO onboarding workflow itself (Krystal builds it with these pieces).
