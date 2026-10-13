@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { formContext, RECEIPT_COOKIE, receiptValid } from "@/lib/forms/public";
 import { isPublicId } from "@/lib/forms/service.ts";
 import { formatInZone } from "@/lib/documents/signing.ts";
+import { RichMessage } from "@/components/forms/rich-message";
 
 export const metadata: Metadata = { title: "Submitted", robots: { index: false, follow: false } };
 
@@ -22,7 +23,7 @@ export default async function FormDonePage({ params, searchParams }: { params: P
         <h1>{valid ? "Submitted" : "Thank you"}</h1>
         {valid ? (
           <>
-            <p style={{ whiteSpace: "pre-wrap" }}>{ctx!.pf!.settings.confirmation_message}</p>
+            <RichMessage text={ctx!.pf!.settings.confirmation_message} />
             <p>Submission <b>#{sub.number}</b>, received {formatInZone(new Date(sub.submitted_at!), ctx!.profile?.time_zone ?? "America/New_York")}.{sub.is_test ? " (TEST)" : ""}</p>
             {error && <p className="monarch-alert is-error">{error.slice(0, 300)}</p>}
             <p><a className="monarch-primary" href={`/f/${id}/receipt`} style={{ display: "inline-block", textDecoration: "none" }}>Download PDF</a></p>

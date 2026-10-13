@@ -60,7 +60,7 @@ export async function saveFormForLaterAction(publicId: string, input: { token: s
     const ctx = await context(publicId);
     const { token, draft, pf } = await saveForLater(ctx.deps, publicId, { token: tokenOf(input.token), answers: input.answers ?? {}, email: str(input.email, 254) }, who);
     const failed = await sendResumeLink(automationDeps(ctx.tenantId), ctx.deps, { pf, email: draft.resume_email!, token, expiresAt: draft.draft_expires_at!, formUrl: await formLink(ctx.deps, publicId, pf.settings) });
-    if (failed && !failed.startsWith("not sent")) return { ok: false, error: "Your answers are saved, but the email with your link could not be sent. Keep this page open and try again." };
+    if (failed && !failed.startsWith("Not sent")) return { ok: false, error: "Your answers are saved, but the email with your link could not be sent. Keep this page open and try again." };
     return { ok: true, token, email: draft.resume_email! };
   } catch (e) {
     return { ok: false, error: problem(e, "save") };
@@ -77,7 +77,9 @@ export async function submitFormAction(publicId: string, input: { token: string 
     (await cookies()).set(RECEIPT_COOKIE, `${submission.id}.${receiptToken}`, { httpOnly: true, secure: true, sameSite: "lax", path: `/f/${publicId}`, maxAge: 3600 });
     // The PDF, records, notices and workflows run after the respondent sees the confirmation.
     after(() => afterSubmit(automationDeps(ctx.tenantId), ctx.deps, submission, pf));
-    return { ok: true, redirect: `/f/${publicId}/done` };
+    // The form's "after submission" choice: its own confirmation page, or the web address the administrator set.
+    const away = pf.settings.after_submit === "redirect" ? pf.settings.redirect_url : null;
+    return { ok: true, redirect: away ?? `/f/${publicId}/done` };
   } catch (e) {
     if (e instanceof SubmissionInvalid) return { ok: false, error: "Some answers need attention.", errors: e.errors };
     return { ok: false, error: problem(e, "submit") };

@@ -418,6 +418,28 @@ describe("found on Preview (owner's test)", () => {
     assert.equal(configuredOrigin({}), null);
   });
 
+  test("on Preview, held-back emails say why instead of looking sent", async () => {
+    const s = await setup({ env: "preview" });
+    const { submission, pf } = await submitEro(s, { email: "kshanelle@example.com" });
+    await afterSubmit(s.auto, s.deps, submission, pf);
+    assert.equal(s.email.sent.length, 0);
+    const stored = (await s.repo.getSubmission(submission.id))!;
+    assert.equal(stored.notified_at, null, "the firm notice is not marked as sent");
+    assert.match(stored.notify_error!, /AUTOMATION_TEST_RECIPIENTS/);
+    assert.equal(stored.confirmation_sent_at, null);
+    const reason = s.repo.events.find((e) => e.submission_id === submission.id && e.type === "confirmation_not_sent")?.detail.reason;
+    assert.match(String(reason), /Preview deployment only emails addresses listed in AUTOMATION_TEST_RECIPIENTS, and kshanelle@example\.com/);
+  });
+
+  test("on Preview, listed test addresses get the notice and the confirmation", async () => {
+    const s = await setup({ env: "preview" });
+    s.auto.config.testRecipients = ["intake@acmetax.test", "kshanelle@example.com"];
+    const { submission, pf } = await submitEro(s, { email: "kshanelle@example.com" });
+    await afterSubmit(s.auto, s.deps, submission, pf);
+    assert.deepEqual(s.email.sent.map((m) => m.to).sort(), ["intake@acmetax.test", "kshanelle@example.com"]);
+    assert.ok((await s.repo.getSubmission(submission.id))!.confirmation_sent_at);
+  });
+
   test("with no respondent question chosen, the form's email question still links (or creates) the customer", async () => {
     const s = await setup();
     await saveSettings(s.deps, s.form.id, { notify: { recipients: "intake@acmetax.test" } }, [], "admin");

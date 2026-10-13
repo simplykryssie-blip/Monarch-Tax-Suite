@@ -126,8 +126,18 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         <label className="is-wide">Extra text for the confirmation email (optional)<textarea name="confirmation_email_text" rows={2} maxLength={2000} defaultValue={s.confirmation_email_text} /></label>
         <small className="monarch-muted is-wide">The notice to you has the form, number, time and respondent, with a link to the submission. Answers and files stay in the admin.</small>
 
-        <h2 className="is-wide">Messages and limits</h2>
-        <label className="is-wide">Confirmation screen message<textarea name="confirmation_message" rows={2} maxLength={2000} defaultValue={s.confirmation_message} /></label>
+        <h2 className="is-wide">After submission</h2>
+        <fieldset className="is-wide" style={{ display: "grid", gap: 6 }}><legend>What respondents see after they submit</legend>
+          <label className="monarch-check"><input type="radio" name="after_submit" value="message" defaultChecked={s.after_submit !== "redirect"} /> Show the confirmation message (with a button to download their PDF copy)</label>
+          <label className="monarch-check"><input type="radio" name="after_submit" value="redirect" defaultChecked={s.after_submit === "redirect"} /> Send them to a web page</label>
+        </fieldset>
+        <label className="is-wide">Confirmation message<textarea name="confirmation_message" rows={4} maxLength={2000} defaultValue={s.confirmation_message} />
+          <small className="monarch-muted">Put <b>**two asterisks**</b> around words to make them bold. Press Enter for a new line; leave a blank line for a new paragraph.</small>
+        </label>
+        <label className="is-wide">Web page to send them to (when chosen above)<input name="redirect_url" type="url" inputMode="url" maxLength={2000} defaultValue={s.redirect_url ?? ""} placeholder="https://www.yourfirm.com/thank-you" />
+          <small className="monarch-muted">A full address starting with https://. Respondents who are sent there won&apos;t see the Download PDF button, but every other step (PDF, records, emails, workflows) still runs.</small>
+        </label>
+        <h2 className="is-wide">Closing and limits</h2>
         <label className="is-wide">Message when the form is closed<textarea name="closed_message" rows={2} maxLength={1000} defaultValue={s.closed_message} /></label>
         <label>Close automatically at (UTC, optional)<input type="datetime-local" name="close_at" defaultValue={closeLocal} /></label>
         <label>Stop after this many submissions (optional)<input type="number" name="max_submissions" min={1} defaultValue={s.max_submissions ?? ""} /></label>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { removeFormUploadAction, saveFormForLaterAction, startFormUploadAction, submitFormAction, type SubmitResult } from "@/app/f/[id]/actions";
 import { checkAnswer, US_STATES } from "@/lib/forms/answers";
 import { DISPLAY_TYPES, type DateBound, type Field, type FormDefinition } from "@/lib/forms/definition";
@@ -81,7 +80,6 @@ function SignaturePad({ onChange, disabled }: { onChange: (dataUrl: string) => v
 
 export function FormRenderer(props: FormRendererProps) {
   const { definition: def, mode } = props;
-  const router = useRouter();
   const [answers, setAnswers] = useState<RawAnswers>(props.initialAnswers ?? {});
   const [pageId, setPageId] = useState(def.pages[0]?.id ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -92,6 +90,7 @@ export function FormRenderer(props: FormRendererProps) {
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveEmail, setSaveEmail] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
+  const [sent, setSent] = useState<string | null>(null);
   const honeypot = useRef<HTMLInputElement>(null);
   const token = useRef<string | null>(props.initialToken ?? null);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -168,7 +167,10 @@ export function FormRenderer(props: FormRendererProps) {
       const input = { token: token.current, answers, signature: signaturePayload(), stamp: props.stamp };
       const result = mode === "test" && props.testSubmit ? await props.testSubmit(input) : await submitFormAction(props.publicId, { ...input, honeypot: honeypot.current?.value ?? "" });
       if (result.ok) {
-        router.push(result.redirect);
+        // Say so straight away, then load the confirmation page in full. A soft navigation right after an action that
+        // sets the receipt cookie can be undone by the action's own refresh, which left people looking at the form.
+        setSent(result.redirect);
+        window.location.assign(result.redirect);
         return;
       }
       setFormError(result.error);
@@ -345,6 +347,17 @@ export function FormRenderer(props: FormRendererProps) {
       }
     }
   };
+
+  if (sent) {
+    return (
+      <div className="mf-form" role="status" aria-live="polite">
+        <div className="monarch-eyebrow">{props.firmName.toUpperCase()}</div>
+        <h1>Thank you, your submission was received</h1>
+        <p>{mode === "test" ? "The TEST submission was saved." : "We have your answers, files and signature."} {/^https:/.test(sent) ? "Taking you on now…" : "Opening your confirmation…"}</p>
+        <p><a className="monarch-primary" href={sent} style={{ display: "inline-block", textDecoration: "none" }}>{/^https:/.test(sent) ? "Continue" : "View your confirmation"}</a></p>
+      </div>
+    );
+  }
 
   return (
     <div className="mf-form">

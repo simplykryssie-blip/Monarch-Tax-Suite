@@ -1,3 +1,4 @@
+import { cleanRedirectUrl } from "./message.ts";
 import { inputFields, type Field, type FieldType, type FormDefinition } from "./definition.ts";
 import { EMAIL } from "./answers.ts";
 
@@ -33,7 +34,11 @@ export type FormSettings = {
   /** "We received your submission" to the respondent (no answers, no files). */
   confirmation_email: boolean;
   confirmation_email_text: string;
+  /** Shown after a submission; supports **bold** and line breaks. */
   confirmation_message: string;
+  /** After submitting: show the confirmation message, or send the respondent to `redirect_url`. */
+  after_submit: "message" | "redirect";
+  redirect_url: string | null;
   closed_message: string;
   close_at: string | null;
   max_submissions: number | null;
@@ -48,7 +53,9 @@ export const DEFAULT_SETTINGS: FormSettings = {
   brand_domain_id: null,
   confirmation_email: true,
   confirmation_email_text: "",
-  confirmation_message: "Thank you. We received your submission.",
+  confirmation_message: "Thank you, your submission was received.",
+  after_submit: "message",
+  redirect_url: null,
   closed_message: "This form is not accepting submissions right now.",
   close_at: null,
   max_submissions: null,
@@ -146,6 +153,15 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
   if (brands.brandIds.length > 1 && !brand) throw new SettingsError("Choose which firm this form belongs to.");
   if (brand && sender && brands.senderDomain[sender] && brands.senderDomain[sender] !== brand) throw new SettingsError("The notification address must belong to the form's firm. Choose one of that firm's sending addresses, or the firm's default.");
 
+  const after_submit: FormSettings["after_submit"] = r.after_submit === "redirect" ? "redirect" : "message";
+  let redirect_url: string | null = null;
+  try {
+    redirect_url = cleanRedirectUrl(longStr(r.redirect_url, 2100));
+  } catch (e) {
+    if (after_submit === "redirect") throw new SettingsError((e as Error).message);
+  }
+  if (after_submit === "redirect" && !redirect_url) throw new SettingsError("Enter the web address to send people to after they submit.");
+
   const closeAt = str(r.close_at, 40);
   if (closeAt && Number.isNaN(Date.parse(closeAt))) throw new SettingsError("Enter a valid close date.");
   const maxRaw = str(r.max_submissions, 7);
@@ -161,6 +177,8 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
     confirmation_email: r.confirmation_email !== false && r.confirmation_email !== "off",
     confirmation_email_text: longStr(r.confirmation_email_text, 2000),
     confirmation_message: longStr(r.confirmation_message, 2000) || DEFAULT_SETTINGS.confirmation_message,
+    after_submit,
+    redirect_url,
     closed_message: longStr(r.closed_message, 1000) || DEFAULT_SETTINGS.closed_message,
     close_at: closeAt ? new Date(closeAt).toISOString() : null,
     max_submissions: max,

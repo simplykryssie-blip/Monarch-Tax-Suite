@@ -127,6 +127,8 @@ export async function saveFormSettingsAction(form: FormData) {
       confirmation_email: form.get("confirmation_email") === "on",
       confirmation_email_text: str(form, "confirmation_email_text"),
       confirmation_message: str(form, "confirmation_message"),
+      after_submit: str(form, "after_submit"),
+      redirect_url: str(form, "redirect_url"),
       closed_message: str(form, "closed_message"),
       close_at: str(form, "close_at"),
       max_submissions: str(form, "max_submissions"),

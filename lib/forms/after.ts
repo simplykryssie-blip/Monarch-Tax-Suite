@@ -12,8 +12,12 @@ import type { Submission } from "./types.ts";
 
 const allowedTo = (auto: AutomationDeps, to: string) => auto.config.env === "production" || auto.config.testRecipients.map((r) => r.toLowerCase()).includes(to.toLowerCase());
 
+/** Why an email was held back outside production, in words an administrator can act on. */
+export const heldBack = (auto: AutomationDeps, to: string) =>
+  `Not sent: this ${auto.config.env === "preview" ? "Preview" : auto.config.env} deployment only emails addresses listed in AUTOMATION_TEST_RECIPIENTS, and ${to} isn't one of them. Production emails everyone.`;
+
 async function send(auto: AutomationDeps, senderId: string | null, to: string, mail: { subject: string; html: string; text: string }, key: string): Promise<string | null> {
-  if (!allowedTo(auto, to)) return `not sent: ${auto.config.env} environment`;
+  if (!allowedTo(auto, to)) return heldBack(auto, to);
   let sender;
   try {
     sender = await senderFor(auto, senderId);
@@ -66,7 +70,7 @@ export async function notifyFirm(auto: AutomationDeps, deps: FormDeps, sub: Subm
   const problems: string[] = [];
   for (const to of recipients) {
     const p = await send(auto, from.senderId, to, mail, `form-notify:${sub.id}:${to}`);
-    if (p && !p.startsWith("not sent")) problems.push(`${to}: ${p}`);
+    if (p) problems.push(p.startsWith("Not sent") ? p : `${to}: ${p}`);
   }
   if (problems.length) {
     await deps.repo.updateSubmission(sub.id, { notify_error: problems.join("; ").slice(0, 480) });
@@ -83,8 +87,12 @@ async function confirmRespondent(auto: AutomationDeps, deps: FormDeps, sub: Subm
   const settings = readSettings(form.settings);
   if (!settings.confirmation_email) return;
   const profile = await deps.profile();
+  const notSent = async (reason: string) => {
+    await deps.repo.addEvent({ form_id: sub.form_id, submission_id: sub.id, type: "confirmation_not_sent", actor_id: null, detail: { reason: reason.slice(0, 300) } });
+    console.error(`forms: confirmation for ${sub.id} not sent: ${reason.slice(0, 200)}`);
+  };
   const from = await formSender(auto, deps, settings);
-  if (from.blocked) return console.error(`forms: confirmation for ${sub.id} not sent: ${from.blocked}`);
+  if (from.blocked) return notSent(from.blocked);
   const mail = respondentConfirmationEmail({
     firmName: from.name ?? profile?.display_name ?? "Your tax office", formName: form.name, number: sub.number ?? 0, name: sub.respondent_name,
     submittedAt: formatInZone(new Date(sub.submitted_at ?? sub.created_at), profile?.time_zone ?? "America/New_York"), message: settings.confirmation_email_text,
@@ -93,7 +101,7 @@ async function confirmRespondent(auto: AutomationDeps, deps: FormDeps, sub: Subm
   if (!problem) {
     await deps.repo.updateSubmission(sub.id, { confirmation_sent_at: new Date().toISOString() });
     await deps.repo.addEvent({ form_id: sub.form_id, submission_id: sub.id, type: "confirmation_sent", actor_id: null, detail: {} });
-  } else if (!problem.startsWith("not sent")) console.error(`forms: confirmation for ${sub.id} not sent: ${problem}`);
+  } else await notSent(problem);
 }
 
 /** Runs every follow-up for a fresh submission. Never throws. */

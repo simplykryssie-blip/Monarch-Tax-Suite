@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/admin";
 import { formDeps } from "@/lib/forms/server";
 import { displayAnswer, recordView, seenFieldIds } from "@/lib/forms/service.ts";
 import { DISPLAY_TYPES } from "@/lib/forms/definition.ts";
+import { readSettings } from "@/lib/forms/settings.ts";
 import { REVIEW_STATUSES, type StoredAnswers } from "@/lib/forms/types.ts";
 import { formatInZone } from "@/lib/documents/signing.ts";
 import { Badge, Flash, PageTitle, when } from "@/components/admin/ui";
@@ -14,7 +15,7 @@ import { relinkCustomerAction, remakePdfAction, retryFirmAction, submissionStatu
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const EVENT_LABELS: Record<string, string> = {
-  submitted: "Submitted", spam: "Marked as spam", pdf_made: "PDF made", pdf_remade: "PDF made again", notified: "Firm notified", confirmation_sent: "Confirmation emailed to the respondent",
+  submitted: "Submitted", spam: "Marked as spam", pdf_made: "PDF made", pdf_remade: "PDF made again", notified: "Firm notified", confirmation_sent: "Confirmation emailed to the respondent", confirmation_not_sent: "Confirmation not sent",
   customer_linked: "Linked to the customer", customer_created: "Customer created", firm_created: "Firm created in My Service Bureau", firm_linked: "Linked to an existing firm",
   firm_failed: "Firm record not made", relink_requested: "Customer link requested", viewed: "Viewed", revealed: "Sensitive answer shown", file_viewed: "File opened", pdf_downloaded: "PDF downloaded", status_changed: "Status changed", draft_saved: "Saved for later",
 };
@@ -34,6 +35,7 @@ export default async function SubmissionPage({ params, searchParams }: { params:
   if (!result.ok) return <FormsSetupRequired message={result.message} />;
   if (!result.data) notFound();
   const { deps, form, sub, version, uploads, events, tz } = result.data;
+  const confirmationProblem = sub.confirmation_sent_at ? null : (events.find((e) => e.type === "confirmation_not_sent")?.detail.reason as string | undefined) ?? null;
   after(() => recordView(deps, sub, admin.userId).catch(() => undefined));
   const answers = sub.answers as StoredAnswers;
   // Unanswered questions the respondent saw are listed as "no answer"; hidden and skipped ones are not.
@@ -99,7 +101,7 @@ export default async function SubmissionPage({ params, searchParams }: { params:
             {!sub.is_test && !sub.organization_id && sub.status !== "spam" && (
               <form action={retryFirmAction}><input type="hidden" name="id" value={sub.id} /><input type="hidden" name="form_id" value={form.id} /><button className="monarch-link">Create or link the firm now</button></form>
             )}
-            <p>Firm notified: {sub.notified_at ? stamp(sub.notified_at) : sub.notify_error ? `not yet (${sub.notify_error})` : "—"} · Confirmation: {sub.confirmation_sent_at ? stamp(sub.confirmation_sent_at) : "—"}</p>
+            <p>Firm notified: {sub.notified_at ? stamp(sub.notified_at) : sub.notify_error ? `not yet (${sub.notify_error})` : "—"} · Confirmation: {sub.confirmation_sent_at ? stamp(sub.confirmation_sent_at) : confirmationProblem ? `not sent (${confirmationProblem})` : !readSettings(form.settings).confirmation_email ? "off for this form" : !sub.respondent_email ? "no respondent email" : "—"}</p>
             <form action={submissionStatusAction} className="monarch-inline-form">
               <input type="hidden" name="id" value={sub.id} /><input type="hidden" name="form_id" value={form.id} />
               <select name="status" defaultValue={sub.status} aria-label="Status">{REVIEW_STATUSES.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}</select>
@@ -109,7 +111,7 @@ export default async function SubmissionPage({ params, searchParams }: { params:
           <section className="monarch-panel" style={{ padding: 20 }}>
             <h2>History</h2>
             <ul style={{ paddingLeft: 18, margin: 0 }}>
-              {events.map((e) => <li key={e.id} style={{ marginBottom: 4 }}>{EVENT_LABELS[e.type] ?? e.type} · {when(e.created_at)}{e.actor_id ? " · by an administrator" : ""}{e.type === "status_changed" ? ` (${String(e.detail.from)} → ${String(e.detail.to)})` : ""}</li>)}
+              {events.map((e) => <li key={e.id} style={{ marginBottom: 4 }}>{EVENT_LABELS[e.type] ?? e.type} · {when(e.created_at)}{e.actor_id ? " · by an administrator" : ""}{e.type === "status_changed" ? ` (${String(e.detail.from)} → ${String(e.detail.to)})` : ""}{e.type === "confirmation_not_sent" ? ` (${String(e.detail.reason)})` : ""}</li>)}
             </ul>
           </section>
         </div>

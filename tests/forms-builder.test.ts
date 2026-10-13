@@ -157,3 +157,33 @@ describe("form settings", () => {
     assert.throws(() => checkSettings({ notify: { sender_id: "not-mine" } }, def, ["mine"]), /verified sending/);
   });
 });
+
+describe("after submission", () => {
+  test("the confirmation message keeps **bold** and line breaks, and never becomes HTML", async () => {
+    const { formatMessage } = await import("../lib/forms/message.ts");
+    assert.deepEqual(formatMessage("Thank you, **Ánh**!\nWe'll call you.\n\n<script>x</script>"), [
+      [[{ text: "Thank you, ", bold: false }, { text: "Ánh", bold: true }, { text: "!", bold: false }], [{ text: "We'll call you.", bold: false }]],
+      [[{ text: "<script>x</script>", bold: false }]],
+    ]);
+  });
+
+  test("a redirect needs a full https:// address", async () => {
+    const { cleanRedirectUrl } = await import("../lib/forms/message.ts");
+    assert.equal(cleanRedirectUrl(" https://www.monarchtaxsuite.com/thanks?x=1 "), "https://www.monarchtaxsuite.com/thanks?x=1");
+    assert.equal(cleanRedirectUrl(""), null);
+    for (const bad of ["www.monarchtaxsuite.com", "http://monarchtaxsuite.com", "javascript:alert(1)", "https://localhost/x", "https://user:pw@monarchtaxsuite.com"]) {
+      assert.throws(() => cleanRedirectUrl(bad), Error, bad);
+    }
+  });
+
+  test("settings: show a message by default, or redirect to a checked address", () => {
+    const def = sampleDefinition();
+    const plain = checkSettings({}, def, []);
+    assert.equal(plain.after_submit, "message");
+    assert.equal(plain.confirmation_message, "Thank you, your submission was received.");
+    assert.equal(checkSettings({ after_submit: "redirect", redirect_url: "https://www.monarchtaxsuite.com/thanks" }, def, []).redirect_url, "https://www.monarchtaxsuite.com/thanks");
+    assert.throws(() => checkSettings({ after_submit: "redirect", redirect_url: "monarchtaxsuite.com" }, def, []), /https:\/\//);
+    assert.throws(() => checkSettings({ after_submit: "redirect" }, def, []), /web address to send people to/);
+    assert.equal(checkSettings({ after_submit: "message", redirect_url: "not a url" }, def, []).redirect_url, null, "an unused bad address is dropped, not an error");
+  });
+});

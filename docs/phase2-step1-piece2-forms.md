@@ -59,6 +59,12 @@ Approved spec: PR #32, with the owner's final decisions. Migration: `supabase/mi
 - **Customer not created.** That form never had a respondent email question chosen, so the submission had no email to link on. When none is chosen, the form's first email question is now used automatically (and the first name question for the name). The settings page says so. Submissions made before this fix have a **Link the customer now** button on their page.
 - **Empty optional questions.** Questions the respondent saw but left empty now show as "(no answer)" in the admin and the PDF. Hidden and skipped questions are still left out.
 
+## Fixed after the second Preview test
+
+- **Confirmation email "not sending".** Preview deployments only email addresses listed in `AUTOMATION_TEST_RECIPIENTS` (so tests never email real people), and the Preview has none set. That was by design, but it was silent: the firm notice was even marked as sent. Now a held-back email is recorded with the reason, the submission page shows "Confirmation: not sent (…)", and the firm notice stays "not yet". Production emails everyone.
+- **No feedback after Submit.** The page now says "Thank you, your submission was received" the moment the submission is saved, then loads the confirmation page in full (the quick in-app navigation could be undone by the page refresh that follows saving the receipt).
+- **After submission (new, Settings tab):** show the confirmation message, or send the respondent to a web page. The message is editable per form, with **bold** (`**like this**`) and line breaks; the default is "Thank you, your submission was received." The web page must be a full `https://` address, checked when you save. Respondents sent to a web page don't get the Download PDF button; everything else still runs.
+
 ## Firms/brands (Monarch and MKB in one account)
 
 - **A brand is a connected sending domain** (Piece 1, Settings → Email sending). Each domain now has a **firm name** and an optional **web address** for its public links (two new columns on `email_domains`).
@@ -76,7 +82,7 @@ Approved spec: PR #32, with the owner's final decisions. Migration: `supabase/mi
 
 ## Test evidence
 
-`npm test`: 466 passing (61 new, mostly in `tests/forms-builder.test.ts`, `tests/forms-service.test.ts` and `tests/forms-brands.test.ts`). `tsc`, `lint` and `build` are clean. The browser was checked locally at computer and phone widths, with no console errors: logic, skips, format errors, the drawn signature, and builder drag, add, edit and move.
+`npm test`: 474 passing (69 new, mostly in `tests/forms-builder.test.ts`, `tests/forms-service.test.ts` and `tests/forms-brands.test.ts`). `tsc`, `lint` and `build` are clean. The browser was checked locally at computer and phone widths, with no console errors: logic, skips, format errors, the drawn signature, and builder drag, add, edit and move.
 
 | # | Case | Result |
 |---|---|---|
