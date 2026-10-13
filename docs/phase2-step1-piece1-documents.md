@@ -1,6 +1,6 @@
 # Phase 2, Step 1, Piece 1: Document management (built)
 
-Approved spec: PR #30, with the owner's decisions of 2026-10-13. Migration: `supabase/migrations/20261015090000_documents.sql`, applied to the test project. Production needs your approval.
+Approved spec: PR #30, with the owner's decisions of 2026-10-13. Migration: `supabase/migrations/20261015090000_documents.sql`. It's applied to the test project, and to production on 2026-10-13 with your approval.
 
 ## What a bureau can do
 
@@ -62,7 +62,7 @@ Approved spec: PR #30, with the owner's decisions of 2026-10-13. Migration: `sup
 | 13 | Saving a workflow: unknown attribute, bad option, signature on a DOCX, another tenant's document or sender | Each refused | Pass |
 | 14 | Test runs and preview environment | Test runs go to the test recipient only and are marked TEST; in preview, no client email | Pass |
 | 15 | Storage isolation | A tenant can't link to another tenant's path, or to `..` paths; another tenant's link isn't found | Pass |
-| 16 | Database isolation, 9 tables (test project) | Runs as `tenant_app`; 0 of tenant B's rows visible; lists only A; insert into B refused; A's version on B's document refused even as the platform; insert without a tenant gets A | 13/13 pass |
+| 16 | Database isolation, 9 tables (test project, then production) | Runs as `tenant_app`; 0 of tenant B's rows visible; lists only A; insert into B refused; A's version on B's document refused even as the platform; insert without a tenant gets A | 13/13 pass on both |
 
 **Not verified yet:**
 - **Connecting a real domain.** This needs a full-access Resend API key in `RESEND_API_KEY`; a sending-only key gets a clear "cannot manage domains" message. The domain code is tested against a fake provider only.
@@ -71,8 +71,12 @@ Approved spec: PR #30, with the owner's decisions of 2026-10-13. Migration: `sup
 ## Rollout
 
 1. Test project: migration applied; gate passed.
-2. **Production migration (your approval):** additive, so it can go before or after the deploy. Without it, existing emails are unaffected: a failed sender lookup falls back to today's sender.
-3. Merge and deploy.
+2. Merged (PR #31) and deployed to production.
+3. **Production migration, done 2026-10-13** (approved), in one transaction:
+   - 9 tables with row-level security, 18 policies and 14 same-tenant foreign keys;
+   - the bucket is private, and Monarch's firm profile is seeded;
+   - recorded in `schema_migrations`.
+   The isolation gate (`documents_isolation.sql`) was re-run on production inside a rolled-back transaction, with fake example.com tenants only: **13/13 pass**, and nothing was left behind. No production errors were logged after the deploy.
 4. Then, in the app:
    - fill in **Settings → Firm profile**;
    - add your domain under **Settings → Email sending** and verify it;
