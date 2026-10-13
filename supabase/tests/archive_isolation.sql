@@ -21,7 +21,7 @@ begin
   insert into public.calculator_customers (tenant_id, email, full_name, status) values (b, 'gate-b-current@example.com', 'B Current', 'active') returning id into b_cust;
   insert into public.calculator_customers (tenant_id, email, full_name, status, archived_at) values (b, 'gate-b-old@example.com', 'B Old', 'active', now()) returning id into b_arch;
   insert into public.archive_log (tenant_id, entity, record_id, action, label) values (a, 'customer', a_old, 'archived', 'A Old'), (b, 'customer', b_arch, 'archived', 'B Old');
-  insert into public.forms (tenant_id, name, public_id, status) values (a, 'Gate archive form', 'GateArchiveFormA1', 'draft') returning id into a_form;
+  insert into public.forms (tenant_id, name, public_id, status) values (a, 'Gate archive form', 'GateArchiveForm1', 'draft') returning id into a_form;
 
   -- 1. The columns are on every archivable table, so every tenant (new ones included) has them.
   select count(*) into n from information_schema.columns where table_schema = 'public' and column_name in ('archived_at', 'archived_by', 'archive_reason')
