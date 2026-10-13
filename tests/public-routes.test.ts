@@ -7,14 +7,14 @@ import { readFileSync } from "node:fs";
 const source = readFileSync(new URL("../lib/supabase/proxy.ts", import.meta.url), "utf8");
 const list = source.match(/const PUBLIC_PATHS: string\[\] = \[([\s\S]*?)\];/)?.[1] ?? "";
 
-for (const path of ["/setup", "/api/automation/run", "/integrations", "/api/stripe/webhook", "/api/integrations/crm/", "/api/leads"]) {
+for (const path of ["/setup", "/api/automation/run", "/integrations", "/api/stripe/webhook", "/api/integrations/crm/", "/api/leads", "/d/", "/sign/"]) {
   test(`${path} is reachable without an admin session`, () => {
     assert.ok(list.includes(`"${path}"`), `${path} missing from PUBLIC_PATHS`);
   });
 }
 
 test("admin areas are not public", () => {
-  for (const admin of ["/automation", "/licenses", "/customers", "/orders", "/products"]) {
+  for (const admin of ["/automation", "/licenses", "/customers", "/orders", "/products", "/documents", "/settings"]) {
     assert.ok(!list.includes(`"${admin}"`), `${admin} must stay behind admin login`);
   }
 });

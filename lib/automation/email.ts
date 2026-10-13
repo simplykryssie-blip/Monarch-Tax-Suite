@@ -3,7 +3,8 @@ import { sanitizeError } from "./sanitize.ts";
 // The one place Monarch sends email. Provider: Resend (https://resend.com/docs/api-reference/emails/send-email).
 // The API key stays on the server and never appears in a response, log or error message.
 
-export type EmailMessage = { to: string; subject: string; html: string; text: string; idempotencyKey: string };
+/** `from` / `replyTo` override the configured sender, for tenants sending from their own verified domains. */
+export type EmailMessage = { to: string; subject: string; html: string; text: string; idempotencyKey: string; from?: string | null; replyTo?: string | null };
 export type SendResult = { ok: true; id: string } | { ok: false; kind: "config" | "transient" | "permanent"; message: string };
 export interface EmailSender {
   send(message: EmailMessage): Promise<SendResult>;
@@ -29,6 +30,7 @@ const ADDRESS = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 const FROM = /^(?:[^<>\r\n]{1,80}\s)?<[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+>$|^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
 export const isEmailAddress = (v: string) => v.length <= 254 && ADDRESS.test(v);
+export const isFromHeader = (v: string) => FROM.test(v);
 
 /** What is missing before email can be sent. Empty means ready to try. */
 export function emailConfigProblems(c: EmailConfig): string[] {
@@ -54,12 +56,16 @@ export class ResendEmailSender implements EmailSender {
     const problems = emailConfigProblems(this.config);
     if (problems.length) return { ok: false, kind: "config", message: `Email is not configured. ${problems[0]}` };
     if (!isEmailAddress(m.to)) return { ok: false, kind: "permanent", message: "The recipient email address is not valid." };
+    if (m.from && !FROM.test(m.from)) return { ok: false, kind: "config", message: "The sending address for this email is not valid." };
+    if (m.replyTo && !isEmailAddress(m.replyTo)) return { ok: false, kind: "config", message: "The reply-to address for this email is not valid." };
+    const from = m.from || this.config.from;
+    const replyTo = m.replyTo || this.config.replyTo;
     let res: Response;
     try {
       res = await this.fetchImpl("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${this.config.apiKey}`, "Content-Type": "application/json", "Idempotency-Key": m.idempotencyKey.slice(0, 256) },
-        body: JSON.stringify({ from: this.config.from, to: [m.to], subject: m.subject, html: m.html, text: m.text, ...(this.config.replyTo ? { reply_to: this.config.replyTo } : {}) }),
+        body: JSON.stringify({ from, to: [m.to], subject: m.subject, html: m.html, text: m.text, ...(replyTo ? { reply_to: replyTo } : {}) }),
         signal: AbortSignal.timeout(10_000),
       });
     } catch (e) {

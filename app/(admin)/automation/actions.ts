@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { retryExecution, runTest } from "@/lib/automation/engine.ts";
-import { automationDeps } from "@/lib/automation/server";
+import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { installDefaults } from "@/lib/automation/defaults.ts";
 import { createTemplate, createWorkflow, duplicateWorkflow, removeWorkflow, sendTemplateTest, setTemplateActive, setWorkflowStatus, updateTemplate, updateWorkflow } from "@/lib/automation/admin.ts";
@@ -47,15 +47,21 @@ function workflowFromForm(form: FormData): WorkflowFormInput {
     to: str(form, `act_to_${i}`),
     include_setup_link: form.get(`act_setup_${i}`) === "on",
     note: str(form, `act_note_${i}`),
-  })).filter((a) => a.type === "send_email" || a.type === "record_note");
+    document_id: str(form, `act_document_${i}`),
+    sender_id: str(form, `act_sender_${i}`),
+    message: str(form, `act_message_${i}`),
+    link_days: str(form, `act_link_days_${i}`),
+    reminder_days: str(form, `act_reminder_${i}`),
+  })).filter((a) => ["send_email", "record_note", "send_document", "request_signature"].includes(a.type));
   return { name: str(form, "name"), description: str(form, "description"), trigger_event: str(form, "trigger_event"), conditions, actions, max_attempts: str(form, "max_attempts") || 4, cooldown_hours: str(form, "cooldown_hours") || 0 };
 }
 
 export async function saveWorkflowAction(form: FormData) {
   const existing = str(form, "id");
   await mutate(existing ? `/automation/workflows/${existing}` : "/automation/workflows/new", async (a) => {
-    const repo = automationDeps().repo;
-    const w = existing ? await updateWorkflow(repo, a, id(form), workflowFromForm(form)) : await createWorkflow(repo, a, workflowFromForm(form));
+    const deps = automationDeps();
+    const catalog = await workflowCatalog(deps);
+    const w = existing ? await updateWorkflow(deps.repo, a, id(form), workflowFromForm(form), catalog) : await createWorkflow(deps.repo, a, workflowFromForm(form), catalog);
     return { to: `/automation/workflows/${w.id}`, notice: existing ? "Workflow saved." : "Workflow created. It is paused until you turn it on." };
   });
 }
@@ -93,8 +99,11 @@ export async function testWorkflowAction(form: FormData) {
 export async function saveTemplateAction(form: FormData) {
   const existing = str(form, "id");
   await mutate(existing ? `/automation/templates/${existing}` : "/automation/templates/new", async (a) => {
-    const repo = automationDeps().repo;
-    const input = { name: str(form, "name"), subject: str(form, "subject"), body: str(form, "body") };
+    const deps = automationDeps();
+    const repo = deps.repo;
+    const senderId = str(form, "sender_id");
+    if (senderId && !(await workflowCatalog(deps)).senders.some((s) => s.id === senderId)) throw new ValidationError("Choose one of your verified sending addresses.");
+    const input = { name: str(form, "name"), subject: str(form, "subject"), body: str(form, "body"), sender_id: senderId || null };
     const t = existing ? await updateTemplate(repo, a, id(form), input) : await createTemplate(repo, a, input);
     return { to: `/automation/templates/${t.id}`, notice: "Template saved." };
   });
