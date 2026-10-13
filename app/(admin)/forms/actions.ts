@@ -7,7 +7,7 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { formDeps } from "@/lib/forms/server";
-import { linkFirm, makePdf, createForm, duplicateForm, emptySpam, publishForm, removeForm, revealAnswer, saveDraft, saveFormDetails, saveSettings, setFormStatus, setSubmissionStatus, submitForm, SubmissionInvalid } from "@/lib/forms/service.ts";
+import { linkFirm, makePdf, relinkRespondent, createForm, duplicateForm, emptySpam, publishForm, removeForm, revealAnswer, saveDraft, saveFormDetails, saveSettings, setFormStatus, setSubmissionStatus, submitForm, SubmissionInvalid } from "@/lib/forms/service.ts";
 import { readSettings } from "@/lib/forms/settings.ts";
 import { REVIEW_STATUSES, type SubmissionStatus } from "@/lib/forms/types.ts";
 import { signatureFrom, type SignaturePayload } from "@/lib/forms/signature-input.ts";
@@ -159,6 +159,15 @@ export async function retryFirmAction(form: FormData) {
     const after = await deps.repo.getSubmission(sub.id);
     if (!org) throw new ValidationError(after?.firm_error ?? "No firm record was made. Check the form's firm settings.");
     return { notice: after?.firm_status === "created" ? "Firm record created in My Service Bureau." : "Linked to the existing firm." };
+  });
+}
+
+export async function relinkCustomerAction(form: FormData) {
+  const back = `/forms/${str(form, "form_id")}/submissions/${str(form, "id")}`;
+  await act(back, async (adminId) => {
+    const r = await relinkRespondent(formDeps(), idOf(form), adminId);
+    if (!r.customerId) throw new ValidationError("No customer was linked. Turn on \"Link each submission to the customer\" in the form's Settings, or check the email answer.");
+    return { notice: r.organizationId ? "Linked to the customer and the firm." : "Linked to the customer." };
   });
 }
 

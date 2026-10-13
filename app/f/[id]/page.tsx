@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { FormRenderer } from "@/components/forms/form-renderer";
 import { formContext } from "@/lib/forms/public";
 import { isPublicId, resumeDraft, startStamp } from "@/lib/forms/service.ts";
+import { respondentKeys } from "@/lib/forms/settings.ts";
 
 export const metadata: Metadata = { title: "Form", robots: { index: false, follow: false } };
 
@@ -38,7 +39,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
           firmName={firm || "Tax office"}
           consentText={pf.form.signature_consent}
           allowSaveLater={pf.settings.allow_save_later}
-          respondentEmailKey={pf.settings.respondent.email_key}
+          respondentEmailKey={respondentKeys(pf.settings, pf.version.definition).email_key}
           stamp={startStamp(ctx.deps, pf.form.id)}
           initialAnswers={resumed?.answers}
           initialToken={resumed?.token ?? null}

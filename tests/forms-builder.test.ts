@@ -150,7 +150,8 @@ describe("form settings", () => {
     assert.equal(ok.confirmation_email, true);
     assert.throws(() => checkSettings({ respondent: { email_key: "email" }, firm: { enabled: true, legal_name_key: "business_name", efin_key: "business_name", people: [{ role: "ero", name_key: "full_name" }] } }, def, []), /checked as EFIN/);
     assert.throws(() => checkSettings({ respondent: { email_key: "email" }, firm: { enabled: true, legal_name_key: "business_name", people: [] } }, def, []), /at least one person/);
-    assert.throws(() => checkSettings({ firm: { enabled: true, legal_name_key: "business_name", people: [{ role: "ero", name_key: "full_name" }] } }, def, []), /respondent's email/);
+    // Without a chosen respondent question, the form's email question is used, so firm records still link to the customer.
+    assert.equal(checkSettings({ firm: { enabled: true, legal_name_key: "business_name", people: [{ role: "ero", name_key: "full_name" }] } }, def, []).firm.enabled, true);
     assert.throws(() => checkSettings({ respondent: { email_key: "full_name" } }, def, []), /email question/);
     assert.throws(() => checkSettings({ notify: { recipients: "a@x.test b@x.test c@x.test d@x.test e@x.test f@x.test" } }, def, []), /at most 5/);
     assert.throws(() => checkSettings({ notify: { sender_id: "not-mine" } }, def, ["mine"]), /verified sending/);

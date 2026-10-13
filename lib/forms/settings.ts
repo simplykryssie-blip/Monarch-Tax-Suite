@@ -127,7 +127,7 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
     });
   }
   if (enabled && !firm.people.length) throw new SettingsError("Map at least one person for the firm (usually the ERO or owner).");
-  if (enabled && !respondent.email_key) throw new SettingsError("To create firm records, choose the respondent's email question too, so the firm is linked to the customer.");
+  if (enabled && !respondent.email_key && !inputFields(def).some((f) => f.type === "email")) throw new SettingsError("To create firm records, the form needs an email question, so the firm is linked to the customer.");
 
   const recipients = [...new Set((Array.isArray(r.notify?.recipients) ? r.notify.recipients : String(r.notify?.recipients ?? "").split(/[,\s]+/)).map((x: unknown) => str(x, 254).toLowerCase()).filter(Boolean))] as string[];
   if (recipients.length > 5) throw new SettingsError("Notify at most 5 addresses.");
@@ -155,6 +155,20 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
     max_submissions: max,
     allow_save_later: r.allow_save_later !== false && r.allow_save_later !== "off",
   };
+}
+
+/**
+ * The questions that identify the respondent. Uses the ones chosen in Settings; when none is chosen, the form's first
+ * email question, and the first short answer whose key or label mentions a name, so every submission with an email
+ * still links to its customer.
+ */
+export function respondentKeys(settings: FormSettings, def: FormDefinition): { email_key: string | null; name_key: string | null } {
+  const fields = inputFields(def);
+  const email = settings.respondent.email_key && fields.some((f) => f.key === settings.respondent.email_key) ? settings.respondent.email_key : fields.find((f) => f.type === "email")?.key ?? null;
+  const name = settings.respondent.name_key && fields.some((f) => f.key === settings.respondent.name_key)
+    ? settings.respondent.name_key
+    : fields.find((f) => f.type === "short_text" && !f.format && !f.sensitive && /name/i.test(`${f.key} ${f.label}`) && !/business|company|firm|dba|legal/i.test(`${f.key} ${f.label}`))?.key ?? null;
+  return { email_key: email, name_key: name };
 }
 
 /** Problems with stored settings against a definition about to be published (for example a mapped question was deleted). */

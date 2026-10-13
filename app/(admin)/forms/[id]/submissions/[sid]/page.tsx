@@ -3,20 +3,20 @@ import { notFound } from "next/navigation";
 import { after } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { formDeps } from "@/lib/forms/server";
-import { displayAnswer, recordView } from "@/lib/forms/service.ts";
+import { displayAnswer, recordView, seenFieldIds } from "@/lib/forms/service.ts";
 import { DISPLAY_TYPES } from "@/lib/forms/definition.ts";
 import { REVIEW_STATUSES, type StoredAnswers } from "@/lib/forms/types.ts";
 import { formatInZone } from "@/lib/documents/signing.ts";
 import { Badge, Flash, PageTitle, when } from "@/components/admin/ui";
 import { FormTabs, formsLoad, FormsSetupRequired } from "@/components/forms/admin-bits";
 import { RevealAnswer } from "@/components/forms/reveal-answer";
-import { remakePdfAction, retryFirmAction, submissionStatusAction } from "../../../actions";
+import { relinkCustomerAction, remakePdfAction, retryFirmAction, submissionStatusAction } from "../../../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const EVENT_LABELS: Record<string, string> = {
   submitted: "Submitted", spam: "Marked as spam", pdf_made: "PDF made", pdf_remade: "PDF made again", notified: "Firm notified", confirmation_sent: "Confirmation emailed to the respondent",
   customer_linked: "Linked to the customer", customer_created: "Customer created", firm_created: "Firm created in My Service Bureau", firm_linked: "Linked to an existing firm",
-  firm_failed: "Firm record not made", viewed: "Viewed", revealed: "Sensitive answer shown", file_viewed: "File opened", pdf_downloaded: "PDF downloaded", status_changed: "Status changed", draft_saved: "Saved for later",
+  firm_failed: "Firm record not made", relink_requested: "Customer link requested", viewed: "Viewed", revealed: "Sensitive answer shown", file_viewed: "File opened", pdf_downloaded: "PDF downloaded", status_changed: "Status changed", draft_saved: "Saved for later",
 };
 
 export default async function SubmissionPage({ params, searchParams }: { params: Promise<{ id: string; sid: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -36,6 +36,8 @@ export default async function SubmissionPage({ params, searchParams }: { params:
   const { deps, form, sub, version, uploads, events, tz } = result.data;
   after(() => recordView(deps, sub, admin.userId).catch(() => undefined));
   const answers = sub.answers as StoredAnswers;
+  // Unanswered questions the respondent saw are listed as "no answer"; hidden and skipped ones are not.
+  const seen = version ? seenFieldIds(version.definition, answers) : new Set<string>();
   const stamp = (iso: string | null) => (iso ? formatInZone(new Date(iso), tz) : "—");
   return (
     <>
@@ -49,7 +51,7 @@ export default async function SubmissionPage({ params, searchParams }: { params:
           <h2>Answers</h2>
           {sub.spam_reason && <p className="monarch-alert is-error">Marked as spam: {sub.spam_reason}.</p>}
           {version?.definition.pages.map((p) => p.sections.map((s) => {
-            const rows = s.fields.filter((f) => !DISPLAY_TYPES.includes(f.type) && f.type !== "signature" && answers[f.key] !== undefined);
+            const rows = s.fields.filter((f) => !DISPLAY_TYPES.includes(f.type) && f.type !== "signature" && (answers[f.key] !== undefined || seen.has(f.id)));
             if (!rows.length) return null;
             return (
               <div key={s.id} style={{ marginBottom: 16 }}>
@@ -64,7 +66,7 @@ export default async function SubmissionPage({ params, searchParams }: { params:
                         <dd style={{ whiteSpace: "pre-wrap" }}>
                           {sealed ? <RevealAnswer submissionId={sub.id} fieldKey={f.key} masked={displayAnswer(f, v)} /> : f.type === "file" && Array.isArray(v) ? (
                             (v as string[]).map((uid) => { const u = uploads.find((x) => x.id === uid); return u ? <span key={uid} style={{ display: "block" }}><a href={`/forms/files/${u.id}`} target="_blank" rel="noreferrer">{u.file_name}</a> <small className="monarch-muted">{Math.max(1, Math.round(u.size_bytes / 1024))} KB · SHA-256 {u.sha256?.slice(0, 16)}…</small></span> : null; })
-                          ) : displayAnswer(f, v, uploads)}
+                          ) : v === undefined ? <span className="monarch-muted">(no answer)</span> : displayAnswer(f, v, uploads)}
                         </dd>
                       </div>
                     );
@@ -90,6 +92,9 @@ export default async function SubmissionPage({ params, searchParams }: { params:
             <form action={remakePdfAction}><input type="hidden" name="id" value={sub.id} /><input type="hidden" name="form_id" value={form.id} /><button className="monarch-link">{sub.pdf_path ? "Make the PDF again" : "Make the PDF now"}</button></form>
             <p>Respondent: {sub.respondent_name ?? "—"} {sub.respondent_email ? `<${sub.respondent_email}>` : ""}</p>
             <p>Customer: {sub.customer_id ? <Link href={`/customers/${sub.customer_id}`}>Open the customer</Link> : sub.is_test ? "not linked (test)" : "not linked"}</p>
+            {!sub.is_test && !sub.customer_id && sub.status !== "spam" && (
+              <form action={relinkCustomerAction}><input type="hidden" name="id" value={sub.id} /><input type="hidden" name="form_id" value={form.id} /><button className="monarch-link">Link the customer now (from the email answer)</button></form>
+            )}
             <p>Firm: {sub.organization_id ? <Link href={`/efin/org/${sub.organization_id}`}>{sub.firm_status === "created" ? "Created in My Service Bureau" : "Linked to an existing firm"}</Link> : sub.firm_status === "failed" ? <span className="mf-error">Not made: {sub.firm_error}</span> : "—"}</p>
             {!sub.is_test && !sub.organization_id && sub.status !== "spam" && (
               <form action={retryFirmAction}><input type="hidden" name="id" value={sub.id} /><input type="hidden" name="form_id" value={form.id} /><button className="monarch-link">Create or link the firm now</button></form>

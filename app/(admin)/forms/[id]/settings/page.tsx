@@ -79,8 +79,8 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         <input type="hidden" name="id" value={form.id} />
         <h2 className="is-wide">Respondent and customer</h2>
         {!def && <p className="monarch-alert is-error is-wide">The draft has a problem (see the Build tab), so questions can&apos;t be listed here until it&apos;s fixed or published.</p>}
-        <label>Respondent&apos;s email question<QuestionSelect name="email_key" value={s.respondent.email_key} fields={fields} types={["email"]} /></label>
-        <label>Respondent&apos;s name question<QuestionSelect name="name_key" value={s.respondent.name_key} fields={fields} types={["short_text"]} /></label>
+        <label>Respondent&apos;s email question<QuestionSelect name="email_key" value={s.respondent.email_key} fields={fields} types={["email"]} none="Automatic: the form's first email question" /></label>
+        <label>Respondent&apos;s name question<QuestionSelect name="name_key" value={s.respondent.name_key} fields={fields} types={["short_text"]} none="Automatic: the first name question" /></label>
         <label className="monarch-check is-wide"><input type="checkbox" name="create_customer" defaultChecked={s.create_customer} /> Link each submission to the customer with that email (for example, from their package purchase), and create the customer when there isn&apos;t one.</label>
 
         <h2 className="is-wide">Firm record (My Service Bureau)</h2>

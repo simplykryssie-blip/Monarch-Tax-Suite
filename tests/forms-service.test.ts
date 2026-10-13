@@ -20,6 +20,8 @@ import {
   saveDraft, saveForLater, saveSettings, saveFormDetails, setFormStatus, startStamp, startUpload, submitForm, SubmissionInvalid, sweepForms, uploadLink, type FormDeps,
 } from "../lib/forms/service.ts";
 import { inputFields } from "../lib/forms/definition.ts";
+import { configuredOrigin } from "../lib/origin.ts";
+import { answerSections, relinkRespondent } from "../lib/forms/service.ts";
 import type { StoredAnswers } from "../lib/forms/types.ts";
 
 // Phase 2 Step 1, Piece 2: publishing forms, public submissions (uploads, logic, signature, spam, save for later),
@@ -403,5 +405,46 @@ describe("admin records", () => {
     assert.match(await uploadLink(s.deps, file.id, "admin", false), /signed\//);
     file.storage_path = `${OTHER}/forms/${s.form.id}/${submission.id}/${randomUUID()}`;
     await assert.rejects(uploadLink(s.deps, file.id, "admin", false), /Refused/);
+  });
+});
+
+describe("found on Preview (owner's test)", () => {
+  test("links point at the deployment itself on Preview, and at the configured domain in production", () => {
+    const app = "https://app.monarchtaxsuite.com";
+    assert.equal(configuredOrigin({ NEXT_PUBLIC_APP_URL: app, VERCEL_ENV: "production" }), app);
+    assert.equal(configuredOrigin({ NEXT_PUBLIC_APP_URL: app, VERCEL_ENV: "preview", VERCEL_BRANCH_URL: "monarch-git-forms.vercel.app", VERCEL_URL: "monarch-abc.vercel.app" }), "https://monarch-git-forms.vercel.app");
+    assert.equal(configuredOrigin({ NEXT_PUBLIC_APP_URL: app, VERCEL_ENV: "preview", VERCEL_URL: "monarch-abc.vercel.app" }), "https://monarch-abc.vercel.app");
+    assert.equal(configuredOrigin({ NEXT_PUBLIC_APP_URL: `${app}/` }), app);
+    assert.equal(configuredOrigin({}), null);
+  });
+
+  test("with no respondent question chosen, the form's email question still links (or creates) the customer", async () => {
+    const s = await setup();
+    await saveSettings(s.deps, s.form.id, { notify: { recipients: "intake@acmetax.test" } }, [], "admin");
+    const { submission, pf } = await submitEro(s, { email: "test@example.com", full_name: "Test Person" });
+    assert.equal(submission.respondent_email, "test@example.com");
+    assert.equal(submission.respondent_name, "Test Person");
+    await afterSubmit(s.auto, s.deps, submission, pf);
+    const customer = await s.commerce.findCustomerByEmail("test@example.com");
+    assert.ok(customer, "customer created");
+    assert.equal((await s.repo.getSubmission(submission.id))!.customer_id, customer!.id);
+  });
+
+  test("a submission made before it could be linked can be linked afterwards", async () => {
+    const s = await setup();
+    const { submission } = await submitEro(s, { email: "late@example.com" });
+    // As it was stored on Preview: no respondent email recorded.
+    s.repo.submissions.find((x) => x.id === submission.id)!.respondent_email = null;
+    const r = await relinkRespondent(s.deps, submission.id, "admin");
+    assert.ok(r.customerId);
+    assert.equal((await s.commerce.findCustomerByEmail("late@example.com"))!.id, r.customerId);
+  });
+
+  test("questions the respondent saw but left empty are listed as no answer; hidden ones are not", async () => {
+    const s = await setup();
+    const { submission } = await submitEro(s, { ptin: "" });
+    const rows = answerSections(s.version.definition, (await s.repo.getSubmission(submission.id))!.answers as StoredAnswers, []).flatMap((x) => x.rows);
+    assert.deepEqual(rows.find((r) => r.label === "ptin"), { label: "ptin", value: "" }, "seen but left empty: listed, printed as (no answer)");
+    assert.equal(rows.find((r) => r.label === "business name")?.value, "Ánh Tax Services LLC");
   });
 });

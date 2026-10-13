@@ -9,9 +9,9 @@ import { answerText, checkAnswers, draftAnswers, type AddressAnswer, type Answer
 import { allFields, checkDefinition, checkPublishable, DefinitionError, DISPLAY_TYPES, emptyDefinition, hasSignature, inputFields, MAX_FILE_BYTES, MAX_SUBMISSION_FILE_BYTES, type Field, type FormDefinition } from "./definition.ts";
 import { buildFirmPayload, efinFrom } from "./firm.ts";
 import { checkUpload, cleanUploadName, kindOfContentType, sha256Hex, UPLOAD_CONTENT_TYPES } from "./files.ts";
-import type { RawAnswers } from "./logic.ts";
+import { evaluate, type RawAnswers } from "./logic.ts";
 import { buildSubmissionPdf, type PdfAttachment, type PdfSection } from "./pdf.ts";
-import { checkSettings, DEFAULT_SETTINGS, readSettings, settingsProblems, type FormSettings } from "./settings.ts";
+import { checkSettings, DEFAULT_SETTINGS, readSettings, respondentKeys, settingsProblems, type FormSettings } from "./settings.ts";
 import type { FirmsRepo, FormRow, FormsRepo, FormStores, FormVersion, SealedAnswer, SignatureRecord, StoredAnswers, Submission, SubmissionStatus, UploadRow } from "./types.ts";
 
 // The Form Builder for one tenant. Every storage path starts with the tenant id and is built here from rows the
@@ -472,8 +472,9 @@ export async function submitForm(deps: FormDeps, publicId: string, input: Submit
 
   const settings = pf.settings;
   const opened = checked.answers;
-  const email = settings.respondent.email_key && typeof opened[settings.respondent.email_key] === "string" ? (opened[settings.respondent.email_key] as string) : null;
-  const name = settings.respondent.name_key && typeof opened[settings.respondent.name_key] === "string" ? (opened[settings.respondent.name_key] as string).slice(0, 200) : null;
+  const respondent = respondentKeys(settings, def);
+  const email = respondent.email_key && typeof opened[respondent.email_key] === "string" ? (opened[respondent.email_key] as string) : null;
+  const name = respondent.name_key && typeof opened[respondent.name_key] === "string" ? (opened[respondent.name_key] as string).slice(0, 200) : null;
   const number = await deps.repo.takeNumber(pf.form.id);
   const receiptToken = newToken();
   const patch = {
@@ -517,12 +518,23 @@ export async function submitForm(deps: FormDeps, publicId: string, input: Submit
 // --------------------------------------------------------------------- PDF
 
 /** The answers by page and section, as the respondent saw them (hidden and skipped questions are not included). */
+/**
+ * The questions the respondent saw, worked out again from the stored answers with the same show/hide and skip logic.
+ * Unanswered optional questions they saw are included (shown as "no answer"); hidden and skipped ones are not.
+ */
+export function seenFieldIds(def: FormDefinition, answers: StoredAnswers): Set<string> {
+  const raw: RawAnswers = {};
+  for (const [k, v] of Object.entries(answers ?? {})) raw[k] = isSealed(v) ? "(sealed)" : (v as RawAnswers[string]);
+  return evaluate(def, raw).visible;
+}
+
 export function answerSections(def: FormDefinition, answers: StoredAnswers, uploads: UploadRow[]): PdfSection[] {
   const out: PdfSection[] = [];
+  const seen = seenFieldIds(def, answers);
   for (const page of def.pages) {
     for (const [si, s] of page.sections.entries()) {
       const rows = s.fields
-        .filter((f) => !DISPLAY_TYPES.includes(f.type) && f.type !== "signature" && answers[f.key] !== undefined)
+        .filter((f) => !DISPLAY_TYPES.includes(f.type) && f.type !== "signature" && (answers[f.key] !== undefined || seen.has(f.id)))
         .map((f) => ({ label: f.label || f.key, value: displayAnswer(f, answers[f.key], uploads) }));
       if (!rows.length) continue;
       out.push({ title: s.title || (si === 0 && def.pages.length > 1 ? page.title : ""), rows });
@@ -651,6 +663,30 @@ export async function linkCustomer(deps: FormDeps, sub: Submission, settings: Fo
   await deps.repo.updateSubmission(sub.id, { customer_id: customer.id });
   await event(deps, sub.form_id, sub.id, created ? "customer_created" : "customer_linked", null, { customer_id: customer.id });
   return customer.id;
+}
+
+/**
+ * For a submission made before its respondent could be identified (for example, no email question was chosen):
+ * finds the respondent from its answers, then links (or creates) the customer and the firm. An administrator action.
+ */
+export async function relinkRespondent(deps: FormDeps, submissionId: string, actorId: string): Promise<{ customerId: string | null; organizationId: string | null }> {
+  let sub = UUID.test(submissionId) ? await deps.repo.getSubmission(submissionId) : null;
+  if (!sub || sub.status === "draft" || sub.status === "spam" || sub.is_test) throw new ValidationError("Only real submissions can be linked.");
+  const [form, version] = await Promise.all([deps.repo.getForm(sub.form_id), deps.repo.getVersion(sub.version_id)]);
+  if (!form || !version) throw new ValidationError("Submission not found.");
+  const settings = readSettings(form.settings);
+  if (!sub.respondent_email) {
+    const keys = respondentKeys(settings, version.definition);
+    const opened = openAnswers(deps, sub);
+    const email = keys.email_key && typeof opened[keys.email_key] === "string" ? (opened[keys.email_key] as string) : null;
+    if (!email) throw new ValidationError("This submission has no email answer, so there is no customer to link it to.");
+    const name = keys.name_key && typeof opened[keys.name_key] === "string" ? (opened[keys.name_key] as string).slice(0, 200) : null;
+    sub = await deps.repo.updateSubmission(sub.id, { respondent_email: email, respondent_name: sub.respondent_name ?? name });
+  }
+  await event(deps, sub.form_id, sub.id, "relink_requested", actorId);
+  const customerId = await linkCustomer(deps, sub, settings);
+  const organizationId = await linkFirm(deps, sub.id, settings);
+  return { customerId, organizationId };
 }
 
 /**

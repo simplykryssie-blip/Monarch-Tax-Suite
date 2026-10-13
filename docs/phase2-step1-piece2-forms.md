@@ -53,6 +53,12 @@ Approved spec: PR #32, with the owner's final decisions. Migration: `supabase/mi
   - Documents can use `{{form.<key>}}` merge fields. The workflow is checked on save, so it must be limited to a form that has those questions.
 - **Notification email** to the firm: the form, number, time and respondent, with a link to the submission. No answers or files.
 
+## Fixed after the owner's Preview test
+
+- **Public link on Preview.** Links pointed at the production domain on every Preview. App links (form links, email links, setup links) now use the Preview deployment's own address on Preview, and the production domain in production (`lib/origin.ts`).
+- **Customer not created.** That form never had a respondent email question chosen, so the submission had no email to link on. When none is chosen, the form's first email question is now used automatically (and the first name question for the name). The settings page says so. Submissions made before this fix have a **Link the customer now** button on their page.
+- **Empty optional questions.** Questions the respondent saw but left empty now show as "(no answer)" in the admin and the PDF. Hidden and skipped questions are still left out.
+
 ## How it works for tenants
 
 - **Database.** 5 new tables, all with `tenant_id`, the Step 0 policies, and 11 new same-tenant foreign keys. That includes `organizations.customer_id`, so a firm can only link to a customer of its own tenant. The firm and numbering functions run as the caller (`tenant_app`), so they only ever touch the caller's own tenant.
@@ -61,7 +67,7 @@ Approved spec: PR #32, with the owner's final decisions. Migration: `supabase/mi
 
 ## Test evidence
 
-`npm test`: 450 passing (45 new, mostly in `tests/forms-builder.test.ts` and `tests/forms-service.test.ts`). `tsc`, `lint` and `build` are clean. The browser was checked locally at computer and phone widths, with no console errors: logic, skips, format errors, the drawn signature, and builder drag, add, edit and move.
+`npm test`: 454 passing (49 new, mostly in `tests/forms-builder.test.ts` and `tests/forms-service.test.ts`). `tsc`, `lint` and `build` are clean. The browser was checked locally at computer and phone widths, with no console errors: logic, skips, format errors, the drawn signature, and builder drag, add, edit and move.
 
 | # | Case | Result |
 |---|---|---|
