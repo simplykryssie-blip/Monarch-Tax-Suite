@@ -7,7 +7,7 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { formDeps } from "@/lib/forms/server";
-import { linkFirm, makePdf, relinkRespondent, createForm, duplicateForm, emptySpam, publishForm, removeForm, revealAnswer, saveDraft, saveFormDetails, saveSettings, setFormStatus, setSubmissionStatus, submitForm, SubmissionInvalid } from "@/lib/forms/service.ts";
+import { linkFirm, makePdf, relinkRespondent, createForm, duplicateForm, emptySpam, publishForm, revealAnswer, saveDraft, saveFormDetails, saveSettings, setFormStatus, setSubmissionStatus, submitForm, SubmissionInvalid } from "@/lib/forms/service.ts";
 import { readSettings } from "@/lib/forms/settings.ts";
 import { REVIEW_STATUSES, type SubmissionStatus } from "@/lib/forms/types.ts";
 import { signatureFrom, type SignaturePayload } from "@/lib/forms/signature-input.ts";
@@ -81,9 +81,10 @@ export async function formStatusAction(form: FormData) {
   const id = str(form, "id");
   const to = str(form, "to");
   await act(`/forms/${id}/settings`, async (adminId) => {
-    if (to !== "closed" && to !== "published" && to !== "archived" && to !== "restore") throw new ValidationError("Choose an action.");
+    // Archive and restore go through the shared archive actions, so they are logged like everything else.
+    if (to !== "closed" && to !== "published") throw new ValidationError("Choose an action.");
     await setFormStatus(formDeps(), idOf(form), to, adminId);
-    return { notice: to === "closed" ? "Form closed. The link now shows your closed message." : to === "published" ? "Form reopened." : to === "archived" ? "Form archived." : "Form restored." };
+    return { notice: to === "closed" ? "Form closed. The link now shows your closed message." : "Form reopened." };
   });
 }
 
@@ -91,16 +92,6 @@ export async function duplicateFormAction(form: FormData) {
   await act(`/forms/${str(form, "id")}/settings`, async (adminId) => {
     const copy = await duplicateForm(formDeps(), idOf(form), adminId);
     return { to: `/forms/${copy.id}`, notice: "Copy made. It's a draft with its own link." };
-  });
-}
-
-export async function removeFormAction(form: FormData) {
-  await act(`/forms/${str(form, "id")}/settings`, async (adminId) => {
-    const deps = formDeps();
-    const f = await deps.repo.getForm(idOf(form));
-    if (!f || str(form, "confirm_name").trim() !== f.name) throw new ValidationError("Type the form's exact name to confirm.");
-    const r = await removeForm(deps, f.id, adminId);
-    return r === "deleted" ? { to: "/forms", notice: "Form deleted." } : { notice: "This form has submissions, so it was archived instead. Its submissions are kept." };
   });
 }
 

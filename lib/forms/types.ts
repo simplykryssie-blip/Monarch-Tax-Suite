@@ -1,3 +1,4 @@
+import type { ArchiveFields } from "../archive.ts";
 import type { DocumentStore } from "../documents/types.ts";
 import type { FormDefinition } from "./definition.ts";
 import type { Answers } from "./answers.ts";
@@ -23,7 +24,7 @@ export type FormRow = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 
 export type FormVersion = { id: string; tenant_id: string; form_id: string; version: number; definition: FormDefinition; published_by: string | null; published_at: string };
 

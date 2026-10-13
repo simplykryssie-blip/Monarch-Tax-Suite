@@ -6,19 +6,24 @@ import { effectiveBrand } from "@/lib/brands.ts";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { formsLoad, FormsSetupRequired } from "@/components/forms/admin-bits";
 import { createFormAction } from "./actions";
+import { ArchiveRowButton, ArchiveTabs } from "@/components/admin/archive";
+import { inView, viewCounts, viewOf } from "@/lib/archive.ts";
 
-export default async function FormsPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string; archived?: string }> }) {
+export default async function FormsPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string; view?: string; archived?: string }> }) {
   await requireAdmin();
-  const { notice, error, archived } = await searchParams;
+  const { notice, error, view: rawView, archived: legacy } = await searchParams;
+  const view = viewOf(legacy ? "archived" : rawView);
+  const archived = view === "archived";
   const result = await formsLoad(async () => {
     const deps = formDeps();
-    const forms = (await deps.repo.listForms()).filter((f) => (archived ? f.status === "archived" : f.status !== "archived"));
+    const all = await deps.repo.listForms();
+    const forms = inView(all, view);
     const brands = deps.brandCatalog ? await deps.brandCatalog().then((c) => c.brands).catch(() => []) : [];
     const rows = await Promise.all(forms.map(async (f) => {
       const { rows, total } = await deps.repo.listSubmissions(f.id, { status: "all", limit: 1 });
       return { f, total, last: rows[0]?.submitted_at ?? null, brand: effectiveBrand(readSettings(f.settings).brand_domain_id, brands)?.name ?? null };
     }));
-    return { rows, brands };
+    return { rows, brands, counts: viewCounts(all) };
   });
   return (
     <>
@@ -44,13 +49,14 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
             </form>
           </section>
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><h2>{archived ? "Archived forms" : "Your forms"}</h2><Link className="monarch-link" href={archived ? "/forms" : "/forms?archived=1"}>{archived ? "Show current forms" : "Show archived"}</Link></div>
+            <div className="monarch-panel-head"><h2>{archived ? "Archived forms" : "Your forms"}</h2></div>
+            <div style={{ padding: "0 20px" }}><ArchiveTabs base="/forms" view={view} counts={result.data.counts} /></div>
             <div className="monarch-table-wrap">
               <table>
-                <thead><tr><th>NAME</th><th>STATUS</th><th>SUBMISSIONS</th><th>LAST SUBMISSION</th><th>PUBLIC LINK</th><th>UPDATED</th></tr></thead>
+                <thead><tr><th>NAME</th><th>STATUS</th><th>SUBMISSIONS</th><th>LAST SUBMISSION</th><th>PUBLIC LINK</th><th>{archived ? "ARCHIVED" : "UPDATED"}</th>{archived && <th />}</tr></thead>
                 <tbody>
                   {result.data.rows.length === 0 ? (
-                    <EmptyRow colSpan={6}>{archived ? "No archived forms." : "No forms yet. Create your first one above."}</EmptyRow>
+                    <EmptyRow colSpan={archived ? 7 : 6}>{archived ? "No archived forms." : "No forms yet. Create your first one above."}</EmptyRow>
                   ) : (
                     result.data.rows.map(({ f, total, last, brand }) => (
                       <tr key={f.id}>
@@ -59,7 +65,8 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
                         <td><Link href={`/forms/${f.id}/submissions`}>{total}</Link></td>
                         <td>{when(last)}</td>
                         <td>{f.current_version_id && f.status === "published" ? <code>/f/{f.public_id}</code> : "—"}</td>
-                        <td>{when(f.updated_at)}</td>
+                        <td>{archived ? when(f.archived_at ?? null) : when(f.updated_at)}</td>
+                        {archived && <td><ArchiveRowButton entity="form" id={f.id} archived back="/forms?view=archived" /></td>}
                       </tr>
                     ))
                   )}

@@ -13,6 +13,7 @@ import { StripePanel } from "@/components/admin/stripe-panel";
 import { ProductFilesPanel } from "@/components/admin/product-files-panel";
 import { VersionsPanel } from "@/components/admin/versions-panel";
 import { Badge, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { ArchivePanel } from "@/components/admin/archive";
 
 const NEXT: Record<string, { status: string; label: string }[]> = {
   draft: [{ status: "published", label: "Publish" }, { status: "archived", label: "Archive" }],
@@ -59,7 +60,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
             <input type="hidden" name="id" value={product.id} />
             <button className="monarch-secondary" type="submit">Duplicate</button>
           </form>
-          {NEXT[product.status].map((n) => (
+          {NEXT[product.status].filter((n) => n.status !== "archived").map((n) => (
             <form key={n.status} action={setProductStatusAction}>
               <input type="hidden" name="id" value={product.id} />
               <input type="hidden" name="status" value={n.status} />
@@ -83,6 +84,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
       <StripePanel product={product} stripeConfigured={stripeConfig().keyModeRecognized} config={stripeConfig()} />
       <ProductFilesPanel product={product} />
       <VersionsPanel productId={product.id} versions={versions} changes={changes} stripeReady={stripeConfig().keyModeRecognized} />
+      <ArchivePanel entity="product" id={product.id} />
     </>
   );
 }

@@ -4,6 +4,7 @@ import { commerceRepo, requireAdmin, serviceOrdersRepo } from "@/lib/admin";
 import { SERVICE_STATUS_LABELS, SERVICE_STATUSES, serviceNextStep } from "@/lib/commerce/service-orders.ts";
 import { updateServiceOrderAction } from "../../service-actions";
 import { Badge, EmptyRow, Flash, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { ArchivePanel } from "@/components/admin/archive";
 
 export default async function ServiceOrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
   await requireAdmin();
@@ -80,6 +81,7 @@ export default async function ServiceOrderPage({ params, searchParams }: { param
           </table>
         </div>
       </section>
+      <ArchivePanel entity="service_order" id={so.id} />
     </>
   );
 }

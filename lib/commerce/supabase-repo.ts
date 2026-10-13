@@ -1,3 +1,4 @@
+import type { ArchiveLogEntry } from "../archive.ts";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
@@ -143,6 +144,10 @@ export class SupabaseCommerceRepo implements CommerceRepo {
     return row;
   }
   updateCustomer(id: string, patch: Partial<Customer>) { return this.patch<Customer>("calculator_customers", id, patch); }
+  async logArchive(entry: ArchiveLogEntry) {
+    const { error } = await this.db.from("archive_log").insert(entry);
+    if (error) throw new Error(error.message);
+  }
 
   listOrders() { return this.all<Order>("orders"); }
   async findOpenUpdateCheckout(licenseId: string, taxYear: number, now: string) {

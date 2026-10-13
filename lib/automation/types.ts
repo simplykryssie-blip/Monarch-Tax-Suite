@@ -1,3 +1,4 @@
+import type { ArchiveFields } from "../archive.ts";
 // Automation Center data model. Events and executions hold ids, statuses and error categories only:
 // never lead contents, license keys, OAuth tokens, webhook URLs or secrets.
 
@@ -30,7 +31,7 @@ export type Workflow = {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 export type NewWorkflow = Omit<Workflow, "id" | "created_at" | "updated_at">;
 
 export type Template = {

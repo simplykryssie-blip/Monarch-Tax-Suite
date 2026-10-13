@@ -8,7 +8,7 @@ import { retryExecution, runTest } from "@/lib/automation/engine.ts";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { installDefaults } from "@/lib/automation/defaults.ts";
-import { createTemplate, createWorkflow, duplicateWorkflow, removeWorkflow, sendTemplateTest, setTemplateActive, setWorkflowStatus, updateTemplate, updateWorkflow } from "@/lib/automation/admin.ts";
+import { createTemplate, createWorkflow, duplicateWorkflow, sendTemplateTest, setTemplateActive, setWorkflowStatus, updateTemplate, updateWorkflow } from "@/lib/automation/admin.ts";
 import type { WorkflowFormInput } from "@/lib/automation/validate.ts";
 
 // Every action re-checks administrator access on the server and writes an audit entry (in lib/automation/admin.ts).
@@ -78,13 +78,6 @@ export async function duplicateWorkflowAction(form: FormData) {
   await mutate("/automation/workflows", async (a) => {
     const copy = await duplicateWorkflow(automationDeps().repo, a, id(form));
     return { to: `/automation/workflows/${copy.id}`, notice: "Copy created and paused." };
-  });
-}
-
-export async function removeWorkflowAction(form: FormData) {
-  await mutate(`/automation/workflows/${str(form, "id")}`, async (a) => {
-    const outcome = await removeWorkflow(automationDeps().repo, a, id(form), str(form, "confirm_name"));
-    return { to: "/automation/workflows", notice: outcome === "deleted" ? "Workflow deleted." : "This workflow has run before, so it was archived instead. Its history is kept." };
   });
 }
 

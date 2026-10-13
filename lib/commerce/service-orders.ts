@@ -1,3 +1,4 @@
+import type { ArchiveFields } from "../archive.ts";
 import { ValidationError, SERVICE_SETTINGS } from "./validation.ts";
 import type { Order, Product } from "./types.ts";
 
@@ -31,7 +32,7 @@ export type ServiceOrder = {
   canceled_at: string | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 export type NewServiceOrder = Omit<ServiceOrder, "id" | "status" | "delivered_at" | "canceled_at" | "created_at" | "updated_at">;
 export type ServiceOrderEvent = { id: string; tenant_id: string; service_order_id: string; from_status: ServiceStatus | null; to_status: ServiceStatus | null; note: string | null; actor_id: string | null; created_at: string };
 

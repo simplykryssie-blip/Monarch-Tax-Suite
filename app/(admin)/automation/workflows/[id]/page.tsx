@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { Badge, Flash, PageTitle, when } from "@/components/admin/ui";
+import { ArchivePanel } from "@/components/admin/archive";
 import { EVENTS } from "@/lib/automation/events.ts";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import type { Action, Condition } from "@/lib/automation/types.ts";
-import { removeWorkflowAction, saveWorkflowAction, testWorkflowAction, workflowStatusAction } from "../../actions";
+import { saveWorkflowAction, testWorkflowAction, workflowStatusAction } from "../../actions";
 
 const SLOTS = [0, 1, 2, 3, 4];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -83,7 +84,7 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
       {wf && (
         <>
           <section className="monarch-panel" style={{ padding: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <form action={workflowStatusAction}><input type="hidden" name="id" value={wf.id} /><input type="hidden" name="status" value={wf.status === "active" ? "paused" : "active"} /><button className="monarch-primary">{wf.status === "active" ? "Pause" : "Turn on"}</button></form>
+            {wf.status !== "archived" && <form action={workflowStatusAction}><input type="hidden" name="id" value={wf.id} /><input type="hidden" name="status" value={wf.status === "active" ? "paused" : "active"} /><button className="monarch-primary">{wf.status === "active" ? "Pause" : "Turn on"}</button></form>}
             <form action={testWorkflowAction}><input type="hidden" name="id" value={wf.id} /><button className="monarch-primary">Run a safe test</button></form>
             <p className="monarch-muted">A test uses sample data and emails only you. It never touches a customer, license or CRM.</p>
           </section>
@@ -93,11 +94,7 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
               {history.length === 0 ? <tr><td colSpan={4} className="monarch-empty">No runs yet.</td></tr> : history.map((e) => <tr key={e.id}><td>{when(e.created_at)}{e.is_test ? " (test)" : ""}</td><td><Badge value={e.status} /></td><td>{e.attempts}/{e.max_attempts}</td><td>{e.error ?? "—"}</td></tr>)}
             </tbody></table></div>
           </section>
-          <section className="monarch-panel" style={{ padding: 20 }}>
-            <h2>Remove this workflow</h2>
-            <p className="monarch-muted">A workflow that has never run is deleted. One with history is archived so its records stay. Type its exact name to confirm.</p>
-            <form action={removeWorkflowAction} className="monarch-inline-form"><input type="hidden" name="id" value={wf.id} /><input name="confirm_name" placeholder={wf.name} required /><button className="monarch-secondary is-danger">Remove</button></form>
-          </section>
+          <ArchivePanel entity="workflow" id={wf.id} />
         </>
       )}
     </>

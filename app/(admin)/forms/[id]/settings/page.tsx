@@ -7,7 +7,8 @@ import { checkDefinition, inputFields, type Field, type FormDefinition } from "@
 import { FIRM_RELATIONSHIPS, FIRM_ROLE_LABELS, FIRM_ROLES, readSettings } from "@/lib/forms/settings.ts";
 import { Flash, PageTitle, when } from "@/components/admin/ui";
 import { FormTabs, formsLoad, FormsSetupRequired } from "@/components/forms/admin-bits";
-import { duplicateFormAction, formStatusAction, removeFormAction, saveFormDetailsAction, saveFormSettingsAction } from "../../actions";
+import { duplicateFormAction, formStatusAction, saveFormDetailsAction, saveFormSettingsAction } from "../../actions";
+import { ArchivePanel } from "@/components/admin/archive";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const RELATIONSHIP_LABELS: Record<string, string> = { partner: "Partner ERO (you manage their preparers)", client: "Software or service client (no team or PTINs)", internal: "My own tax office" };
@@ -60,8 +61,6 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {form.status === "published" && <form action={formStatusAction}><input type="hidden" name="id" value={form.id} /><input type="hidden" name="to" value="closed" /><button className="monarch-secondary">Close the form</button></form>}
           {form.status === "closed" && <form action={formStatusAction}><input type="hidden" name="id" value={form.id} /><input type="hidden" name="to" value="published" /><button className="monarch-primary">Reopen the form</button></form>}
-          {form.status !== "archived" ? <form action={formStatusAction}><input type="hidden" name="id" value={form.id} /><input type="hidden" name="to" value="archived" /><button className="monarch-secondary">Archive</button></form>
-            : <form action={formStatusAction}><input type="hidden" name="id" value={form.id} /><input type="hidden" name="to" value="restore" /><button className="monarch-primary">Restore</button></form>}
           <form action={duplicateFormAction}><input type="hidden" name="id" value={form.id} /><button className="monarch-secondary">Duplicate</button></form>
         </div>
       </section>
@@ -145,11 +144,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         <div className="is-wide"><button className="monarch-primary">Save settings</button></div>
       </form>
 
-      <section className="monarch-panel" style={{ padding: 20 }}>
-        <h2>Delete this form</h2>
-        <p className="monarch-muted">A form that was never submitted is deleted. One with submissions is archived instead, and its submissions are kept. Type its exact name to confirm.</p>
-        <form action={removeFormAction} className="monarch-inline-form"><input type="hidden" name="id" value={form.id} /><input name="confirm_name" placeholder={form.name} required /><button className="monarch-secondary is-danger">Delete</button></form>
-      </section>
+      <ArchivePanel entity="form" id={form.id} />
     </>
   );
 }
