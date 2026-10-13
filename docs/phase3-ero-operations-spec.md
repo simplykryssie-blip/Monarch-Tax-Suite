@@ -1,6 +1,6 @@
-# Phase 3: ERO Operations (spec for sign-off)
+# Phase 3: ERO Operations (approved spec)
 
-**Status:** spec only, for the owner's sign-off. No build code. Once this is merged, each piece is built in its own PR, in the order below.
+**Status:** approved by the owner on 2026-10-13. Each piece is built in its own PR, in the order below.
 
 **Sources:**
 - the owner-approved Phase 3 spec (2026-10-13);
@@ -330,17 +330,12 @@ EROs build their own automations for their staff on the same workflow engine as 
 - [ ] Mobile layouts verified.
 - [ ] No later phase starts until this gate passes (owner rule).
 
-## 9. Open questions for sign-off
+## 9. Decisions at sign-off (2026-10-13)
 
-These are small. Each has a proposal, which is what gets built unless the owner says otherwise.
+The owner approved this spec. These are the decisions on the five questions raised for sign-off:
 
-1. **WISP sections.** The original spec says "9 sections per IRS Pub 5709". The WISP engine already built follows Publication 5708 and the FTC Safeguards Rule, and has 12 sections.
-   - *Proposal:* keep the 12-section plan for both the product and the Compliance Center.
-2. **1099 rebates.** Q4 says skip them for now.
-   - *Proposal:* build nothing in Phase 3, and leave room in the fee schedule for a rebate line a tenant could switch on later.
-3. **Fees on returns without a bank product.** These returns still owe the bureau's line items, but the bank CSV only covers bank-product returns.
-   - *Proposal:* they appear on the statement as **owed by the ERO**, and the bureau marks them paid by hand. No invoicing or payment collection in Phase 3.
-4. **The bank product fee amount.**
-   - *Proposal:* it's a line item in the fee schedule, configurable per bank, and the bank CSV import is checked against it.
-5. **Retiring the `(app)` workspace.**
-   - *Proposal:* remove it in PR 1, once the office area and invited accounts are live. Any records still in it are moved into the office area or archived, after the owner confirms.
+1. **WISP sections:** the 12-section plan (IRS Publication 5708 and the FTC Safeguards Rule) is kept for both the $25 product and the Compliance Center, as the spec proposed.
+2. **1099 rebates:** nothing is built for Monarch. The fee schedule's structure stays open, so a future tenant could add a rebate line.
+3. **Returns without a bank product:** shown on the statement as **owed by the ERO**, and marked paid by hand.
+4. **Bank product fee:** a separate line item, set per bank.
+5. **The `(app)` workspace:** retired in PR 1 once the office area is live, as the spec proposed. Any records still in it are moved or archived after the owner confirms.
