@@ -54,11 +54,12 @@ export type CheckoutResult = { ok: false; error: string; field?: string };
  * The review step's "Complete My WISP — $25". Saves the answers and email first (a lead even if they don't pay), then
  * starts the Stripe checkout for the WISP product. The PDF is made only after the webhook confirms payment.
  */
-export async function startWispCheckoutAction(input: { answers: unknown; email: unknown; auditId: unknown; acceptTerms: boolean }): Promise<CheckoutResult> {
+export async function startWispCheckoutAction(input: { answers: unknown; email: unknown; auditId: unknown; acceptTerms: boolean; acknowledgePurchase: boolean }): Promise<CheckoutResult> {
   let url: string;
   try {
     await visitor("checkout", 10);
     const tenantId = await requestTenant();
+    if (input.acknowledgePurchase !== true) throw new ValidationError("Please tick the box to confirm you understand the purchase terms.");
     if (!input.acceptTerms) throw new ValidationError("Please confirm that you accept the Terms of Service and the Refund Policy.");
     const stripe = stripeClient();
     const catalog = stripeCatalogPort();
@@ -72,7 +73,8 @@ export async function startWispCheckoutAction(input: { answers: unknown; email: 
       termsAccepted: true,
       termsVersion: LEGAL_VERSION,
       origin: (await appOrigin()).replace(/\/$/, ""),
-      extraMetadata: { wisp_plan_id: plan.id },
+      // The buyer ticked the purchase acknowledgement (all sales final, not legal advice); kept on the Stripe session.
+      extraMetadata: { wisp_plan_id: plan.id, wisp_purchase_ack: "yes" },
       successPath: "/wisp/done",
       cancelPath: "/wisp?cancelled=1#builder",
     });

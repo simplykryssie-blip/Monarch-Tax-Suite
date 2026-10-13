@@ -164,6 +164,13 @@ export const BUILDER_FIELDS: Record<"firm" | "systems" | "access" | "protect" | 
 export const ALL_FIELDS = Object.values(BUILDER_FIELDS).flat();
 export type WispAnswers = Record<string, string>;
 
+/** Shown on the page above the audit button. The PDF keeps its own disclaimer (DISCLAIMER). */
+export const pageDisclaimer = (brand: string) => `This tool generates a Written Information Security Plan based on the information you provide. It is not legal advice. We recommend having an attorney review your plan before relying on it for compliance purposes. ${brand} is not a law firm and does not provide legal services.`;
+/** The purchase acknowledgement the buyer must tick on the review step; checked again on the server. */
+export const PURCHASE_ACK = "I understand this is a digital product. All sales are final — no refunds, exchanges, or transfers. The WISP is generated from my answers and is not legal advice. I am responsible for reviewing it and ensuring it meets my firm's compliance obligations.";
+/** Below the download button after purchase. */
+export const DONE_DISCLAIMER = "Your WISP was generated from the information you provided. It is not legal advice. Consider having an attorney review it.";
+
 export const DISCLAIMER = "Attorney-ready means professionally formatted for attorney review, not attorney-approved. General guidance, not legal advice.";
 
 const MAX: Record<BuilderField["type"], number> = { text: 200, tel: 30, number: 7, textarea: 4000, select: 120 };
