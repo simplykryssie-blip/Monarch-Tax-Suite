@@ -46,6 +46,8 @@ export type WispDeps = {
   send: WispMailer;
   /** The brand the buyer bought from: its name and the web address its links use. */
   brand: () => Promise<{ name: string; origin: string }>;
+  /** Runs once a plan is paid (and again on Stripe's retries): links the buyer's lead to the order. Never blocks delivery. */
+  onPaid?: (plan: WispPlan) => Promise<unknown>;
   now?: () => Date;
 };
 
@@ -114,6 +116,7 @@ export async function fulfilPaidPlan(deps: WispDeps, input: { sessionId: string;
   }
   if (!plan) return null;
   if (plan.status === "draft" || !plan.order_id) plan = await deps.repo.updatePlan(plan.id, { status: plan.status === "generated" ? "generated" : "paid", customer_id: input.customerId, order_id: input.orderId });
+  if (deps.onPaid) await deps.onPaid(plan).catch((e: unknown) => console.error(`wisp: linking the lead failed: ${e instanceof Error ? e.message.slice(0, 160) : "unknown"}`));
   return deliver(deps, plan, "system");
 }
 

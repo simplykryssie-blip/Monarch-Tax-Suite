@@ -20,6 +20,7 @@ const NAV: Entry[] = [
     icon: "office",
     items: [
       { label: "Home", icon: "dashboard", href: "/" },
+      { label: "Leads", icon: "user", href: "/leads" },
       { label: "My Workspace", icon: "firms", href: "/workspace" },
       {
         // Clicking the name opens the dashboard; the arrow opens or closes the list below it.

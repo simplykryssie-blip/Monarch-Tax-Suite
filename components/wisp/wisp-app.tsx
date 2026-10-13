@@ -5,7 +5,7 @@ import {
   BUILDER_FIELDS, BUILDER_STEPS, calculateScore, CATEGORIES, CATEGORY_ADVICE, CATEGORY_KEYS, DISCLAIMER, EMAIL, ERO_QUESTIONS,
   feeComparison, numberDraft, pageDisclaimer, PURCHASE_ACK, QUESTIONS, scoreVerdict, type EroAnswers, type WispAnswers,
 } from "@/lib/wisp/content.ts";
-import { recordAuditAction, startWispCheckoutAction } from "@/app/wisp/actions";
+import { recordAuditAction, startWispCheckoutAction, unlockResultsAction } from "@/app/wisp/actions";
 import { TermsLinks } from "@/components/storefront/buy-form";
 
 // The WISP Generator page, rebuilt from the owner's static version (wisp-generator-source): hero, how it works, the
@@ -24,6 +24,8 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
   const [ero, setEro] = useState<EroAnswers>({});
   const [eroDraft, setEroDraft] = useState("");
   const [auditId, setAuditId] = useState<string | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
+  const [leadEmail, setLeadEmail] = useState("");
   const [showBuilder, setShowBuilder] = useState(cancelled);
   const builderRef = useRef<HTMLElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -172,7 +174,17 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
             </div>
           )}
 
-          {stage === "results" && <Results brandName={brandName} refEl={resultsRef} score={result.score} breakdown={result.breakdown} ero={ero} ourFee={ourFee} onBuild={openBuilder} />}
+          {stage === "results" && (
+            <Results brandName={brandName} refEl={resultsRef} score={result.score} breakdown={result.breakdown} ero={ero} ourFee={ourFee} onBuild={openBuilder}
+              gate={unlocked ? null : { unlock: async (name, email) => {
+                const r = await unlockResultsAction({ name, email, auditId, answers, ero });
+                if (!r.ok) return r;
+                if (r.auditId) setAuditId(r.auditId);
+                setLeadEmail(email.trim());
+                setUnlocked(true);
+                return null;
+              } }} />
+          )}
         </div>
       </section>
 
@@ -181,7 +193,7 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
           <p className="section-eyebrow">GUIDED WISP CREATION</p>
           <h2 className="section-title">WISP builder</h2>
           <p className="section-sub">$25 — Complete your Written Information Security Plan in 6 guided steps.</p>
-          {showBuilder && <Builder auditId={auditId} canBuy={canBuy} cancelled={cancelled} />}
+          {showBuilder && <Builder auditId={auditId} canBuy={canBuy} cancelled={cancelled} leadEmail={leadEmail} />}
         </div>
       </section>
 
@@ -194,7 +206,9 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
   );
 }
 
-function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild }: { brandName: string; refEl: React.RefObject<HTMLDivElement | null>; score: number; breakdown: Record<string, number>; ero: EroAnswers; ourFee: number | null; onBuild: () => void }) {
+type Gate = { unlock: (name: string, email: string) => Promise<{ error: string; field?: "name" | "email" } | null> };
+
+function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild, gate }: { brandName: string; refEl: React.RefObject<HTMLDivElement | null>; score: number; breakdown: Record<string, number>; ero: EroAnswers; ourFee: number | null; onBuild: () => void; gate: Gate | null }) {
   const [shown, setShown] = useState(0);
   const [offset, setOffset] = useState(CIRC);
   useEffect(() => {
@@ -221,8 +235,9 @@ function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild }: {
           <div className="score-number" aria-label={`Score ${score} out of 100`}><span>{shown}</span><span className="score-max">/100</span></div>
         </div>
         <h3 className={`score-headline ${verdict.tone}`}>{verdict.headline}</h3>
-        <p className="score-subtext">{verdict.text}</p>
+        {!gate && <p className="score-subtext">{verdict.text}</p>}
       </div>
+      {gate ? <ResultsGate gate={gate} breakdown={breakdown} /> : <>
       <div className="category-breakdown">
         {CATEGORY_KEYS.map((c) => (
           <div key={c} className="cat-card">
@@ -249,11 +264,62 @@ function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild }: {
         <button type="button" className="btn btn-gold btn-lg" onClick={onBuild}>Build My WISP — $25</button>
         <p className="fine-print">Attorney-ready means professionally formatted for attorney review. This tool provides general guidance, not legal advice.</p>
       </div>
+      </>}
     </div>
   );
 }
 
-function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBuy: boolean; cancelled: boolean }) {
+/** Before the full results: the two weakest areas, then name and email to see everything. */
+function ResultsGate({ gate, breakdown }: { gate: Gate; breakdown: Record<string, number> }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<{ error: string; field?: "name" | "email" } | null>(null);
+  const gaps = [...CATEGORY_KEYS].sort((a, b) => breakdown[a] - breakdown[b]).filter((c) => breakdown[c] < 100).slice(0, 2);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) { setProblem({ error: "Please enter your name.", field: "name" }); return; }
+    if (!EMAIL.test(email.trim())) { setProblem({ error: "Please enter a valid email address.", field: "email" }); return; }
+    setBusy(true);
+    setProblem(null);
+    try {
+      setProblem(await gate.unlock(name.trim(), email.trim()));
+    } catch {
+      setProblem({ error: "The connection was interrupted. Please try again." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="results-gate">
+      {gaps.length > 0 && (
+        <div className="gate-findings">
+          <p className="gate-eyebrow">YOUR BIGGEST GAPS</p>
+          <ul>{gaps.map((c) => <li key={c}><b>{CATEGORIES[c].name}</b><span>{breakdown[c]}%</span></li>)}</ul>
+        </div>
+      )}
+      <form className="gate-form" onSubmit={submit} noValidate>
+        <h3>See your full results</h3>
+        <p>Get your score in all four IRS security categories, what to fix first, and your cost comparison.</p>
+        {problem && <p className="alert" role="alert">{problem.error}</p>}
+        <div className="field">
+          <label htmlFor="gate_name">Name *</label>
+          <input id="gate_name" type="text" autoComplete="name" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={problem?.field === "name"} required />
+        </div>
+        <div className="field">
+          <label htmlFor="gate_email">Email *</label>
+          <input id="gate_email" type="email" autoComplete="email" maxLength={254} value={email} placeholder="you@yourfirm.com" onChange={(e) => setEmail(e.target.value)} aria-invalid={problem?.field === "email"} required />
+        </div>
+        <button type="submit" className="btn btn-gold btn-lg" disabled={busy}>{busy ? "Opening your results…" : "See my full results"}</button>
+        <p className="fine-print">We&apos;ll use your name and email to follow up about your results. We never share or sell them.</p>
+      </form>
+    </div>
+  );
+}
+
+function Builder({ auditId, canBuy, cancelled, leadEmail }: { auditId: string | null; canBuy: boolean; cancelled: boolean; leadEmail: string }) {
   const [step, setStep] = useState(0);
   const [data, setData] = useState<WispAnswers>({});
   const [errors, setErrors] = useState<Record<string, boolean>>({});
@@ -265,6 +331,8 @@ function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBu
   const [emailError, setEmailError] = useState(false);
   const cur = BUILDER_STEPS[step];
   const restored = useRef(false);
+  // The email they gave to see their results fills in the delivery email, unless a saved draft has one.
+  const firstEmail = useRef(leadEmail);
 
   // Keep a draft in this browser so a refresh (or a cancelled checkout) doesn't lose the answers.
   useEffect(() => {
@@ -273,6 +341,7 @@ function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBu
         const saved = JSON.parse(window.sessionStorage.getItem("wisp-builder") ?? "null") as { data?: WispAnswers; email?: string } | null;
         if (saved?.data) setData(saved.data);
         if (saved?.email) setEmail(saved.email);
+        else if (firstEmail.current) setEmail(firstEmail.current);
       } catch { /* no saved draft */ }
       restored.current = true;
     }, 0);

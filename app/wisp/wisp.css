@@ -168,5 +168,16 @@
 .wisp .footer-links a:hover { color: var(--gold-2); }
 @media (max-width: 768px) { .wisp .nav-links { display: none; } .wisp .hero { padding: 72px 16px 56px; } .wisp .section { padding: 56px 16px; } .wisp .stat-divider { display: none; } }
 @media (max-width: 860px) { .wisp .builder-layout { grid-template-columns: 1fr; } .wisp .builder-sidebar { position: static; order: 2; } }
-@media (max-width: 600px) { .wisp .builder-main { padding: 28px 20px; } .wisp .quiz-card { padding: 28px 20px; } .wisp .quiz-question { font-size: 20px; } .wisp .results-cta { padding: 32px 20px; } .wisp .fee-card { min-width: 0; width: 100%; } }
+.wisp .results-gate { display: grid; gap: 24px; max-width: 560px; margin: 0 auto; }
+.wisp .gate-findings { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px 28px; }
+.wisp .gate-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: var(--gold-1); margin-bottom: 12px; }
+.wisp .gate-findings ul { list-style: none; display: grid; gap: 10px; padding: 0; margin: 0; }
+.wisp .gate-findings li { display: flex; justify-content: space-between; gap: 16px; font-size: 16px; }
+.wisp .gate-findings li span { color: #ff8a8a; font-weight: 700; }
+.wisp .gate-form { background: linear-gradient(180deg, rgba(191,149,63,0.08), transparent); border: 1px solid var(--gold-1); border-radius: 12px; padding: 32px; display: grid; gap: 16px; text-align: left; }
+.wisp .gate-form h3 { font-family: var(--font-display); font-size: 26px; letter-spacing: 0.06em; text-align: center; }
+.wisp .gate-form > p { color: var(--gray-300); text-align: center; }
+.wisp .gate-form .alert { margin-bottom: 0; }
+.wisp .gate-form .btn { width: 100%; justify-content: center; }
+@media (max-width: 600px) { .wisp .builder-main { padding: 28px 20px; } .wisp .quiz-card { padding: 28px 20px; } .wisp .quiz-question { font-size: 20px; } .wisp .results-cta { padding: 32px 20px; } .wisp .gate-form { padding: 24px 18px; } .wisp .fee-card { min-width: 0; width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .wisp *, .wisp *::before, .wisp *::after { animation: none !important; transition: none !important; } }
