@@ -16,6 +16,8 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   "/d/", "/sign/",
   // Public forms: anyone with the link may fill them in; every action is limited per visitor and checked again on the server.
   "/f/",
+  // The WISP Generator: public audit and builder; downloads need the buying browser's secret or the emailed link token.
+  "/wisp",
   // Password reset: the email link lands on /auth/callback; /reset-password checks for the session itself.
   "/forgot-password", "/reset-password", "/auth/",
   // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).

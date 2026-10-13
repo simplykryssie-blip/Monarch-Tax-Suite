@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import { commerceRepo, requireAdmin } from "@/lib/admin";
 import { Badge, EmptyRow, Flash, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 import { ArchivePanel } from "@/components/admin/archive";
+import { wispDeps } from "@/lib/wisp/server";
+import { currentTenantId } from "@/lib/tenants";
+import { adminResendWispAction } from "../../store/wisp/actions";
 import { PLATFORM_GUIDES } from "@/lib/commerce/platforms.ts";
 import { formDeps } from "@/lib/forms/server";
 
@@ -37,6 +40,9 @@ export default async function CustomerPage({ params, searchParams }: { params: P
       return [];
     }
   })();
+
+  // WISPs this customer bought (empty if the WISP Generator is not installed).
+  const wisps = await wispDeps(currentTenantId()).repo.listPlans({ customerId: customer.id, limit: 50 }).catch(() => []);
 
   return (
     <>
@@ -124,6 +130,25 @@ export default async function CustomerPage({ params, searchParams }: { params: P
         </div>
       </section>
       <div className="monarch-notice"><b>SUPPORT HISTORY</b> No support system is connected yet, so there is no support history to show.</div>
+      {wisps.length > 0 && (
+        <section className="monarch-panel">
+          <div className="monarch-panel-head"><h2>WISPs</h2><span>{wisps.length}</span></div>
+          <div className="monarch-table-wrap"><table>
+            <thead><tr><th>FIRM</th><th>BOUGHT</th><th>EMAIL</th><th /></tr></thead>
+            <tbody>{wisps.map((p) => (
+              <tr key={p.id}>
+                <td><b>{p.firm_name}</b></td>
+                <td>{when(p.created_at)}</td>
+                <td>{p.emailed_at ? `Sent to ${p.email}` : p.email_error ? `Not sent: ${p.email_error.slice(0, 80)}` : p.email}</td>
+                <td style={{ display: "flex", gap: 8 }}>
+                  {p.pdf_path && <a className="monarch-secondary" href={`/store/wisp/download/${p.id}`}>Download</a>}
+                  {p.status !== "draft" && <form action={adminResendWispAction}><input type="hidden" name="id" value={p.id} /><input type="hidden" name="back" value={`/customers/${customer.id}`} /><button className="monarch-secondary">Email again</button></form>}
+                </td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </section>
+      )}
       <ArchivePanel entity="customer" id={customer.id} />
     </>
   );

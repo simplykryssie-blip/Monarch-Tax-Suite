@@ -39,7 +39,7 @@ export type SubmissionPdfInput = {
 };
 
 let fonts: Promise<{ regular: Uint8Array; bold: Uint8Array }> | null = null;
-function fontBytes() {
+export function fontBytes() {
   fonts ??= Promise.all([
     readFile(join(process.cwd(), "lib/forms/fonts/NotoSans-Regular.ttf")),
     readFile(join(process.cwd(), "lib/forms/fonts/NotoSans-Bold.ttf")),
@@ -54,12 +54,12 @@ const INK = rgb(0.1, 0.1, 0.1);
 const MUTED = rgb(0.42, 0.4, 0.35);
 
 /** Replaces characters the font cannot draw (and control characters) so drawing never fails. */
-function drawable(font: PDFFont, text: string): string {
+export function drawable(font: PDFFont, text: string): string {
   const set = new Set(font.getCharacterSet());
   return Array.from(text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ")).map((ch) => (ch === "\n" || set.has(ch.codePointAt(0)!) ? ch : "?")).join("");
 }
 
-function wrap(font: PDFFont, text: string, size: number, width: number): string[] {
+export function wrap(font: PDFFont, text: string, size: number, width: number): string[] {
   const lines: string[] = [];
   for (const paragraph of drawable(font, text).replace(/\r/g, "").split("\n")) {
     let line = "";
@@ -89,8 +89,10 @@ export async function buildSubmissionPdf(input: SubmissionPdfInput): Promise<Uin
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const bytes = await fontBytes();
-  const regular = await pdf.embedFont(bytes.regular, { subset: true });
-  const bold = await pdf.embedFont(bytes.bold, { subset: true });
+  // The whole font, not a subset: pdf-lib's subsetting of Noto Sans drops glyph outlines in some viewers (text was
+  // present but blank when rendered).
+  const regular = await pdf.embedFont(bytes.regular, { subset: false });
+  const bold = await pdf.embedFont(bytes.bold, { subset: false });
   const title = `${input.formName}, submission #${input.number}`;
   pdf.setTitle(drawable(regular, title));
   pdf.setAuthor(drawable(regular, input.firmName));

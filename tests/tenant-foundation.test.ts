@@ -75,7 +75,7 @@ describe("server code reaches tenant data through the tenant client", () => {
 
   test("platform access is limited to platform tables", () => {
     const uses = files.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/platformClient\("([a-z_]+)"\)\.(from|rpc)\("([a-z_]+)"/g)].map((m) => `${m[1]}:${m[3]}`));
-    assert.deepEqual(uses.sort(), ["admin_lookup:admin_users", "document_link:document_deliveries", "form_link:forms", "rate_limit:hit_rate_limit"]);
+    assert.deepEqual(uses.sort(), ["admin_lookup:admin_users", "document_link:document_deliveries", "form_link:forms", "rate_limit:hit_rate_limit", "wisp_link:email_domains"]);
     const other = files.filter((f) => !f.endsWith("lib/supabase/service.ts") && /platformClient\(/.test(readFileSync(f, "utf8").replace(/platformClient\("[a-z_]+"\)\.(from|rpc)\("[a-z_]+"/g, "")));
     assert.deepEqual(other, []);
   });

@@ -57,8 +57,17 @@ export type FulfillmentDeps = {
   listCheckoutProductIds(sessionId: string): Promise<string[]>;
   /** Service orders (a paid service product creates one). Absent in callers that never sell services. */
   services?: { repo: ServiceOrdersRepo; tenantId: string };
+  /**
+   * WISP Generator delivery for a paid WISP product: makes and emails the PDF the buyer built. Errors are logged, not
+   * thrown: the payment is recorded either way, and the buyer's confirmation page (or an administrator) retries.
+   */
+  wisp?: (input: { sessionId: string; planId: string | null; customerId: string; orderId: string }) => Promise<unknown>;
   now?: () => string;
 };
+
+/** Products delivered by the WISP Generator carry this product setting. */
+export const WISP_DELIVERY = "wisp_generator";
+export const isWispProduct = (p: Pick<Product, "metadata">) => p.metadata?.delivery === WISP_DELIVERY;
 
 /** Creates the service order for a paid service purchase and tells automation, once per order. */
 async function fulfilService(deps: FulfillmentDeps, order: Order, product: Product) {
@@ -267,6 +276,10 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
   if (current.payment_status === "paid" && !needsReview(current)) {
     const { license } = await ensureFulfillment(repo, current, product, null, detailsFromMetadata(session.metadata));
     await fulfilService(deps, current, product);
+    if (deps.wisp && isWispProduct(product)) {
+      await deps.wisp({ sessionId: session.id, planId: session.metadata?.wisp_plan_id ?? null, customerId: customer.id, orderId: current.id })
+        .catch((e) => console.error(`stripe-webhook: WISP delivery for order ${current.id} failed, the buyer's page will retry: ${e instanceof Error ? e.message.slice(0, 160) : "unknown"}`));
+    }
     // Only reached for a signature-verified, paid order. The event key is per order, so Stripe retries or a second
     // event for the same payment cannot start the onboarding workflow twice.
     if (license && deps.emit) {

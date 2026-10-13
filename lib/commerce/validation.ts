@@ -225,7 +225,11 @@ export function publishBlockers(product: PublishFields, imageCount: number): str
   if (product.product_type === "course" || product.access_type === "course_access" || product.category === "course") {
     blockers.push("Courses cannot be sold until course delivery is ready (decision E1).");
   }
-  if (product.product_type === "digital_download" || product.access_type === "instant_download") {
+  // The WISP Generator is the one digital download with a delivery built: it makes, files and emails the buyer's PDF.
+  const wisp = product.metadata?.delivery === "wisp_generator";
+  if (wisp && (product.product_type !== "digital_download" || product.access_type !== "instant_download")) {
+    blockers.push("The WISP Generator product must be a digital download with instant-download access.");
+  } else if (!wisp && (product.product_type === "digital_download" || product.access_type === "instant_download")) {
     blockers.push("Digital downloads cannot be sold until secure delivery is built (Phase 1 step F3).");
   }
   if (product.product_type === "membership") blockers.push("Memberships cannot be sold yet.");
