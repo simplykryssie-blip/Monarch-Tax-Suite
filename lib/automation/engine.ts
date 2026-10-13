@@ -145,7 +145,7 @@ async function productAttributes(deps: AutomationDeps, event: AutomationEvent): 
 }
 
 /** From / reply-to for an email: the chosen sender, else the tenant's default, else the platform sender. */
-async function senderFor(deps: AutomationDeps, senderId: string | null | undefined): Promise<{ from?: string; replyTo?: string | null; label?: string }> {
+export async function senderFor(deps: AutomationDeps, senderId: string | null | undefined): Promise<{ from?: string; replyTo?: string | null; label?: string }> {
   if (!deps.senders && !senderId) return {};
   const s = await resolveSender(deps.senders ?? null, senderId ?? null, deps.fallbackSender ?? null);
   return { from: s.from, replyTo: s.replyTo, label: s.label };

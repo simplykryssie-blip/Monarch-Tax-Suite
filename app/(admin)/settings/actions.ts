@@ -1,0 +1,145 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/admin";
+import { ValidationError } from "@/lib/commerce/validation.ts";
+import { automationDeps } from "@/lib/automation/server";
+import { emailConfig } from "@/lib/automation/email.ts";
+import { sanitizeError } from "@/lib/automation/sanitize.ts";
+import { cleanAttribute, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
+import { documentDeps } from "@/lib/documents/server";
+import { currentTenantId } from "@/lib/tenants.ts";
+
+// Firm profile, sending domains and senders, and package attributes for the current tenant. Every action re-checks
+// administrator access; the tenant-scoped client means only this tenant's rows can be read or changed.
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const str = (form: FormData, k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : "");
+const withParam = (path: string, key: "notice" | "error", message: string) => `${path}?${key}=${encodeURIComponent(message)}`;
+
+async function act(back: string, fn: (adminId: string) => Promise<string>) {
+  const admin = await requireAdmin();
+  let target: string;
+  try {
+    target = withParam(back, "notice", await fn(admin.userId));
+  } catch (e) {
+    if (e instanceof ValidationError) target = withParam(back, "error", e.message);
+    else {
+      const msg = e instanceof Error ? e.message : "";
+      console.error(`settings action failed: ${sanitizeError(e, 200)}`);
+      target = withParam(back, "error", /duplicate key|unique/i.test(msg) ? "That already exists." : /relation|schema cache|does not exist/i.test(msg) ? "These settings are not installed yet. Apply the documents migration first." : "That did not work. Nothing was changed. Please try again.");
+    }
+  }
+  revalidatePath("/settings", "layout");
+  redirect(target);
+}
+
+const domains = () => new ResendDomains(emailConfig(process.env).apiKey);
+
+export async function saveFirmProfileAction(form: FormData) {
+  await act("/settings/firm", async (adminId) => {
+    const legal = str(form, "legal_name").replace(/\s+/g, " ").trim().slice(0, 200);
+    const display = str(form, "display_name").replace(/\s+/g, " ").trim().slice(0, 120);
+    const email = str(form, "email").trim().toLowerCase();
+    const tz = str(form, "time_zone").trim();
+    if (legal.length < 2 || display.length < 2) throw new ValidationError("Enter the firm's legal name and the name clients see.");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ValidationError("Enter a valid email address.");
+    try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); } catch { throw new ValidationError("Choose a valid time zone."); }
+    await documentDeps().repo.saveProfile(currentTenantId(), {
+      legal_name: legal, display_name: display, email: email || null, phone: str(form, "phone").trim().slice(0, 40) || null,
+      address: str(form, "address").replace(/\r\n/g, "\n").trim().slice(0, 400) || null, time_zone: tz, updated_by: adminId,
+    });
+    return "Firm profile saved.";
+  });
+}
+
+export async function connectDomainAction(form: FormData) {
+  await act("/settings/email", async (adminId) => {
+    const domain = cleanDomain(str(form, "domain"));
+    const repo = automationDeps().senders!;
+    if ((await repo.listDomains()).some((d) => d.domain === domain)) throw new ValidationError("That domain is already connected.");
+    const created = await domains().create(domain);
+    await repo.insertDomain({ domain, provider_domain_id: created.id, status: created.status, dns_records: created.records, created_by: adminId });
+    return `${domain} added. Add the DNS records shown below at your domain host, then press Check.`;
+  });
+}
+
+export async function checkDomainAction(form: FormData) {
+  await act("/settings/email", async () => {
+    const id = str(form, "id");
+    if (!UUID.test(id)) throw new ValidationError("Not found.");
+    const repo = automationDeps().senders!;
+    const row = await repo.getDomain(id);
+    if (!row?.provider_domain_id) throw new ValidationError("Not found.");
+    const api = domains();
+    if (row.status !== "verified") await api.verify(row.provider_domain_id).catch(() => undefined);
+    const now = await api.get(row.provider_domain_id);
+    await repo.updateDomain(id, { status: now.status, dns_records: now.records, last_checked_at: new Date().toISOString() });
+    return now.status === "verified" ? `${row.domain} is verified. You can send from it.` : `${row.domain} is not verified yet. DNS changes can take a few hours; check again later.`;
+  });
+}
+
+export async function addSenderAction(form: FormData) {
+  await act("/settings/email", async (adminId) => {
+    const domainId = str(form, "domain_id");
+    if (!UUID.test(domainId)) throw new ValidationError("Choose a domain.");
+    const repo = automationDeps().senders!;
+    if (!(await repo.getDomain(domainId))) throw new ValidationError("Choose a domain.");
+    const replyTo = str(form, "reply_to").trim().toLowerCase();
+    if (replyTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo)) throw new ValidationError("Enter a valid reply-to address, or leave it blank.");
+    const sender = await repo.insertSender({ domain_id: domainId, from_name: cleanFromName(str(form, "from_name")), local_part: cleanLocalPart(str(form, "local_part")), reply_to: replyTo || null, created_by: adminId });
+    if (!(await repo.listSenders()).some((s) => s.is_default && !s.archived_at)) await repo.setDefaultSender(sender.id);
+    return "Sending address added.";
+  });
+}
+
+export async function defaultSenderAction(form: FormData) {
+  await act("/settings/email", async () => {
+    const id = str(form, "id");
+    if (!UUID.test(id)) throw new ValidationError("Not found.");
+    await automationDeps().senders!.setDefaultSender(id);
+    return "Default sending address changed.";
+  });
+}
+
+export async function archiveSenderAction(form: FormData) {
+  await act("/settings/email", async () => {
+    const id = str(form, "id");
+    if (!UUID.test(id)) throw new ValidationError("Not found.");
+    const deps = automationDeps();
+    const inUse = (await deps.repo.listTemplates()).some((t) => t.sender_id === id && t.active)
+      || (await deps.repo.listWorkflows()).some((w) => w.status !== "archived" && w.actions.some((a) => (a.type === "send_document" || a.type === "request_signature") && a.sender_id === id));
+    if (inUse) throw new ValidationError("This address is used by an active email template or workflow. Choose another address there first.");
+    await deps.senders!.updateSender(id, { archived_at: new Date().toISOString() });
+    return "Sending address removed.";
+  });
+}
+
+export async function saveAttributeAction(form: FormData) {
+  await act("/settings/package-attributes", async () => {
+    const repo = automationDeps().senders!;
+    const v = cleanAttribute({ key: str(form, "key"), label: str(form, "label"), kind: str(form, "kind"), options: str(form, "options") });
+    const id = str(form, "id");
+    if (UUID.test(id)) {
+      await repo.updatePackageAttribute(id, { label: v.label, kind: v.kind, options: v.options });
+      return "Attribute saved.";
+    }
+    await repo.insertPackageAttribute(v);
+    return `Attribute added. Set it on each product as a product setting: ${v.key}: value.`;
+  });
+}
+
+export async function deleteAttributeAction(form: FormData) {
+  await act("/settings/package-attributes", async () => {
+    const id = str(form, "id");
+    if (!UUID.test(id)) throw new ValidationError("Not found.");
+    const deps = automationDeps();
+    const attr = (await deps.senders!.listPackageAttributes()).find((a) => a.id === id);
+    if (!attr) throw new ValidationError("Not found.");
+    const used = (await deps.repo.listWorkflows()).filter((w) => w.status !== "archived" && w.conditions.some((c) => c.field === `product.${attr.key}`));
+    if (used.length) throw new ValidationError(`Used by ${used.map((w) => `"${w.name}"`).join(", ")}. Remove the condition there first.`);
+    await deps.senders!.deletePackageAttribute(id);
+    return "Attribute removed.";
+  });
+}

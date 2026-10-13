@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Badge, Flash, PageTitle, when } from "@/components/admin/ui";
 import { EVENTS } from "@/lib/automation/events.ts";
-import { automationDeps } from "@/lib/automation/server";
+import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import type { Action, Condition } from "@/lib/automation/types.ts";
 import { removeWorkflowAction, saveWorkflowAction, testWorkflowAction, workflowStatusAction } from "../../actions";
 
@@ -14,7 +14,8 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
   const isNew = id === "new";
   if (!isNew && !UUID.test(id)) notFound();
   const deps = automationDeps();
-  const [templates, wf] = await Promise.all([deps.repo.listTemplates(), isNew ? null : deps.repo.getWorkflow(id)]);
+  const [templates, wf, catalog] = await Promise.all([deps.repo.listTemplates(), isNew ? null : deps.repo.getWorkflow(id), workflowCatalog(deps)]);
+  const activeDocs = catalog.documents.filter((d) => d.status === "active");
   if (!isNew && !wf) notFound();
   const conditions: Partial<Condition>[] = wf?.conditions ?? [];
   const actions: Partial<Action>[] = wf?.actions ?? [{ type: "send_email" }];
@@ -38,24 +39,33 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
         <fieldset className="is-wide"><legend>Only when (optional)</legend>
           {[0, 1, 2].map((i) => (
             <span key={i} style={{ display: "flex", gap: 8 }}>
-              <input name={`cond_field_${i}`} placeholder="field, e.g. origin" defaultValue={conditions[i]?.field} />
+              <input name={`cond_field_${i}`} placeholder="field, e.g. origin" defaultValue={conditions[i]?.field} list="condition-fields" />
               <select name={`cond_op_${i}`} defaultValue={conditions[i]?.op ?? "eq"}><option value="eq">is</option><option value="neq">is not</option><option value="in">is one of</option></select>
               <input name={`cond_value_${i}`} placeholder="value" defaultValue={conditions[i]?.value} />
             </span>
           ))}
-          <small className="monarch-muted">Fields depend on the trigger: origin, provider, error_kind. Leave blank to run every time.</small>
+          <datalist id="condition-fields">
+            {["origin", "provider", "error_kind", "document_id", ...catalog.attributes.map((a) => `product.${a.key}`)].map((f) => <option key={f} value={f} />)}
+          </datalist>
+          <small className="monarch-muted">Fields depend on the trigger: origin, provider, error_kind, or document_id for document events (a document&apos;s id from its page). Leave blank to run every time.</small>
+          {catalog.attributes.length > 0 && <small className="monarch-muted">Package attributes, for any trigger with an order: {catalog.attributes.map((a) => <span key={a.key}><code>product.{a.key}</code>{a.kind === "choice" ? ` (${a.options.join(", ")})` : ""} </span>)}</small>}
         </fieldset>
         <fieldset className="is-wide"><legend>Steps, in order</legend>
           {SLOTS.map((i) => {
-            const a = actions[i] as (Partial<Action> & { template_id?: string; to?: string; include_setup_link?: boolean; note?: string }) | undefined;
+            const a = actions[i] as (Partial<Action> & { template_id?: string; to?: string; include_setup_link?: boolean; note?: string; document_id?: string; sender_id?: string | null; message?: string; link_days?: number; reminder_days?: number | null }) | undefined;
             return (
               <span key={i} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <b>{i + 1}.</b>
-                <select name={`act_type_${i}`} defaultValue={a?.type ?? ""}><option value="">(none)</option><option value="send_email">Send email</option><option value="record_note">Record a note</option></select>
+                <select name={`act_type_${i}`} defaultValue={a?.type ?? ""}><option value="">(none)</option><option value="send_email">Send email</option><option value="send_document">Send a document</option><option value="request_signature">Request a signature</option><option value="record_note">Record a note</option></select>
                 <select name={`act_template_${i}`} defaultValue={a?.template_id ?? ""}><option value="">Template…</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.active ? "" : " (off)"}</option>)}</select>
                 <select name={`act_to_${i}`} defaultValue={a?.to ?? "customer"}><option value="customer">to the customer</option><option value="support">to Monarch support</option></select>
                 <label className="monarch-check"><input type="checkbox" name={`act_setup_${i}`} defaultChecked={a?.include_setup_link} /> include setup link</label>
                 <input name={`act_note_${i}`} placeholder="note (for Record a note)" defaultValue={a?.note} maxLength={300} />
+                <select name={`act_document_${i}`} defaultValue={a?.document_id ?? ""} aria-label="Document"><option value="">Document…</option>{activeDocs.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.file_type.toUpperCase()})</option>)}</select>
+                <select name={`act_sender_${i}`} defaultValue={a?.sender_id ?? ""} aria-label="Send from"><option value="">from: default address</option>{catalog.senders.map((s) => <option key={s.id} value={s.id}>from: {s.from_name} &lt;{s.address}&gt;</option>)}</select>
+                <input name={`act_message_${i}`} placeholder="message to include (documents)" defaultValue={a?.message} maxLength={1000} />
+                <label>link days <input name={`act_link_days_${i}`} type="number" min={1} max={60} defaultValue={a?.link_days ?? 14} style={{ width: 70 }} /></label>
+                <label>remind every <input name={`act_reminder_${i}`} type="number" min={1} max={30} defaultValue={a?.reminder_days ?? ""} style={{ width: 60 }} /> days (signatures)</label>
               </span>
             );
           })}

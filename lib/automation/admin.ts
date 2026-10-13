@@ -1,6 +1,6 @@
 import { ValidationError } from "../commerce/validation.ts";
 import { renderTemplate, SAMPLE_VALUES } from "./template.ts";
-import { validateTemplateInput, validateWorkflowInput, type WorkflowFormInput } from "./validate.ts";
+import { validateTemplateInput, validateWorkflowInput, type WorkflowCatalog, type WorkflowFormInput } from "./validate.ts";
 import type { EmailSender } from "./email.ts";
 import type { AutomationRepo, Execution, Template, Workflow } from "./types.ts";
 
@@ -8,16 +8,18 @@ import type { AutomationRepo, Execution, Template, Workflow } from "./types.ts";
 
 type Actor = { id: string; email: string };
 
-export async function createTemplate(repo: AutomationRepo, actor: Actor, input: { name: unknown; subject: unknown; body: unknown }): Promise<Template> {
+type TemplateInput = { name: unknown; subject: unknown; body: unknown; sender_id?: string | null };
+
+export async function createTemplate(repo: AutomationRepo, actor: Actor, input: TemplateInput): Promise<Template> {
   const v = validateTemplateInput(input);
-  const t = await repo.insertTemplate({ template_key: null, ...v, active: true, created_by: actor.id, updated_by: actor.id });
+  const t = await repo.insertTemplate({ template_key: null, ...v, ...(input.sender_id !== undefined ? { sender_id: input.sender_id } : {}), active: true, created_by: actor.id, updated_by: actor.id });
   await repo.addAudit({ actor_id: actor.id, action: "template_created", target_type: "template", target_id: t.id, detail: { name: t.name } });
   return t;
 }
 
-export async function updateTemplate(repo: AutomationRepo, actor: Actor, id: string, input: { name: unknown; subject: unknown; body: unknown }): Promise<Template> {
+export async function updateTemplate(repo: AutomationRepo, actor: Actor, id: string, input: TemplateInput): Promise<Template> {
   if (!(await repo.getTemplate(id))) throw new ValidationError("Template not found.");
-  const t = await repo.updateTemplate(id, { ...validateTemplateInput(input), updated_by: actor.id });
+  const t = await repo.updateTemplate(id, { ...validateTemplateInput(input), ...(input.sender_id !== undefined ? { sender_id: input.sender_id } : {}), updated_by: actor.id });
   await repo.addAudit({ actor_id: actor.id, action: "template_updated", target_type: "template", target_id: id, detail: { name: t.name } });
   return t;
 }
@@ -54,17 +56,17 @@ export async function sendTemplateTest(repo: AutomationRepo, email: EmailSender,
   return result.id;
 }
 
-export async function createWorkflow(repo: AutomationRepo, actor: Actor, input: WorkflowFormInput): Promise<Workflow> {
-  const v = validateWorkflowInput(input, await repo.listTemplates());
+export async function createWorkflow(repo: AutomationRepo, actor: Actor, input: WorkflowFormInput, catalog?: WorkflowCatalog): Promise<Workflow> {
+  const v = validateWorkflowInput(input, await repo.listTemplates(), catalog);
   const w = await repo.insertWorkflow({ workflow_key: null, ...v, status: "paused", created_by: actor.id, updated_by: actor.id });
   await repo.addAudit({ actor_id: actor.id, action: "workflow_created", target_type: "workflow", target_id: w.id, detail: { name: w.name, trigger: w.trigger_event } });
   return w;
 }
 
-export async function updateWorkflow(repo: AutomationRepo, actor: Actor, id: string, input: WorkflowFormInput): Promise<Workflow> {
+export async function updateWorkflow(repo: AutomationRepo, actor: Actor, id: string, input: WorkflowFormInput, catalog?: WorkflowCatalog): Promise<Workflow> {
   const existing = await repo.getWorkflow(id);
   if (!existing || existing.status === "archived") throw new ValidationError("Workflow not found.");
-  const v = validateWorkflowInput(input, await repo.listTemplates());
+  const v = validateWorkflowInput(input, await repo.listTemplates(), catalog);
   const w = await repo.updateWorkflow(id, { ...v, updated_by: actor.id });
   await repo.addAudit({ actor_id: actor.id, action: "workflow_updated", target_type: "workflow", target_id: id, detail: { name: w.name } });
   return w;

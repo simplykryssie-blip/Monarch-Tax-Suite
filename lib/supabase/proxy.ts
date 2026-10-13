@@ -12,6 +12,8 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   "/setup", "/api/automation/run",
   // Buyer downloads: every file request is authorized by the buyer's license key and checked again on each click.
   "/downloads",
+  // Secure document links sent by a firm: the link token is the credential, checked again on every request.
+  "/d/", "/sign/",
   // Password reset: the email link lands on /auth/callback; /reset-password checks for the session itself.
   "/forgot-password", "/reset-password", "/auth/",
   // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).

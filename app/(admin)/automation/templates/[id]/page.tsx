@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Badge, Flash, PageTitle } from "@/components/admin/ui";
 import { workflowsUsing } from "@/lib/automation/admin.ts";
-import { automationConfig, automationDeps } from "@/lib/automation/server";
+import { automationConfig, automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { renderTemplate, SAMPLE_VALUES, VARIABLES } from "@/lib/automation/template.ts";
 import { saveTemplateAction, templateActiveAction, testTemplateAction } from "../../actions";
 
@@ -16,6 +16,7 @@ export default async function TemplateEditor({ params, searchParams }: { params:
   const t = isNew ? null : await deps.repo.getTemplate(id);
   if (!isNew && !t) notFound();
   const used = t ? workflowsUsing(t.id, await deps.repo.listWorkflows()) : [];
+  const { senders } = await workflowCatalog(deps);
   let preview: { subject: string; html: string } | null = null;
   if (t) {
     try { preview = renderTemplate(t.subject, t.body, SAMPLE_VALUES, { supportEmail: automationConfig().supportEmail }); } catch { preview = null; }
@@ -28,6 +29,12 @@ export default async function TemplateEditor({ params, searchParams }: { params:
         {t && <input type="hidden" name="id" value={t.id} />}
         <label>Name<input name="name" required maxLength={120} defaultValue={t?.name} /></label>
         <label>Subject<input name="subject" required maxLength={200} defaultValue={t?.subject} /></label>
+        <label>Send from
+          <select name="sender_id" defaultValue={t?.sender_id ?? ""}>
+            <option value="">Default sending address</option>
+            {senders.map((s) => <option key={s.id} value={s.id}>{s.from_name} &lt;{s.address}&gt;</option>)}
+          </select>
+        </label>
         <label className="is-wide">Message<textarea name="body" required rows={14} maxLength={20000} defaultValue={t?.body} /></label>
         <div className="is-wide"><button className="monarch-primary">Save template</button></div>
       </form>

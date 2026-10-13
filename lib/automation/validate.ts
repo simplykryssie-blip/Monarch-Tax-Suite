@@ -36,7 +36,7 @@ export type WorkflowFormInput = {
 /** The tenant's own records a workflow may refer to. */
 export type WorkflowCatalog = {
   documents: { id: string; name: string; file_type: "pdf" | "docx"; status: string }[];
-  senders: { id: string }[];
+  senders: { id: string; from_name?: string; address?: string }[];
   attributes: { key: string; label: string; kind: "choice" | "text"; options: string[] }[];
 };
 const EMPTY_CATALOG: WorkflowCatalog = { documents: [], senders: [], attributes: [] };
