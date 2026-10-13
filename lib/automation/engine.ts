@@ -47,6 +47,8 @@ export type AutomationDeps = {
   senders?: SendersRepo | null;
   /** Used when the tenant has no verified sender of its own (only for tenants allowed the platform sender). */
   fallbackSender?: ResolvedSender | null;
+  /** A form submission's answers as text (form.submitted events): for answer.<key> conditions and {{form.<key>}} merge fields. */
+  formAnswers?: ((submissionId: string) => Promise<Record<string, string> | null>) | null;
   now?: () => Date;
 };
 
@@ -68,11 +70,14 @@ export type EmitInput = {
 
 /** Conditions on `product.<attribute>` read the attributes of the product behind the event's order. */
 export const PRODUCT_FIELD = /^product\.([a-z][a-z0-9_]{1,39})$/;
+/** Conditions on `answer.<key>` read the submitted answer to that form question (form.submitted events). */
+export const ANSWER_FIELD = /^answer\.([a-z][a-z0-9_]{0,39})$/;
 
-export function conditionsMatch(conditions: Condition[], data: AutomationEvent["data"], product: Record<string, string> | null = null): boolean {
+export function conditionsMatch(conditions: Condition[], data: AutomationEvent["data"], product: Record<string, string> | null = null, answers: Record<string, string> | null = null): boolean {
   return conditions.every((c) => {
     const attr = c.field.match(PRODUCT_FIELD)?.[1];
-    const raw = attr ? product?.[attr] : data[c.field];
+    const answer = c.field.match(ANSWER_FIELD)?.[1];
+    const raw = attr ? product?.[attr] : answer ? answers?.[answer] : data[c.field];
     const actual = raw === undefined || raw === null ? "" : String(raw).trim();
     if (c.op === "eq") return actual === c.value;
     if (c.op === "neq") return actual !== c.value;
@@ -107,7 +112,8 @@ export async function emitEvent(deps: AutomationDeps, input: EmitInput): Promise
 
   const candidates = (await deps.repo.listWorkflows()).filter((w) => w.status === "active" && w.trigger_event === input.type);
   const product = candidates.some((w) => w.conditions.some((c) => PRODUCT_FIELD.test(c.field))) ? await productAttributes(deps, event) : null;
-  const workflows = candidates.filter((w) => conditionsMatch(w.conditions, event.data, product));
+  const answers = candidates.some((w) => w.conditions.some((c) => ANSWER_FIELD.test(c.field))) ? await submissionAnswers(deps, event) : null;
+  const workflows = candidates.filter((w) => conditionsMatch(w.conditions, event.data, product, answers));
   const executionIds: string[] = [];
   for (const wf of workflows) {
     const { execution, created: fresh } = await deps.repo.insertExecution({ workflow_id: wf.id, event_id: event.id, is_test: false, max_attempts: wf.max_attempts, next_attempt_at: iso(deps) });
@@ -142,6 +148,12 @@ async function productAttributes(deps: AutomationDeps, event: AutomationEvent): 
   const order = orderId ? await deps.commerce.getOrder(orderId) : null;
   const product = order ? await deps.commerce.getProduct(order.product_id) : null;
   return product ? { ...product.metadata } : null;
+}
+
+/** The answers of the form submission behind a form.submitted event. */
+async function submissionAnswers(deps: AutomationDeps, event: AutomationEvent): Promise<Record<string, string> | null> {
+  const id = typeof event.data.submission_id === "string" ? event.data.submission_id : null;
+  return id && deps.formAnswers ? deps.formAnswers(id) : null;
 }
 
 /** From / reply-to for an email: the chosen sender, else the tenant's default, else the platform sender. */
@@ -320,12 +332,18 @@ async function runDocumentStep(deps: AutomationDeps, exec: Execution, event: Aut
   let values: Record<string, string>;
   if (isTest) {
     values = { ...SAMPLE_FIELD_VALUES };
+    // Sample answers for any {{form.<key>}} merge fields the document uses.
+    const doc = await docs.repo.getDocument(action.document_id);
+    const version = doc?.current_version_id ? await docs.repo.getVersion(doc.current_version_id) : null;
+    for (const f of version?.merge_fields ?? []) if (f.startsWith("form.")) values[f] = `Sample ${f.slice(5).replace(/_/g, " ")}`;
   } else {
     const orderId = event.order_id ?? license?.order_id ?? null;
     const order = orderId ? await deps.commerce.getOrder(orderId) : null;
     const product = order ? await deps.commerce.getProduct(order.product_id) : null;
     const onboarding = license ? await deps.repo.getProfile(license.id).catch(() => null) : null;
     values = documentValues({ profile, customer, businessName: onboarding?.business_name ?? null, order, product, now: nowOf(deps) });
+    const answers = await submissionAnswers(deps, event);
+    for (const [k, v] of Object.entries(answers ?? {})) values[`form.${k}`] = v;
   }
 
   let sender;

@@ -2,7 +2,7 @@ import { requireAdmin } from "@/lib/admin";
 import { automationDeps } from "@/lib/automation/server";
 import { senderAddress } from "@/lib/automation/senders.ts";
 import { Badge, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
-import { addSenderAction, archiveSenderAction, checkDomainAction, connectDomainAction, defaultSenderAction } from "../actions";
+import { addSenderAction, archiveSenderAction, checkDomainAction, connectDomainAction, defaultSenderAction, saveBrandAction } from "../actions";
 
 export default async function EmailSendingPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
   await requireAdmin();
@@ -53,7 +53,7 @@ export default async function EmailSendingPage({ searchParams }: { searchParams:
           </section>
 
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Domains</h2><p className="monarch-muted">A domain must be verified (its DNS records added) before anything is sent from it.</p></div></div>
+            <div className="monarch-panel-head"><div><h2>Domains and brands</h2><p className="monarch-muted">A domain must be verified (its DNS records added) before anything is sent from it. Each domain is one of your firms or brands: name it, and give the web address its public form links should use. With more than one brand, each form chooses the brand it belongs to.</p></div></div>
             {result.data.domains.map((d) => (
               <div key={d.id} style={{ padding: "12px 20px", borderTop: "1px solid #eee" }}>
                 <p><b>{d.domain}</b> <Badge value={d.status} /> {d.last_checked_at && <small className="monarch-muted">checked {when(d.last_checked_at)}</small>}</p>
@@ -63,6 +63,12 @@ export default async function EmailSendingPage({ searchParams }: { searchParams:
                     <tbody>{d.dns_records.map((r, i) => <tr key={i}><td>{r.type}</td><td><code>{r.name}</code></td><td style={{ wordBreak: "break-all" }}><code>{r.value}</code></td><td>{r.priority ?? ""}</td><td>{r.status ?? ""}</td></tr>)}</tbody>
                   </table></div>
                 )}
+                <form action={saveBrandAction} className="monarch-inline-form" style={{ flexWrap: "wrap", margin: "8px 0" }}>
+                  <input type="hidden" name="id" value={d.id} />
+                  <input name="brand_name" defaultValue={d.brand_name ?? ""} placeholder="Brand name, e.g. Monarch Tax Suite" maxLength={120} aria-label="Brand name" />
+                  <input name="link_host" defaultValue={d.link_host ?? ""} placeholder="Web address for form links, e.g. app.yourfirm.com" maxLength={253} aria-label="Web address for form links" />
+                  <button className="monarch-secondary">Save brand</button>
+                </form>
                 <form action={checkDomainAction}><input type="hidden" name="id" value={d.id} /><button className="monarch-secondary">{d.status === "verified" ? "Check again" : "Check verification"}</button></form>
               </div>
             ))}

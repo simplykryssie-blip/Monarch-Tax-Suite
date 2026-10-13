@@ -9,6 +9,7 @@ import { emailConfig } from "@/lib/automation/email.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { AlreadyRegisteredError, cleanAttribute, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
 import { documentDeps } from "@/lib/documents/server";
+import { cleanLinkHost } from "@/lib/brands.ts";
 import { currentTenantId, MONARCH_TENANT_ID } from "@/lib/tenants.ts";
 
 // Firm profile, sending domains and senders, and package attributes for the current tenant. Every action re-checks
@@ -87,6 +88,25 @@ export async function checkDomainAction(form: FormData) {
     const now = await api.get(row.provider_domain_id);
     await repo.updateDomain(id, { status: now.status, dns_records: now.records, last_checked_at: new Date().toISOString() });
     return now.status === "verified" ? `${row.domain} is verified. You can send from it.` : `${row.domain} is not verified yet. DNS changes can take a few hours; check again later.`;
+  });
+}
+
+export async function saveBrandAction(form: FormData) {
+  await act("/settings/email", async () => {
+    const id = str(form, "id");
+    if (!UUID.test(id)) throw new ValidationError("Not found.");
+    const repo = automationDeps().senders!;
+    if (!(await repo.getDomain(id))) throw new ValidationError("Not found.");
+    const name = str(form, "brand_name").replace(/\s+/g, " ").trim().slice(0, 120);
+    if (name && name.length < 2) throw new ValidationError("Give the firm or brand a name.");
+    let host: string | null;
+    try {
+      host = cleanLinkHost(str(form, "link_host"));
+    } catch (e) {
+      throw new ValidationError(e instanceof Error ? e.message : "Enter a web address like app.yourfirm.com.");
+    }
+    await repo.updateDomain(id, { brand_name: name || null, link_host: host });
+    return host ? `Saved. In production, this brand's form links use https://${host}. Make sure that address is added to the app's hosting (Vercel → Domains).` : "Saved.";
   });
 }
 

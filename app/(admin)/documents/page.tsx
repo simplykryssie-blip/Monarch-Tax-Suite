@@ -27,7 +27,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
           <section className="monarch-panel" style={{ padding: 20 }}>
             <h2>Add a document</h2>
             <DocumentUploader />
-            <p className="monarch-muted">PDF or Word (.docx), up to 25 MB. In Word, type merge fields like {"{{client_name}}"} in the text. In a PDF, name fillable form fields after the merge field. Only PDFs can be signed: export to PDF before uploading a document that needs a signature.</p>
+            <p className="monarch-muted">PDF or Word (.docx), up to 25 MB. In Word, type merge fields like {"{{client_name}}"} in the text. In a PDF, name fillable form fields after the merge field. For documents sent by a workflow that starts on a form submission, {"{{form.question_key}}"} fills in that answer. Only PDFs can be signed: export to PDF before uploading a document that needs a signature.</p>
           </section>
           <section className="monarch-panel">
             <div className="monarch-table-wrap">

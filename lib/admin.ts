@@ -1,4 +1,5 @@
 import "server-only";
+import { configuredOrigin } from "./origin.ts";
 import { cache } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -76,10 +77,13 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
   return { userId: decision.userId, email: user?.email ?? "" };
 });
 
-/** Public origin of this deployment (for embed and intake links). */
+/**
+ * Public origin of this deployment (for embed, intake, form and email links). NEXT_PUBLIC_APP_URL (the production
+ * domain) is used everywhere except Preview, where links must point at the preview deployment itself.
+ */
 export async function appOrigin(): Promise<string> {
-  const configured = process.env.NEXT_PUBLIC_APP_URL;
-  if (configured) return configured.replace(/\/$/, "");
+  const configured = configuredOrigin(process.env);
+  if (configured) return configured;
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "monarch-tax-suite.vercel.app";
   return `https://${host}`;

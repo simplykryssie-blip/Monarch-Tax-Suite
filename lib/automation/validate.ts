@@ -1,6 +1,6 @@
 import { ValidationError } from "../commerce/validation.ts";
 import { EVENTS, isEventType, RECORD_FIELDS } from "./events.ts";
-import { PRODUCT_FIELD } from "./engine.ts";
+import { ANSWER_FIELD, PRODUCT_FIELD } from "./engine.ts";
 import { renderTemplate, SAMPLE_VALUES, unknownVariables } from "./template.ts";
 import type { Action, Condition, NewTemplate, Template } from "./types.ts";
 
@@ -35,11 +35,14 @@ export type WorkflowFormInput = {
 
 /** The tenant's own records a workflow may refer to. */
 export type WorkflowCatalog = {
-  documents: { id: string; name: string; file_type: "pdf" | "docx"; status: string }[];
-  senders: { id: string; from_name?: string; address?: string }[];
+  /** `merge_fields`: the current version's merge fields, so form answers used by a document can be checked. */
+  documents: { id: string; name: string; file_type: "pdf" | "docx"; status: string; merge_fields?: string[] }[];
+  senders: { id: string; from_name?: string; address?: string; domain_id?: string }[];
   attributes: { key: string; label: string; kind: "choice" | "text"; options: string[] }[];
+  /** The tenant's published forms and their questions. */
+  forms?: { id: string; name: string; questions: { key: string; label: string; type: string; options: string[] }[] }[];
 };
-const EMPTY_CATALOG: WorkflowCatalog = { documents: [], senders: [], attributes: [] };
+const EMPTY_CATALOG: WorkflowCatalog = { documents: [], senders: [], attributes: [], forms: [] };
 
 export function validateWorkflowInput(input: WorkflowFormInput, templates: Pick<Template, "id">[], catalog: WorkflowCatalog = EMPTY_CATALOG) {
   const name = text(input.name, 120);
@@ -48,6 +51,10 @@ export function validateWorkflowInput(input: WorkflowFormInput, templates: Pick<
   if (!isEventType(trigger)) throw new ValidationError("Choose what starts this workflow.");
   const allowed = EVENTS[trigger].fields;
 
+  const forms = catalog.forms ?? [];
+  // The form a form.submitted workflow is limited to (a form_id "is" condition), for answer conditions and form merge fields.
+  const formCondition = input.conditions.find((c) => text(c.field, 40) === "form_id" && (c.op === "eq" || c.op === undefined || c.op === ""));
+  const form = trigger === "form.submitted" && formCondition ? forms.find((f) => f.id === text(formCondition.value, 120)) ?? null : null;
   const conditions: Condition[] = [];
   for (const c of input.conditions) {
     const field = text(c.field, 40);
@@ -57,7 +64,15 @@ export function validateWorkflowInput(input: WorkflowFormInput, templates: Pick<
     if (!value) throw new ValidationError(`Enter a value for the "${field}" condition.`);
     const values = op === "in" ? value.split(",").map((s) => s.trim()) : [value];
     const attrKey = field.match(PRODUCT_FIELD)?.[1];
-    if (attrKey) {
+    const answerKey = field.match(ANSWER_FIELD)?.[1];
+    if (answerKey) {
+      if (trigger !== "form.submitted") throw new ValidationError("Answer conditions only work on workflows that start when a form is submitted.");
+      if (!form) throw new ValidationError(`To test "${field}", also add the condition form_id is <the form's id>, so the workflow knows which form's questions to use.`);
+      const q = form.questions.find((x) => x.key === answerKey);
+      if (!q) throw new ValidationError(`"${form.name}" has no published question with the key "${answerKey}".`);
+      if (q.type !== "dropdown" && q.type !== "radio") throw new ValidationError(`Conditions can test dropdown and radio questions only; "${q.label}" is not one.`);
+      if (values.some((v) => !q.options.includes(v))) throw new ValidationError(`"${q.label}" accepts: ${q.options.join(", ")}.`);
+    } else if (attrKey) {
       // Package conditions: any attribute this tenant defined for its products.
       const attr = catalog.attributes.find((a) => a.key === attrKey);
       if (!attr) throw new ValidationError(`"${attrKey}" is not one of your package attributes. Add it in Settings → Package attributes first.`);
@@ -65,6 +80,7 @@ export function validateWorkflowInput(input: WorkflowFormInput, templates: Pick<
     } else {
       if (!Object.prototype.hasOwnProperty.call(allowed, field)) throw new ValidationError(`"${field}" is not a condition this trigger supports.`);
       if (RECORD_FIELDS[field] === "document" && values.some((v) => !catalog.documents.some((d) => d.id === v))) throw new ValidationError("Choose one of your documents for the document condition.");
+      if (RECORD_FIELDS[field] === "form" && values.some((v) => !forms.some((f) => f.id === v))) throw new ValidationError("Use the id of one of your published forms for the form condition (shown on the form's Settings page).");
       const options = allowed[field];
       if (options.length && values.some((v) => !options.includes(v))) throw new ValidationError(`The "${field}" condition accepts: ${options.join(", ")}.`);
     }
@@ -83,6 +99,12 @@ export function validateWorkflowInput(input: WorkflowFormInput, templates: Pick<
       const doc = catalog.documents.find((d) => d.id === document_id && d.status === "active");
       if (!doc) throw new ValidationError("Choose a document from your library for each document step.");
       if (a.type === "request_signature" && doc.file_type !== "pdf") throw new ValidationError(`"${doc.name}" is a Word document. Only PDFs can be signed: export it to PDF and upload that version.`);
+      const formFields = (doc.merge_fields ?? []).filter((f) => f.startsWith("form.")).map((f) => f.slice(5));
+      if (formFields.length) {
+        if (!form) throw new ValidationError(`"${doc.name}" uses form answers ({{form.${formFields[0]}}}). Use it in a workflow that starts when a form is submitted, with the condition form_id is <that form's id>.`);
+        const missing = formFields.filter((k) => !form.questions.some((q) => q.key === k));
+        if (missing.length) throw new ValidationError(`"${doc.name}" uses ${missing.map((m) => `{{form.${m}}}`).join(", ")}, but "${form.name}" has no published question with ${missing.length > 1 ? "those keys" : "that key"}.`);
+      }
       const sender = text(a.sender_id, 60);
       if (sender && !catalog.senders.some((s) => s.id === sender)) throw new ValidationError("Choose one of your sending addresses.");
       const linkDays = Number(text(a.link_days, 4) || 14);

@@ -13,6 +13,9 @@ export type EmailDomainRow = {
   status: "pending" | "verified" | "failed";
   dns_records: DnsRecord[];
   last_checked_at: string | null;
+  /** The firm/brand this domain stands for, and the web address its public form links use in production. */
+  brand_name?: string | null;
+  link_host?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -38,7 +41,7 @@ export interface SendersRepo {
   listDomains(): Promise<EmailDomainRow[]>;
   getDomain(id: string): Promise<EmailDomainRow | null>;
   insertDomain(input: Pick<EmailDomainRow, "domain" | "provider_domain_id" | "status" | "dns_records" | "created_by">): Promise<EmailDomainRow>;
-  updateDomain(id: string, patch: Partial<Pick<EmailDomainRow, "status" | "dns_records" | "last_checked_at" | "provider_domain_id">>): Promise<EmailDomainRow>;
+  updateDomain(id: string, patch: Partial<Pick<EmailDomainRow, "status" | "dns_records" | "last_checked_at" | "provider_domain_id" | "brand_name" | "link_host">>): Promise<EmailDomainRow>;
   listSenders(): Promise<SenderRow[]>;
   getSender(id: string): Promise<SenderRow | null>;
   insertSender(input: Pick<SenderRow, "domain_id" | "from_name" | "local_part" | "reply_to" | "created_by">): Promise<SenderRow>;

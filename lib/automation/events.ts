@@ -103,10 +103,15 @@ export const EVENTS: Record<string, EventDef> = {
     description: "A signature request reached its expiry date without being signed.",
     fields: { document_id: [] },
   },
+  "form.submitted": {
+    label: "Form submitted",
+    description: "Someone submitted one of your forms. Conditions can test form_id and answer.<key> for dropdown and radio questions; documents can use {{form.<key>}} merge fields.",
+    fields: { form_id: [] },
+  },
 };
 
 /** Condition fields whose values are a tenant's own records (checked against them when a workflow is saved). */
-export const RECORD_FIELDS: Record<string, "document"> = { document_id: "document" };
+export const RECORD_FIELDS: Record<string, "document" | "form"> = { document_id: "document", form_id: "form" };
 
 export const EVENT_TYPES = Object.keys(EVENTS);
 export const isEventType = (v: string) => Object.prototype.hasOwnProperty.call(EVENTS, v);

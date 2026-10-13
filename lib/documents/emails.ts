@@ -5,9 +5,9 @@ import { esc } from "../automation/template.ts";
 export type BuiltEmail = { subject: string; html: string; text: string };
 
 const clean = (v: string, max = 2000) => v.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, " ").slice(0, max).trim();
-const oneLine = (v: string, max = 200) => clean(v, max).replace(/\s+/g, " ");
+export const oneLine = (v: string, max = 200) => clean(v, max).replace(/\s+/g, " ");
 
-function layout(firm: string, paragraphs: string[], button: { label: string; url: string } | null, footer: string): BuiltEmail {
+export function layout(firm: string, paragraphs: string[], button: { label: string; url: string } | null, footer: string): BuiltEmail {
   const html = [
     `<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px">`,
     `<p style="font-size:13px;color:#6b665a;margin:0 0 18px">${esc(oneLine(firm, 120))}</p>`,

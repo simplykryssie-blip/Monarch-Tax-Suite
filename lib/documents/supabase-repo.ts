@@ -100,10 +100,10 @@ export class SupabaseDocumentsRepo implements DocumentsRepo {
   }
 }
 
-/** The private tenant-documents bucket. Nothing in it is ever public. */
+/** A private storage bucket (tenant-documents by default). Nothing in it is ever public. */
 export class SupabaseDocumentStore implements DocumentStore {
-  constructor(private db: SupabaseClient) {}
-  private bucket() { return this.db.storage.from(DOCUMENT_BUCKET); }
+  constructor(private db: SupabaseClient, private bucketName: string = DOCUMENT_BUCKET) {}
+  private bucket() { return this.db.storage.from(this.bucketName); }
   async createUploadUrl(path: string) {
     const { data, error } = await this.bucket().createSignedUploadUrl(path, { upsert: false });
     if (error || !data) throw new Error(`Could not prepare the upload: ${error?.message ?? "no URL"}`);
