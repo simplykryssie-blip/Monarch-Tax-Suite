@@ -119,8 +119,8 @@ begin
   end;
   insert into gate_results (check_name, pass, detail) values ('form_versions: a published version cannot be changed', res = 'refused', res);
   reset role;
-  select count(*) filter (where pass), count(*), string_agg(format('%s. %s  %s  (%s)', n, case when pass then 'PASS' else 'FAIL' end, check_name, detail), E'\n' order by n)
-    into passed, total, msg from gate_results;
+  select count(*) filter (where g.pass), count(*), string_agg(format('%s. %s  %s  (%s)', g.n, case when g.pass then 'PASS' else 'FAIL' end, g.check_name, g.detail), E'\n' order by g.n)
+    into passed, total, msg from gate_results g;
   -- Raising undoes everything above, so nothing is saved.
   raise exception E'GATE RESULT: % of % passed (rolled back, nothing saved)\n%', passed, total, msg;
 end $$;
