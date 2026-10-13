@@ -10,7 +10,7 @@ declare
   a uuid := '00000000-0000-4000-8000-0000000000a1';
   b uuid := '00000000-0000-4000-8000-0000000000b2';
   c uuid := '00000000-0000-4000-8000-0000000000c3';
-  a_cust uuid; a_old uuid; b_cust uuid; b_arch uuid; a_form uuid; got uuid; at timestamptz; by uuid;
+  a_cust uuid; a_old uuid; b_cust uuid; b_arch uuid; a_form uuid; got uuid; stamped_at timestamptz; stamped_by uuid;
 begin
   create temp table gate_results (n serial, check_name text, pass boolean, detail text);
   grant all on gate_results to public;
@@ -82,11 +82,11 @@ begin
   insert into gate_results (check_name, pass, detail) values ('archive_log: history can''t be deleted', res = 'refused', res);
 
   update public.forms set status = 'archived', archived_by = a, archive_reason = 'gate' where id = a_form;
-  select f.archived_at, f.archived_by into at, by from public.forms f where f.id = a_form;
-  insert into gate_results (check_name, pass, detail) values ('forms: archiving by status stamps archived_at', at is not null and by = a, coalesce(at::text, 'null'));
+  select f.archived_at, f.archived_by into stamped_at, stamped_by from public.forms f where f.id = a_form;
+  insert into gate_results (check_name, pass, detail) values ('forms: archiving by status stamps archived_at', stamped_at is not null and stamped_by = a, coalesce(stamped_at::text, 'null'));
   update public.forms set status = 'draft' where id = a_form;
-  select f.archived_at, f.archived_by into at, by from public.forms f where f.id = a_form;
-  insert into gate_results (check_name, pass, detail) values ('forms: restoring by status clears archived_at/by', at is null and by is null, coalesce(at::text, 'null'));
+  select f.archived_at, f.archived_by into stamped_at, stamped_by from public.forms f where f.id = a_form;
+  insert into gate_results (check_name, pass, detail) values ('forms: restoring by status clears archived_at/by', stamped_at is null and stamped_by is null, coalesce(stamped_at::text, 'null'));
 
   reset role;
   perform set_config('app.tenant_id', '', true);
