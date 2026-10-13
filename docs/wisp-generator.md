@@ -55,7 +55,7 @@ The source is the owner's static build (`wisp-generator-source`: index.html, sty
 
 ## Setup (owner)
 
-1. **Test project:** apply the migration, then run the gate in the SQL editor.
+1. **Test project:** done. The migration is applied, and **the gate passed 12/12** (run by the owner in the SQL editor on 2026-10-13, rolled back with nothing left behind).
 2. **The `wisp-assisted-build` product**, in Products:
    - set Product type to **Digital download** and Access type to **Instant download**;
    - add the product setting `delivery: wisp_generator`;
