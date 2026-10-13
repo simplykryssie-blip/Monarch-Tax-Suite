@@ -1,5 +1,6 @@
 import { ValidationError } from "../commerce/validation.ts";
-import { EVENTS, isEventType } from "./events.ts";
+import { EVENTS, isEventType, RECORD_FIELDS } from "./events.ts";
+import { PRODUCT_FIELD } from "./engine.ts";
 import { renderTemplate, SAMPLE_VALUES, unknownVariables } from "./template.ts";
 import type { Action, Condition, NewTemplate, Template } from "./types.ts";
 
@@ -27,12 +28,20 @@ export type WorkflowFormInput = {
   description?: unknown;
   trigger_event: unknown;
   conditions: { field: unknown; op: unknown; value: unknown }[];
-  actions: { type: unknown; template_id?: unknown; to?: unknown; include_setup_link?: unknown; note?: unknown }[];
+  actions: { type: unknown; template_id?: unknown; to?: unknown; include_setup_link?: unknown; note?: unknown; document_id?: unknown; sender_id?: unknown; message?: unknown; link_days?: unknown; reminder_days?: unknown }[];
   max_attempts?: unknown;
   cooldown_hours?: unknown;
 };
 
-export function validateWorkflowInput(input: WorkflowFormInput, templates: Pick<Template, "id">[]) {
+/** The tenant's own records a workflow may refer to. */
+export type WorkflowCatalog = {
+  documents: { id: string; name: string; file_type: "pdf" | "docx"; status: string }[];
+  senders: { id: string }[];
+  attributes: { key: string; label: string; kind: "choice" | "text"; options: string[] }[];
+};
+const EMPTY_CATALOG: WorkflowCatalog = { documents: [], senders: [], attributes: [] };
+
+export function validateWorkflowInput(input: WorkflowFormInput, templates: Pick<Template, "id">[], catalog: WorkflowCatalog = EMPTY_CATALOG) {
   const name = text(input.name, 120);
   if (name.length < 2) throw new ValidationError("Give the workflow a name.");
   const trigger = text(input.trigger_event, 60);
@@ -45,11 +54,20 @@ export function validateWorkflowInput(input: WorkflowFormInput, templates: Pick<
     if (!field) continue;
     const op = c.op === "neq" || c.op === "in" ? c.op : "eq";
     const value = text(c.value, 120);
-    if (!Object.prototype.hasOwnProperty.call(allowed, field)) throw new ValidationError(`"${field}" is not a condition this trigger supports.`);
     if (!value) throw new ValidationError(`Enter a value for the "${field}" condition.`);
-    const options = allowed[field];
     const values = op === "in" ? value.split(",").map((s) => s.trim()) : [value];
-    if (options.length && values.some((v) => !options.includes(v))) throw new ValidationError(`The "${field}" condition accepts: ${options.join(", ")}.`);
+    const attrKey = field.match(PRODUCT_FIELD)?.[1];
+    if (attrKey) {
+      // Package conditions: any attribute this tenant defined for its products.
+      const attr = catalog.attributes.find((a) => a.key === attrKey);
+      if (!attr) throw new ValidationError(`"${attrKey}" is not one of your package attributes. Add it in Settings → Package attributes first.`);
+      if (attr.kind === "choice" && values.some((v) => !attr.options.includes(v))) throw new ValidationError(`"${attr.label}" accepts: ${attr.options.join(", ")}.`);
+    } else {
+      if (!Object.prototype.hasOwnProperty.call(allowed, field)) throw new ValidationError(`"${field}" is not a condition this trigger supports.`);
+      if (RECORD_FIELDS[field] === "document" && values.some((v) => !catalog.documents.some((d) => d.id === v))) throw new ValidationError("Choose one of your documents for the document condition.");
+      const options = allowed[field];
+      if (options.length && values.some((v) => !options.includes(v))) throw new ValidationError(`The "${field}" condition accepts: ${options.join(", ")}.`);
+    }
     conditions.push({ field, op, value });
   }
 
@@ -60,6 +78,24 @@ export function validateWorkflowInput(input: WorkflowFormInput, templates: Pick<
       if (!templates.some((t) => t.id === template_id)) throw new ValidationError("Choose an email template for each email step.");
       const to = a.to === "support" ? "support" : "customer";
       actions.push({ type: "send_email", template_id, to, include_setup_link: a.include_setup_link === true || a.include_setup_link === "on" });
+    } else if (a.type === "send_document" || a.type === "request_signature") {
+      const document_id = text(a.document_id, 60);
+      const doc = catalog.documents.find((d) => d.id === document_id && d.status === "active");
+      if (!doc) throw new ValidationError("Choose a document from your library for each document step.");
+      if (a.type === "request_signature" && doc.file_type !== "pdf") throw new ValidationError(`"${doc.name}" is a Word document. Only PDFs can be signed: export it to PDF and upload that version.`);
+      const sender = text(a.sender_id, 60);
+      if (sender && !catalog.senders.some((s) => s.id === sender)) throw new ValidationError("Choose one of your sending addresses.");
+      const linkDays = Number(text(a.link_days, 4) || 14);
+      if (!Number.isInteger(linkDays) || linkDays < 1 || linkDays > 60) throw new ValidationError("Links can last 1 to 60 days.");
+      const message = typeof a.message === "string" ? a.message.replace(/\r\n/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").trim().slice(0, 1000) : "";
+      if (a.type === "send_document") {
+        actions.push({ type: "send_document", document_id, sender_id: sender || null, message, link_days: linkDays });
+      } else {
+        const r = text(a.reminder_days, 3);
+        const reminder = r ? Number(r) : null;
+        if (reminder !== null && (!Number.isInteger(reminder) || reminder < 1 || reminder > 30)) throw new ValidationError("Reminders can be every 1 to 30 days, or off.");
+        actions.push({ type: "request_signature", document_id, sender_id: sender || null, message, link_days: linkDays, reminder_days: reminder });
+      }
     } else if (a.type === "record_note") {
       const note = text(a.note, 300);
       if (!note) throw new ValidationError("Enter the note to record.");

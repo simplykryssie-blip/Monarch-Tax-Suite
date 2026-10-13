@@ -9,7 +9,11 @@ export type Condition = { field: string; op: "eq" | "neq" | "in"; value: string 
 
 export type SendEmailAction = { type: "send_email"; template_id: string; to: "customer" | "support"; include_setup_link: boolean };
 export type RecordNoteAction = { type: "record_note"; note: string };
-export type Action = SendEmailAction | RecordNoteAction;
+/** Fills a library document for the event's customer and emails a secure link. `sender_id` null = the default sender. */
+export type SendDocumentAction = { type: "send_document"; document_id: string; sender_id: string | null; message: string; link_days: number };
+/** Like send_document, but the customer signs the PDF in the app. */
+export type RequestSignatureAction = { type: "request_signature"; document_id: string; sender_id: string | null; message: string; link_days: number; reminder_days: number | null };
+export type Action = SendEmailAction | RecordNoteAction | SendDocumentAction | RequestSignatureAction;
 
 export type Workflow = {
   id: string;
@@ -36,6 +40,8 @@ export type Template = {
   subject: string;
   body: string;
   active: boolean;
+  /** Which of the tenant's sending addresses this email goes from; null = the default sender. */
+  sender_id?: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string;

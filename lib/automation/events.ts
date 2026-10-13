@@ -83,7 +83,30 @@ export const EVENTS: Record<string, EventDef> = {
     description: "An administrator revoked a license.",
     fields: {},
   },
+  "document.sent": {
+    label: "Document sent",
+    description: "A document from your library was sent to a client with a secure link.",
+    fields: { document_id: [] },
+  },
+  "document.signed": {
+    label: "Document signed",
+    description: "A client signed a document. The signed copy and its certificate are in the document's history.",
+    fields: { document_id: [] },
+  },
+  "document.signature_declined": {
+    label: "Signature declined",
+    description: "A client declined to sign a document.",
+    fields: { document_id: [] },
+  },
+  "document.signature_expired": {
+    label: "Signature request expired",
+    description: "A signature request reached its expiry date without being signed.",
+    fields: { document_id: [] },
+  },
 };
+
+/** Condition fields whose values are a tenant's own records (checked against them when a workflow is saved). */
+export const RECORD_FIELDS: Record<string, "document"> = { document_id: "document" };
 
 export const EVENT_TYPES = Object.keys(EVENTS);
 export const isEventType = (v: string) => Object.prototype.hasOwnProperty.call(EVENTS, v);

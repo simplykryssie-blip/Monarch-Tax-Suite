@@ -6,7 +6,13 @@ import { isEventType, EVENTS } from "./events.ts";
 import { isEmailAddress, type EmailSender } from "./email.ts";
 import { sanitizeError } from "./sanitize.ts";
 import { renderTemplate, SAMPLE_VALUES, VARIABLES, variablesIn } from "./template.ts";
-import type { Action, ActionResult, AutomationEvent, AutomationRepo, Condition, ErrorKind, Execution, SendEmailAction, Workflow } from "./types.ts";
+import { resolveSender, type ResolvedSender, type SendersRepo } from "./senders.ts";
+import { ValidationError } from "../commerce/validation.ts";
+import { createDelivery, deliveryPathFor, MissingValuesError, type DocumentDeps } from "../documents/service.ts";
+import { SAMPLE_FIELD_VALUES } from "../documents/fields.ts";
+import { documentValues } from "../documents/values.ts";
+import { documentEmail } from "../documents/emails.ts";
+import type { Action, ActionResult, AutomationEvent, AutomationRepo, Condition, ErrorKind, Execution, RequestSignatureAction, SendDocumentAction, SendEmailAction, Workflow } from "./types.ts";
 
 // The workflow engine. Rules:
 //  - Emitting the same event key twice never runs workflows twice.
@@ -35,6 +41,12 @@ export type AutomationDeps = {
   services?: Pick<ServiceOrdersRepo, "findServiceOrderByOrder"> | null;
   email: EmailSender;
   config: AutomationConfig;
+  /** The tenant's document library (send document / request signature steps). */
+  documents?: DocumentDeps | null;
+  /** The tenant's sending addresses. Absent: emails go from the configured platform sender. */
+  senders?: SendersRepo | null;
+  /** Used when the tenant has no verified sender of its own (only for tenants allowed the platform sender). */
+  fallbackSender?: ResolvedSender | null;
   now?: () => Date;
 };
 
@@ -54,9 +66,14 @@ export type EmitInput = {
   data?: Record<string, string | number | boolean | null>;
 };
 
-export function conditionsMatch(conditions: Condition[], data: AutomationEvent["data"]): boolean {
+/** Conditions on `product.<attribute>` read the attributes of the product behind the event's order. */
+export const PRODUCT_FIELD = /^product\.([a-z][a-z0-9_]{1,39})$/;
+
+export function conditionsMatch(conditions: Condition[], data: AutomationEvent["data"], product: Record<string, string> | null = null): boolean {
   return conditions.every((c) => {
-    const actual = data[c.field] === undefined || data[c.field] === null ? "" : String(data[c.field]);
+    const attr = c.field.match(PRODUCT_FIELD)?.[1];
+    const raw = attr ? product?.[attr] : data[c.field];
+    const actual = raw === undefined || raw === null ? "" : String(raw).trim();
     if (c.op === "eq") return actual === c.value;
     if (c.op === "neq") return actual !== c.value;
     return c.value.split(",").map((s) => s.trim()).includes(actual);
@@ -88,7 +105,9 @@ export async function emitEvent(deps: AutomationDeps, input: EmitInput): Promise
   });
   if (!created) return { duplicate: true, eventId: event.id, executionIds: [] };
 
-  const workflows = (await deps.repo.listWorkflows()).filter((w) => w.status === "active" && w.trigger_event === input.type && conditionsMatch(w.conditions, event.data));
+  const candidates = (await deps.repo.listWorkflows()).filter((w) => w.status === "active" && w.trigger_event === input.type);
+  const product = candidates.some((w) => w.conditions.some((c) => PRODUCT_FIELD.test(c.field))) ? await productAttributes(deps, event) : null;
+  const workflows = candidates.filter((w) => conditionsMatch(w.conditions, event.data, product));
   const executionIds: string[] = [];
   for (const wf of workflows) {
     const { execution, created: fresh } = await deps.repo.insertExecution({ workflow_id: wf.id, event_id: event.id, is_test: false, max_attempts: wf.max_attempts, next_attempt_at: iso(deps) });
@@ -115,6 +134,22 @@ export async function emitEvent(deps: AutomationDeps, input: EmitInput): Promise
 }
 
 // ------------------------------------------------------------------ context
+
+/** The attributes (product settings) of the product behind an event's order, for package conditions. */
+async function productAttributes(deps: AutomationDeps, event: AutomationEvent): Promise<Record<string, string> | null> {
+  let orderId = event.order_id;
+  if (!orderId && event.license_id) orderId = (await deps.commerce.getLicense(event.license_id))?.order_id ?? null;
+  const order = orderId ? await deps.commerce.getOrder(orderId) : null;
+  const product = order ? await deps.commerce.getProduct(order.product_id) : null;
+  return product ? { ...product.metadata } : null;
+}
+
+/** From / reply-to for an email: the chosen sender, else the tenant's default, else the platform sender. */
+async function senderFor(deps: AutomationDeps, senderId: string | null | undefined): Promise<{ from?: string; replyTo?: string | null; label?: string }> {
+  if (!deps.senders && !senderId) return {};
+  const s = await resolveSender(deps.senders ?? null, senderId ?? null, deps.fallbackSender ?? null);
+  return { from: s.from, replyTo: s.replyTo, label: s.label };
+}
 
 async function recipientFor(deps: AutomationDeps, event: AutomationEvent, who: SendEmailAction["to"]): Promise<string | null> {
   if (who === "support") return deps.config.supportRecipient;
@@ -242,7 +277,14 @@ async function runSendEmail(deps: AutomationDeps, exec: Execution, event: Automa
   } catch (e) {
     return { status: "failed", kind: "permanent", detail: sanitizeError(e, 200) };
   }
+  let sender;
+  try {
+    sender = await senderFor(deps, template.sender_id);
+  } catch (e) {
+    return { status: "failed", kind: "config", detail: sanitizeError(e, 240) };
+  }
   const result = await deps.email.send({
+    ...sender,
     to,
     subject: isTest ? `[TEST] ${rendered.subject}` : rendered.subject,
     html: rendered.html,
@@ -255,8 +297,80 @@ async function runSendEmail(deps: AutomationDeps, exec: Execution, event: Automa
   return { status: "ok", detail: `Email "${template.name}" sent to ${isTest ? "the test recipient" : action.to === "support" ? "support" : "the customer"}.`, messageId: result.id };
 }
 
+/**
+ * Send document / request signature: fill the library document for the event's customer, save the fingerprinted
+ * copy, and email the secure link. A retried run reuses the copy (and link) it already made.
+ */
+async function runDocumentStep(deps: AutomationDeps, exec: Execution, event: AutomationEvent, action: SendDocumentAction | RequestSignatureAction, index: number): Promise<ActionOutcome> {
+  const docs = deps.documents;
+  if (!docs) return { status: "failed", kind: "config", detail: "Document management is not set up for this account yet." };
+  const kind = action.type === "request_signature" ? "signature" : "send";
+  const isTest = exec.is_test;
+  const testRecipient = typeof event.data.test_recipient === "string" ? event.data.test_recipient : null;
+  const license = event.license_id ? await deps.commerce.getLicense(event.license_id) : null;
+  const customerId = event.customer_id ?? license?.customer_id ?? null;
+  const customer = !isTest && customerId ? await deps.commerce.getCustomer(customerId) : null;
+  const to = isTest ? testRecipient : customer?.email ?? null;
+  if (!to || !isEmailAddress(to)) return { status: "failed", kind: "permanent", detail: isTest ? "No valid test recipient." : "There is no valid email address for this customer, so nothing was sent." };
+  if (!isTest && deps.config.env !== "production" && !deps.config.testRecipients.map((r) => r.toLowerCase()).includes(to.toLowerCase())) {
+    return { status: "skipped", kind: "skipped", detail: `Not sent: this is a ${deps.config.env} environment, where email goes only to the addresses in AUTOMATION_TEST_RECIPIENTS.` };
+  }
+
+  const profile = await docs.repo.getProfile();
+  let values: Record<string, string>;
+  if (isTest) {
+    values = { ...SAMPLE_FIELD_VALUES };
+  } else {
+    const orderId = event.order_id ?? license?.order_id ?? null;
+    const order = orderId ? await deps.commerce.getOrder(orderId) : null;
+    const product = order ? await deps.commerce.getProduct(order.product_id) : null;
+    const onboarding = license ? await deps.repo.getProfile(license.id).catch(() => null) : null;
+    values = documentValues({ profile, customer, businessName: onboarding?.business_name ?? null, order, product, now: nowOf(deps) });
+  }
+
+  let sender;
+  try {
+    sender = await senderFor(deps, action.sender_id);
+  } catch (e) {
+    return { status: "failed", kind: "config", detail: sanitizeError(e, 240) };
+  }
+  let made;
+  try {
+    made = await createDelivery(docs, {
+      documentId: action.document_id, kind, recipientEmail: to, recipientName: isTest ? "Test recipient" : customer?.full_name ?? null,
+      customerId: isTest ? null : customerId, orderId: isTest ? null : event.order_id ?? license?.order_id ?? null,
+      executionId: exec.id, actionIndex: index, isTest, values, linkDays: action.link_days,
+      reminderDays: action.type === "request_signature" ? action.reminder_days : null, createdBy: null,
+    });
+  } catch (e) {
+    if (e instanceof MissingValuesError || e instanceof ValidationError) return { status: "failed", kind: "config", detail: sanitizeError(e, 300) };
+    throw e;
+  }
+  const origin = (await deps.config.origin()).replace(/\/$/, "");
+  const firmName = profile?.display_name ?? "Your tax office";
+  const email = documentEmail({
+    kind, firmName, documentName: made.document.name, clientFirstName: isTest ? "there" : values.client_first_name || null,
+    message: action.message, url: `${origin}${deliveryPathFor(kind, made.token)}`, expiresAt: new Date(made.delivery.expires_at),
+  });
+  const result = await deps.email.send({
+    ...sender,
+    to,
+    subject: isTest ? `[TEST] ${email.subject}` : email.subject,
+    html: email.html,
+    text: isTest ? `*** TEST EMAIL: sample data only ***\n\n${email.text}` : email.text,
+    idempotencyKey: `${exec.id}:${index}`,
+  });
+  if (!result.ok) return { status: "failed", kind: result.kind, detail: result.message };
+  if (!isTest && !made.reused && kind === "send") {
+    await emitEvent(deps, { type: "document.sent", key: `delivery:${made.delivery.id}:sent`, customerId, orderId: made.delivery.order_id, licenseId: event.license_id, data: { document_id: made.document.id } }).catch((e) => console.error(`automation: document.sent not recorded: ${sanitizeError(e, 120)}`));
+  }
+  const what = kind === "signature" ? "Signature request for" : "Document";
+  return { status: "ok", detail: `${what} "${made.document.name}" sent to ${isTest ? "the test recipient" : "the customer"}${made.reused ? " (same copy as the earlier attempt)" : ""}.`, messageId: result.id };
+}
+
 async function runAction(deps: AutomationDeps, exec: Execution, event: AutomationEvent, action: Action, index: number): Promise<ActionOutcome> {
   if (action.type === "record_note") return { status: "ok", detail: action.note.slice(0, 300) };
+  if (action.type === "send_document" || action.type === "request_signature") return runDocumentStep(deps, exec, event, action, index);
   return runSendEmail(deps, exec, event, action, index);
 }
 

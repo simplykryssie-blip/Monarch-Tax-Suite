@@ -1,5 +1,12 @@
 import "server-only";
-import { appOrigin, commerceRepo, serviceOrdersRepo, tenantDb } from "../admin";
+import { appOrigin } from "../admin";
+import { SupabaseCommerceRepo } from "../commerce/supabase-repo.ts";
+import { SupabaseServiceOrdersRepo } from "../commerce/supabase-services.ts";
+import { tenantClient } from "../supabase/service";
+import { currentTenantId, MONARCH_TENANT_ID } from "../tenants.ts";
+import { documentDeps } from "../documents/server";
+import { SupabaseSendersRepo } from "./supabase-senders.ts";
+import type { ResolvedSender } from "./senders.ts";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { SupabaseCrmRepo } from "../crm/supabase-repo.ts";
 import type { AutomationConfig, AutomationDeps, EmitInput } from "./engine.ts";
@@ -26,15 +33,30 @@ export function automationConfig(): AutomationConfig {
   };
 }
 
-export function automationDeps(): AutomationDeps {
-  const db = tenantDb();
+/** The platform's configured sender (MONARCH_EMAIL_FROM). Only Monarch, tenant #1, may fall back to it. */
+function platformSender(tenantId: string): ResolvedSender | null {
+  const from = emailConfig(env()).from;
+  return tenantId === MONARCH_TENANT_ID && from ? { from, replyTo: emailConfig(env()).replyTo, label: from } : null;
+}
+
+export function automationDeps(tenantId: string = currentTenantId()): AutomationDeps {
+  const db = tenantClient(tenantId);
+  let documents = null;
+  try {
+    documents = documentDeps(tenantId);
+  } catch {
+    // Without MONARCH_ENCRYPTION_KEY document steps fail with a clear configuration error; everything else works.
+  }
   return {
     repo: new SupabaseAutomationRepo(db),
-    commerce: commerceRepo(),
+    commerce: new SupabaseCommerceRepo(db),
     crm: new SupabaseCrmRepo(db),
-    services: serviceOrdersRepo(),
+    services: new SupabaseServiceOrdersRepo(db),
     email: new ResendEmailSender(emailConfig(env())),
     config: automationConfig(),
+    documents,
+    senders: new SupabaseSendersRepo(db),
+    fallbackSender: platformSender(tenantId),
   };
 }
 
