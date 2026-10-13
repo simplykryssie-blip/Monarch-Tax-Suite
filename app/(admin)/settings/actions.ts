@@ -7,9 +7,9 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps } from "@/lib/automation/server";
 import { emailConfig } from "@/lib/automation/email.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
-import { cleanAttribute, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
+import { AlreadyRegisteredError, cleanAttribute, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
 import { documentDeps } from "@/lib/documents/server";
-import { currentTenantId } from "@/lib/tenants.ts";
+import { currentTenantId, MONARCH_TENANT_ID } from "@/lib/tenants.ts";
 
 // Firm profile, sending domains and senders, and package attributes for the current tenant. Every action re-checks
 // administrator access; the tenant-scoped client means only this tenant's rows can be read or changed.
@@ -59,7 +59,17 @@ export async function connectDomainAction(form: FormData) {
     const domain = cleanDomain(str(form, "domain"));
     const repo = automationDeps().senders!;
     if ((await repo.listDomains()).some((d) => d.domain === domain)) throw new ValidationError("That domain is already connected.");
-    const created = await domains().create(domain);
+    const api = domains();
+    let created;
+    try {
+      created = await api.create(domain);
+    } catch (e) {
+      // Only the platform's own tenant may take over a domain already registered on the platform's provider account
+      // (for example Monarch's existing sending domain). Anyone else must verify their own domain through DNS.
+      if (!(e instanceof AlreadyRegisteredError) || currentTenantId() !== MONARCH_TENANT_ID) throw e;
+      created = await api.findByName(domain);
+      if (!created) throw e;
+    }
     await repo.insertDomain({ domain, provider_domain_id: created.id, status: created.status, dns_records: created.records, created_by: adminId });
     return `${domain} added. Add the DNS records shown below at your domain host, then press Check.`;
   });

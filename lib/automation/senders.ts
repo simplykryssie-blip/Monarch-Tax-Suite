@@ -125,6 +125,12 @@ const mapStatus = (s: unknown): EmailDomainRow["status"] => (s === "verified" ? 
 const mapRecords = (r: unknown): DnsRecord[] =>
   Array.isArray(r) ? r.slice(0, 20).map((x: Record<string, unknown>) => ({ record: String(x.record ?? ""), type: String(x.type ?? ""), name: String(x.name ?? ""), value: String(x.value ?? ""), priority: typeof x.priority === "number" ? x.priority : null, status: typeof x.status === "string" ? x.status : null })) : [];
 
+export class AlreadyRegisteredError extends ValidationError {
+  constructor() {
+    super("That domain is already registered with the email provider. Contact support to move it to this account.");
+  }
+}
+
 /** Domain management with the email provider. Needs a full-access API key (sending-only keys cannot manage domains). */
 export class ResendDomains {
   private key: string | null;
@@ -143,7 +149,7 @@ export class ResendDomains {
     }
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (res.status === 401 || res.status === 403) throw new ValidationError("The email provider key can send email but cannot manage domains. Use a full-access Resend API key in RESEND_API_KEY to connect domains here.");
-    if (res.status === 409 || (res.status === 422 && /already/i.test(String(body.message ?? "")))) throw new ValidationError("That domain is already registered with the email provider. Contact support to move it to this account.");
+    if (res.status === 409 || (res.status === 422 && /already/i.test(String(body.message ?? "")))) throw new AlreadyRegisteredError();
     if (!res.ok) throw new ValidationError(`The email provider refused the request: ${sanitizeError(String(body.message ?? res.status), 160)}`);
     return body;
   }
@@ -154,6 +160,12 @@ export class ResendDomains {
   async get(id: string): Promise<ProviderDomain> {
     const b = await this.call(`/domains/${encodeURIComponent(id)}`);
     return { id: String(b.id), status: mapStatus(b.status), records: mapRecords(b.records) };
+  }
+  /** A domain already registered on the platform's own provider account, by name. */
+  async findByName(domain: string): Promise<ProviderDomain | null> {
+    const b = await this.call("/domains");
+    const found = (Array.isArray(b.data) ? b.data : []).find((d: Record<string, unknown>) => String(d.name ?? "").toLowerCase() === domain);
+    return found ? this.get(String((found as Record<string, unknown>).id)) : null;
   }
   async verify(id: string): Promise<void> {
     await this.call(`/domains/${encodeURIComponent(id)}/verify`, { method: "POST" });
