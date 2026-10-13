@@ -5,6 +5,7 @@ import { BuyForm } from "@/components/storefront/buy-form";
 import { LEGAL_PAGES_APPROVED } from "@/lib/legal";
 import { ProductView } from "@/components/storefront/product-view";
 import { commerceRepo } from "@/lib/admin";
+import { shareMeta } from "@/lib/site-meta";
 import { publishedProductBySlug, toStorefrontImages } from "@/lib/storefront";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,9 @@ type Params = { params: Promise<{ slug: string }>; searchParams?: Promise<{ erro
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const product = await publishedProductBySlug((await params).slug);
-  return product ? { title: `${product.name} | Monarch Tax Suite`, description: product.description?.slice(0, 160) } : { title: "Not found | Monarch Tax Suite" };
+  if (!product) return { title: "Not found | Monarch Tax Suite" };
+  const description = product.description?.slice(0, 160);
+  return { title: `${product.name} | Monarch Tax Suite`, description, ...shareMeta({ title: product.name, description, path: `/shop/${product.slug}` }) };
 }
 
 /** Public product page. Drafts, unpublished and archived products return 404. */
