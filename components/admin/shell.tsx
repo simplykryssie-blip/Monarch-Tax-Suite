@@ -30,6 +30,8 @@ const NAV: Entry[] = [
         items: [
           { label: "EROs & EFINs", icon: "firms", href: "/efin/list" },
           { label: "Renewals", icon: "bell", href: "/efin/renewals" },
+          { label: "Fees & statements", icon: "reports", href: "/fees" },
+          { label: "Office access", icon: "customers", href: "/offices" },
         ],
       },
       {

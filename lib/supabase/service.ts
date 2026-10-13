@@ -23,7 +23,7 @@ export function tenantClient(tenantId: string) {
   });
 }
 
-export type PlatformAccessReason = "admin_lookup" | "rate_limit" | "document_link" | "form_link" | "wisp_link";
+export type PlatformAccessReason = "admin_lookup" | "rate_limit" | "document_link" | "form_link" | "wisp_link" | "office_member" | "office_invite";
 
 /**
  * Platform access: the service role without a tenant, which bypasses row-level security. Only for platform-level
