@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BUILDER_FIELDS, BUILDER_STEPS, calculateScore, CATEGORIES, CATEGORY_ADVICE, CATEGORY_KEYS, DISCLAIMER, EMAIL, ERO_QUESTIONS,
-  feeComparison, numberDraft, QUESTIONS, scoreVerdict, type EroAnswers, type WispAnswers,
+  feeComparison, numberDraft, pageDisclaimer, PURCHASE_ACK, QUESTIONS, scoreVerdict, type EroAnswers, type WispAnswers,
 } from "@/lib/wisp/content.ts";
 import { recordAuditAction, startWispCheckoutAction } from "@/app/wisp/actions";
 import { TermsLinks } from "@/components/storefront/buy-form";
@@ -94,6 +94,7 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
           <p className="hero-eyebrow">IRS COMPLIANCE TOOL FOR TAX PROFESSIONALS</p>
           <h1 className="hero-title">Do you have a <span className="gold-gradient-text">Written Information Security Plan?</span></h1>
           <p className="hero-sub">The IRS requires every tax preparer to have a WISP. Take our free 2-minute audit to find out where you stand — and what you&apos;re risking without one.</p>
+          <p className="hero-disclaimer">{pageDisclaimer(brandName)}</p>
           <div className="hero-ctas"><a className="btn btn-gold btn-lg" href="#audit">Take the Free Audit</a><a className="btn btn-outline btn-lg" href="#how">How It Works</a></div>
           <div className="hero-stats">
             <div className="stat"><span className="stat-num">12</span><span className="stat-label">Compliance Questions</span></div>
@@ -258,6 +259,7 @@ function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBu
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [email, setEmail] = useState("");
   const [accept, setAccept] = useState(false);
+  const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(cancelled ? "Checkout was cancelled, so you haven't been charged. Your answers are still here if you'd like to finish." : null);
   const [emailError, setEmailError] = useState(false);
@@ -298,12 +300,13 @@ function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBu
     const e = email.trim();
     if (!EMAIL.test(e)) { setEmailError(true); return; }
     setEmailError(false);
+    if (!ack) { setProblem("Please tick the box to confirm you understand the purchase terms."); return; }
     if (!accept) { setProblem("Please confirm that you accept the Terms of Service and the Refund Policy."); return; }
     setBusy(true);
     setProblem(null);
     try {
       // On success the server sends the browser to Stripe; only a problem comes back here.
-      const r = await startWispCheckoutAction({ answers: data, email: e, auditId, acceptTerms: accept });
+      const r = await startWispCheckoutAction({ answers: data, email: e, auditId, acceptTerms: accept, acknowledgePurchase: ack });
       if (r && !r.ok) {
         setProblem(r.error);
         if (r.field === "delivery_email") setEmailError(true);
@@ -374,11 +377,12 @@ function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBu
                   <input id="delivery_email" type="email" autoComplete="email" value={email} placeholder="you@yourfirm.com" onChange={(e) => setEmail(e.target.value)} aria-invalid={emailError} />
                   {emailError && <p className="field-error">Please enter a valid email address.</p>}
                 </div>
+                <label className="check-field"><input type="checkbox" required checked={ack} onChange={(e) => setAck(e.target.checked)} /> <span>{PURCHASE_ACK}</span></label>
                 {canBuy && <label className="check-field"><input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} /> <span>I have read and accept <TermsLinks />.</span></label>}
               </div>
               <div className="builder-nav">
                 <button type="button" className="btn btn-outline" onClick={() => go(-1)}>← Back</button>
-                <button type="button" className="btn btn-gold" onClick={complete} disabled={busy || !canBuy}>{busy ? "Opening secure checkout…" : "Complete My WISP — $25"}</button>
+                <button type="button" className="btn btn-gold" onClick={complete} disabled={busy || !canBuy || !ack}>{busy ? "Opening secure checkout…" : "Complete My WISP — $25"}</button>
               </div>
               {!canBuy && <p className="fine-print">Online checkout isn&apos;t available yet. Please contact us to get your WISP.</p>}
               <p className="fine-print" style={{ marginTop: 16 }}>Secure payment by Stripe. {DISCLAIMER}</p>
