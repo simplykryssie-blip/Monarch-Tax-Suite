@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { commerceRepo, requireAdmin } from "@/lib/admin";
 import { Badge, EmptyRow, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 import { PLATFORM_GUIDES } from "@/lib/commerce/platforms.ts";
+import { formDeps } from "@/lib/forms/server";
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
@@ -23,6 +24,17 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   if (!result.ok) return <SetupRequired message={result.message} />;
   if (!result.data) notFound();
   const { customer, orders, licenses, installations, products } = result.data;
+  // Form submissions filed on this customer, each with its PDF (empty if the Form Builder is not installed).
+  const submissions = await (async () => {
+    try {
+      const deps = formDeps();
+      const subs = await deps.repo.listSubmissionsForCustomer(customer.id);
+      const forms = new Map((await deps.repo.listForms()).map((f) => [f.id, f]));
+      return subs.map((s) => ({ s, form: forms.get(s.form_id) }));
+    } catch {
+      return [];
+    }
+  })();
 
   return (
     <>
@@ -89,6 +101,25 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </div>
         </section>
       </div>
+      <section className="monarch-panel">
+        <div className="monarch-panel-head"><h2>Form submissions</h2></div>
+        <div className="monarch-table-wrap">
+          <table>
+            <thead><tr><th>FORM</th><th>#</th><th>SUBMITTED</th><th>STATUS</th><th>PDF</th></tr></thead>
+            <tbody>
+              {submissions.length === 0 ? <EmptyRow colSpan={5}>No form submissions.</EmptyRow> : submissions.map(({ s, form }) => (
+                <tr key={s.id}>
+                  <td><Link href={`/forms/${s.form_id}/submissions/${s.id}`}><b>{form?.name ?? "Form"}</b></Link></td>
+                  <td>#{s.number}</td>
+                  <td>{when(s.submitted_at)}</td>
+                  <td><Badge value={s.status} /></td>
+                  <td>{s.pdf_path ? <a href={`/forms/pdf/${s.id}`}>Download PDF</a> : "Being made"}<small className="monarch-subcell">{s.pdf_sha256 ? `SHA-256 ${s.pdf_sha256.slice(0, 16)}…` : ""}</small></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
       <div className="monarch-notice"><b>SUPPORT HISTORY</b> No support system is connected yet, so there is no support history to show.</div>
     </>
   );

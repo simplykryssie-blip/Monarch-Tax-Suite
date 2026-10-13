@@ -45,9 +45,15 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
             </span>
           ))}
           <datalist id="condition-fields">
-            {["origin", "provider", "error_kind", "document_id", ...catalog.attributes.map((a) => `product.${a.key}`)].map((f) => <option key={f} value={f} />)}
+            {["origin", "provider", "error_kind", "document_id", "form_id", ...catalog.attributes.map((a) => `product.${a.key}`), ...[...new Set((catalog.forms ?? []).flatMap((f) => f.questions.filter((q) => q.type === "dropdown" || q.type === "radio").map((q) => `answer.${q.key}`)))]].map((f) => <option key={f} value={f} />)}
           </datalist>
           <small className="monarch-muted">Fields depend on the trigger: origin, provider, error_kind, or document_id for document events (a document&apos;s id from its page). Leave blank to run every time.</small>
+          {(catalog.forms ?? []).length > 0 && (
+            <small className="monarch-muted">
+              Form submitted: limit it to one form with <code>form_id</code> is the form&apos;s id, then test dropdown or radio answers with <code>answer.&lt;key&gt;</code>.{" "}
+              {(catalog.forms ?? []).map((f) => <span key={f.id}>&ldquo;{f.name}&rdquo; <code>{f.id}</code>{f.questions.some((q) => q.type === "dropdown" || q.type === "radio") ? `: ${f.questions.filter((q) => q.type === "dropdown" || q.type === "radio").map((q) => `answer.${q.key} (${q.options.join(", ")})`).join("; ")}` : ""}. </span>)}
+            </small>
+          )}
           {catalog.attributes.length > 0 && <small className="monarch-muted">Package attributes, for any trigger with an order: {catalog.attributes.map((a) => <span key={a.key}><code>product.{a.key}</code>{a.kind === "choice" ? ` (${a.options.join(", ")})` : ""} </span>)}</small>}
         </fieldset>
         <fieldset className="is-wide"><legend>Steps, in order</legend>

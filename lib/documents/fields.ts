@@ -27,7 +27,9 @@ export const MERGE_FIELDS: Record<string, { label: string; group: FieldGroup }> 
 export const SIGNATURE_FIELD = "signature";
 
 export const SIGNING_FIELDS = Object.keys(MERGE_FIELDS).filter((k) => MERGE_FIELDS[k].group === "signing");
-export const isMergeField = (name: string) => Object.prototype.hasOwnProperty.call(MERGE_FIELDS, name);
+/** `{{form.<key>}}`: the answer to a form question, for documents sent by a workflow that starts on a form submission. */
+export const FORM_FIELD = /^form\.([a-z][a-z0-9_]{0,39})$/;
+export const isMergeField = (name: string) => Object.prototype.hasOwnProperty.call(MERGE_FIELDS, name) || FORM_FIELD.test(name);
 
 /** Values for a preview with obviously fake data. */
 export const SAMPLE_FIELD_VALUES: Record<string, string> = {

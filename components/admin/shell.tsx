@@ -54,6 +54,7 @@ const NAV: Entry[] = [
     items: [
       { label: "Automation", icon: "automation", href: "/automation" },
       { label: "Documents", icon: "document", href: "/documents" },
+      { label: "Forms", icon: "checklist", href: "/forms" },
       { label: "Support", icon: "support" },
       { label: "Marketing", icon: "marketing" },
       { label: "Reports", icon: "reports" },

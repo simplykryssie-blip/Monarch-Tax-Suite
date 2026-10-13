@@ -5,6 +5,9 @@ import { SupabaseServiceOrdersRepo } from "../commerce/supabase-services.ts";
 import { tenantClient } from "../supabase/service";
 import { currentTenantId, MONARCH_TENANT_ID } from "../tenants.ts";
 import { documentDeps } from "../documents/server";
+import { formDeps } from "../forms/server";
+import { answerStrings } from "../forms/service.ts";
+import { inputFields } from "../forms/definition.ts";
 import { SupabaseSendersRepo } from "./supabase-senders.ts";
 import type { ResolvedSender } from "./senders.ts";
 import type { WorkflowCatalog } from "./validate.ts";
@@ -43,8 +46,10 @@ function platformSender(tenantId: string): ResolvedSender | null {
 export function automationDeps(tenantId: string = currentTenantId()): AutomationDeps {
   const db = tenantClient(tenantId);
   let documents = null;
+  let forms = null;
   try {
     documents = documentDeps(tenantId);
+    forms = formDeps(tenantId);
   } catch {
     // Without MONARCH_ENCRYPTION_KEY document steps fail with a clear configuration error; everything else works.
   }
@@ -58,23 +63,43 @@ export function automationDeps(tenantId: string = currentTenantId()): Automation
     documents,
     senders: new SupabaseSendersRepo(db),
     fallbackSender: platformSender(tenantId),
+    formAnswers: forms ? (id: string) => answerStrings(forms, id) : null,
   };
 }
 
 /** The tenant's own documents, verified senders and package attributes, for building and checking workflows. */
 export async function workflowCatalog(deps: AutomationDeps = automationDeps()): Promise<WorkflowCatalog> {
-  const [documents, senders, domains, attributes] = await Promise.all([
-    deps.documents ? deps.documents.repo.listDocuments().catch(() => []) : [],
+  const docsRepo = deps.documents?.repo;
+  const [documents, senders, domains, attributes, forms] = await Promise.all([
+    docsRepo
+      ? docsRepo.listDocuments().then((list) => Promise.all(list.map(async (d) => ({ ...d, merge_fields: d.current_version_id ? (await docsRepo.getVersion(d.current_version_id).catch(() => null))?.merge_fields ?? [] : [] })))).catch(() => [])
+      : [],
     deps.senders ? deps.senders.listSenders().catch(() => []) : [],
     deps.senders ? deps.senders.listDomains().catch(() => []) : [],
     deps.senders ? deps.senders.listPackageAttributes().catch(() => []) : [],
+    publishedForms(),
   ]);
   const verified = new Map(domains.filter((d) => d.status === "verified").map((d) => [d.id, d]));
   return {
+    forms,
     documents,
     senders: senders.filter((s) => !s.archived_at && verified.has(s.domain_id)).map((s) => ({ ...s, address: `${s.local_part}@${verified.get(s.domain_id)!.domain}` })),
     attributes,
   };
+}
+
+/** The tenant's published forms and their questions, for form workflows. */
+async function publishedForms(): Promise<NonNullable<WorkflowCatalog["forms"]>> {
+  try {
+    const f = formDeps();
+    const list = (await f.repo.listForms()).filter((x) => x.current_version_id && x.status !== "archived");
+    return await Promise.all(list.map(async (x) => {
+      const v = await f.repo.getVersion(x.current_version_id!);
+      return { id: x.id, name: x.name, questions: v ? inputFields(v.definition).map((q) => ({ key: q.key, label: q.label, type: q.type, options: q.options ?? [] })) : [] };
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export function setupSecrets(): CrmSecrets | null {

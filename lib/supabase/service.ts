@@ -23,11 +23,11 @@ export function tenantClient(tenantId: string) {
   });
 }
 
-export type PlatformAccessReason = "admin_lookup" | "rate_limit" | "document_link";
+export type PlatformAccessReason = "admin_lookup" | "rate_limit" | "document_link" | "form_link";
 
 /**
  * Platform access: the service role without a tenant, which bypasses row-level security. Only for platform-level
- * tables (admin_users, rate_limit_counters, tenants), and to find which tenant a public document link belongs to.
+ * tables (admin_users, rate_limit_counters, tenants), and to find which tenant a public document or form link belongs to.
  * Each use is logged with its reason. Inserting tenant data
  * through it fails, because tenant rows need a tenant.
  */

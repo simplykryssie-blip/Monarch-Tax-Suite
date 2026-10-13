@@ -14,6 +14,8 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   "/downloads",
   // Secure document links sent by a firm: the link token is the credential, checked again on every request.
   "/d/", "/sign/",
+  // Public forms: anyone with the link may fill them in; every action is limited per visitor and checked again on the server.
+  "/f/",
   // Password reset: the email link lands on /auth/callback; /reset-password checks for the session itself.
   "/forgot-password", "/reset-password", "/auth/",
   // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).

@@ -51,7 +51,7 @@ export default async function DocumentPage({ params, searchParams }: { params: P
             </p>
             <h3>Merge fields</h3>
             {current.merge_fields.length ? (
-              <ul>{current.merge_fields.map((f) => <li key={f}><code>{f}</code> {MERGE_FIELDS[f]?.label}</li>)}</ul>
+              <ul>{current.merge_fields.map((f) => <li key={f}><code>{f}</code> {MERGE_FIELDS[f]?.label ?? (f.startsWith("form.") ? "The answer to this form question (workflows that start on a form submission)" : "")}</li>)}</ul>
             ) : <p className="monarch-muted">None: this document is sent exactly as uploaded.</p>}
             {canSign && <p className="monarch-muted">{current.has_signature_field ? "The signature goes in the form field named “signature”." : "No form field named “signature”: the signature is placed on the signing certificate page."}</p>}
           </>
