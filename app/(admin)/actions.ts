@@ -75,7 +75,10 @@ export async function setProductStatusAction(form: FormData) {
   await requireAdmin();
   const productId = id(form);
   await mutate(`/products/${productId}`, async () => {
-    const product = await setProductStatus(commerceRepo(), productId, parseProductStatus(str(form, "status")));
+    const status = parseProductStatus(str(form, "status"));
+    // Archiving goes through the shared archive actions, so it is logged and can be restored.
+    if (status === "archived") throw new ValidationError("Use Remove (archive) at the bottom of the page.");
+    const product = await setProductStatus(commerceRepo(), productId, status);
     return { notice: `Product is now ${product.status}.${await stripeAvailabilityNote(product.id)}${await closeOpenCheckoutsNote(product.id)}` };
   });
 }

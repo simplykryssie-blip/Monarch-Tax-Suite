@@ -7,6 +7,7 @@ import { OnboardingPanel } from "@/components/admin/onboarding-panel";
 import { LicenseDownloadsPanel } from "@/components/admin/license-downloads-panel";
 import { CrmPanel } from "@/components/admin/crm-panel";
 import { Badge, EmptyRow, Flash, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { ArchivePanel } from "@/components/admin/archive";
 import { latestAvailable } from "@/lib/commerce/versions.ts";
 
 export default async function LicensePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -130,6 +131,7 @@ export default async function LicensePage({ params, searchParams }: { params: Pr
           </table>
         </div>
       </section>
+      <ArchivePanel entity="license" id={license.id} />
     </>
   );
 }

@@ -1,3 +1,4 @@
+import type { ArchiveFields } from "../archive.ts";
 import type { DocumentFileType } from "./files.ts";
 
 // Document management rows. Every row belongs to one tenant; repositories are built on the tenant-scoped database
@@ -29,7 +30,7 @@ export type LibraryDocument = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 
 export type DocumentVersion = {
   id: string;

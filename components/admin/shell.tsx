@@ -65,6 +65,7 @@ const NAV: Entry[] = [
           { label: "Firm profile", icon: "office", href: "/settings/firm" },
           { label: "Email sending", icon: "bell", href: "/settings/email" },
           { label: "Package attributes", icon: "checklist", href: "/settings/package-attributes" },
+          { label: "Archive history", icon: "reports", href: "/settings/archive" },
           { label: "Software & banking", icon: "settings", href: "/bureau/settings" },
           { label: "History", icon: "reports", href: "/bureau/settings/history" },
         ],

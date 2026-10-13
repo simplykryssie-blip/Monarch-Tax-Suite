@@ -7,7 +7,7 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { documentDeps } from "@/lib/documents/server";
-import { finishVersionUpload, removeDocument, restoreDocument, revokeDelivery, setConsentText, startVersionUpload } from "@/lib/documents/service.ts";
+import { finishVersionUpload, revokeDelivery, setConsentText, startVersionUpload } from "@/lib/documents/service.ts";
 import { sendDocumentManually } from "@/lib/documents/manual.ts";
 
 // Document library actions. Every action re-checks administrator access and acts only on the current tenant's rows
@@ -81,24 +81,6 @@ export async function saveConsentAction(form: FormData) {
     if (!UUID.test(id)) throw new ValidationError("Document not found.");
     await setConsentText(documentDeps(), id, str(form, "consent"), adminId);
     return { notice: "Signing consent statement saved. New signature requests show this text; earlier ones keep the text their signer saw." };
-  });
-}
-
-export async function removeDocumentAction(form: FormData) {
-  const id = str(form, "id");
-  await act(`/documents/${id}`, async (adminId) => {
-    if (!UUID.test(id)) throw new ValidationError("Document not found.");
-    const r = await removeDocument(documentDeps(), id, adminId);
-    return r === "deleted" ? { to: "/documents", notice: "Document deleted." } : { notice: "Archived. It was sent before, so its history is kept. Workflows can no longer send it." };
-  });
-}
-
-export async function restoreDocumentAction(form: FormData) {
-  const id = str(form, "id");
-  await act(`/documents/${id}`, async (adminId) => {
-    if (!UUID.test(id)) throw new ValidationError("Document not found.");
-    await restoreDocument(documentDeps(), id, adminId);
-    return { notice: "Restored." };
   });
 }
 

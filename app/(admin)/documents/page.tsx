@@ -3,10 +3,13 @@ import { requireAdmin } from "@/lib/admin";
 import { documentDeps } from "@/lib/documents/server";
 import { Badge, EmptyRow, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 import { DocumentUploader } from "@/components/admin/document-uploader";
+import { ArchiveRowButton, ArchiveTabs } from "@/components/admin/archive";
+import { inView, viewCounts, viewOf } from "@/lib/archive.ts";
 
-export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ view?: string; notice?: string; error?: string }> }) {
   await requireAdmin();
-  const { notice, error } = await searchParams;
+  const { notice, error, view: rawView } = await searchParams;
+  const view = viewOf(rawView);
   const result = await load(async () => {
     const deps = documentDeps();
     const documents = await deps.repo.listDocuments();
@@ -30,14 +33,15 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
             <p className="monarch-muted">PDF or Word (.docx), up to 25 MB. In Word, type merge fields like {"{{client_name}}"} in the text. In a PDF, name fillable form fields after the merge field. For documents sent by a workflow that starts on a form submission, {"{{form.question_key}}"} fills in that answer. Only PDFs can be signed: export to PDF before uploading a document that needs a signature.</p>
           </section>
           <section className="monarch-panel">
+            <div style={{ padding: "0 20px" }}><ArchiveTabs base="/documents" view={view} counts={viewCounts(result.data.map((r) => r.d))} /></div>
             <div className="monarch-table-wrap">
               <table>
-                <thead><tr><th>NAME</th><th>TYPE</th><th>TEMPLATE</th><th>STATUS</th><th>VERSION</th><th>SENT</th><th>UPDATED</th></tr></thead>
+                <thead><tr><th>NAME</th><th>TYPE</th><th>TEMPLATE</th><th>STATUS</th><th>VERSION</th><th>SENT</th><th>{view === "archived" ? "ARCHIVED" : "UPDATED"}</th>{view === "archived" && <th />}</tr></thead>
                 <tbody>
-                  {result.data.length === 0 ? (
-                    <EmptyRow colSpan={7}>No documents yet. Upload your first one above.</EmptyRow>
+                  {result.data.filter((r) => inView([r.d], view).length).length === 0 ? (
+                    <EmptyRow colSpan={view === "archived" ? 8 : 7}>{view === "archived" ? "No archived documents." : "No documents yet. Upload your first one above."}</EmptyRow>
                   ) : (
-                    result.data.map(({ d, version, sent }) => (
+                    result.data.filter((r) => inView([r.d], view).length).map(({ d, version, sent }) => (
                       <tr key={d.id}>
                         <td><Link href={`/documents/${d.id}`}><b>{d.name}</b></Link>{d.description && <small className="monarch-subcell">{d.description}</small>}</td>
                         <td>{d.file_type.toUpperCase()}</td>
@@ -45,7 +49,8 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
                         <td><Badge value={d.status} /></td>
                         <td>{version ? `v${version.version}` : "—"}</td>
                         <td>{sent}</td>
-                        <td>{when(d.updated_at)}</td>
+                        <td>{view === "archived" ? when(d.archived_at ?? null) : when(d.updated_at)}</td>
+                        {view === "archived" && <td><ArchiveRowButton entity="document" id={d.id} archived back="/documents?view=archived" /></td>}
                       </tr>
                     ))
                   )}

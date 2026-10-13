@@ -1,3 +1,4 @@
+import type { ArchiveLogEntry } from "../lib/archive.ts";
 import { randomUUID } from "node:crypto";
 import type {
   AuthorizedDomain,
@@ -97,6 +98,8 @@ export class MemoryRepo implements CommerceRepo {
     return this.clone(row);
   }
   async updateCustomer(id: string, patch: Partial<Customer>) { return this.patch(this.customers, id, patch); }
+  archiveLog: ArchiveLogEntry[] = [];
+  async logArchive(entry: ArchiveLogEntry) { this.archiveLog.push(this.clone(entry)); }
 
   async listOrders() { return this.clone(this.orders); }
   checkouts: { license_id: string; tax_year: number; stripe_session_id: string; expires_at: string; created_at: string }[] = [];

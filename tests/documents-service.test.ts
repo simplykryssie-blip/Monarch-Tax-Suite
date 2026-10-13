@@ -148,10 +148,11 @@ describe("signing", () => {
     await assert.rejects(signDocument(declined.deps, declined.made.token, sign), /already declined/);
 
     const r = await requestSignature({ reminderDays: 3, linkDays: 7 });
-    r.clock.t = new Date("2026-10-16T13:00:00Z");
+    // The in-memory repo stamps created_at with the real clock, so reminders are measured from now.
+    r.clock.t = new Date(Date.now() + 3 * 86_400_000 + 3_600_000);
     assert.equal((await sweepSignatures(r.deps)).remind.length, 1);
     assert.equal((await sweepSignatures(r.deps)).remind.length, 0, "not twice in a row");
-    r.clock.t = new Date("2026-10-21T13:00:00Z");
+    r.clock.t = new Date(Math.max(Date.now(), Date.parse("2026-10-13T12:00:00Z")) + 8 * 86_400_000);
     assert.equal((await sweepSignatures(r.deps)).expired.length, 1);
     await assert.rejects(signDocument(r.deps, r.made.token, sign), /expired/);
   });

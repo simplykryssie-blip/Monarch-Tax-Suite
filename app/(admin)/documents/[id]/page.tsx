@@ -5,8 +5,9 @@ import { senderAddress } from "@/lib/automation/senders.ts";
 import { documentDeps } from "@/lib/documents/server";
 import { MERGE_FIELDS } from "@/lib/documents/fields.ts";
 import { Badge, Flash, label, PageTitle, when } from "@/components/admin/ui";
+import { ArchivePanel } from "@/components/admin/archive";
 import { DocumentUploader } from "@/components/admin/document-uploader";
-import { removeDocumentAction, restoreDocumentAction, revokeDeliveryAction, saveConsentAction, saveDocumentDetailsAction, sendManualAction } from "../actions";
+import { revokeDeliveryAction, saveConsentAction, saveDocumentDetailsAction, sendManualAction } from "../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const kb = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
@@ -173,17 +174,7 @@ export default async function DocumentPage({ params, searchParams }: { params: P
         </table></div>
       </section>
 
-      <section className="monarch-panel" style={{ padding: 20 }}>
-        {doc.status === "active" ? (
-          <>
-            <h2>Remove this document</h2>
-            <p className="monarch-muted">A document that was never sent is deleted. One that was sent is archived so its sent and signed copies stay on record.</p>
-            <form action={removeDocumentAction}><input type="hidden" name="id" value={doc.id} /><button className="monarch-secondary is-danger">{deliveries.length ? "Archive" : "Delete"}</button></form>
-          </>
-        ) : (
-          <form action={restoreDocumentAction}><input type="hidden" name="id" value={doc.id} /><button className="monarch-primary">Restore</button></form>
-        )}
-      </section>
+      <ArchivePanel entity="document" id={doc.id} />
     </>
   );
 }

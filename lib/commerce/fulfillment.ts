@@ -1,3 +1,4 @@
+import { restoreCustomerOnPurchase } from "../archive-service.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { generateEmbedId } from "./embed.ts";
 import { generateLicenseKey, hashLicenseKey, licenseKeyPrefix } from "./license-keys.ts";
@@ -104,8 +105,13 @@ function detailsFromMetadata(metadata: Record<string, string> | null): Installat
   };
 }
 
-async function findOrCreateCustomer(repo: CommerceRepo, email: string, fullName: string | null, stripeCustomerId: string | null): Promise<Customer> {
-  const existing = await repo.findCustomerByEmail(email);
+async function findOrCreateCustomer(repo: CommerceRepo, email: string, fullName: string | null, stripeCustomerId: string | null, why: string): Promise<Customer> {
+  let existing = await repo.findCustomerByEmail(email);
+  if (existing?.archived_at) {
+    // An archived customer who buys again is a customer again; the archive history records why.
+    await restoreCustomerOnPurchase({ update: async (_e, id, p) => { await repo.updateCustomer(id, p); }, log: (entry) => repo.logArchive(entry) }, existing, why);
+    existing = { ...existing, archived_at: null, archived_by: null, archive_reason: null };
+  }
   if (existing) {
     const patch: Partial<Customer> = {};
     if (!existing.full_name && fullName) patch.full_name = fullName;
@@ -229,7 +235,7 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
   const rawEmail = session.customer_details?.email;
   if (!rawEmail) throw new Error(`Checkout ${session.id} has no customer email.`);
 
-  const customer = await findOrCreateCustomer(repo, normalizeEmail(rawEmail), session.customer_details?.name?.trim() || null, idOf(session.customer));
+  const customer = await findOrCreateCustomer(repo, normalizeEmail(rawEmail), session.customer_details?.name?.trim() || null, idOf(session.customer), `Bought ${product.name} again (Stripe checkout).`);
   const { order } = await repo.createOrder({
     customer_id: customer.id,
     product_id: product.id,
@@ -503,7 +509,7 @@ export async function reconcilePurchase(repo: CommerceRepo, input: ReconcileInpu
     if (owner?.email !== email) throw new ValidationError("This payment is already recorded for a different customer.");
   }
 
-  const customer = await findOrCreateCustomer(repo, email, input.full_name, null);
+  const customer = await findOrCreateCustomer(repo, email, input.full_name, null, "A purchase was recorded for them by an administrator.");
   const { order, created } = await repo.createOrder({
     customer_id: customer.id,
     product_id: product.id,
@@ -585,7 +591,7 @@ export async function createInternalLicense(repo: CommerceRepo, input: InternalL
   if (product.access_type !== "license") throw new ValidationError("Internal licenses are only for licensed software products.");
   if (!product.installation_options.includes("self_service")) throw new ValidationError("That installation option is not offered for this product.");
 
-  const customer = await findOrCreateCustomer(repo, email, fullName, null);
+  const customer = await findOrCreateCustomer(repo, email, fullName, null, "An internal license was issued to them.");
   const notes = `${INTERNAL_ORDER_MARKER} Reason: ${reason}.${phone ? ` Phone on file: ${phone}.` : ""} Domain to authorize: ${domain}.`;
   const existing = (await repo.listOrders()).find((o) => o.customer_id === customer.id && o.product_id === product.id && isInternalOrder(o));
   const { order, created } = existing

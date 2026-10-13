@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { commerceRepo, requireAdmin } from "@/lib/admin";
-import { Badge, EmptyRow, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { Badge, EmptyRow, Flash, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { ArchivePanel } from "@/components/admin/archive";
 import { PLATFORM_GUIDES } from "@/lib/commerce/platforms.ts";
 import { formDeps } from "@/lib/forms/server";
 
-export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
   await requireAdmin();
   const { id } = await params;
+  const { notice, error } = await searchParams;
   const repo = commerceRepo();
   const result = await load(async () => {
     const customer = await repo.getCustomer(id);
@@ -39,8 +41,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   return (
     <>
       <PageTitle title={customer.full_name ?? customer.email} back={{ href: "/customers", label: "Customers" }}>
-        {customer.email} · <Badge value={customer.status} /> · Customer since {when(customer.created_at)}
+        {customer.email} · <Badge value={customer.status} />{customer.archived_at && <> · <Badge value="archived" /></>} · Customer since {when(customer.created_at)}
       </PageTitle>
+      <Flash notice={notice} error={error} />
       <section className="monarch-panel">
         <div className="monarch-panel-head"><h2>Purchases</h2></div>
         <div className="monarch-table-wrap">
@@ -121,6 +124,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         </div>
       </section>
       <div className="monarch-notice"><b>SUPPORT HISTORY</b> No support system is connected yet, so there is no support history to show.</div>
+      <ArchivePanel entity="customer" id={customer.id} />
     </>
   );
 }

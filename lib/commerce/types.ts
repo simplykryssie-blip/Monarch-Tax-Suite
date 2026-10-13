@@ -1,3 +1,4 @@
+import type { ArchiveFields, ArchiveLogEntry } from "../archive.ts";
 // Domain types for the Monarch commerce/licensing CRM. Plain data only, so the
 // fulfillment logic can run against Supabase in production and an in-memory
 // store in tests.
@@ -67,7 +68,7 @@ export type Product = {
   stripe_verification?: StripeVerification | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 
 export type ProductImage = {
   id: string;
@@ -156,7 +157,7 @@ export type Customer = {
   stripe_customer_id: string | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 
 export type Order = {
   id: string;
@@ -188,7 +189,7 @@ export type Order = {
   terms_accepted_at?: string | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 
 /** A Stripe Checkout Session started by the storefront. The webhook fulfils only sessions recorded here. */
 export type StorefrontCheckout = {
@@ -228,7 +229,7 @@ export type License = {
   revoke_reason: string | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 
 export type AuthorizedDomain = {
   id: string;
@@ -322,7 +323,9 @@ export interface CommerceRepo {
   getCustomer(id: string): Promise<Customer | null>;
   findCustomerByEmail(email: string): Promise<Customer | null>;
   createCustomer(input: { email: string; full_name: string | null; stripe_customer_id: string | null }): Promise<Customer>;
-  updateCustomer(id: string, patch: Partial<Pick<Customer, "full_name" | "status" | "stripe_customer_id">>): Promise<Customer>;
+  updateCustomer(id: string, patch: Partial<Pick<Customer, "full_name" | "status" | "stripe_customer_id" | "archived_at" | "archived_by" | "archive_reason">>): Promise<Customer>;
+  /** One entry in the tenant's archive history (lib/archive.ts). */
+  logArchive(entry: ArchiveLogEntry): Promise<void>;
 
   listOrders(): Promise<Order[]>;
   /** Most recent recorded update Checkout Session for a license and tax year that has not expired. */
