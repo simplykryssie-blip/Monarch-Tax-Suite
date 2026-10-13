@@ -41,6 +41,8 @@
 .wisp .hero-eyebrow { font-family: var(--font-display); letter-spacing: 0.3em; font-size: 13px; color: var(--gold-1); margin-bottom: 20px; }
 .wisp .hero-title { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: clamp(38px, 6vw, 72px); line-height: 1.1; letter-spacing: 0.02em; margin-bottom: 24px; }
 .wisp .hero-sub { color: var(--gray-300); font-size: 18px; max-width: 640px; margin: 0 auto 36px; }
+.wisp .hero-disclaimer { color: var(--gray-400, #a3a3a3); font-size: 13px; line-height: 1.5; max-width: 640px; margin: -16px auto 24px; }
+.wisp .done-disclaimer { color: var(--gray-300); font-size: 13px; margin: 14px 0 0; }
 .wisp .hero-ctas { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 56px; }
 .wisp .hero-stats { display: flex; justify-content: center; align-items: center; gap: 32px; flex-wrap: wrap; }
 .wisp .stat { text-align: center; }

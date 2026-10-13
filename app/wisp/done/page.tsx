@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { stripeClient } from "@/lib/admin";
 import { confirmCheckoutFromStripe } from "@/lib/stripe-fulfillment";
 import { MONARCH_TENANT_ID } from "@/lib/tenants";
-import { DISCLAIMER } from "@/lib/wisp/content.ts";
+import { DISCLAIMER, DONE_DISCLAIMER } from "@/lib/wisp/content.ts";
 import { deliver, planForBuyer, type WispPlan } from "@/lib/wisp/service.ts";
 import { requestTenant, wispDeps } from "@/lib/wisp/server";
 import { WISP_COOKIE } from "@/lib/wisp/cookie.ts";
@@ -86,6 +86,7 @@ export default async function WispDonePage({ searchParams }: { searchParams: Pro
                   {plan.pdf_path && <a className="btn btn-gold btn-lg" href="/wisp/download">Download My WISP (PDF)</a>}
                   <form action={resendWispAction}><button className="btn btn-outline">{emailFailed ? "Try emailing it again" : "Email it to me again"}</button></form>
                 </div>
+                <p className="done-disclaimer">{DONE_DISCLAIMER}</p>
                 <p className="fine-print">{DISCLAIMER}</p>
               </div>
             )}
