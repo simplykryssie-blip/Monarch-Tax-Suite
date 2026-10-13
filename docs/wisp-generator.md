@@ -44,6 +44,29 @@ The source is the owner's static build (`wisp-generator-source`: index.html, sty
    - Emails go from that tenant's default sending address.
    - **Payment** runs through the Monarch storefront's Stripe account, so only Monarch's builder takes payment today. Other firms see "Online checkout is not available yet".
 
+## The written plan
+
+The PDF is a full Written Information Security Plan, usually 13 to 16 pages, not a summary of the answers. `lib/wisp/plan.ts` writes it and `lib/wisp/pdf.ts` lays it out: a cover, a contents page with page numbers, then twelve sections, each on its own page.
+
+1. Purpose and Scope
+2. Firm Information and Responsibility (names the owner as the Safeguards Rule's Qualified Individual)
+3. Definitions
+4. Risk Assessment (with corrective actions)
+5. Information Inventory: Systems and Data, including backup
+6. Access Controls: granting and removing access, MFA, passwords
+7. Safeguards: encryption, physical, network and devices, service providers
+8. Employee Training
+9. Data Retention and Disposal
+10. Incident Response Plan: the firm's own steps, then detect, contain, assess, notify (IRS Stakeholder Liaison, state agencies, the FTC's 30-day rule for 500 or more people, state law, law enforcement, clients) and recover
+11. Plan Review and Maintenance
+12. Adoption and Acknowledgment, with the owner's signature line and a staff sign-off table
+
+How it uses the answers:
+- **Facts come only from the answers.** Free text such as the access policy, data locations, physical security and response steps is written in as full sentences. Numbered steps become a numbered list.
+- **Blank answers are left out.** Nothing is filled in for them.
+- **Missing safeguards are never shown as done.** When an answer says MFA, encryption or training isn't in place yet, the plan says so plainly and lists it under the Risk Assessment's corrective actions.
+- **Everything else is standard policy language.** It's what the firm commits to, following IRS Publications 5708 and 4557 and the FTC Safeguards Rule.
+
 ## Also fixed
 
 **PDF fonts (Forms too).** pdf-lib's subsetting of Noto Sans dropped the letter shapes, so the text was in the file but showed blank in some PDF viewers. The full font is now embedded in WISP and Form submission PDFs. Each file is about 650 KB.
