@@ -160,8 +160,7 @@ language plpgsql set search_path = public as $$
 begin
   raise exception 'FEE_HISTORY_KEPT: the fee history cannot be changed or deleted';
 end $$;
-drop trigger if exists fee_events_append_only on public.fee_events;
-create trigger fee_events_append_only before update or delete on public.fee_events for each row execute function public.fee_events_append_only();
+create or replace trigger fee_events_append_only before update or delete on public.fee_events for each row execute function public.fee_events_append_only();
 
 -- Money already recorded against a return stays: receipts can't be edited, and a return with receipts can't be
 -- deleted (the restrict keys above); mistakes are reversed by archiving the return or linking the row elsewhere.
@@ -182,8 +181,7 @@ begin
   end if;
   return new;
 end $$;
-drop trigger if exists fee_receipts_guard on public.fee_receipts;
-create trigger fee_receipts_guard before update or delete on public.fee_receipts for each row execute function public.fee_receipts_guard();
+create or replace trigger fee_receipts_guard before update or delete on public.fee_receipts for each row execute function public.fee_receipts_guard();
 
 create or replace function public.fees_touch() returns trigger
 language plpgsql set search_path = public as $$
@@ -191,12 +189,9 @@ begin
   new.updated_at := now();
   return new;
 end $$;
-drop trigger if exists fee_schedules_touch on public.fee_schedules;
-create trigger fee_schedules_touch before update on public.fee_schedules for each row execute function public.fees_touch();
-drop trigger if exists fee_lines_touch on public.fee_lines;
-create trigger fee_lines_touch before update on public.fee_lines for each row execute function public.fees_touch();
-drop trigger if exists tax_returns_touch on public.tax_returns;
-create trigger tax_returns_touch before update on public.tax_returns for each row execute function public.fees_touch();
+create or replace trigger fee_schedules_touch before update on public.fee_schedules for each row execute function public.fees_touch();
+create or replace trigger fee_lines_touch before update on public.fee_lines for each row execute function public.fees_touch();
+create or replace trigger tax_returns_touch before update on public.tax_returns for each row execute function public.fees_touch();
 
 -- A bank line or a return's bank must name a bank product, not a tax software entry.
 create or replace function public.fees_bank_is_bank_product() returns trigger
@@ -207,12 +202,9 @@ begin
   end if;
   return new;
 end $$;
-drop trigger if exists fee_lines_bank_check on public.fee_lines;
-create trigger fee_lines_bank_check before insert or update on public.fee_lines for each row execute function public.fees_bank_is_bank_product();
-drop trigger if exists tax_returns_bank_check on public.tax_returns;
-create trigger tax_returns_bank_check before insert or update on public.tax_returns for each row execute function public.fees_bank_is_bank_product();
-drop trigger if exists bank_imports_bank_check on public.bank_imports;
-create trigger bank_imports_bank_check before insert or update on public.bank_imports for each row execute function public.fees_bank_is_bank_product();
+create or replace trigger fee_lines_bank_check before insert or update on public.fee_lines for each row execute function public.fees_bank_is_bank_product();
+create or replace trigger tax_returns_bank_check before insert or update on public.tax_returns for each row execute function public.fees_bank_is_bank_product();
+create or replace trigger bank_imports_bank_check before insert or update on public.bank_imports for each row execute function public.fees_bank_is_bank_product();
 
 -- Tenant scoping, the same as every tenant table since Step 0.
 do $$
