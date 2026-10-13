@@ -11,6 +11,8 @@ import { SupabaseDocumentStore, SupabaseDocumentsRepo } from "../documents/supab
 import { heldBack } from "../forms/after.ts";
 import { platformClient, tenantClient } from "../supabase/service";
 import { MONARCH_TENANT_ID } from "../tenants.ts";
+import { convertFromPurchase } from "../leads/service.ts";
+import { leadsDeps } from "../leads/server";
 import type { WispDeps } from "./service.ts";
 import { SupabaseWispRepo } from "./supabase-repo.ts";
 
@@ -48,6 +50,9 @@ export function wispDeps(tenantId: string): WispDeps {
     store: new SupabaseDocumentStore(db),
     secrets,
     brand,
+    onPaid: (plan) => plan.customer_id && plan.order_id
+      ? convertFromPurchase(leadsDeps(tenantId), { auditId: plan.audit_id, email: plan.email, planId: plan.id, customerId: plan.customer_id, orderId: plan.order_id })
+      : Promise.resolve(null),
     send: async (mail) => {
       const auto = automationDeps(tenantId);
       if (auto.config.env !== "production" && !auto.config.testRecipients.map((r) => r.toLowerCase()).includes(mail.to.toLowerCase())) return heldBack(auto, mail.to);

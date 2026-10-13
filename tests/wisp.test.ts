@@ -9,6 +9,8 @@ import { handleStripeEvent, type FulfillmentDeps } from "../lib/commerce/fulfill
 import { publishBlockers } from "../lib/commerce/validation.ts";
 import type { NewProduct } from "../lib/commerce/types.ts";
 import { CrmSecrets } from "../lib/crm/crypto.ts";
+import { captureAuditLead, convertFromPurchase } from "../lib/leads/service.ts";
+import { MemoryLeads } from "./leads-memory.ts";
 import { calculateScore, checkAnswers, checkAudit, comparisonFee, feeComparison, numberDraft, numberInput, QUESTIONS, scoreVerdict } from "../lib/wisp/content.ts";
 import {
   downloadUrl, fulfilPaidPlan, LINK_DAYS, planForBuyer, planForLink, recordAudit, resendForBuyer, startPlan,
@@ -170,6 +172,25 @@ describe("after payment", () => {
     await fulfilPaidPlan(s.deps, { sessionId: "cs_wisp_1", planId: plan.id, customerId: "cust-1", orderId: "order-1" });
     assert.equal(s.sent.length, 1);
     assert.equal(await fulfilPaidPlan(s.deps, { sessionId: "cs_other", planId: plan.id, customerId: "cust-1", orderId: "order-2" }), null, "a plan is only paid by its own checkout");
+  });
+
+  test("a paid plan converts the lead who took its audit; a failure there never stops delivery", async () => {
+    const s = setup();
+    const leads = new MemoryLeads();
+    const audit = await recordAudit(s.deps, { answers: QUESTIONS.map(() => 1), ero: {} }, { ipHash: null, userAgent: null });
+    await captureAuditLead({ repo: leads }, { name: "Ánh", email: "anh@example.com" }, { id: audit.auditId, score: audit.score });
+    s.deps.onPaid = (plan) => convertFromPurchase({ repo: leads }, { auditId: plan.audit_id, email: plan.email, planId: plan.id, customerId: plan.customer_id!, orderId: plan.order_id! });
+    const { plan } = await startPlan(s.deps, { answers: ANSWERS, email: "office@example.com", auditId: audit.auditId });
+    await s.repo.updatePlan(plan.id, { stripe_session_id: "cs_wisp_1" });
+    await fulfilPaidPlan(s.deps, { sessionId: "cs_wisp_1", planId: plan.id, customerId: "cust-1", orderId: "order-1" });
+    assert.deepEqual([leads.leads[0].status, leads.leads[0].order_id, leads.leads[0].wisp_plan_id], ["converted", "order-1", plan.id]);
+
+    const t = setup();
+    t.deps.onPaid = async () => { throw new Error("leads table missing"); };
+    const p2 = await startPlan(t.deps, { answers: ANSWERS, email: "anh@example.com" });
+    await t.repo.updatePlan(p2.plan.id, { stripe_session_id: "cs_wisp_2" });
+    const delivered = await fulfilPaidPlan(t.deps, { sessionId: "cs_wisp_2", planId: p2.plan.id, customerId: "cust-1", orderId: "order-2" });
+    assert.ok(delivered?.emailed_at);
   });
 
   test("a failed email is logged, shown, and can be retried (not twice in two minutes)", async () => {
