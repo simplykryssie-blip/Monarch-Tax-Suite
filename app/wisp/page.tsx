@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { stripeClient } from "@/lib/admin";
 import { LEGAL_PAGES_APPROVED } from "@/lib/legal";
+import { shareMeta } from "@/lib/site-meta";
 import { MONARCH_TENANT_ID } from "@/lib/tenants";
 import { SupabaseCommerceRepo } from "@/lib/commerce/supabase-repo.ts";
 import { tenantClient } from "@/lib/supabase/service";
@@ -11,6 +12,11 @@ import { WispApp } from "@/components/wisp/wisp-app";
 export const metadata: Metadata = {
   title: "WISP Generator: free audit and guided Written Information Security Plan",
   description: "The IRS requires every tax preparer to have a Written Information Security Plan. Take the free 2-minute audit, then build your attorney-ready WISP for $25.",
+  ...shareMeta({
+    title: "WISP Generator: free audit and guided Written Information Security Plan",
+    description: "Take a free 12-point security audit and get an attorney-ready Written Information Security Plan for your tax office.",
+    path: "/wisp",
+  }),
 };
 
 /** The public WISP Generator. Its brand is the brand whose web address it was opened on. */

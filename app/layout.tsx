@@ -4,7 +4,15 @@ import "@fontsource/playfair-display/600.css";
 import "@fontsource/playfair-display/700.css";
 import "./globals.css";
 import "./theme.css";
-export const metadata: Metadata = { title: "Monarch Tax Suite | Admin Workspace", description: "The Monarch Tax Suite internal operations platform." };
+import { OG_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site-meta";
+export const metadata: Metadata = {
+  title: "Monarch Tax Suite | Admin Workspace",
+  description: "The Monarch Tax Suite internal operations platform.",
+  metadataBase: new URL(SITE_URL),
+  icons: { icon: [{ url: "/monarch-favicon-32.png", sizes: "32x32", type: "image/png" }], apple: "/monarch-apple-touch-icon.png" },
+  openGraph: { type: "website", siteName: SITE_NAME, images: [OG_IMAGE] },
+  twitter: { card: "summary_large_image", images: [OG_IMAGE.url] },
+};
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return (
     <html lang="en" suppressHydrationWarning>
       <head>
