@@ -650,3 +650,34 @@ html[data-popup] body{background:#fff}
 .fees-mapping h3{margin:0;font-size:15px}
 .fees-import .efin-form-error{color:#a8322b;font-weight:600}
 @media(max-width:680px){.fees-line-form input[name=label]{flex-basis:100%}.fees-amount{width:96px}}
+
+/* Office area (EROs and preparers) */
+.office-shell{min-height:100vh;background:var(--bg,#f7f6f2)}
+.office-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;background:#111;color:#fff}
+.office-brand{display:flex;flex-direction:column;gap:2px}
+.office-brand b{font-size:16px;color:#f3d98b}
+.office-brand span{font-size:12.5px;color:#cfcfcf}
+.office-top-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.office-switch{display:flex;gap:6px}
+.office-switch select{padding:6px 8px;border-radius:8px;border:1px solid #444;background:#222;color:#fff;max-width:200px}
+.office-nav{display:flex;gap:6px;overflow-x:auto;padding:10px 20px;background:#fff;border-bottom:1px solid var(--line,#e7e5de);-webkit-overflow-scrolling:touch}
+.office-nav a,.office-nav span{white-space:nowrap;padding:8px 12px;border-radius:999px;font-size:14px;font-weight:600;text-decoration:none;color:var(--ink-2,#333)}
+.office-nav a:hover{background:#f1efe8}
+.office-nav .is-soon{color:#9a978d;cursor:default}
+.office-nav small{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;margin-left:4px}
+.office-main{max-width:1180px;margin:0 auto;padding:20px 16px 48px}
+.office-h1{font-size:24px;margin:4px 0 18px}
+.office-cards{list-style:none;margin:0;padding:0 20px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.office-cards a,.office-cards div{display:flex;flex-direction:column;gap:6px;padding:16px;border:1px solid var(--line,#e7e5de);border-radius:12px;background:#fff;text-decoration:none;color:inherit;height:100%}
+.office-cards a:hover{border-color:#b8902f}
+.office-cards span{font-size:13.5px;color:var(--muted,#6b6860)}
+.office-cards .is-soon div{background:#faf9f6;color:#8a877e}
+.office-perms{display:flex;flex-direction:column;gap:6px;min-width:220px}
+.office-perms .monarch-check{font-size:13px}
+.office-people{list-style:none;margin:0;padding:0;font-size:13.5px;line-height:1.9}
+.office-mfa{display:flex;flex-direction:column;gap:10px}
+.office-mfa input{padding:12px 14px;border:1px solid #d4d4d4;border-radius:10px;font-size:16px}
+.office-qr{background:#fff;border:1px solid #e7e5de;border-radius:8px;padding:8px;align-self:flex-start}
+.office-link{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.office-link input{flex:1 1 260px;padding:8px 10px;border:1px solid #d4d4d4;border-radius:8px;font-size:13px}
+@media(max-width:640px){.office-top{padding:12px 16px}.office-nav{padding:8px 12px}.office-main{padding:16px 12px 40px}.office-perms{min-width:0}}

@@ -55,6 +55,11 @@ async function lookupAdmin(userId: string): Promise<AdminLookup> {
   return data ? "yes" : "no";
 }
 
+/** Whether this account is a bureau administrator (used by the office area, where administrators oversee every office). */
+export async function isAdminUser(userId: string): Promise<boolean> {
+  return (await lookupAdmin(userId)) === "yes";
+}
+
 export type AdminSession = { userId: string; email: string };
 
 /** Verifies the signed-in user is a Monarch administrator. Use in every admin page and server action. */
@@ -69,6 +74,11 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
   });
   if (!decision.allowed) {
     if (decision.reason === "unauthenticated") redirect("/login");
+    // EROs and preparers sign in to the same app and work in the office area.
+    if (user && !setupMissing) {
+      const { data } = await platformClient("office_member").from("office_members").select("id").eq("user_id", user.id).maybeSingle();
+      if (data) redirect("/office");
+    }
     const message = setupMissing
       ? "Administrator access is not set up yet. Apply the Monarch commerce database migration."
       : "This account is not a Monarch administrator.";
