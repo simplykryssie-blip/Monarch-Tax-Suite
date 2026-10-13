@@ -42,6 +42,7 @@ const NAV: Entry[] = [
           { label: "Licenses", icon: "licenses", href: "/licenses" },
           { label: "Installations", icon: "installs", href: "/installations" },
           { label: "Service orders", icon: "orders", href: "/service-orders" },
+          { label: "WISP Generator", icon: "checklist", href: "/store/wisp" },
           { label: "Courses", icon: "courses" },
           { label: "Memberships", icon: "members" },
         ],

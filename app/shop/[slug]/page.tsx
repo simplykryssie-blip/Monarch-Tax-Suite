@@ -30,7 +30,7 @@ export default async function ShopProductPage({ params, searchParams }: Params) 
           product={product}
           images={images}
           // Buyers must accept the published Terms and Refund Policy, so checkout exists only while they are approved.
-          purchase={LEGAL_PAGES_APPROVED ? <BuyForm slug={product.slug} installationOptions={product.installation_options} licensed={product.access_type === "license"} error={error} /> : undefined}
+          purchase={LEGAL_PAGES_APPROVED ? <BuyForm slug={product.slug} installationOptions={product.installation_options} licensed={product.access_type === "license"} error={error} wisp={product.metadata?.delivery === "wisp_generator"} /> : undefined}
         />
       </div>
     </main>

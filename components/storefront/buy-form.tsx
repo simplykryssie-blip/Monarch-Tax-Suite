@@ -11,7 +11,9 @@ const INSTALL_LABELS: Record<InstallationType, string> = {
  * The storefront buy form. Checkout is always started by the server, which re-checks the product and its price;
  * the buyer must accept the current Terms and Refund Policy, and that acceptance is recorded on the order.
  */
-export function BuyForm({ slug, installationOptions, licensed, error }: { slug: string; installationOptions: InstallationType[]; licensed: boolean; error?: string }) {
+export function BuyForm({ slug, installationOptions, licensed, error, wisp = false }: { slug: string; installationOptions: InstallationType[]; licensed: boolean; error?: string; wisp?: boolean }) {
+  // A WISP is bought from the last step of the WISP builder, with the answers it is made from.
+  if (wisp) return <Link className="monarch-primary" href="/wisp#builder" style={{ display: "inline-block", textDecoration: "none" }}>Build your WISP</Link>;
   return (
     <form action={startCheckoutAction} className="sf-buy">
       <input type="hidden" name="slug" value={slug} />
@@ -30,4 +32,9 @@ export function BuyForm({ slug, installationOptions, licensed, error }: { slug: 
       <button type="submit">Purchase</button>
     </form>
   );
+}
+
+/** The Terms and Refund Policy links, for other checkouts (the WISP builder). Only rendered once they are approved. */
+export function TermsLinks() {
+  return <>the <Link href="/terms" target="_blank">Terms of Service</Link> and the <Link href="/refunds" target="_blank">Refund Policy</Link></>;
 }

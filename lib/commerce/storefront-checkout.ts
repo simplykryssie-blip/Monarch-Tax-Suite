@@ -34,9 +34,13 @@ export type StartCheckoutInput = {
   termsVersion: string;
   origin: string;
   now?: Date;
+  /** For checkouts started elsewhere than the shop page (the WISP Generator): extra server-set metadata and pages. */
+  extraMetadata?: Record<string, string>;
+  successPath?: string;
+  cancelPath?: string;
 };
 
-export async function startStorefrontCheckout(repo: CommerceRepo, catalog: StripeCatalogPort, sessions: StorefrontSessionPort, input: StartCheckoutInput): Promise<{ url: string }> {
+export async function startStorefrontCheckout(repo: CommerceRepo, catalog: StripeCatalogPort, sessions: StorefrontSessionPort, input: StartCheckoutInput): Promise<{ url: string; sessionId: string }> {
   const now = input.now ?? new Date();
   if (!input.termsAccepted) throw new ValidationError("Please confirm that you have read and accept the Terms of Service and the Refund Policy.");
   const product = (await repo.listProducts()).find((p) => p.slug === input.slug) ?? null;
@@ -44,6 +48,8 @@ export async function startStorefrontCheckout(repo: CommerceRepo, catalog: Strip
   if (!product || !isStorefrontVisible(product)) throw new ValidationError(UNAVAILABLE);
   const images = await repo.listProductImages([product.id]);
   if (publishBlockers(product, images.length).length || !product.stripe_price_id || product.price_cents === null) throw new ValidationError(UNAVAILABLE);
+  // A WISP is bought from the builder, with the plan it pays for; never as a bare purchase.
+  if (product.metadata?.delivery === "wisp_generator" && !input.extraMetadata?.wisp_plan_id) throw new ValidationError("Build your WISP first: the purchase is made from the last step of the WISP builder.");
 
   let installationType: InstallationType | null = null;
   if (product.access_type === "license") {
@@ -70,11 +76,12 @@ export async function startStorefrontCheckout(repo: CommerceRepo, catalog: Strip
   const acceptedAt = now.toISOString();
   const metadata: Record<string, string> = { purpose: CHECKOUT_PURPOSE, product_id: product.id, checkout_ref: checkoutRef, terms_version: input.termsVersion };
   if (installationType) metadata.installation_type = installationType;
+  for (const [k, v] of Object.entries(input.extraMetadata ?? {})) if (!(k in metadata)) metadata[k] = v;
   const session = await sessions.create({
     priceId: product.stripe_price_id,
     metadata,
-    successUrl: `${input.origin}/shop/${product.slug}/thank-you`,
-    cancelUrl: `${input.origin}/shop/${product.slug}`,
+    successUrl: `${input.origin}${input.successPath ?? `/shop/${product.slug}/thank-you`}`,
+    cancelUrl: `${input.origin}${input.cancelPath ?? `/shop/${product.slug}`}`,
     expiresAt: Math.floor(now.getTime() / 1000) + SESSION_MINUTES * 60,
     idempotencyKey: `monarch-shop-${checkoutRef}`,
   });
@@ -97,7 +104,7 @@ export async function startStorefrontCheckout(repo: CommerceRepo, catalog: Strip
     await sessions.expire(session.id).catch(() => undefined);
     throw new ValidationError("Online checkout is temporarily unavailable. Please try again later.");
   }
-  return { url: session.url };
+  return { url: session.url, sessionId: session.id };
 }
 
 /**

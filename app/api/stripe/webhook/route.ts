@@ -3,6 +3,8 @@ import { MONARCH_TENANT_ID } from "@/lib/tenants";
 import { safeEmit } from "@/lib/automation/server";
 import { handleStripeEvent } from "@/lib/commerce/fulfillment.ts";
 import { checkEventMode } from "@/lib/commerce/stripe-verify.ts";
+import { fulfilPaidPlan } from "@/lib/wisp/service.ts";
+import { wispDeps } from "@/lib/wisp/server";
 
 // Stripe webhook: the only path that grants paid access automatically. The
 // signature is verified against the raw body before anything is read, and
@@ -40,6 +42,7 @@ export async function POST(request: Request) {
         repo: commerceRepo(),
         emit: safeEmit,
         services: { repo: serviceOrdersRepo(), tenantId: MONARCH_TENANT_ID },
+        wisp: (input) => fulfilPaidPlan(wispDeps(MONARCH_TENANT_ID), input),
         async listCheckoutProductIds(sessionId) {
           const items = await stripe.checkout.sessions.listLineItems(sessionId, { limit: 100, expand: ["data.price.product"] });
           return items.data
