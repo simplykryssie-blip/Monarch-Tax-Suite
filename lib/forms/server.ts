@@ -7,6 +7,8 @@ import { platformClient, tenantClient } from "../supabase/service";
 import { currentTenantId } from "../tenants.ts";
 import { isPublicId, type FormDeps } from "./service.ts";
 import { SupabaseFirmsRepo, SupabaseFormsRepo, UPLOAD_BUCKET } from "./supabase-repo.ts";
+import { SupabaseSendersRepo } from "../automation/supabase-senders.ts";
+import { brandCatalogFrom } from "../brands.ts";
 
 // Server wiring for the Form Builder. Admin pages act for the signed-in tenant; the public form page finds the
 // tenant from the form's public id (the only cross-tenant lookup, logged as platform access) and then acts as
@@ -25,6 +27,7 @@ export function formDeps(tenantId: string = currentTenantId()): FormDeps {
   if (!master || !secrets) throw new Error("MONARCH_ENCRYPTION_KEY is not configured, so form answers cannot be stored securely.");
   const db = tenantClient(tenantId);
   const docs = new SupabaseDocumentsRepo(db);
+  const senders = new SupabaseSendersRepo(db);
   return {
     tenantId,
     repo: new SupabaseFormsRepo(db),
@@ -34,6 +37,10 @@ export function formDeps(tenantId: string = currentTenantId()): FormDeps {
     secrets,
     linkKey: createHmac("sha256", master).update("monarch:form-links:v1").digest(),
     profile: () => docs.getProfile().catch(() => null),
+    brandCatalog: async () => {
+      const [domains, list] = await Promise.all([senders.listDomains(), senders.listSenders()]);
+      return brandCatalogFrom(domains, list);
+    },
   };
 }
 

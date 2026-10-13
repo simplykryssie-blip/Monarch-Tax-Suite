@@ -6,6 +6,7 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps } from "@/lib/automation/server";
 import { afterSubmit, sendResumeLink } from "@/lib/forms/after.ts";
 import { formContext, formVisitor, RECEIPT_COOKIE } from "@/lib/forms/public";
+import { formLink } from "@/lib/forms/link";
 import { isPublicId, removeUpload, saveForLater, startUpload, submitForm, SubmissionInvalid } from "@/lib/forms/service.ts";
 import { signatureFrom, type SignaturePayload } from "@/lib/forms/signature-input.ts";
 import type { RawAnswers } from "@/lib/forms/logic.ts";
@@ -58,7 +59,7 @@ export async function saveFormForLaterAction(publicId: string, input: { token: s
     const who = await formVisitor(publicId, "save");
     const ctx = await context(publicId);
     const { token, draft, pf } = await saveForLater(ctx.deps, publicId, { token: tokenOf(input.token), answers: input.answers ?? {}, email: str(input.email, 254) }, who);
-    const failed = await sendResumeLink(automationDeps(ctx.tenantId), ctx.deps, { pf, email: draft.resume_email!, token, expiresAt: draft.draft_expires_at! });
+    const failed = await sendResumeLink(automationDeps(ctx.tenantId), ctx.deps, { pf, email: draft.resume_email!, token, expiresAt: draft.draft_expires_at!, formUrl: await formLink(ctx.deps, publicId, pf.settings) });
     if (failed && !failed.startsWith("not sent")) return { ok: false, error: "Your answers are saved, but the email with your link could not be sent. Keep this page open and try again." };
     return { ok: true, token, email: draft.resume_email! };
   } catch (e) {

@@ -4,21 +4,23 @@ import { clientAddress, hashClient } from "../commerce/rate-limit.ts";
 import { ValidationError } from "../commerce/validation.ts";
 import { rateLimitStore } from "../rate-limit-server";
 import { formDeps, tenantForForm } from "./server";
-import { hashToken, publicForm, type FormDeps, type PublicForm } from "./service.ts";
+import { brandFor, hashToken, publicForm, type FormDeps, type PublicForm } from "./service.ts";
 import type { Submission } from "./types.ts";
 import type { TenantProfile } from "../documents/types.ts";
 
 // The public form page (/f/{public_id}). The public id names one form, and that form's tenant is the only tenant
 // the request acts as.
 
-export type FormContext = { tenantId: string; deps: FormDeps; pf: PublicForm | null; profile: TenantProfile | null };
+/** `firmName`: the form's firm/brand, or the firm profile's name. */
+export type FormContext = { tenantId: string; deps: FormDeps; pf: PublicForm | null; profile: TenantProfile | null; firmName: string };
 
 export async function formContext(publicId: string): Promise<FormContext | null> {
   const tenantId = await tenantForForm(publicId).catch(() => null);
   if (!tenantId) return null;
   const deps = formDeps(tenantId);
   const [pf, profile] = await Promise.all([publicForm(deps, publicId), deps.profile()]);
-  return { tenantId, deps, pf, profile };
+  const brand = pf ? await brandFor(deps, pf.settings) : null;
+  return { tenantId, deps, pf, profile, firmName: brand?.name ?? profile?.display_name ?? "" };
 }
 
 /** Limits per visitor (and per form), counted in fixed windows. Returns the visitor's hashed address and browser. */

@@ -37,7 +37,7 @@ export type WorkflowFormInput = {
 export type WorkflowCatalog = {
   /** `merge_fields`: the current version's merge fields, so form answers used by a document can be checked. */
   documents: { id: string; name: string; file_type: "pdf" | "docx"; status: string; merge_fields?: string[] }[];
-  senders: { id: string; from_name?: string; address?: string }[];
+  senders: { id: string; from_name?: string; address?: string; domain_id?: string }[];
   attributes: { key: string; label: string; kind: "choice" | "text"; options: string[] }[];
   /** The tenant's published forms and their questions. */
   forms?: { id: string; name: string; questions: { key: string; label: string; type: string; options: string[] }[] }[];

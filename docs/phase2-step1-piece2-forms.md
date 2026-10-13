@@ -55,9 +55,18 @@ Approved spec: PR #32, with the owner's final decisions. Migration: `supabase/mi
 
 ## Fixed after the owner's Preview test
 
-- **Public link on Preview.** Links pointed at the production domain on every Preview. App links (form links, email links, setup links) now use the Preview deployment's own address on Preview, and the production domain in production (`lib/origin.ts`).
+- **Public link on Preview.** The link shown in Settings and on the Build tab is now built from the incoming request's host every time the page loads (`lib/forms/link.ts`). Nothing is hardcoded, cached or read from the environment, so a Preview always shows its own address. Email links to the admin still use `lib/origin.ts`.
 - **Customer not created.** That form never had a respondent email question chosen, so the submission had no email to link on. When none is chosen, the form's first email question is now used automatically (and the first name question for the name). The settings page says so. Submissions made before this fix have a **Link the customer now** button on their page.
 - **Empty optional questions.** Questions the respondent saw but left empty now show as "(no answer)" in the admin and the PDF. Hidden and skipped questions are still left out.
+
+## Firms/brands (Monarch and MKB in one account)
+
+- **A brand is a connected sending domain** (Piece 1, Settings → Email sending). Each domain now has a **firm name** and an optional **web address** for its public links (two new columns on `email_domains`).
+- **Creating a form:** with more than one firm, the page asks "Which firm does this form belong to?" and won't create the form without an answer. With one firm, it's used without asking.
+- **Settings tab:** the same question, and the "Send from" list only shows that firm's addresses. A form whose firm isn't chosen can't be published.
+- **Public link:** in production, `https://{firm's web address}/f/{id}`, for example `https://monarchtaxsuite.com/f/...` for Monarch. With no web address set, or on Preview, it's the host the page was opened on. The web address must also be added to the Vercel project (Settings → Domains), or the link won't open.
+- **Emails** (firm notice, respondent confirmation, resume link) come from the form's own chosen address, or else that firm's default or first verified address, and carry the firm's name. If the form's firm has no verified address yet, nothing is sent and the submission shows why. It never falls back to another firm's address.
+- **Public pages** show the firm's name.
 
 ## How it works for tenants
 
@@ -67,7 +76,7 @@ Approved spec: PR #32, with the owner's final decisions. Migration: `supabase/mi
 
 ## Test evidence
 
-`npm test`: 454 passing (49 new, mostly in `tests/forms-builder.test.ts` and `tests/forms-service.test.ts`). `tsc`, `lint` and `build` are clean. The browser was checked locally at computer and phone widths, with no console errors: logic, skips, format errors, the drawn signature, and builder drag, add, edit and move.
+`npm test`: 466 passing (61 new, mostly in `tests/forms-builder.test.ts`, `tests/forms-service.test.ts` and `tests/forms-brands.test.ts`). `tsc`, `lint` and `build` are clean. The browser was checked locally at computer and phone widths, with no console errors: logic, skips, format errors, the drawn signature, and builder drag, add, edit and move.
 
 | # | Case | Result |
 |---|---|---|
@@ -86,6 +95,7 @@ Approved spec: PR #32, with the owner's final decisions. Migration: `supabase/mi
 | 13 | CSV masked, no file columns, formulas neutralized, export logged; submissions can't be deleted; links outside the tenant refused | Pass |
 | 14 | Database gate on the test project (`supabase/tests/forms_isolation.sql`), run by the owner in the SQL editor: 5 tables isolated; insert into B refused; default tenant; can't number or update B's form; can't link a firm to B's customer (on create or later, even as platform); firm created in A; A submission on B's form refused; answers locked; real submissions can't be deleted; spam can be emptied with its uploads; published versions frozen | **17/17 pass** (rolled back, nothing left) |
 | 15 | `firm_from_submission` on the real schema: firm, office, ERO + responsible official + preparer, PTIN, EFIN unconfirmed, draft assignment, audit events | Pass (rolled back) |
+| 16 | Brands: link from the request host on Preview and from the firm's address in production; a firm is required with several; Monarch and MKB forms send from their own firm; a firm without a verified address sends nothing | Pass |
 
 ## Rollout
 

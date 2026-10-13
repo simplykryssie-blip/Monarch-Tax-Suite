@@ -10,6 +10,8 @@
 -- form_uploads        files respondents uploaded, and drawn signatures
 -- form_events         append-only history, including administrator views and exports
 -- organizations.customer_id   links a firm (My Service Bureau) to the customer it was created for
+-- email_domains.brand_name / link_host   each connected domain is a firm/brand: its name, and the web address its
+--                                        public form links use in production
 --
 -- Uploads live in the private bucket tenant-form-uploads, and submission PDFs in tenant-documents, both under
 -- {tenant_id}/..., served only through 60-second signed links the server creates from rows the tenant can see.
@@ -69,6 +71,11 @@ do $$ begin
     create trigger form_versions_frozen before update on public.form_versions for each row execute function public.form_versions_frozen();
   end if;
 end $$;
+
+alter table public.email_domains add column if not exists brand_name text check (brand_name is null or length(brand_name) between 2 and 120);
+alter table public.email_domains add column if not exists link_host text check (link_host is null or (length(link_host) <= 253 and link_host ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$'));
+-- A web address can belong to one brand only, across all tenants.
+create unique index if not exists email_domains_link_host_key on public.email_domains (link_host) where link_host is not null;
 
 alter table public.organizations add column if not exists customer_id uuid references public.calculator_customers (id) on delete set null;
 create index if not exists organizations_customer_idx on public.organizations (customer_id) where customer_id is not null;

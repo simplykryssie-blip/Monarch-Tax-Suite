@@ -20,7 +20,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
   const { id } = await params;
   const { resume } = await searchParams;
   const ctx = isPublicId(id) ? await formContext(id).catch(() => null) : null;
-  const firm = ctx?.profile?.display_name ?? "";
+  const firm = ctx?.firmName ?? "";
   if (!ctx?.pf) return <Shell firm={firm}><p>This form link is not valid. Check that you copied the whole address.</p></Shell>;
   const { pf } = ctx;
   if (pf.state !== "open") return <Shell firm={firm}><h1>{pf.form.name}</h1><p style={{ whiteSpace: "pre-wrap" }}>{pf.settings.closed_message}</p></Shell>;

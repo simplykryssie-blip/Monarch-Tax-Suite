@@ -11,7 +11,7 @@ export default async function FormDonePage({ params, searchParams }: { params: P
   const { id } = await params;
   const { error } = await searchParams;
   const ctx = isPublicId(id) ? await formContext(id).catch(() => null) : null;
-  const firm = ctx?.profile?.display_name ?? "";
+  const firm = ctx?.firmName ?? "";
   const [subId, token] = ((await cookies()).get(RECEIPT_COOKIE)?.value ?? "").split(".");
   const sub = ctx && subId && /^[0-9a-f-]{36}$/.test(subId) ? await ctx.deps.repo.getSubmission(subId).catch(() => null) : null;
   const valid = receiptValid(sub, token, ctx?.pf?.form.id);

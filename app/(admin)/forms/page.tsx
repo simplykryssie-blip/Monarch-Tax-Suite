@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
 import { formDeps } from "@/lib/forms/server";
+import { readSettings } from "@/lib/forms/settings.ts";
+import { effectiveBrand } from "@/lib/brands.ts";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { formsLoad, FormsSetupRequired } from "@/components/forms/admin-bits";
 import { createFormAction } from "./actions";
@@ -11,10 +13,12 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
   const result = await formsLoad(async () => {
     const deps = formDeps();
     const forms = (await deps.repo.listForms()).filter((f) => (archived ? f.status === "archived" : f.status !== "archived"));
-    return Promise.all(forms.map(async (f) => {
+    const brands = deps.brandCatalog ? await deps.brandCatalog().then((c) => c.brands).catch(() => []) : [];
+    const rows = await Promise.all(forms.map(async (f) => {
       const { rows, total } = await deps.repo.listSubmissions(f.id, { status: "all", limit: 1 });
-      return { f, total, last: rows[0]?.submitted_at ?? null };
+      return { f, total, last: rows[0]?.submitted_at ?? null, brand: effectiveBrand(readSettings(f.settings).brand_domain_id, brands)?.name ?? null };
     }));
+    return { rows, brands };
   });
   return (
     <>
@@ -28,6 +32,14 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
             <h2>New form</h2>
             <form action={createFormAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
               <input name="name" placeholder="Form name, for example ERO application" required minLength={2} maxLength={120} aria-label="Form name" />
+              {result.data.brands.length > 1 && (
+                <label>Which firm does this form belong to?{" "}
+                  <select name="brand_domain_id" required defaultValue="">
+                    <option value="" disabled>Choose a firm</option>
+                    {result.data.brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </label>
+              )}
               <button className="monarch-primary">Create form</button>
             </form>
           </section>
@@ -37,12 +49,12 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
               <table>
                 <thead><tr><th>NAME</th><th>STATUS</th><th>SUBMISSIONS</th><th>LAST SUBMISSION</th><th>PUBLIC LINK</th><th>UPDATED</th></tr></thead>
                 <tbody>
-                  {result.data.length === 0 ? (
+                  {result.data.rows.length === 0 ? (
                     <EmptyRow colSpan={6}>{archived ? "No archived forms." : "No forms yet. Create your first one above."}</EmptyRow>
                   ) : (
-                    result.data.map(({ f, total, last }) => (
+                    result.data.rows.map(({ f, total, last, brand }) => (
                       <tr key={f.id}>
-                        <td><Link href={`/forms/${f.id}`}><b>{f.name}</b></Link>{f.description && <small className="monarch-subcell">{f.description}</small>}</td>
+                        <td><Link href={`/forms/${f.id}`}><b>{f.name}</b></Link>{(brand || f.description) && <small className="monarch-subcell">{[brand, f.description].filter(Boolean).join(" · ")}</small>}</td>
                         <td><Badge value={f.status} /></td>
                         <td><Link href={`/forms/${f.id}/submissions`}>{total}</Link></td>
                         <td>{when(last)}</td>

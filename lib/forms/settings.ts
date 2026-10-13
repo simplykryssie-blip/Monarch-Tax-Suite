@@ -28,6 +28,8 @@ export type FormSettings = {
   create_customer: boolean;
   firm: FirmMap;
   notify: { recipients: string[]; sender_id: string | null };
+  /** The firm/brand (a connected sending domain) the form belongs to: its public link and emails use that brand. */
+  brand_domain_id: string | null;
   /** "We received your submission" to the respondent (no answers, no files). */
   confirmation_email: boolean;
   confirmation_email_text: string;
@@ -43,6 +45,7 @@ export const DEFAULT_SETTINGS: FormSettings = {
   create_customer: true,
   firm: { enabled: false, relationship: "partner", legal_name_key: null, dba_name_key: null, ein_key: null, efin_key: null, address_key: null, people: [] },
   notify: { recipients: [], sender_id: null },
+  brand_domain_id: null,
   confirmation_email: true,
   confirmation_email_text: "",
   confirmation_message: "Thank you. We received your submission.",
@@ -87,7 +90,10 @@ function pick(fields: Map<string, Field>, raw: unknown, want: Want, label: strin
  * Checks settings from the settings page against the form's questions and the tenant's verified senders.
  * Questions are referred to by key, so they keep working when the form is edited, until a question is removed.
  */
-export function checkSettings(raw: unknown, def: FormDefinition, senderIds: string[]): FormSettings {
+/** The tenant's brands, and which brand each verified sender belongs to (sender id -> domain id). */
+export type BrandCatalog = { brandIds: string[]; senderDomain: Record<string, string> };
+
+export function checkSettings(raw: unknown, def: FormDefinition, senderIds: string[], brands: BrandCatalog = { brandIds: [], senderDomain: {} }): FormSettings {
   // Loosely typed input from the settings page; every value is checked below.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const r = (raw ?? {}) as Record<string, any>;
@@ -135,6 +141,10 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
   if (bad) throw new SettingsError(`"${bad}" is not a valid email address.`);
   const sender = str(r.notify?.sender_id, 60);
   if (sender && !senderIds.includes(sender)) throw new SettingsError("Choose one of your verified sending addresses.");
+  const brand = str(r.brand_domain_id, 60);
+  if (brand && !brands.brandIds.includes(brand)) throw new SettingsError("Choose one of your firms/brands.");
+  if (brands.brandIds.length > 1 && !brand) throw new SettingsError("Choose which firm this form belongs to.");
+  if (brand && sender && brands.senderDomain[sender] && brands.senderDomain[sender] !== brand) throw new SettingsError("The notification address must belong to the form's firm. Choose one of that firm's sending addresses, or the firm's default.");
 
   const closeAt = str(r.close_at, 40);
   if (closeAt && Number.isNaN(Date.parse(closeAt))) throw new SettingsError("Enter a valid close date.");
@@ -147,6 +157,7 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
     create_customer,
     firm,
     notify: { recipients, sender_id: sender || null },
+    brand_domain_id: brand || null,
     confirmation_email: r.confirmation_email !== false && r.confirmation_email !== "off",
     confirmation_email_text: longStr(r.confirmation_email_text, 2000),
     confirmation_message: longStr(r.confirmation_message, 2000) || DEFAULT_SETTINGS.confirmation_message,
@@ -172,9 +183,9 @@ export function respondentKeys(settings: FormSettings, def: FormDefinition): { e
 }
 
 /** Problems with stored settings against a definition about to be published (for example a mapped question was deleted). */
-export function settingsProblems(settings: FormSettings, def: FormDefinition): string[] {
+export function settingsProblems(settings: FormSettings, def: FormDefinition, brands?: BrandCatalog): string[] {
   try {
-    checkSettings(settings, def, settings.notify.sender_id ? [settings.notify.sender_id] : []);
+    checkSettings(settings, def, settings.notify.sender_id ? [settings.notify.sender_id] : [], brands ?? { brandIds: settings.brand_domain_id ? [settings.brand_domain_id] : [], senderDomain: {} });
     return [];
   } catch (e) {
     return [e instanceof Error ? e.message : "The form settings need attention."];

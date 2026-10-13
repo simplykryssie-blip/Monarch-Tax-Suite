@@ -12,6 +12,7 @@ import { checkUpload, cleanUploadName, kindOfContentType, sha256Hex, UPLOAD_CONT
 import { evaluate, type RawAnswers } from "./logic.ts";
 import { buildSubmissionPdf, type PdfAttachment, type PdfSection } from "./pdf.ts";
 import { checkSettings, DEFAULT_SETTINGS, readSettings, respondentKeys, settingsProblems, type FormSettings } from "./settings.ts";
+import { effectiveBrand, type Brand } from "../brands.ts";
 import type { FirmsRepo, FormRow, FormsRepo, FormStores, FormVersion, SealedAnswer, SignatureRecord, StoredAnswers, Submission, SubmissionStatus, UploadRow } from "./types.ts";
 
 // The Form Builder for one tenant. Every storage path starts with the tenant id and is built here from rows the
@@ -28,8 +29,17 @@ export type FormDeps = {
   /** Secret for public tokens (start stamps). */
   linkKey: Buffer;
   profile: () => Promise<TenantProfile | null>;
+  /** The tenant's firms/brands (connected sending domains) and which brand each verified sender belongs to. */
+  brandCatalog?: () => Promise<{ brands: Brand[]; senderDomain: Record<string, string> }>;
   now?: () => Date;
 };
+
+const catalogOf = async (deps: FormDeps) => (deps.brandCatalog ? deps.brandCatalog().catch(() => ({ brands: [], senderDomain: {} })) : { brands: [] as Brand[], senderDomain: {} as Record<string, string> });
+
+/** The brand a form belongs to (the one chosen, or the only one), or null. */
+export async function brandFor(deps: FormDeps, settings: FormSettings): Promise<Brand | null> {
+  return effectiveBrand(settings.brand_domain_id, (await catalogOf(deps)).brands);
+}
 
 export const DRAFT_HOURS = 24;
 export const SAVED_DRAFT_DAYS = 30;
@@ -122,10 +132,18 @@ export function displayAnswer(field: Field, value: StoredAnswers[string] | undef
 
 const cleanName = (v: string) => v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
 
-export async function createForm(deps: FormDeps, input: { name: string; description?: string | null; adminId: string }): Promise<FormRow> {
+export async function createForm(deps: FormDeps, input: { name: string; description?: string | null; brandDomainId?: string | null; adminId: string }): Promise<FormRow> {
   const name = cleanName(input.name);
   if (name.length < 2) throw new ValidationError("Give the form a name.");
-  const form = await deps.repo.insertForm({ name, description: input.description?.trim().slice(0, 1000) || null, public_id: newPublicId(), draft_definition: emptyDefinition(), settings: DEFAULT_SETTINGS, created_by: input.adminId });
+  // With several firms/brands the form must say which one it belongs to; with one, that one is used.
+  const { brands } = await catalogOf(deps);
+  let brandId: string | null = null;
+  if (brands.length === 1) brandId = brands[0].id;
+  else if (brands.length > 1) {
+    brandId = brands.find((b) => b.id === input.brandDomainId)?.id ?? null;
+    if (!brandId) throw new ValidationError("Choose which firm this form belongs to.");
+  }
+  const form = await deps.repo.insertForm({ name, description: input.description?.trim().slice(0, 1000) || null, public_id: newPublicId(), draft_definition: emptyDefinition(), settings: { ...DEFAULT_SETTINGS, brand_domain_id: brandId }, created_by: input.adminId });
   await event(deps, form.id, null, "created", input.adminId);
   return form;
 }
@@ -186,7 +204,8 @@ export async function publishForm(deps: FormDeps, formId: string, adminId: strin
     throw e;
   }
   if (hasSignature(def) && !form.signature_consent) throw new ValidationError("This form has a signature field. Write your signing consent statement in Settings first.");
-  const problems = settingsProblems(readSettings(form.settings), def);
+  const catalog = await catalogOf(deps);
+  const problems = settingsProblems(readSettings(form.settings), def, { brandIds: catalog.brands.map((b) => b.id), senderDomain: catalog.senderDomain });
   if (problems.length) throw new ValidationError(`${problems[0]} (Settings)`);
   const versions = await deps.repo.listVersions(form.id);
   const version = await deps.repo.insertVersion({ form_id: form.id, version: versions.reduce((n, v) => Math.max(n, v.version), 0) + 1, definition: def, published_by: adminId });
@@ -237,7 +256,8 @@ export async function saveSettings(deps: FormDeps, formId: string, raw: unknown,
   const form = await mustForm(deps, formId);
   let settings: FormSettings;
   try {
-    settings = checkSettings(raw, await settingsDefinition(deps, form), senderIds);
+    const catalog = await catalogOf(deps);
+    settings = checkSettings(raw, await settingsDefinition(deps, form), senderIds, { brandIds: catalog.brands.map((b) => b.id), senderDomain: catalog.senderDomain });
   } catch (e) {
     throw new ValidationError(e instanceof Error ? e.message : "Those settings could not be saved.");
   }

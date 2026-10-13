@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { appOrigin, requireAdmin } from "@/lib/admin";
+import { requireAdmin } from "@/lib/admin";
+import { formLink } from "@/lib/forms/link";
 import { workflowCatalog } from "@/lib/automation/server";
 import { formDeps } from "@/lib/forms/server";
 import { checkDefinition, inputFields, type Field, type FormDefinition } from "@/lib/forms/definition.ts";
@@ -34,14 +35,16 @@ export default async function FormSettingsPage({ params, searchParams }: { param
     let def: FormDefinition | null = null;
     try { def = checkDefinition(form.draft_definition); } catch { def = version?.definition ?? null; }
     const [catalog, versions, submitted] = await Promise.all([workflowCatalog(), deps.repo.listVersions(form.id), deps.repo.countSubmitted(form.id)]);
-    return { form, version, def, senders: catalog.senders, versions, submitted };
+    const settings = readSettings(form.settings);
+    const [brands, link] = await Promise.all([deps.brandCatalog ? deps.brandCatalog().then((c) => c.brands).catch(() => []) : [], formLink(deps, form.public_id, settings)]);
+    return { form, version, def, senders: catalog.senders, versions, submitted, brands, link };
   });
   if (!result.ok) return <FormsSetupRequired message={result.message} />;
   if (!result.data) notFound();
-  const { form, version, def, senders, versions, submitted } = result.data;
+  const { form, version, def, senders, versions, submitted, brands, link } = result.data;
   const s = readSettings(form.settings);
   const fields = def ? inputFields(def) : [];
-  const origin = await appOrigin();
+  const brandName = brands.find((b) => b.id === s.brand_domain_id)?.name ?? (brands.length === 1 ? brands[0].name : null);
   const closeLocal = s.close_at ? new Date(s.close_at).toISOString().slice(0, 16) : "";
   const people = [...s.firm.people, ...Array.from({ length: Math.max(0, 6 - s.firm.people.length) }, () => null)].slice(0, 6);
   return (
@@ -52,7 +55,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
 
       <section className="monarch-panel" style={{ padding: 20 }}>
         <h2>Public link</h2>
-        {version && form.status === "published" ? <p><code>{origin}/f/{form.public_id}</code> · <a href={`/f/${form.public_id}`} target="_blank" rel="noreferrer">Open</a></p> : <p className="monarch-muted">{version ? "The form is not taking submissions right now." : "Publish the form from the Build tab to make its link live."}</p>}
+        {version && form.status === "published" ? <p><code>{link}</code> · <a href={link} target="_blank" rel="noreferrer">Open</a></p> : <p className="monarch-muted">{version ? "The form is not taking submissions right now." : "Publish the form from the Build tab to make its link live."}</p>}
         <p className="monarch-muted">Form id for workflow conditions (<code>form_id</code>): <code>{form.id}</code> · Versions published: {versions.length}{version ? ` (current v${version.version}, ${when(version.published_at)})` : ""} · Real submissions: {submitted}</p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {form.status === "published" && <form action={formStatusAction}><input type="hidden" name="id" value={form.id} /><input type="hidden" name="to" value="closed" /><button className="monarch-secondary">Close the form</button></form>}
@@ -77,6 +80,18 @@ export default async function FormSettingsPage({ params, searchParams }: { param
 
       <form action={saveFormSettingsAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
         <input type="hidden" name="id" value={form.id} />
+        {brands.length > 1 ? (
+          <>
+            <h2 className="is-wide">Firm</h2>
+            <label>Which firm does this form belong to?
+              <select name="brand_domain_id" required defaultValue={s.brand_domain_id ?? ""}>
+                <option value="" disabled>Choose a firm</option>
+                {brands.map((b) => <option key={b.id} value={b.id}>{b.name}{b.linkHost ? ` (${b.linkHost})` : ` (${b.domain})`}</option>)}
+              </select>
+            </label>
+            <small className="monarch-muted is-wide">The public link uses this firm&apos;s web address, and the form&apos;s emails come from this firm&apos;s sending addresses. Set each firm&apos;s name and web address in Settings → Email sending.</small>
+          </>
+        ) : brands.length === 1 ? <input type="hidden" name="brand_domain_id" value={brands[0].id} /> : null}
         <h2 className="is-wide">Respondent and customer</h2>
         {!def && <p className="monarch-alert is-error is-wide">The draft has a problem (see the Build tab), so questions can&apos;t be listed here until it&apos;s fixed or published.</p>}
         <label>Respondent&apos;s email question<QuestionSelect name="email_key" value={s.respondent.email_key} fields={fields} types={["email"]} none="Automatic: the form's first email question" /></label>
@@ -106,7 +121,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
 
         <h2 className="is-wide">Notifications</h2>
         <label>Tell these addresses about each submission (up to 5)<input name="recipients" defaultValue={s.notify.recipients.join(", ")} placeholder="Blank: your firm profile's email" /></label>
-        <label>Send from<select name="sender_id" defaultValue={s.notify.sender_id ?? ""}><option value="">Your default sending address</option>{senders.map((x) => <option key={x.id} value={x.id}>{x.from_name} &lt;{x.address}&gt;</option>)}</select></label>
+        <label>Send from<select name="sender_id" defaultValue={s.notify.sender_id ?? ""}><option value="">{brandName ? `${brandName}'s default sending address` : "Your default sending address"}</option>{senders.filter((x) => brands.length < 2 || !s.brand_domain_id || x.domain_id === s.brand_domain_id).map((x) => <option key={x.id} value={x.id}>{x.from_name} &lt;{x.address}&gt;</option>)}</select></label>
         <label className="monarch-check is-wide"><input type="checkbox" name="confirmation_email" defaultChecked={s.confirmation_email} /> Email the respondent a confirmation (&ldquo;we received your submission&rdquo;; no answers or files)</label>
         <label className="is-wide">Extra text for the confirmation email (optional)<textarea name="confirmation_email_text" rows={2} maxLength={2000} defaultValue={s.confirmation_email_text} /></label>
         <small className="monarch-muted is-wide">The notice to you has the form, number, time and respondent, with a link to the submission. Answers and files stay in the admin.</small>

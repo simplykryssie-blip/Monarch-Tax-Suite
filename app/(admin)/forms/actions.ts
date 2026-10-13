@@ -52,7 +52,7 @@ async function act(back: string, fn: (adminId: string) => Promise<{ to?: string;
 
 export async function createFormAction(form: FormData) {
   await act("/forms", async (adminId) => {
-    const f = await createForm(formDeps(), { name: str(form, "name"), description: str(form, "description"), adminId });
+    const f = await createForm(formDeps(), { name: str(form, "name"), description: str(form, "description"), brandDomainId: str(form, "brand_domain_id"), adminId });
     return { to: `/forms/${f.id}`, notice: "Form created. Drag questions onto the page to build it." };
   });
 }
@@ -123,6 +123,7 @@ export async function saveFormSettingsAction(form: FormData) {
         people,
       },
       notify: { recipients: str(form, "recipients"), sender_id: str(form, "sender_id") },
+      brand_domain_id: str(form, "brand_domain_id"),
       confirmation_email: form.get("confirmation_email") === "on",
       confirmation_email_text: str(form, "confirmation_email_text"),
       confirmation_message: str(form, "confirmation_message"),

@@ -2,8 +2,8 @@ import { emitEvent, senderFor, type AutomationDeps } from "../automation/engine.
 import { sanitizeError } from "../automation/sanitize.ts";
 import { formatInZone } from "../documents/signing.ts";
 import { firmSubmissionEmail, respondentConfirmationEmail, resumeEmail } from "./emails.ts";
-import { linkCustomer, linkFirm, makePdfSafe, type FormDeps, type PublicForm } from "./service.ts";
-import { readSettings } from "./settings.ts";
+import { brandFor, linkCustomer, linkFirm, makePdfSafe, type FormDeps, type PublicForm } from "./service.ts";
+import { readSettings, type FormSettings } from "./settings.ts";
 import type { Submission } from "./types.ts";
 
 // What follows a submission: the PDF, the customer and firm records, the firm's notice, the respondent's
@@ -24,6 +24,25 @@ async function send(auto: AutomationDeps, senderId: string | null, to: string, m
   return result.ok ? null : sanitizeError(result.message, 200);
 }
 
+/**
+ * Who a form's emails come from, and the name they carry: the form's own sending address if one is chosen; otherwise
+ * its firm/brand's default (or first) verified address. With several brands, a brand that has no verified address
+ * sends nothing, so one brand's form never emails from another brand. With one brand (or none), the tenant default.
+ */
+export async function formSender(auto: AutomationDeps, deps: FormDeps, settings: FormSettings): Promise<{ senderId: string | null; name: string | null; blocked: string | null }> {
+  const brand = await brandFor(deps, settings);
+  const catalog = deps.brandCatalog ? await deps.brandCatalog().catch(() => null) : null;
+  const name = brand?.name ?? null;
+  if (settings.notify.sender_id) return { senderId: settings.notify.sender_id, name, blocked: null };
+  if (!brand || !catalog) return { senderId: null, name, blocked: null };
+  const onBrand = Object.entries(catalog.senderDomain).filter(([, domain]) => domain === brand.id).map(([id]) => id);
+  const all = auto.senders ? await auto.senders.listSenders().catch(() => []) : [];
+  const preferred = onBrand.find((id) => all.find((x) => x.id === id)?.is_default) ?? onBrand[0];
+  if (preferred) return { senderId: preferred, name, blocked: null };
+  if (catalog.brands.length > 1) return { senderId: null, name, blocked: `${brand.name} has no verified sending address yet (Settings → Email sending), so this email was not sent.` };
+  return { senderId: null, name, blocked: null };
+}
+
 /** The firm's notice. Sends once (the provider de-duplicates retries by key) and records the outcome. */
 export async function notifyFirm(auto: AutomationDeps, deps: FormDeps, sub: Submission): Promise<void> {
   if (sub.notified_at || sub.is_test || sub.status === "spam" || sub.status === "draft") return;
@@ -31,17 +50,22 @@ export async function notifyFirm(auto: AutomationDeps, deps: FormDeps, sub: Subm
   if (!form) return;
   const settings = readSettings(form.settings);
   const profile = await deps.profile();
+  const from = await formSender(auto, deps, settings);
+  if (from.blocked) {
+    await deps.repo.updateSubmission(sub.id, { notify_error: from.blocked.slice(0, 480) });
+    return;
+  }
   const recipients = settings.notify.recipients.length ? settings.notify.recipients : [profile?.email ?? auto.config.supportRecipient].filter(Boolean);
   const origin = (await auto.config.origin()).replace(/\/$/, "");
   const mail = firmSubmissionEmail({
-    firmName: profile?.display_name ?? "Your tax office", formName: form.name, number: sub.number ?? 0,
+    firmName: from.name ?? profile?.display_name ?? "Your tax office", formName: form.name, number: sub.number ?? 0,
     submittedAt: formatInZone(new Date(sub.submitted_at ?? sub.created_at), profile?.time_zone ?? "America/New_York"),
     respondent: [sub.respondent_name, sub.respondent_email].filter(Boolean).join(", ") || null,
     adminUrl: `${origin}/forms/${form.id}/submissions/${sub.id}`,
   });
   const problems: string[] = [];
   for (const to of recipients) {
-    const p = await send(auto, settings.notify.sender_id, to, mail, `form-notify:${sub.id}:${to}`);
+    const p = await send(auto, from.senderId, to, mail, `form-notify:${sub.id}:${to}`);
     if (p && !p.startsWith("not sent")) problems.push(`${to}: ${p}`);
   }
   if (problems.length) {
@@ -59,11 +83,13 @@ async function confirmRespondent(auto: AutomationDeps, deps: FormDeps, sub: Subm
   const settings = readSettings(form.settings);
   if (!settings.confirmation_email) return;
   const profile = await deps.profile();
+  const from = await formSender(auto, deps, settings);
+  if (from.blocked) return console.error(`forms: confirmation for ${sub.id} not sent: ${from.blocked}`);
   const mail = respondentConfirmationEmail({
-    firmName: profile?.display_name ?? "Your tax office", formName: form.name, number: sub.number ?? 0, name: sub.respondent_name,
+    firmName: from.name ?? profile?.display_name ?? "Your tax office", formName: form.name, number: sub.number ?? 0, name: sub.respondent_name,
     submittedAt: formatInZone(new Date(sub.submitted_at ?? sub.created_at), profile?.time_zone ?? "America/New_York"), message: settings.confirmation_email_text,
   });
-  const problem = await send(auto, settings.notify.sender_id, sub.respondent_email, mail, `form-confirm:${sub.id}`);
+  const problem = await send(auto, from.senderId, sub.respondent_email, mail, `form-confirm:${sub.id}`);
   if (!problem) {
     await deps.repo.updateSubmission(sub.id, { confirmation_sent_at: new Date().toISOString() });
     await deps.repo.addEvent({ form_id: sub.form_id, submission_id: sub.id, type: "confirmation_sent", actor_id: null, detail: {} });
@@ -96,15 +122,16 @@ export async function afterSubmit(auto: AutomationDeps, deps: FormDeps, submissi
 }
 
 /** Emails the respondent their resume link. */
-export async function sendResumeLink(auto: AutomationDeps, deps: FormDeps, input: { pf: PublicForm; email: string; token: string; expiresAt: string }): Promise<string | null> {
+export async function sendResumeLink(auto: AutomationDeps, deps: FormDeps, input: { pf: PublicForm; email: string; token: string; expiresAt: string; formUrl: string }): Promise<string | null> {
   const profile = await deps.profile();
-  const origin = (await auto.config.origin()).replace(/\/$/, "");
+  const from = await formSender(auto, deps, input.pf.settings);
+  if (from.blocked) return from.blocked;
   const mail = resumeEmail({
-    firmName: profile?.display_name ?? "Your tax office", formName: input.pf.form.name,
-    url: `${origin}/f/${input.pf.form.public_id}?resume=${input.token}`,
+    firmName: from.name ?? profile?.display_name ?? "Your tax office", formName: input.pf.form.name,
+    url: `${input.formUrl}?resume=${input.token}`,
     expiresAt: new Intl.DateTimeFormat("en-US", { dateStyle: "long", timeZone: profile?.time_zone ?? "America/New_York" }).format(new Date(input.expiresAt)),
   });
-  return send(auto, input.pf.settings.notify.sender_id, input.email, mail, `form-resume:${input.token.slice(0, 16)}:${new Date().toISOString().slice(0, 13)}`);
+  return send(auto, from.senderId, input.email, mail, `form-resume:${input.token.slice(0, 16)}:${new Date().toISOString().slice(0, 13)}`);
 }
 
 /** Scheduled retries: firm notices that failed, within two days of the submission. */
