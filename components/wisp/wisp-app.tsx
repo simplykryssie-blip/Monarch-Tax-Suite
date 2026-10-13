@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BUILDER_FIELDS, BUILDER_STEPS, calculateScore, CATEGORIES, CATEGORY_ADVICE, CATEGORY_KEYS, DISCLAIMER, EMAIL, ERO_QUESTIONS,
-  feeComparison, QUESTIONS, scoreVerdict, type EroAnswers, type WispAnswers,
+  feeComparison, numberDraft, QUESTIONS, scoreVerdict, type EroAnswers, type WispAnswers,
 } from "@/lib/wisp/content.ts";
 import { recordAuditAction, startWispCheckoutAction } from "@/app/wisp/actions";
 import { TermsLinks } from "@/components/storefront/buy-form";
@@ -12,7 +12,7 @@ import { TermsLinks } from "@/components/storefront/buy-form";
 // 12-question audit, the optional ERO questions while the score is "calculated", results with the score ring,
 // category breakdown and fee comparison, and the 6-step builder that ends in the $25 checkout.
 
-type Props = { brandName: string; canBuy: boolean; cancelled: boolean; ourFee: number };
+type Props = { brandName: string; canBuy: boolean; cancelled: boolean; ourFee: number | null };
 type Stage = "quiz" | "ero" | "results";
 const CIRC = 534;
 
@@ -27,6 +27,9 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
   const [showBuilder, setShowBuilder] = useState(cancelled);
   const builderRef = useRef<HTMLElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  // The page loaded, so a later load failure in this tab may retry on its own again (see app/wisp/error.tsx).
+  useEffect(() => { try { window.sessionStorage.removeItem("wisp-retried"); } catch { /* storage unavailable */ } }, []);
 
   // A link to #builder (from the shop, the nav, or a cancelled checkout) opens the builder once the page is shown.
   useEffect(() => {
@@ -48,7 +51,7 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
       if (q < QUESTIONS.length - 1) setQ(q + 1);
       else {
         setEroStep(0);
-        setEroDraft(ero[ERO_QUESTIONS[0].id] ?? (ERO_QUESTIONS[0].type === "select" ? ERO_QUESTIONS[0].options[0] : ""));
+        setEroDraft(ero[ERO_QUESTIONS[0].id] ?? "");
         setStage("ero");
       }
     }, 280);
@@ -61,7 +64,7 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
     if (eroStep < ERO_QUESTIONS.length - 1) {
       const nq = ERO_QUESTIONS[eroStep + 1];
       setEroStep(eroStep + 1);
-      setEroDraft(merged[nq.id] ?? (nq.type === "select" ? nq.options[0] : ""));
+      setEroDraft(merged[nq.id] ?? "");
       return;
     }
     setStage("results");
@@ -155,10 +158,11 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
                   <label htmlFor="ero-input">{ERO_QUESTIONS[eroStep].label}</label>
                   {ERO_QUESTIONS[eroStep].type === "select" ? (
                     <select id="ero-input" value={eroDraft} onChange={(e) => setEroDraft(e.target.value)}>
+                      <option value="" disabled>Choose…</option>
                       {(ERO_QUESTIONS[eroStep] as { options: readonly string[] }).options.map((o) => <option key={o}>{o}</option>)}
                     </select>
                   ) : (
-                    <input id="ero-input" type="number" min={0} inputMode="decimal" value={eroDraft} placeholder={(ERO_QUESTIONS[eroStep] as { placeholder?: string }).placeholder} onChange={(e) => setEroDraft(e.target.value)} />
+                    <input id="ero-input" type="text" inputMode="decimal" autoComplete="off" value={eroDraft} placeholder={(ERO_QUESTIONS[eroStep] as { placeholder?: string }).placeholder} onChange={(e) => setEroDraft(numberDraft(e.target.value, true))} />
                   )}
                 </div>
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => nextEro(true)}>Skip</button>
@@ -189,7 +193,7 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
   );
 }
 
-function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild }: { brandName: string; refEl: React.RefObject<HTMLDivElement | null>; score: number; breakdown: Record<string, number>; ero: EroAnswers; ourFee: number; onBuild: () => void }) {
+function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild }: { brandName: string; refEl: React.RefObject<HTMLDivElement | null>; score: number; breakdown: Record<string, number>; ero: EroAnswers; ourFee: number | null; onBuild: () => void }) {
   const [shown, setShown] = useState(0);
   const [offset, setOffset] = useState(CIRC);
   useEffect(() => {
@@ -233,7 +237,7 @@ function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild }: {
           <h3>YOUR CURRENT COSTS vs {brandName.split(" ")[0].toUpperCase()}</h3>
           <div className="fee-grid">
             <div className="fee-card"><p className="fee-label">Your per-return cost</p><p className="fee-num">${fee.theirFee.toLocaleString("en-US")}</p></div>
-            <div className="fee-card highlight"><p className="fee-label">{brandName.split(" ")[0]} per funded return</p><p className="fee-num gold">${fee.ourFee}</p></div>
+            <div className={`fee-card${fee.lower ? "" : " highlight"}`}><p className="fee-label">{brandName.split(" ")[0]} all-in per funded return</p><p className="fee-num gold">${fee.ourFee.toLocaleString("en-US")}</p></div>
           </div>
           <p className="fee-note">{fee.note}</p>
         </div>
@@ -258,6 +262,7 @@ function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBu
   const [problem, setProblem] = useState<string | null>(cancelled ? "Checkout was cancelled, so you haven't been charged. Your answers are still here if you'd like to finish." : null);
   const [emailError, setEmailError] = useState(false);
   const cur = BUILDER_STEPS[step];
+  const restored = useRef(false);
 
   // Keep a draft in this browser so a refresh (or a cancelled checkout) doesn't lose the answers.
   useEffect(() => {
@@ -267,10 +272,13 @@ function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBu
         if (saved?.data) setData(saved.data);
         if (saved?.email) setEmail(saved.email);
       } catch { /* no saved draft */ }
+      restored.current = true;
     }, 0);
     return () => clearTimeout(t);
   }, []);
   useEffect(() => {
+    // Saving before the draft is read would overwrite it with the empty form.
+    if (!restored.current) return;
     try { window.sessionStorage.setItem("wisp-builder", JSON.stringify({ data, email })); } catch { /* storage unavailable */ }
   }, [data, email]);
 
@@ -307,7 +315,7 @@ function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBu
     }
   }
 
-  const rows = Object.values(BUILDER_FIELDS).flat().filter((f) => data[f.id]);
+  const rows = Object.values(BUILDER_FIELDS).flat().filter((f) => f.required || data[f.id]);
   return (
     <div className="builder-layout">
       <aside className="builder-sidebar">
@@ -339,7 +347,7 @@ function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBu
                         {f.options!.map((o) => <option key={o}>{o}</option>)}
                       </select>
                     ) : (
-                      <input id={`bf_${f.id}`} type={f.type} inputMode={f.type === "number" ? "numeric" : undefined} min={f.type === "number" ? 0 : undefined} maxLength={200} placeholder={f.placeholder} value={data[f.id] ?? ""} onChange={(e) => setData({ ...data, [f.id]: e.target.value })} aria-invalid={!!errors[f.id]} />
+                      <input id={`bf_${f.id}`} type={f.type === "number" ? "text" : f.type} inputMode={f.type === "number" ? "numeric" : undefined} maxLength={200} placeholder={f.placeholder} value={data[f.id] ?? ""} onChange={(e) => setData({ ...data, [f.id]: f.type === "number" ? numberDraft(e.target.value, false) : e.target.value })} aria-invalid={!!errors[f.id]} />
                     )}
                     {errors[f.id] && <p className="field-error">This field is required.</p>}
                   </div>
@@ -356,7 +364,7 @@ function Builder({ auditId, canBuy, cancelled }: { auditId: string | null; canBu
               <p className="panel-desc">Confirm your details below. Your WISP will be generated as a professional PDF.</p>
               <div className="review-box">
                 <h4>Your information</h4>
-                {rows.length ? rows.map((f) => <div key={f.id} className="review-row"><span className="rk">{f.label}</span><span className="rv">{data[f.id]}</span></div>) : <p style={{ color: "#8a8a8a" }}>No details entered yet.</p>}
+                {rows.map((f) => <div key={f.id} className="review-row"><span className="rk">{f.label}</span><span className="rv">{data[f.id]?.trim() || "— missing, go back to fill this in"}</span></div>)}
               </div>
               <div className="email-capture">
                 <h4>DELIVERY EMAIL</h4>

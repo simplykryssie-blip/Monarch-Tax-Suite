@@ -9,7 +9,7 @@ import { handleStripeEvent, type FulfillmentDeps } from "../lib/commerce/fulfill
 import { publishBlockers } from "../lib/commerce/validation.ts";
 import type { NewProduct } from "../lib/commerce/types.ts";
 import { CrmSecrets } from "../lib/crm/crypto.ts";
-import { calculateScore, checkAnswers, checkAudit, feeComparison, QUESTIONS, scoreVerdict } from "../lib/wisp/content.ts";
+import { calculateScore, checkAnswers, checkAudit, comparisonFee, feeComparison, numberDraft, numberInput, QUESTIONS, scoreVerdict } from "../lib/wisp/content.ts";
 import {
   downloadUrl, fulfilPaidPlan, LINK_DAYS, planForBuyer, planForLink, recordAudit, resendForBuyer, startPlan,
   type WispAudit, type WispDelivery, type WispDeps, type WispMailer, type WispPlan, type WispRepo,
@@ -77,14 +77,32 @@ describe("the audit (owner's rules, unchanged)", () => {
     assert.deepEqual(mixed, { score: 65, breakdown: { access: 100, physical: 50, data: 50, incident: 50 } });
   });
 
-  test("under 40 says YOU DON'T HAVE A WISP; the fee comparison only shows above $223", () => {
+  test("under 40 says YOU DON'T HAVE A WISP; the fee comparison uses the firm's own fee", () => {
     assert.equal(scoreVerdict(39).headline, "YOU DON'T HAVE A WISP");
     assert.equal(scoreVerdict(40).headline, "YOUR WISP HAS SERIOUS GAPS");
     assert.equal(scoreVerdict(70).headline, "STRONG FOUNDATION");
-    assert.equal(feeComparison({ per_return_fee: "223" }), null);
-    assert.equal(feeComparison({}), null);
-    assert.match(feeComparison({ per_return_fee: "250", volume: "150" })!.note, /save roughly \$4,050 per season/);
-    assert.match(feeComparison({ per_return_fee: "250" })!.note, /\$27 more per return/);
+    assert.equal(feeComparison({ per_return_fee: "250" }, null), null, "no firm fee set, no comparison");
+    assert.equal(feeComparison({}, 223), null);
+    assert.match(feeComparison({ per_return_fee: "250", volume: "150" }, 223)!.note, /save roughly \$4,050 per season/);
+    assert.match(feeComparison({ per_return_fee: "$250" }, 223)!.note, /\$27 more per return/);
+    const lower = feeComparison({ per_return_fee: "150", volume: "500" }, 223)!;
+    assert.equal(lower.lower, true);
+    assert.match(lower.note, /\$73 less per return than our all-in \$223/);
+    assert.match(feeComparison({ per_return_fee: "223" }, 223)!.note, /same as our all-in/);
+    assert.equal(comparisonFee({ comparison_fee: "$223" }), 223);
+    assert.equal(comparisonFee({ delivery: "wisp_generator" }), null);
+    assert.equal(comparisonFee(null), null);
+  });
+
+  test("number fields accept what people type", () => {
+    assert.equal(numberInput(" 5 "), 5);
+    assert.equal(numberInput("$1,250.50"), 1250.5);
+    assert.equal(numberInput("five"), null);
+    assert.equal(numberDraft("5 people", false), "5");
+    assert.equal(numberDraft("$1,250.555", true), "1250.55");
+    assert.equal(checkAudit([], { per_return_fee: "$150", volume: "1,500", bureau: "" }).ero.per_return_fee, "150");
+    assert.equal(checkAudit([], { volume: "1,500" }).ero.volume, "1500");
+    assert.equal(checkAudit([], { bureau: "" }).ero.bureau, undefined, "an unanswered question stays unanswered");
   });
 
   test("answers are checked again on the server", () => {

@@ -35,8 +35,29 @@ export const ERO_QUESTIONS = [
 ] as const;
 export type EroAnswers = Partial<Record<(typeof ERO_QUESTIONS)[number]["id"], string>>;
 
-/** The bureau's all-in fee per funded return, used for the comparison (Monarch's published rate). */
-export const DEFAULT_PER_RETURN = 223;
+/**
+ * The firm's own all-in fee per funded return for the comparison. It is each firm's pricing, not the system's, so it
+ * comes from the WISP product's "comparison_fee" setting; without one the comparison isn't shown.
+ */
+export function comparisonFee(metadata: Record<string, string> | null | undefined): number | null {
+  const n = numberInput(metadata?.comparison_fee ?? "");
+  return n !== null && n > 0 ? n : null;
+}
+
+/** A typed amount or count as a number: "$1,250.50", " 5 " and "250" all work; anything else is null. */
+export function numberInput(raw: string): number | null {
+  const v = raw.replace(/[\s$,]/g, "");
+  if (!/^\d{1,7}(\.\d{1,2})?$/.test(v)) return null;
+  return Number.parseFloat(v);
+}
+
+/** What a number field keeps while typing: digits (and one decimal point where allowed), nothing else. */
+export function numberDraft(raw: string, decimals: boolean): string {
+  const v = raw.replace(/[^\d.]/g, "");
+  if (!decimals) return v.replace(/\./g, "").slice(0, 6);
+  const [whole, ...rest] = v.split(".");
+  return (rest.length ? `${whole.slice(0, 7)}.${rest.join("").slice(0, 2)}` : whole.slice(0, 7));
+}
 
 // ------------------------------------------------------------------ scoring
 
@@ -77,16 +98,25 @@ export const CATEGORY_ADVICE: Record<Category, string> = {
   incident: "Write your incident response plan and train staff on phishing.",
 };
 
-/** The fee comparison, shown only when the visitor pays more per funded return than the bureau's rate. */
-export function feeComparison(ero: EroAnswers, ourFee = DEFAULT_PER_RETURN): { theirFee: number; ourFee: number; note: string } | null {
-  const theirFee = Number.parseFloat(ero.per_return_fee ?? "");
-  if (!Number.isFinite(theirFee) || theirFee <= ourFee) return null;
-  const vol = Number.parseFloat(ero.volume ?? "") || 0;
+/**
+ * The fee comparison, shown whenever the visitor gives their per-return fee and the firm has set its own. When they
+ * pay more it shows the saving; when they pay the same or less it says so plainly, with what to check.
+ */
+export function feeComparison(ero: EroAnswers, ourFee: number | null): { theirFee: number; ourFee: number; lower: boolean; note: string } | null {
+  const theirFee = numberInput(ero.per_return_fee ?? "");
+  if (ourFee === null || theirFee === null || theirFee <= 0) return null;
+  const vol = numberInput(ero.volume ?? "") ?? 0;
   const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  const note = vol > 0
-    ? `At ${fmt(vol)} returns, you'd save roughly $${fmt((theirFee - ourFee) * vol)} per season on per-return fees alone.`
-    : `That's $${fmt(theirFee - ourFee)} more per return than our flat $${fmt(ourFee)}.`;
-  return { theirFee, ourFee, note };
+  if (theirFee > ourFee) {
+    const note = vol > 0
+      ? `At ${fmt(vol)} returns, you'd save roughly $${fmt((theirFee - ourFee) * vol)} per season on per-return fees alone.`
+      : `That's $${fmt(theirFee - ourFee)} more per return than our all-in $${fmt(ourFee)}.`;
+    return { theirFee, ourFee, lower: false, note };
+  }
+  const note = theirFee === ourFee
+    ? `You're paying the same as our all-in $${fmt(ourFee)} per return. Check that yours covers the bureau, transmission, technology and e-file fees too.`
+    : `You're paying $${fmt(ourFee - theirFee)} less per return than our all-in $${fmt(ourFee)}. Check that yours covers the bureau, transmission, technology and e-file fees, and whether any are added on top.`;
+  return { theirFee, ourFee, lower: true, note };
 }
 
 // ------------------------------------------------------------------ builder
@@ -155,8 +185,8 @@ export function checkAnswers(raw: unknown): WispAnswers {
     const v = typeof r[f.id] === "string" ? (r[f.id] as string).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").trim().slice(0, MAX[f.type]) : "";
     if (f.required && !v) throw new WispInputError(`"${f.label}" is required.`, f.id);
     if (v && f.type === "select" && !f.options!.includes(v)) throw new WispInputError(`Choose an option for "${f.label}".`, f.id);
-    if (v && f.type === "number" && !/^\d{1,6}$/.test(v)) throw new WispInputError(`"${f.label}" must be a whole number.`, f.id);
-    if (v) out[f.id] = v;
+    if (v && f.type === "number" && !/^\d{1,6}$/.test(v.replace(/[\s,]/g, ""))) throw new WispInputError(`"${f.label}" must be a whole number.`, f.id);
+    if (v) out[f.id] = f.type === "number" ? v.replace(/[\s,]/g, "") : v;
   }
   return out;
 }
@@ -177,7 +207,12 @@ export function checkAudit(rawAnswers: unknown, rawEro: unknown): { answers: (0 
     const v = typeof r[q.id] === "string" ? (r[q.id] as string).trim().slice(0, 40) : "";
     if (!v) continue;
     if (q.type === "select" && !(q.options as readonly string[]).includes(v)) continue;
-    if (q.type === "number" && !/^\d{1,7}(\.\d{1,2})?$/.test(v)) continue;
+    if (q.type === "number") {
+      const n = numberInput(v);
+      if (n === null) continue;
+      ero[q.id] = String(n);
+      continue;
+    }
     ero[q.id] = v;
   }
   return { answers, ero };
