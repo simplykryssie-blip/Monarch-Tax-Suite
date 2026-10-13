@@ -1,13 +1,12 @@
 -- Phase 2, Step 1, Piece 2 gate: tenant isolation and record-keeping rules for the Form Builder tables.
--- Runs inside a transaction that is rolled back; it creates two fake tenants (example.com data only) and leaves nothing.
+-- Paste the whole file into the Supabase SQL editor (test project) and run it. It creates two fake tenants
+-- (example.com data only), runs 17 checks, then stops with an error whose message lists every result. Stopping with
+-- an error is deliberate: it rolls everything back, so nothing is ever saved.
 -- Each check runs the way the server does: as service_role with an x-tenant-id header, switched by the request hook.
 
-begin;
-create temp table gate_results (n serial, check_name text, pass boolean, detail text) on commit drop;
-grant all on gate_results to public;
-grant usage on sequence gate_results_n_seq to public;
 do $$
 declare
+  msg text; passed int; total int;
   a uuid := '00000000-0000-4000-8000-0000000000a1';
   b uuid := '00000000-0000-4000-8000-0000000000b2';
   t uuid; f uuid; v uuid; s uuid; cid uuid; got uuid; n integer;
@@ -15,6 +14,9 @@ declare
   tbl text; who text; n_b bigint; n_list bigint; n_exp bigint; res text;
   def jsonb := '{"version":1,"pages":[],"rules":[]}';
 begin
+  create temp table gate_results (n serial, check_name text, pass boolean, detail text);
+  grant all on gate_results to public;
+  grant usage on sequence gate_results_n_seq to public;
   insert into public.tenants (id, slug, name) values (a, 'gate-forms-a', 'Gate Forms A'), (b, 'gate-forms-b', 'Gate Forms B');
   foreach t in array array[a, b] loop
     insert into public.calculator_customers (tenant_id, email, full_name, status) values (t, 'gate-forms-' || right(t::text, 2) || '@example.com', 'Gate Client', 'active') returning id into cid;
@@ -117,6 +119,8 @@ begin
   end;
   insert into gate_results (check_name, pass, detail) values ('form_versions: a published version cannot be changed', res = 'refused', res);
   reset role;
+  select count(*) filter (where pass), count(*), string_agg(format('%s. %s  %s  (%s)', n, case when pass then 'PASS' else 'FAIL' end, check_name, detail), E'\n' order by n)
+    into passed, total, msg from gate_results;
+  -- Raising undoes everything above, so nothing is saved.
+  raise exception E'GATE RESULT: % of % passed (rolled back, nothing saved)\n%', passed, total, msg;
 end $$;
-select check_name, pass, detail from gate_results order by n;
-rollback;
