@@ -26,7 +26,7 @@ The source is the owner's static build (`wisp-generator-source`: index.html, sty
    - emails it through Resend with the PDF attached and a download link that works for a year.
    - Stripe retries can't make or send it twice.
 3. **Confirmation page (`/wisp/done`):**
-   - waits for the payment confirmation;
+   - while the plan shows unpaid, asks Stripe directly about the checkout. If Stripe says it's paid, the page records it exactly as the webhook would: the order, the customer, then the WISP delivery. Both paths are safe to repeat, so a late webhook changes nothing;
    - makes the PDF or sends the email itself if the webhook's attempt failed;
    - always shows the download button.
    - If the email failed, it says so and offers "Try emailing it again", limited to once every two minutes.
@@ -54,6 +54,7 @@ The source is the owner's static build (`wisp-generator-source`: index.html, sty
 - **Number of people with data access:** the number fields are now plain text fields with a number keypad. They keep only digits, so a value like "5 people" is kept as 5 instead of being dropped by the browser. The review step lists every required field and marks any missing one, so nothing disappears silently.
 - **ERO questions:** none comes pre-answered. Each starts on "Choose…", and continuing without a choice counts as skipped.
 - **Blank first load:** the server logs show no error, and the page renders in full on the server. The likeliest cause is the browser losing the page's files while a new release was going out. The page now retries once on its own, then shows a "Reload the page" button instead of an empty screen. Answers in the tab are kept.
+- **Stuck on "Confirming your payment…":** the Preview's web address is behind Vercel's login, so Stripe's webhook never reached the app. The page now confirms the payment with Stripe itself (see step 3 above), so the download appears within seconds of paying.
 - **Saved draft:** the builder now restores a refreshed tab's answers. Before, it could overwrite the draft with the empty form before reading it.
 
 ## Owner decisions reflected

@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { stripeClient } from "@/lib/admin";
+import { confirmCheckoutFromStripe } from "@/lib/stripe-fulfillment";
+import { MONARCH_TENANT_ID } from "@/lib/tenants";
 import { DISCLAIMER } from "@/lib/wisp/content.ts";
 import { deliver, planForBuyer, type WispPlan } from "@/lib/wisp/service.ts";
 import { requestTenant, wispDeps } from "@/lib/wisp/server";
@@ -12,6 +15,22 @@ export const metadata: Metadata = { title: "Your WISP", robots: { index: false, 
  * After checkout. Payment is confirmed by Stripe's webhook, usually within seconds; this page waits for it, makes
  * sure the PDF exists (making it here if the webhook's attempt failed), and always offers the download.
  */
+/**
+ * While the plan still shows unpaid, asks Stripe directly and records a finished payment the same way the webhook
+ * does, so the buyer isn't left waiting when the webhook is late or can't reach this deployment.
+ */
+async function confirmPayment(deps: ReturnType<typeof wispDeps>, plan: WispPlan | null): Promise<WispPlan | null> {
+  const stripe = stripeClient();
+  if (!plan || plan.status !== "draft" || !plan.stripe_session_id || plan.tenant_id !== MONARCH_TENANT_ID || !stripe) return plan;
+  try {
+    if (!(await confirmCheckoutFromStripe(stripe, plan.stripe_session_id))) return plan;
+    return (await deps.repo.getPlan(plan.id)) ?? plan;
+  } catch (e) {
+    console.error(`wisp done: confirming payment for ${plan.id} failed: ${e instanceof Error ? e.message.slice(0, 200) : "unknown"}`);
+    return plan;
+  }
+}
+
 /** Makes the PDF and sends the email if the webhook couldn't (both are safe to repeat). */
 async function finish(plan: WispPlan | null): Promise<{ plan: WispPlan | null; problem: string | null }> {
   if (!plan || plan.status === "draft" || (plan.pdf_path && (plan.emailed_at || plan.email_error))) return { plan, problem: null };
@@ -30,7 +49,7 @@ export default async function WispDonePage({ searchParams }: { searchParams: Pro
   const deps = wispDeps(await requestTenant());
   const [planId, token] = ((await cookies()).get(WISP_COOKIE)?.value ?? "").split(".");
   const found = planId && token ? await planForBuyer(deps, planId, token).catch(() => null) : null;
-  const { plan, problem } = await finish(found);
+  const { plan, problem } = await finish(await confirmPayment(deps, found));
   const waiting = plan?.status === "draft";
   const emailFailed = !!plan && plan.status !== "draft" && !plan.emailed_at && !!plan.email_error;
   return (
