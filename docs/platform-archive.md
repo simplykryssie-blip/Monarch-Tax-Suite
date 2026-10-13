@@ -39,7 +39,7 @@ Migration: `supabase/migrations/20261017090000_archive.sql`. It needs the forms 
 
 ## Tenant isolation
 
-`supabase/tests/archive_isolation.sql` has 14 checks. It runs in the SQL editor and stops with an error that lists the results, so everything is rolled back:
+`supabase/tests/archive_isolation.sql` has 14 checks. It runs in the SQL editor and stops with an error that lists the results, so everything is rolled back. **Test project, 2026-10-13: 14/14 pass**, run by the owner in the SQL editor, with nothing left behind. The checks:
 
 - the columns are on all 8 tables;
 - tenant A sees none of B's history and none of B's archived records;
