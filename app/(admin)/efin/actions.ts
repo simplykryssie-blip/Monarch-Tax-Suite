@@ -46,6 +46,7 @@ async function mutate(back: string, fn: (actor: Actor) => Promise<{ to?: string;
   revalidatePath("/efin", "layout");
   revalidatePath("/bureau/settings");
   revalidatePath("/workspace");
+  revalidatePath("/ero");
   redirect(target);
 }
 
@@ -239,15 +240,15 @@ export const addOfficialAction = async (form: FormData) =>
     return { notice: "Added." };
   });
 
-// ---- My Workspace: PTINs
+// ---- ERO Dashboard: PTINs
 export const addPtinAction = async (form: FormData) =>
-  mutate("/workspace", async (a) => {
+  mutate("/ero", async (a) => {
     await addPtin(a, form);
     return { notice: "PTIN added. It is recorded as a separate protected credential and does not authorize e-file by itself." };
   });
 
 export const archivePtinAction = async (form: FormData) =>
-  mutate("/workspace", async (a) => {
+  mutate("/ero", async (a) => {
     confirmed(form, "removing this PTIN");
     await archivePtin(a, String(form.get("id") ?? ""));
     return { notice: "PTIN removed from your list. It is kept in the history." };

@@ -14,7 +14,8 @@ export const PAGES: SearchHit[] = [
   { id: "p-prod", group: "Pages", title: "Products", detail: "My Store", href: "/products" },
   { id: "p-lic", group: "Pages", title: "Licenses", detail: "My Store", href: "/licenses" },
   { id: "p-inst", group: "Pages", title: "Installations", detail: "My Store", href: "/installations" },
-  { id: "p-workspace", group: "Pages", title: "My Workspace", detail: "Partner EROs and PTINs", href: "/workspace" },
+  { id: "p-workspace", group: "Pages", title: "My Workspace", detail: "Clients and documents", href: "/workspace" },
+  { id: "p-ero", group: "Pages", title: "ERO Dashboard", detail: "My EFIN and PTINs", href: "/ero" },
   { id: "p-efin", group: "Pages", title: "My Service Bureau", detail: "Dashboard", href: "/efin" },
   { id: "p-efin-list", group: "Pages", title: "EROs & EFINs", detail: "My Service Bureau", href: "/efin/list" },
   { id: "p-efin-new", group: "Pages", title: "Add a firm", detail: "My Service Bureau", href: "/efin/new" },
@@ -33,7 +34,7 @@ const norm = (v: string | null | undefined) => (v ?? "").toLowerCase();
 /** Every whitespace-separated term must appear somewhere in the haystack. */
 const matches = (hay: string, terms: string[]) => terms.every((t) => hay.includes(t));
 
-export function searchRecords(data: SearchData, query: string, limitPerGroup = 4): SearchHit[] {
+export function searchRecords(data: SearchData, query: string, limitPerGroup = 4, pageList: SearchHit[] = PAGES): SearchHit[] {
   const terms = norm(query).trim().split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
   const customer = new Map(data.customers.map((c) => [c.id, c]));
@@ -47,6 +48,6 @@ export function searchRecords(data: SearchData, query: string, limitPerGroup = 4
   add(data.licenses.filter((l) => matches(norm(`${l.key_prefix} ${who(l.customer_id)} ${customer.get(l.customer_id)?.email} ${l.status}`), terms)).map((l) => ({ id: `l:${l.id}`, group: "Licenses" as const, title: l.key_prefix ? `${l.key_prefix}…` : "License (no key yet)", detail: `${who(l.customer_id)} · ${l.status}`, href: `/licenses/${l.id}` })));
   add(data.products.filter((p) => matches(norm(`${p.name} ${p.slug}`), terms)).map((p) => ({ id: `p:${p.id}`, group: "Products" as const, title: p.name, detail: p.status, href: `/products/${p.id}` })));
   add(data.installations.filter((i) => matches(norm(`${who(i.customer_id)} ${customer.get(i.customer_id)?.email} ${i.target_location} ${i.platform}`), terms)).map((i) => ({ id: `i:${i.id}`, group: "Installations" as const, title: who(i.customer_id), detail: `${i.platform} · ${i.status}`, href: `/installations/${i.id}` })));
-  const pages = PAGES.filter((p) => matches(norm(`${p.title} ${p.detail}`), terms));
+  const pages = pageList.filter((p) => matches(norm(`${p.title} ${p.detail}`), terms));
   return [...out, ...pages.slice(0, 5)];
 }

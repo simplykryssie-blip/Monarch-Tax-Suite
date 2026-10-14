@@ -2,7 +2,7 @@ import { ActionForm } from "../action-form";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
 import { Badge, EmptyRow, Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
-import { complianceExceptions, EXCEPTION_LABEL } from "@/lib/efin/exceptions.ts";
+import { complianceExceptions, EXCEPTION_LABEL, groupExceptions, uniqueBy } from "@/lib/efin/exceptions.ts";
 import { daysUntil, todayIso } from "@/lib/efin/rules.ts";
 import { loadSnapshot } from "@/lib/efin/service";
 import { completeRenewalAction } from "../actions";
@@ -18,8 +18,8 @@ export default async function Renewals({ searchParams }: { searchParams: Promise
       <Flash {...sp} />
       {!result.ok ? <SetupRequired message={result.message} module="efin" /> : (() => {
         const s = result.data;
-        const open = s.tasks.filter((t) => ["open", "urgent", "escalated", "overdue"].includes(t.status));
-        const exceptions = complianceExceptions({ ...s, today });
+        const open = uniqueBy(s.tasks.filter((t) => ["open", "urgent", "escalated", "overdue"].includes(t.status)), (t) => `${t.subject_id}|${t.title}|${t.due_on}`);
+        const exceptions = groupExceptions(complianceExceptions({ ...s, today }));
         return (
           <>
             <section className="monarch-panel">
@@ -46,8 +46,12 @@ export default async function Renewals({ searchParams }: { searchParams: Promise
               <div className="monarch-panel-head"><div><h2>Compliance exceptions</h2><p>Gaps in what is recorded. Resolve them by verifying and recording the missing information.</p></div></div>
               <div className="monarch-table-wrap"><table>
                 <thead><tr><th>ITEM</th><th>ISSUE</th><th>DETAIL</th></tr></thead>
-                <tbody>{exceptions.length === 0 ? <EmptyRow colSpan={3}>No exceptions. Everything recorded is verified and current.</EmptyRow> : exceptions.map((x) => (
-                  <tr key={`${x.kind}-${x.subjectId}`}><td><span className={"efin-sev " + x.severity} /><Link href={x.href}><b>{x.title}</b></Link></td><td>{EXCEPTION_LABEL[x.kind]}</td><td style={{ whiteSpace: "normal", maxWidth: 520 }}>{x.detail}</td></tr>
+                <tbody>{exceptions.length === 0 ? <EmptyRow colSpan={3}>No exceptions. Everything recorded is verified and current.</EmptyRow> : exceptions.map((g) => (
+                  <tr key={g.key}>
+                    <td><span className={"efin-sev " + g.severity} /><Link href={g.href}><b>{g.title}</b></Link></td>
+                    <td>{g.issues.map((x) => <div key={x.kind}>{EXCEPTION_LABEL[x.kind]}</div>)}</td>
+                    <td style={{ whiteSpace: "normal", maxWidth: 520 }}>{g.issues.map((x) => <div key={x.kind}>{x.detail}</div>)}</td>
+                  </tr>
                 ))}</tbody>
               </table></div>
             </section>

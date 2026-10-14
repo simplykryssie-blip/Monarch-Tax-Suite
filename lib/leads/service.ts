@@ -1,6 +1,7 @@
 import { ValidationError } from "../commerce/validation.ts";
 import { LEAD_SOURCES, LEAD_STATUSES, SOURCE_KEYS, STATUS_KEYS, type Lead, type LeadFilter, type LeadSource, type LeadStatus, type LeadsDeps } from "./types.ts";
 import { parseCsv } from "./csv.ts";
+import { parseTags, TAG_LENGTH, TAG_MAX } from "./tags.ts";
 
 // The Leads pipeline for one tenant: add, edit, contact and convert leads, capture them from the WISP audit, link them
 // to the customer and order when they buy, and CSV import and export. One person (one email) is one lead.
@@ -44,7 +45,16 @@ export function checkDate(raw: unknown, label: string): string | null {
   return new Date(`${v}T16:00:00Z`).toISOString();
 }
 
-export type LeadForm = { full_name: string; email: string; phone: string | null; firm_name: string | null; source: LeadSource; status: LeadStatus; notes: string | null; last_contacted_at: string | null };
+export { parseTags, TAG_LENGTH, TAG_MAX };
+
+export function checkTags(raw: unknown): string[] {
+  const tags = parseTags(raw);
+  if (tags.some((t) => t.length > TAG_LENGTH)) throw new LeadInputError(`Each tag can be up to ${TAG_LENGTH} characters.`, "tags");
+  if (tags.length > TAG_MAX) throw new LeadInputError(`A lead can have up to ${TAG_MAX} tags.`, "tags");
+  return tags;
+}
+
+export type LeadForm = { full_name: string; email: string; phone: string | null; firm_name: string | null; source: LeadSource; status: LeadStatus; notes: string | null; tags: string[]; last_contacted_at: string | null };
 
 /** What the admin typed into the add or edit form, checked. */
 export function checkLeadForm(raw: Record<string, unknown>): LeadForm {
@@ -60,11 +70,12 @@ export function checkLeadForm(raw: Record<string, unknown>): LeadForm {
     source: raw.source,
     status,
     notes: notes || null,
+    tags: checkTags(raw.tags),
     last_contacted_at: checkDate(raw.last_contacted_at, "Last contacted"),
   };
 }
 
-const blank = { phone: null, firm_name: null, notes: null, last_contacted_at: null, audit_id: null, audit_score: null, wisp_plan_id: null, customer_id: null, order_id: null, organization_id: null, converted_at: null };
+const blank = { phone: null, firm_name: null, notes: null, tags: [] as string[], last_contacted_at: null, audit_id: null, audit_score: null, wisp_plan_id: null, customer_id: null, order_id: null, organization_id: null, converted_at: null };
 
 // ------------------------------------------------------------------ admin
 
@@ -88,7 +99,8 @@ export async function updateLead(deps: LeadsDeps, id: string, raw: Record<string
   const patch: Partial<Lead> = { ...f };
   if (f.status === "converted" && !lead.converted_at) patch.converted_at = nowOf(deps).toISOString();
   const after = await deps.repo.updateLead(id, patch);
-  const changed = (Object.keys(f) as (keyof LeadForm)[]).filter((k) => k !== "status" && (f[k] ?? null) !== (lead[k] ?? null));
+  const same = (a: unknown, b: unknown) => (Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a ?? []) === JSON.stringify(b ?? []) : (a ?? null) === (b ?? null));
+  const changed = (Object.keys(f) as (keyof LeadForm)[]).filter((k) => k !== "status" && !same(f[k], lead[k]));
   if (lead.status !== after.status) await deps.repo.addEvent({ lead_id: id, action: "status_changed", detail: { from: lead.status, to: after.status }, actor_id: actorId });
   if (changed.length) await deps.repo.addEvent({ lead_id: id, action: "edited", detail: { fields: changed }, actor_id: actorId });
   return after;
@@ -100,16 +112,6 @@ export async function markContacted(deps: LeadsDeps, id: string, actorId: string
   if (!lead) throw new ValidationError("That lead wasn't found.");
   const after = await deps.repo.updateLead(id, { last_contacted_at: nowOf(deps).toISOString(), ...(lead.status === "new" ? { status: "contacted" as const } : {}) });
   await deps.repo.addEvent({ lead_id: id, action: "contacted", detail: lead.status === after.status ? {} : { from: lead.status, to: after.status }, actor_id: actorId });
-  return after;
-}
-
-/** Links (or unlinks) the firm record, for a lead who is or becomes an ERO. */
-export async function linkFirm(deps: LeadsDeps, id: string, organizationId: string | null, firmExists: (id: string) => Promise<boolean>, actorId: string): Promise<Lead> {
-  const lead = await deps.repo.getLead(id);
-  if (!lead) throw new ValidationError("That lead wasn't found.");
-  if (organizationId && (!UUID.test(organizationId) || !(await firmExists(organizationId)))) throw new ValidationError("That firm wasn't found.");
-  const after = await deps.repo.updateLead(id, { organization_id: organizationId });
-  await deps.repo.addEvent({ lead_id: id, action: organizationId ? "firm_linked" : "firm_unlinked", detail: organizationId ? { organization_id: organizationId } : {}, actor_id: actorId });
   return after;
 }
 
@@ -167,7 +169,9 @@ export async function convertFromPurchase(deps: LeadsDeps, input: { auditId: str
 /** The list's search and filters from the page address, checked. */
 export function filterFrom(sp: Record<string, string | undefined>): LeadFilter {
   const day = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) ? v : undefined);
+  const tags = parseTags(sp.tags).slice(0, TAG_MAX);
   return {
+    ...(tags.length ? { tags } : {}),
     q: text(sp.q, 100) || undefined,
     source: isSource(sp.source) ? sp.source : undefined,
     status: isStatus(sp.status) ? sp.status : undefined,
@@ -180,6 +184,7 @@ export function filterFrom(sp: Record<string, string | undefined>): LeadFilter {
 export function matchesFilter(lead: Lead, f: LeadFilter): boolean {
   if (f.source && lead.source !== f.source) return false;
   if (f.status && lead.status !== f.status) return false;
+  if (f.tags?.length && !f.tags.every((t) => lead.tags.includes(t))) return false;
   if (f.from && lead.created_at < dayStart(f.from)) return false;
   if (f.to && lead.created_at >= dayStart(f.to, 1)) return false;
   if (f.q) {
@@ -203,7 +208,7 @@ const HEADERS: Record<string, keyof LeadForm> = {
   email: "email", "email address": "email", "e-mail": "email",
   phone: "phone", "phone number": "phone", mobile: "phone", cell: "phone",
   firm: "firm_name", "firm name": "firm_name", "firm_name": "firm_name", company: "firm_name", business: "firm_name",
-  source: "source", status: "status", notes: "notes", note: "notes",
+  source: "source", status: "status", notes: "notes", note: "notes", tags: "tags", tag: "tags", labels: "tags",
   "last contacted": "last_contacted_at", "last_contacted": "last_contacted_at", "last contacted date": "last_contacted_at",
 };
 const byLabel = <T extends string>(labels: Record<T, string>, v: string): T | undefined => {
@@ -270,10 +275,10 @@ const day = (iso: string | null) => (iso ? new Intl.DateTimeFormat("en-CA", { ti
 
 /** The leads as CSV, in the same columns the import reads (plus the audit score and dates). */
 export function exportCsv(leads: Lead[]): string {
-  const head = ["Name", "Email", "Phone", "Firm", "Source", "Status", "Audit score", "Notes", "Created", "Last contacted", "Converted"];
+  const head = ["Name", "Email", "Phone", "Firm", "Source", "Status", "Tags", "Audit score", "Notes", "Created", "Last contacted", "Converted"];
   const lines = [head.map(cell).join(",")];
   for (const l of leads) {
-    lines.push([l.full_name, l.email, l.phone, l.firm_name, LEAD_SOURCES[l.source], LEAD_STATUSES[l.status], l.audit_score ?? "", l.notes, day(l.created_at), day(l.last_contacted_at), day(l.converted_at)].map(cell).join(","));
+    lines.push([l.full_name, l.email, l.phone, l.firm_name, LEAD_SOURCES[l.source], LEAD_STATUSES[l.status], l.tags.join(", "), l.audit_score ?? "", l.notes, day(l.created_at), day(l.last_contacted_at), day(l.converted_at)].map(cell).join(","));
   }
   return `${lines.join("\r\n")}\r\n`;
 }

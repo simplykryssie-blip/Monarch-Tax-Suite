@@ -44,7 +44,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
             <input name="q" defaultValue={q} placeholder="Search name, identifier or Stripe ID" aria-label="Search products" />
             <select name="status" defaultValue={status} aria-label="Status">
               <option value="">All statuses</option>
-              {PRODUCT_STATUSES.filter((s) => s !== "archived").map((s) => <option key={s} value={s}>{s === "published" ? "Active (published)" : s[0].toUpperCase() + s.slice(1)}</option>)}
+              {PRODUCT_STATUSES.filter((s) => s !== "archived").map((s) => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}
             </select>
             <select name="category" defaultValue={category} aria-label="Category">
               <option value="">All categories</option>
