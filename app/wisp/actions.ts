@@ -13,7 +13,7 @@ import { MONARCH_TENANT_ID } from "@/lib/tenants";
 import { attachCheckout, planForBuyer, recordAudit, resendForBuyer, startPlan } from "@/lib/wisp/service.ts";
 import { requestTenant, wispDeps } from "@/lib/wisp/server";
 import { WISP_COOKIE } from "@/lib/wisp/cookie.ts";
-import { captureAuditLead, captureAuditStart, LeadInputError } from "@/lib/leads/service.ts";
+import { captureAuditLead, captureAuditStart, captureBuilderStart, LeadInputError } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
 
 // Public WISP Generator actions. The tenant comes from the web address the page was opened on. Every action is
@@ -52,6 +52,24 @@ export async function startAuditAction(input: { name: unknown; email: unknown; p
   } catch (e) {
     const field = e instanceof LeadInputError && (e.field === "name" || e.field === "email" || e.field === "phone") ? e.field : undefined;
     const error = failure(e, "start");
+    if (!(e instanceof ValidationError)) return { ok: true };
+    return { ok: false, error, field };
+  }
+}
+
+/**
+ * The builder's first step: business name, email and phone are saved as a lead (source WISP builder) before the rest
+ * of the questions, so an abandoned builder is still a lead. A problem on our side never stops them; a typing mistake
+ * is shown on the form.
+ */
+export async function startBuilderAction(input: { name: unknown; email: unknown; phone: unknown }): Promise<StartResult> {
+  try {
+    await visitor("start", 20);
+    await captureBuilderStart(leadsDeps(await requestTenant()), input);
+    return { ok: true };
+  } catch (e) {
+    const field = e instanceof LeadInputError && (e.field === "name" || e.field === "email" || e.field === "phone") ? e.field : undefined;
+    const error = failure(e, "builder start");
     if (!(e instanceof ValidationError)) return { ok: true };
     return { ok: false, error, field };
   }

@@ -83,6 +83,7 @@ export function buildPlan(d: WispAnswers): PlanSection[] {
   const info: string[][] = [["Business name", firm], ["Owner / Principal", owner]];
   if (d.address?.trim()) info.push(["Business address", d.address.trim()]);
   if (d.phone?.trim()) info.push(["Business phone", d.phone.trim()]);
+  if (d.business_email?.trim()) info.push(["Business email", d.business_email.trim()]);
   if (d.ein?.trim()) info.push(["EIN", d.ein.trim()]);
   if (users !== null) info.push(["People with access to taxpayer data", String(users)]);
   if (review) info.push(["Next scheduled review", review]);

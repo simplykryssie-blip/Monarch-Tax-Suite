@@ -5,7 +5,7 @@ import {
   BUILDER_FIELDS, BUILDER_STEPS, calculateScore, CATEGORIES, CATEGORY_ADVICE, CATEGORY_KEYS, DISCLAIMER, EMAIL, ERO_QUESTIONS,
   feeComparison, numberDraft, pageDisclaimer, PURCHASE_ACK, QUESTIONS, scoreVerdict, type EroAnswers, type WispAnswers,
 } from "@/lib/wisp/content.ts";
-import { recordAuditAction, startAuditAction, startWispCheckoutAction } from "@/app/wisp/actions";
+import { recordAuditAction, startAuditAction, startBuilderAction, startWispCheckoutAction } from "@/app/wisp/actions";
 import { TermsLinks } from "@/components/storefront/buy-form";
 
 // The WISP Generator page, rebuilt from the owner's static version (wisp-generator-source): hero, how it works, the
@@ -309,7 +309,7 @@ function AuditStart({ onStarted }: { onStarted: (c: Contact) => void }) {
 function Builder({ auditId, canBuy, cancelled, leadEmail }: { auditId: string | null; canBuy: boolean; cancelled: boolean; leadEmail: string }) {
   const [step, setStep] = useState(0);
   const [data, setData] = useState<WispAnswers>({});
-  const [errors, setErrors] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [email, setEmail] = useState("");
   const [accept, setAccept] = useState(false);
   const [ack, setAck] = useState(false);
@@ -341,12 +341,33 @@ function Builder({ auditId, canBuy, cancelled, leadEmail }: { auditId: string | 
   }, [data, email]);
 
   const fields = cur.id === "review" ? [] : BUILDER_FIELDS[cur.id];
-  function go(dir: 1 | -1) {
+  async function go(dir: 1 | -1) {
     if (dir === 1) {
-      const bad: Record<string, boolean> = {};
-      for (const f of fields) if (f.required && !(data[f.id] ?? "").trim()) bad[f.id] = true;
+      const bad: Record<string, string> = {};
+      for (const f of fields) if (f.required && !(data[f.id] ?? "").trim()) bad[f.id] = "This field is required.";
+      if (cur.id === "firm") {
+        const mail = (data.business_email ?? "").trim();
+        const digits = (data.phone ?? "").replace(/\D/g, "");
+        if (mail && !EMAIL.test(mail)) bad.business_email = "Please enter a valid email address.";
+        if (data.phone?.trim() && (digits.length < 10 || digits.length > 15)) bad.phone = "Please enter a valid phone number.";
+      }
       setErrors(bad);
       if (Object.keys(bad).length) return;
+      if (cur.id === "firm") {
+        // Saves them as a lead right away, so a builder that is started and left is still a lead.
+        setBusy(true);
+        try {
+          const r = await startBuilderAction({ name: data.firm_name, email: data.business_email, phone: data.phone });
+          if (!r.ok) {
+            const id = r.field === "name" ? "firm_name" : r.field === "email" ? "business_email" : r.field === "phone" ? "phone" : null;
+            if (id) setErrors({ [id]: r.error }); else setProblem(r.error);
+            return;
+          }
+        } catch { /* the lead can't hold them up; the builder goes on */ } finally { setBusy(false); }
+        setProblem(null);
+        // The delivery email on the last step starts as the business email.
+        setEmail((e) => e || (data.business_email ?? "").trim());
+      }
     }
     setStep(Math.max(0, Math.min(BUILDER_STEPS.length - 1, step + dir)));
     document.getElementById("builder")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -408,13 +429,13 @@ function Builder({ auditId, canBuy, cancelled, leadEmail }: { auditId: string | 
                     ) : (
                       <input id={`bf_${f.id}`} type={f.type === "number" ? "text" : f.type} inputMode={f.type === "number" ? "numeric" : undefined} maxLength={200} placeholder={f.placeholder} value={data[f.id] ?? ""} onChange={(e) => setData({ ...data, [f.id]: f.type === "number" ? numberDraft(e.target.value, false) : e.target.value })} aria-invalid={!!errors[f.id]} />
                     )}
-                    {errors[f.id] && <p className="field-error">This field is required.</p>}
+                    {errors[f.id] && <p className="field-error">{errors[f.id]}</p>}
                   </div>
                 ))}
               </div>
               <div className="builder-nav">
                 <button type="button" className="btn btn-outline" disabled={step === 0} onClick={() => go(-1)}>← Back</button>
-                <button type="button" className="btn btn-gold" onClick={() => go(1)}>Continue →</button>
+                <button type="button" className="btn btn-gold" disabled={busy} onClick={() => go(1)}>{busy && cur.id === "firm" ? "Saving…" : "Continue →"}</button>
               </div>
             </>
           ) : (

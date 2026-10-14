@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { buildPlan, sentence, steps } from "../lib/wisp/plan.ts";
 
 const BASE = {
-  firm_name: "Test Tax LLC", owner_name: "Pat Owner", address: "1 Main St", phone: "5550100", tax_software: "TaxSlayer Pro",
+  firm_name: "Test Tax LLC", owner_name: "Pat Owner", business_email: "pat@test.example.com", address: "1 Main St", phone: "5550100", tax_software: "TaxSlayer Pro",
   data_locations: "cloud and a locked office NAS", backup_method: "daily encrypted cloud backup", num_users: "5",
   mfa_status: "MFA on all systems", access_policy: "role based", encryption: "Encrypted in transit and at rest",
   physical_security: "locked cabinets", training: "Annual training completed", ir_contact: "Pat Owner", ir_steps: "Contain, assess, notify", review_date: "January 2027",

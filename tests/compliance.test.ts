@@ -24,7 +24,7 @@ const ERO_M = "00000000-0000-4000-8000-0000000000e1";
 const PREP_M = "00000000-0000-4000-8000-0000000000e2";
 
 const WISP = {
-  firm_name: "Bayou Tax LLC", owner_name: "Erin Ero", address: "1 Main St, Lake Charles, LA", phone: "(337) 555-0100", tax_software: "TaxSlayer Pro",
+  firm_name: "Bayou Tax LLC", owner_name: "Erin Ero", business_email: "erin@example.com", address: "1 Main St, Lake Charles, LA", phone: "(337) 555-0100", tax_software: "TaxSlayer Pro",
   data_locations: "TaxSlayer cloud", backup_method: "Encrypted cloud backup daily", num_users: "3", mfa_status: "MFA on all systems",
   access_policy: "By role.", encryption: "Encrypted in transit and at rest", physical_security: "Locked cabinets.", training: "Annual training completed",
   ir_contact: "Erin Ero, owner", ir_steps: "1. Contain 2. Notify", review_date: "January 2027",
