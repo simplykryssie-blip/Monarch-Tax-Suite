@@ -50,7 +50,7 @@ export default async function WispAdminPage({ searchParams }: { searchParams: Pr
           </section>
           <section className="monarch-panel">
             <div className="monarch-panel-head"><h2>Audit leads</h2><span>{result.data.audits.length} most recent</span></div>
-            <p className="monarch-muted" style={{ padding: "0 20px" }}>Every finished free audit, whether or not they went on to build. Visitors who enter their name and email to see their full results are added to <Link href="/leads?source=wisp_audit">Leads</Link>.</p>
+            <p className="monarch-muted" style={{ padding: "0 20px" }}>Every finished free audit, whether or not they went on to build. Every visitor gives their name, email and phone before the audit starts, and is added to <Link href="/leads?source=wisp_audit">Leads</Link>.</p>
             <div className="monarch-table-wrap">
               <table>
                 <thead><tr><th>WHEN</th><th>SCORE</th><th>ERO?</th><th>BUREAU</th><th>PAYS / RETURN</th><th>VOLUME</th></tr></thead>

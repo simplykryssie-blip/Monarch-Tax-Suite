@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { captureAuditLead, convertFromPurchase, createLead, dayStart, exportCsv, filterFrom, importCsv, linkFirm, markContacted, updateLead } from "../lib/leads/service.ts";
+import { captureAuditLead, captureAuditStart, checkPhone, convertFromPurchase, createLead, dayStart, exportCsv, filterFrom, importCsv, linkFirm, markContacted, updateLead } from "../lib/leads/service.ts";
 import { parseCsv } from "../lib/leads/csv.ts";
 import { MemoryLeads } from "./leads-memory.ts";
 
@@ -15,7 +15,31 @@ const setup = () => {
 };
 
 describe("WISP audit lead capture", () => {
-  test("the results form creates a lead with source WISP audit and the score", async () => {
+  test("the first step (name, email, phone) creates the lead before the questions; finishing adds the score", async () => {
+    const s = setup();
+    const lead = await captureAuditStart(s.deps, { name: "Pat Preparer", email: "Pat@Example.com", phone: " (337) 555-0100 " });
+    assert.deepEqual([lead.email, lead.phone, lead.source, lead.status, lead.audit_score], ["pat@example.com", "(337) 555-0100", "wisp_audit", "new", null]);
+    const done = await captureAuditLead(s.deps, { name: "Pat Preparer", email: "pat@example.com", phone: "(337) 555-0100" }, { id: "audit-1", score: 64 });
+    assert.equal(done.id, lead.id);
+    assert.deepEqual([done.audit_id, done.audit_score], ["audit-1", 64]);
+    assert.deepEqual(s.repo.events.map((e) => [e.action, e.detail.started ?? e.detail.score]), [["created", true], ["audit_taken", 64]]);
+  });
+
+  test("phone is required and must look like a phone number; an existing lead keeps its phone", async () => {
+    const s = setup();
+    await assert.rejects(captureAuditStart(s.deps, { name: "Pat", email: "p@example.com", phone: "" }), /valid phone/);
+    await assert.rejects(captureAuditStart(s.deps, { name: "Pat", email: "p@example.com", phone: "555-0100" }), /valid phone/);
+    await assert.rejects(captureAuditStart(s.deps, { name: "Pat", email: "p@example.com", phone: "call me maybe 3375550100" }), /valid phone/);
+    assert.equal(checkPhone("+1 337 555 0100"), "+1 337 555 0100");
+    await createLead(s.deps, { full_name: "Kim", email: "kim@example.com", phone: "337-555-0001", source: "referral", status: "interested" }, ADMIN);
+    const again = await captureAuditStart(s.deps, { name: "Kim L", email: "kim@example.com", phone: "337-555-9999" });
+    assert.deepEqual([again.phone, again.source, again.status], ["337-555-0001", "referral", "interested"]);
+    assert.equal(s.repo.events.at(-1)!.detail.phone_given, "337-555-9999");
+    await createLead(s.deps, { full_name: "Lee", email: "lee@example.com", source: "manual" }, ADMIN);
+    assert.equal((await captureAuditStart(s.deps, { name: "Lee", email: "lee@example.com", phone: "337-555-0002" })).phone, "337-555-0002", "a missing phone is filled in");
+  });
+
+  test("a finished audit with no saved start still creates the lead, with the score", async () => {
     const s = setup();
     const lead = await captureAuditLead(s.deps, { name: "  Pat   Preparer ", email: " Pat@Example.com " }, { id: "audit-1", score: 42 });
     assert.equal(lead.full_name, "Pat Preparer");
