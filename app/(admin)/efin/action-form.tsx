@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { FormResult } from "./actions";
+import { clearFieldErrors, showFieldError } from "@/lib/field-error.ts";
 
 /**
  * A form that calls a server action WITHOUT resetting itself. If the action returns a problem (for example a mistyped EIN),
@@ -26,15 +27,15 @@ export function ActionForm({ action, children, className, confirm }: { action: (
   const run = (data: FormData) => {
     const form = ref.current;
     if (!form) return;
-    form.querySelectorAll("[aria-invalid]").forEach((el) => el.removeAttribute("aria-invalid"));
+    clearFieldErrors(form);
     setError(null);
     start(async () => {
       const result = await action(data);
       if (!result) return;
+      // A problem with one field shows at that field; anything else stays a banner.
+      if (result.field && showFieldError(form, result.field, result.error)) return;
       setError(result.error);
-      const field = result.field ? form.querySelector<HTMLElement>(`[name="${CSS.escape(result.field)}"]`) : null;
-      if (field) { field.setAttribute("aria-invalid", "true"); field.focus(); }
-      else form.querySelector<HTMLElement>(".efin-form-error")?.scrollIntoView({ block: "center", behavior: "smooth" });
+      requestAnimationFrame(() => form.querySelector<HTMLElement>(".efin-form-error")?.scrollIntoView({ block: "center", behavior: "smooth" }));
     });
   };
 

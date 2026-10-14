@@ -55,3 +55,28 @@ export function complianceExceptions(d: Input): ComplianceException[] {
   const rank = { high: 0, medium: 1, low: 2 } as const;
   return out.sort((a, b) => rank[a.severity] - rank[b.severity]);
 }
+
+export type ExceptionGroup = { key: string; title: string; href: string; severity: ComplianceException["severity"]; issues: ComplianceException[] };
+
+/** One row per EFIN, person or filing, with each of its issues listed under it, so an item with three gaps is not shown as three look-alike rows. */
+export function groupExceptions(list: ComplianceException[]): ExceptionGroup[] {
+  const rank = { high: 0, medium: 1, low: 2 } as const;
+  const groups = new Map<string, ExceptionGroup>();
+  for (const x of list) {
+    const key = `${x.subjectType}:${x.subjectId}`;
+    const g = groups.get(key);
+    if (!g) groups.set(key, { key, title: x.title, href: x.href, severity: x.severity, issues: [x] });
+    else {
+      // The same issue can be reported twice for one item; show it once.
+      if (!g.issues.some((i) => i.kind === x.kind && i.detail === x.detail)) g.issues.push(x);
+      if (rank[x.severity] < rank[g.severity]) g.severity = x.severity;
+    }
+  }
+  return [...groups.values()].sort((a, b) => rank[a.severity] - rank[b.severity]);
+}
+
+/** Keeps the first of any rows that describe the same thing. */
+export function uniqueBy<T>(rows: T[], key: (row: T) => string): T[] {
+  const seen = new Set<string>();
+  return rows.filter((r) => { const k = key(r); if (seen.has(k)) return false; seen.add(k); return true; });
+}

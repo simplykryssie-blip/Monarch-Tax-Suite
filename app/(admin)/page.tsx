@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { commerceRepo, requireAdmin } from "@/lib/admin";
+import { currentTier } from "@/lib/tier-server";
+import { homeFor } from "@/lib/tier.ts";
 import { computeMetrics } from "@/lib/commerce/fulfillment.ts";
 import { loadExtras } from "@/lib/dashboard-data";
 import { buildActivity } from "@/lib/activity.ts";
@@ -13,6 +16,9 @@ const clock = () => new Date();
 /** My Office: the whole business at a glance. Commerce detail lives under My Store. */
 export default async function OfficeHome() {
   await requireAdmin();
+  // The business-wide overview is for the Service Bureau tier; the others start in their own area.
+  const tier = await currentTier();
+  if (tier !== "bureau") redirect(homeFor(tier));
   const repo = commerceRepo();
   const result = await load(async () => {
     const [customers, orders, products, licenses, installations] = await Promise.all([repo.listCustomers(), repo.listOrders(), repo.listProducts(), repo.listLicenses(), repo.listInstallations()]);

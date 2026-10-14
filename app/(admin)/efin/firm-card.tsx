@@ -38,7 +38,7 @@ export function FirmHeader({ s, org, efin, steps, base }: { s: Snapshot; org: Or
       <nav className="efin-crumbs" aria-label="Breadcrumb">
         <Link href="/efin" aria-label="My Service Bureau"><Icon name="home" size={16} /></Link>
         <Link href="/efin">My Service Bureau</Link><span>›</span>
-        <Link href="/efin/list">Firms</Link><span>›</span>
+        <Link href="/efin/list">EROs & EFINs</Link><span>›</span>
         <b>{org.legal_name}</b>
       </nav>
       <header className="efin-firm">

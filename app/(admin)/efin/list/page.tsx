@@ -6,11 +6,11 @@ import { maskEfin, tracksTeam } from "@/lib/efin/rules.ts";
 import { loadSnapshot } from "@/lib/efin/service";
 import { EFIN_STATUSES } from "@/lib/efin/types.ts";
 import { BulkBar, SelectAll } from "../bulk";
+import { REL_LABEL } from "../firm-card";
 import { personName, Verified } from "../parts";
 
 type Params = { q?: string; status?: string; org?: string; review?: string; rel?: string; archived?: string; notice?: string; error?: string };
 
-const REL_LABEL: Record<string, string> = { internal: "My office", partner: "Partner", client: "Client", other: "Other" };
 
 export default async function EfinRegistry({ searchParams }: { searchParams: Promise<Params> }) {
   await requireAdmin();
