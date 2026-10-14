@@ -46,7 +46,9 @@ export default async function OfficeTeam({ searchParams }: { searchParams: Promi
                 </td>
                 <td>
                   {m.id !== ctx.member?.id && (ctx.bureau || m.role === "preparer") && (
-                    m.status === "invited" ? (
+                    m.status === "suspended" && !m.user_id ? (
+                      <span className="monarch-muted">Invite withdrawn. Invite them again below.</span>
+                    ) : m.status === "invited" ? (
                       <ActionForm action={cancelInviteAction} confirm={`Withdraw the invite to ${m.email}?`}><input type="hidden" name="id" value={m.id} /><button className="monarch-secondary efin-small">Withdraw invite</button></ActionForm>
                     ) : (
                       <ActionForm action={suspendAction} confirm={m.status === "suspended" ? undefined : `Suspend ${m.full_name}? They won't be able to sign in to the office.`}>
