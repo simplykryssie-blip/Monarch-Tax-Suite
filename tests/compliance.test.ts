@@ -74,7 +74,7 @@ describe("rules", () => {
     assert.equal(retentionState("2029-04-15", "2029-01-20", 90), "ending");
     assert.equal(retentionState("2029-04-15", "2029-04-15", 90), "past");
     assert.equal(earlyDeletion("2029-04-15", "2027-01-01").early, true);
-    assert.match(earlyDeletion("2029-04-15", "2027-01-01").warning!, /^Required by IRS: .*April 15, 2029.*your decision/);
+    assert.equal(earlyDeletion("2029-04-15", "2027-01-01").warning, "Required by IRS: this record must be kept for 3 years from April 15, 2026. Deleting it early is your decision.");
     assert.equal(earlyDeletion("2029-04-15", "2029-04-16").early, false);
     assert.equal(addMonths("2026-01-31", 1), "2026-02-28");
   });
@@ -180,7 +180,7 @@ describe("Form 8879", () => {
     assert.equal(moved.retention_until, "2029-10-15", "an extension moves the retention end");
     assert.equal((await s.repo.getDocument(file.id))!.retention_until, "2029-10-15");
 
-    await assert.rejects(delete8879(s.deps, s.ero, rec.id, {}), /Required by IRS: this record must be kept until October 15, 2029.*give a reason/);
+    await assert.rejects(delete8879(s.deps, s.ero, rec.id, {}), /Required by IRS: this record must be kept for 3 years from October 15, 2026\. Deleting it early is your decision\..*give a reason/);
     const r = await delete8879(s.deps, s.ero, rec.id, { reason: "Duplicate entry" });
     assert.equal(r.early, true);
     const ev = s.repo.events.find((e) => e.action === "deleted_early" && e.entity === "8879")!;

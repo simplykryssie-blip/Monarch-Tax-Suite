@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { Flash } from "@/components/admin/ui";
 import { ActionForm } from "@/app/(admin)/efin/action-form";
-import { FTC_NOTICE, ftcDuty, INCIDENT_STEPS, LIAISON_URL, openSteps, todayIso } from "@/lib/compliance/rules.ts";
+import { PeopleAffected } from "@/components/office/people-affected";
+import { FTC_NOTICE, FTC_THRESHOLD, ftcDuty, INCIDENT_STEPS, LIAISON_URL, openSteps, todayIso } from "@/lib/compliance/rules.ts";
 import { UUID } from "@/lib/compliance/service.ts";
 import { closeIncidentAction, reopenIncidentAction, stepAction, updateIncidentAction } from "../../actions";
 import { ComplianceTabs, compliancePage, day, loadOr, Required, SetupNotice, stamp } from "../../parts";
@@ -30,8 +31,8 @@ export default async function IncidentPage({ params, searchParams }: { params: P
       <h1 className="office-h1">{inc.title}</h1>
       <ComplianceTabs may={may} active="/office/compliance/incidents" />
       <Flash notice={sp.notice} error={sp.error} />
-      <section className={`monarch-panel compliance-ftc${ftc.applies && !ftc.done ? " is-on" : ""}`} style={{ padding: 20 }}>
-        <p><Required by="FTC" /> {FTC_NOTICE}</p>
+      <section className={`monarch-panel compliance-ftc${(inc.people_affected ?? 0) >= FTC_THRESHOLD && !ftc.done ? " is-on" : ""}`} style={{ padding: 20 }}>
+        {(inc.people_affected ?? 0) >= FTC_THRESHOLD ? <p className="monarch-alert is-error" role="alert">{FTC_NOTICE}</p> : <p><Required by="FTC" /> {FTC_NOTICE}</p>}
         {ftc.applies ? (ftc.done ? <p>FTC notified on {day(inc.ftc_notified_on)}.</p> : <p><b>This incident meets the rule.</b> Notify the FTC by {day(ftc.deadline)}{ftc.overdue ? " — that date has passed" : ` (${ftc.daysLeft} days left)`}.</p>)
           : <p className="monarch-muted">{inc.people_affected === null ? "Record how many people were affected to see whether it applies." : inc.info_encrypted === "yes" ? "The information was encrypted, so the FTC notice doesn't apply." : "Fewer than 500 people, so the FTC notice doesn't apply."}</p>}
       </section>
@@ -44,7 +45,7 @@ export default async function IncidentPage({ params, searchParams }: { params: P
             <input type="hidden" name="id" value={inc.id} />
             <label>What happened<input name="title" maxLength={200} defaultValue={inc.title} /></label>
             <label>Discovered on<input name="discovered_on" type="date" defaultValue={inc.discovered_on} /></label>
-            <label>Number of people affected<input name="people_affected" inputMode="numeric" defaultValue={inc.people_affected ?? ""} /></label>
+            <PeopleAffected defaultValue={inc.people_affected === null ? "" : String(inc.people_affected)} />
             <label>Was the information encrypted?<select name="info_encrypted" defaultValue={inc.info_encrypted}><option value="unknown">Not sure yet</option><option value="yes">Yes</option><option value="no">No</option></select></label>
             <label>IRS Stakeholder Liaison notified on<input name="irs_notified_on" type="date" defaultValue={inc.irs_notified_on ?? ""} /></label>
             <label>FTC notified on<input name="ftc_notified_on" type="date" defaultValue={inc.ftc_notified_on ?? ""} /></label>

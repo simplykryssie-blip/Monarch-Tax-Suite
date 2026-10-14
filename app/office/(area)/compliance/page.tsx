@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Flash } from "@/components/admin/ui";
 import { ActionForm } from "@/app/(admin)/efin/action-form";
+import { PeopleAffected } from "@/components/office/people-affected";
 import { latestAttestation, officeStatus } from "@/lib/compliance/service.ts";
 import { officeAlerts, ptinSeason, todayIso } from "@/lib/compliance/rules.ts";
 import { acknowledgeAction, renewalAction, startIncidentAction } from "./actions";
@@ -70,7 +71,7 @@ export default async function ComplianceHome({ searchParams }: { searchParams: P
             <ActionForm action={startIncidentAction} className="monarch-form compliance-form">
               <label>What happened *<input name="title" required maxLength={200} placeholder="For example: laptop stolen from car" /></label>
               <label>Discovered on<input name="discovered_on" type="date" defaultValue={todayIso()} /></label>
-              <label>People affected (if known)<input name="people_affected" inputMode="numeric" placeholder="Number of people" /></label>
+              <PeopleAffected />
               <label>Was the information encrypted?
                 <select name="info_encrypted" defaultValue="unknown"><option value="unknown">Not sure yet</option><option value="yes">Yes</option><option value="no">No</option></select>
               </label>

@@ -43,10 +43,13 @@ export function retentionState(retention: string, today: string, alertDays: numb
   return daysBetween(today, retention) <= alertDays ? "ending" : "keep";
 }
 
-/** Whether deleting now is earlier than the IRS rule allows, and the warning to show. */
+/**
+ * Whether deleting now is earlier than the IRS rule allows, and the warning to show. The 3 years run from the later of
+ * the due date and the IRS received date, which is the retention end less 3 years.
+ */
 export function earlyDeletion(retention: string | null, today: string): { early: boolean; warning: string | null } {
   if (!retention || today >= retention) return { early: false, warning: null };
-  return { early: true, warning: `Required by IRS: this record must be kept until ${longDate(retention)} (3 years from the later of the return due date and the date the IRS received it, Publication 1345). Deleting it early is your decision.` };
+  return { early: true, warning: `Required by IRS: this record must be kept for 3 years from ${longDate(addYears(retention, -RETENTION_YEARS))}. Deleting it early is your decision.` };
 }
 
 export const longDate = (day: string) => new Intl.DateTimeFormat("en-US", { dateStyle: "long", timeZone: "UTC" }).format(new Date(at(day)));

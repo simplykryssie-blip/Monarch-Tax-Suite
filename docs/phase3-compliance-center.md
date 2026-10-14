@@ -45,7 +45,7 @@
   - views: All, In retention, Ending soon (90 days by default, adjustable) and Past retention;
   - CSV export.
 - **Deleting before the retention end:**
-  - shows *"Required by IRS: this record must be kept until [date] … Deleting it early is your decision."*;
+  - shows *"Required by IRS: this record must be kept for 3 years from [date]. Deleting it early is your decision."*, where [date] is the later of the due date and the IRS received date;
   - needs a reason, and logs who, when and why.
 - **The vault PDF is kept.** Deleting the tracking record doesn't delete it; that's a separate action, and it gets the same warning and logged reason.
 - **Past retention:** the record is flagged for disposal and never deleted automatically.
@@ -74,6 +74,7 @@
   - recover and review.
 - **Each step** records Done or Not needed, who, when, and a note.
 - **FTC notice:** *"Required by FTC: if unencrypted information of 500 or more people is involved, notify the FTC within 30 days of discovering it."*
+  - It appears as soon as the "people affected" count reaches 500: while it is typed on the report form, and highlighted on the incident page.
   - The incident page shows whether the rule applies (an "unknown" encryption answer counts as unencrypted until confirmed), the deadline, and the days left.
   - Past the deadline, it shows on the dashboard.
 - **IRS Stakeholder Liaison contacts:** a link to the IRS state-by-state list, and each office saves its own liaison's contact in Settings.
