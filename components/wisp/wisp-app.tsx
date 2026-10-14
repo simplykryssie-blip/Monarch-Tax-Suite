@@ -5,7 +5,7 @@ import {
   BUILDER_FIELDS, BUILDER_STEPS, calculateScore, CATEGORIES, CATEGORY_ADVICE, CATEGORY_KEYS, DISCLAIMER, EMAIL, ERO_QUESTIONS,
   feeComparison, numberDraft, pageDisclaimer, PURCHASE_ACK, QUESTIONS, scoreVerdict, type EroAnswers, type WispAnswers,
 } from "@/lib/wisp/content.ts";
-import { recordAuditAction, startWispCheckoutAction, unlockResultsAction } from "@/app/wisp/actions";
+import { recordAuditAction, startAuditAction, startWispCheckoutAction } from "@/app/wisp/actions";
 import { TermsLinks } from "@/components/storefront/buy-form";
 
 // The WISP Generator page, rebuilt from the owner's static version (wisp-generator-source): hero, how it works, the
@@ -13,19 +13,19 @@ import { TermsLinks } from "@/components/storefront/buy-form";
 // category breakdown and fee comparison, and the 6-step builder that ends in the $25 checkout.
 
 type Props = { brandName: string; canBuy: boolean; cancelled: boolean; ourFee: number | null };
-type Stage = "quiz" | "ero" | "results";
+type Stage = "start" | "quiz" | "ero" | "results";
+type Contact = { name: string; email: string; phone: string };
 const CIRC = 534;
 
 export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
-  const [stage, setStage] = useState<Stage>("quiz");
+  const [stage, setStage] = useState<Stage>("start");
   const [q, setQ] = useState(0);
   const [answers, setAnswers] = useState<(0 | 1 | 2 | null)[]>(() => QUESTIONS.map(() => null));
   const [eroStep, setEroStep] = useState(0);
   const [ero, setEro] = useState<EroAnswers>({});
   const [eroDraft, setEroDraft] = useState("");
   const [auditId, setAuditId] = useState<string | null>(null);
-  const [unlocked, setUnlocked] = useState(false);
-  const [leadEmail, setLeadEmail] = useState("");
+  const [contact, setContact] = useState<Contact | null>(null);
   const [showBuilder, setShowBuilder] = useState(cancelled);
   const builderRef = useRef<HTMLElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -72,7 +72,7 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
     setStage("results");
     setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     // Lead capture: the scores are saved on the server; the results never wait on it.
-    void recordAuditAction({ answers, ero: merged }).then((r) => { if (r.ok) setAuditId(r.auditId); }).catch(() => undefined);
+    void recordAuditAction({ answers, ero: merged, lead: contact ?? undefined }).then((r) => { if (r.ok) setAuditId(r.auditId); }).catch(() => undefined);
   }
 
   function openBuilder() {
@@ -130,6 +130,8 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
           <h2 className="section-title">The WISP audit</h2>
           <p className="section-sub">Answer honestly. Your results are saved privately to help us follow up, and never shared or sold.</p>
 
+          {stage === "start" && <AuditStart onStarted={(c) => { setContact(c); setStage("quiz"); }} />}
+
           {stage === "quiz" && (
             <div className="quiz-container">
               <div className="quiz-progress-wrap">
@@ -174,17 +176,7 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
             </div>
           )}
 
-          {stage === "results" && (
-            <Results brandName={brandName} refEl={resultsRef} score={result.score} breakdown={result.breakdown} ero={ero} ourFee={ourFee} onBuild={openBuilder}
-              gate={unlocked ? null : { unlock: async (name, email) => {
-                const r = await unlockResultsAction({ name, email, auditId, answers, ero });
-                if (!r.ok) return r;
-                if (r.auditId) setAuditId(r.auditId);
-                setLeadEmail(email.trim());
-                setUnlocked(true);
-                return null;
-              } }} />
-          )}
+          {stage === "results" && <Results brandName={brandName} refEl={resultsRef} score={result.score} breakdown={result.breakdown} ero={ero} ourFee={ourFee} onBuild={openBuilder} />}
         </div>
       </section>
 
@@ -193,7 +185,7 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
           <p className="section-eyebrow">GUIDED WISP CREATION</p>
           <h2 className="section-title">WISP builder</h2>
           <p className="section-sub">$25 — Complete your Written Information Security Plan in 6 guided steps.</p>
-          {showBuilder && <Builder auditId={auditId} canBuy={canBuy} cancelled={cancelled} leadEmail={leadEmail} />}
+          {showBuilder && <Builder auditId={auditId} canBuy={canBuy} cancelled={cancelled} leadEmail={contact?.email ?? ""} />}
         </div>
       </section>
 
@@ -206,9 +198,7 @@ export function WispApp({ brandName, canBuy, cancelled, ourFee }: Props) {
   );
 }
 
-type Gate = { unlock: (name: string, email: string) => Promise<{ error: string; field?: "name" | "email" } | null> };
-
-function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild, gate }: { brandName: string; refEl: React.RefObject<HTMLDivElement | null>; score: number; breakdown: Record<string, number>; ero: EroAnswers; ourFee: number | null; onBuild: () => void; gate: Gate | null }) {
+function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild }: { brandName: string; refEl: React.RefObject<HTMLDivElement | null>; score: number; breakdown: Record<string, number>; ero: EroAnswers; ourFee: number | null; onBuild: () => void }) {
   const [shown, setShown] = useState(0);
   const [offset, setOffset] = useState(CIRC);
   useEffect(() => {
@@ -235,9 +225,8 @@ function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild, gat
           <div className="score-number" aria-label={`Score ${score} out of 100`}><span>{shown}</span><span className="score-max">/100</span></div>
         </div>
         <h3 className={`score-headline ${verdict.tone}`}>{verdict.headline}</h3>
-        {!gate && <p className="score-subtext">{verdict.text}</p>}
+        <p className="score-subtext">{verdict.text}</p>
       </div>
-      {gate ? <ResultsGate gate={gate} breakdown={breakdown} /> : <>
       <div className="category-breakdown">
         {CATEGORY_KEYS.map((c) => (
           <div key={c} className="cat-card">
@@ -264,27 +253,29 @@ function Results({ brandName, refEl, score, breakdown, ero, ourFee, onBuild, gat
         <button type="button" className="btn btn-gold btn-lg" onClick={onBuild}>Build My WISP — $25</button>
         <p className="fine-print">Attorney-ready means professionally formatted for attorney review. This tool provides general guidance, not legal advice.</p>
       </div>
-      </>}
     </div>
   );
 }
 
-/** Before the full results: the two weakest areas, then name and email to see everything. */
-function ResultsGate({ gate, breakdown }: { gate: Gate; breakdown: Record<string, number> }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+/** The audit's first step: name, email and phone, then the questions. */
+function AuditStart({ onStarted }: { onStarted: (c: Contact) => void }) {
+  const [c, setC] = useState<Contact>({ name: "", email: "", phone: "" });
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<{ error: string; field?: "name" | "email" } | null>(null);
-  const gaps = [...CATEGORY_KEYS].sort((a, b) => breakdown[a] - breakdown[b]).filter((c) => breakdown[c] < 100).slice(0, 2);
+  const [problem, setProblem] = useState<{ error: string; field?: keyof Contact } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) { setProblem({ error: "Please enter your name.", field: "name" }); return; }
-    if (!EMAIL.test(email.trim())) { setProblem({ error: "Please enter a valid email address.", field: "email" }); return; }
+    const v = { name: c.name.trim(), email: c.email.trim(), phone: c.phone.trim() };
+    if (!v.name) { setProblem({ error: "Please enter your name.", field: "name" }); return; }
+    if (!EMAIL.test(v.email)) { setProblem({ error: "Please enter a valid email address.", field: "email" }); return; }
+    const digits = v.phone.replace(/\D/g, "");
+    if (digits.length < 10 || digits.length > 15) { setProblem({ error: "Please enter a valid phone number.", field: "phone" }); return; }
     setBusy(true);
     setProblem(null);
     try {
-      setProblem(await gate.unlock(name.trim(), email.trim()));
+      const r = await startAuditAction(v);
+      if (!r.ok) { setProblem(r); return; }
+      onStarted(v);
     } catch {
       setProblem({ error: "The connection was interrupted. Please try again." });
     } finally {
@@ -293,29 +284,25 @@ function ResultsGate({ gate, breakdown }: { gate: Gate; breakdown: Record<string
   }
 
   return (
-    <div className="results-gate">
-      {gaps.length > 0 && (
-        <div className="gate-findings">
-          <p className="gate-eyebrow">YOUR BIGGEST GAPS</p>
-          <ul>{gaps.map((c) => <li key={c}><b>{CATEGORIES[c].name}</b><span>{breakdown[c]}%</span></li>)}</ul>
-        </div>
-      )}
-      <form className="gate-form" onSubmit={submit} noValidate>
-        <h3>See your full results</h3>
-        <p>Get your score in all four IRS security categories, what to fix first, and your cost comparison.</p>
-        {problem && <p className="alert" role="alert">{problem.error}</p>}
-        <div className="field">
-          <label htmlFor="gate_name">Name *</label>
-          <input id="gate_name" type="text" autoComplete="name" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={problem?.field === "name"} required />
-        </div>
-        <div className="field">
-          <label htmlFor="gate_email">Email *</label>
-          <input id="gate_email" type="email" autoComplete="email" maxLength={254} value={email} placeholder="you@yourfirm.com" onChange={(e) => setEmail(e.target.value)} aria-invalid={problem?.field === "email"} required />
-        </div>
-        <button type="submit" className="btn btn-gold btn-lg" disabled={busy}>{busy ? "Opening your results…" : "See my full results"}</button>
-        <p className="fine-print">We&apos;ll use your name and email to follow up about your results. We never share or sell them.</p>
-      </form>
-    </div>
+    <form className="start-form" onSubmit={submit} noValidate>
+      <h3>Start your free audit</h3>
+      <p>12 questions, about 2 minutes. Your full results appear as soon as you finish.</p>
+      {problem && <p className="alert" role="alert">{problem.error}</p>}
+      <div className="field">
+        <label htmlFor="start_name">Name *</label>
+        <input id="start_name" type="text" autoComplete="name" maxLength={200} value={c.name} onChange={(e) => setC({ ...c, name: e.target.value })} aria-invalid={problem?.field === "name"} required />
+      </div>
+      <div className="field">
+        <label htmlFor="start_email">Email *</label>
+        <input id="start_email" type="email" autoComplete="email" maxLength={254} value={c.email} placeholder="you@yourfirm.com" onChange={(e) => setC({ ...c, email: e.target.value })} aria-invalid={problem?.field === "email"} required />
+      </div>
+      <div className="field">
+        <label htmlFor="start_phone">Phone *</label>
+        <input id="start_phone" type="tel" autoComplete="tel" maxLength={40} value={c.phone} placeholder="(555) 555-0100" onChange={(e) => setC({ ...c, phone: e.target.value })} aria-invalid={problem?.field === "phone"} required />
+      </div>
+      <button type="submit" className="btn btn-gold btn-lg" disabled={busy}>{busy ? "Starting…" : "Start my free audit"}</button>
+      <p className="fine-print">We&apos;ll use these to follow up about your results. We never share or sell them.</p>
+    </form>
   );
 }
 

@@ -37,6 +37,14 @@ export function checkEmail(raw: unknown): string {
   return v;
 }
 
+/** A phone number: 10 to 15 digits, written any common way ("(337) 555-0100", "+1 337 555 0100"). */
+export function checkPhone(raw: unknown): string {
+  const v = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ").slice(0, 40) : "";
+  const digits = v.replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 15 || /[^\d\s()+.\-]/.test(v)) throw new LeadInputError("Please enter a valid phone number.", "phone");
+  return v;
+}
+
 /** A date typed in a form (YYYY-MM-DD) as a timestamp at noon Eastern, or null when blank. */
 export function checkDate(raw: unknown, label: string): string | null {
   const v = typeof raw === "string" ? raw.trim() : "";
@@ -123,23 +131,50 @@ export async function deleteLead(deps: LeadsDeps, id: string): Promise<void> {
 // ------------------------------------------------------------------ funnels
 
 /**
- * The WISP audit's "See my full results" form. Creates the lead (source WISP audit) with the audit and its score, or,
- * when this email is already a lead, adds the new audit to that lead. Their status and source are left alone.
+ * The WISP audit's first step: name, email and phone before the questions. Creates the lead (source WISP audit), or,
+ * when this email is already a lead, notes the new start and fills in a missing phone. Status and source are left alone.
  */
-export async function captureAuditLead(deps: LeadsDeps, raw: { name: unknown; email: unknown }, audit: { id: string; score: number }): Promise<Lead> {
+export async function captureAuditStart(deps: LeadsDeps, raw: { name: unknown; email: unknown; phone: unknown }): Promise<Lead> {
   const full_name = checkName(raw.name);
   const email = checkEmail(raw.email);
+  const phone = checkPhone(raw.phone);
   const existing = await deps.repo.findByEmail(email);
   if (existing) {
-    const after = await deps.repo.updateLead(existing.id, { audit_id: audit.id, audit_score: audit.score });
+    const after = existing.phone ? existing : await deps.repo.updateLead(existing.id, { phone });
+    await deps.repo.addEvent({ lead_id: existing.id, action: "audit_started", detail: existing.phone && existing.phone !== phone ? { phone_given: phone } : {}, actor_id: null });
+    return after;
+  }
+  let lead: Lead;
+  try {
+    lead = await deps.repo.insertLead({ ...blank, full_name, email, phone, source: "wisp_audit", status: "new" });
+  } catch (e) {
+    // The same person sending the form twice at once: the second one joins the first.
+    const again = await deps.repo.findByEmail(email);
+    if (!again) throw e;
+    return again;
+  }
+  await deps.repo.addEvent({ lead_id: lead.id, action: "created", detail: { source: "wisp_audit", started: true }, actor_id: null });
+  return lead;
+}
+
+/**
+ * The finished WISP audit: its score goes on the lead who started it (found by email). If starting didn't save the
+ * lead, it's created here from the same details.
+ */
+export async function captureAuditLead(deps: LeadsDeps, raw: { name: unknown; email: unknown; phone?: unknown }, audit: { id: string; score: number }): Promise<Lead> {
+  const full_name = checkName(raw.name);
+  const email = checkEmail(raw.email);
+  const phone = raw.phone === undefined || raw.phone === "" ? null : checkPhone(raw.phone);
+  const existing = await deps.repo.findByEmail(email);
+  if (existing) {
+    const after = await deps.repo.updateLead(existing.id, { audit_id: audit.id, audit_score: audit.score, ...(!existing.phone && phone ? { phone } : {}) });
     await deps.repo.addEvent({ lead_id: existing.id, action: "audit_taken", detail: { score: audit.score, audit_id: audit.id }, actor_id: null });
     return after;
   }
   let lead: Lead;
   try {
-    lead = await deps.repo.insertLead({ ...blank, full_name, email, source: "wisp_audit", status: "new", audit_id: audit.id, audit_score: audit.score });
+    lead = await deps.repo.insertLead({ ...blank, full_name, email, phone, source: "wisp_audit", status: "new", audit_id: audit.id, audit_score: audit.score });
   } catch (e) {
-    // The same person sending the form twice at once: the second one joins the first.
     const again = await deps.repo.findByEmail(email);
     if (!again) throw e;
     return again;

@@ -3,22 +3,15 @@
 **Migration:** `supabase/migrations/20261021090000_leads.sql`.
 **Gate:** `supabase/tests/leads_isolation.sql`.
 
-## Part 1: the audit's results gate (`/wisp`)
+## Part 1: contact details first (`/wisp`)
 
 - **Unchanged:** the 12 questions, the optional ERO questions and the scoring.
-- **Teaser.** When the audit is done, the results screen shows:
-  - the score ring with the overall score and its headline;
-  - the two weakest of the four categories, with their percentages.
-- **The gate.** The rest is behind a short form: **Name** (required), **Email** (required) and **See my full results**. The rest means:
-  - the verdict text;
-  - all four categories, with what to fix;
-  - the fee comparison;
-  - the **Build My WISP — $25** button.
-- **After the form,** the full results show as before. The email they gave fills in the builder's delivery email (they can change it).
-- **What's saved:**
-  - The anonymous audit is still saved the moment it finishes, so the WISP Generator page keeps counting every audit.
-  - Submitting the form creates the lead. If the earlier save didn't finish, the audit is saved then too.
-- **A problem on our side never locks anyone out.** If the lead can't be saved (for example, before the migration is applied), the results still open and the error is logged. A bad email, a missing name and too many attempts from one connection are shown on the form.
+- **Before the first question,** the audit asks for **Name**, **Email** and **Phone** (all required) and a **Start my free audit** button.
+  - The phone must have 10 to 15 digits, written any common way ("(337) 555-0100", "+1 337 555 0100").
+- **Submitting it creates the lead** (source WISP audit, status New, with the phone) before the questions start.
+- **Full results, no gate.** When the audit is done, the full results show straight away, with the **Build My WISP — $25** button. The email they gave fills in the builder's delivery email (they can change it).
+- **The score goes on the lead.** The audit is saved when it finishes, and its score is added to the lead who started it.
+- **A problem on our side never locks anyone out.** If the lead can't be saved (for example, before the migration is applied), the audit still starts and the error is logged. A missing name, a bad email or phone, and too many attempts from one connection are shown on the form.
 
 ## Part 2: Leads (admin → My Office → Leads, `/leads`)
 
@@ -51,8 +44,8 @@
 
 ## The WISP audit feeds Leads
 
-- **New visitor.** Submitting the results form creates a lead with source **WISP audit**, status New, the audit and its score.
-- **Existing lead (same email).** The lead gets the newer audit and score. Its source and status don't change, and the history shows "Took the WISP audit again".
+- **New visitor.** The first step creates a lead with source **WISP audit**, status New and their phone. Finishing the audit adds the audit and its score; the history shows "Started the free WISP audit", then "Finished the WISP audit (score …)".
+- **Existing lead (same email).** The lead gets the newer audit and score. Its source, status and phone don't change (a missing phone is filled in, and a different one is noted in the history).
 - **Purchase.** When the $25 WISP is paid (the signature-verified Stripe webhook, or the confirmation page asking Stripe directly):
   - Monarch finds the lead who took that plan's audit, or failing that, the lead with the buyer's email.
   - It links the customer, order and WISP plan, and marks the lead **Converted**.
