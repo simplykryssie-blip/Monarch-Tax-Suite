@@ -2,6 +2,7 @@
 
 export const LEAD_SOURCES = {
   wisp_audit: "WISP audit",
+  wisp_builder: "WISP builder",
   facebook_group: "Facebook group",
   referral: "Referral",
   website: "Website",

@@ -192,3 +192,27 @@ describe("CSV", () => {
     assert.deepEqual(parseCsv("Name;Email\nA;a@example.com"), [["Name", "Email"], ["A", "a@example.com"]]);
   });
 });
+
+describe("WISP builder lead", () => {
+  test("the builder's first step makes a lead with source WISP builder, and a repeat doesn't change it", async () => {
+    const { captureBuilderStart } = await import("../lib/leads/service.ts");
+    const s = setup();
+    const lead = await captureBuilderStart(s.deps, { name: "Bayou Tax LLC", email: "Owner@Bayou.example.com", phone: "(337) 555-0100" });
+    assert.equal(lead.source, "wisp_builder");
+    assert.equal(lead.email, "owner@bayou.example.com");
+    assert.equal(lead.status, "new");
+    await captureBuilderStart(s.deps, { name: "Bayou Tax LLC", email: "owner@bayou.example.com", phone: "(337) 555-0100" });
+    assert.equal((await s.repo.listLeads({})).length, 1);
+    assert.deepEqual(s.repo.events.map((e) => e.action), ["created", "builder_started"]);
+    await assert.rejects(captureBuilderStart(s.deps, { name: "X", email: "x@example.com", phone: "123" }), /valid phone/);
+  });
+
+  test("someone who already took the audit keeps their source and gets a missing phone filled in", async () => {
+    const { captureBuilderStart } = await import("../lib/leads/service.ts");
+    const s = setup();
+    await captureAuditLead(s.deps, { name: "Ann", email: "ann@example.com" }, { id: "a", score: 40 });
+    const after = await captureBuilderStart(s.deps, { name: "Ann Tax", email: "ann@example.com", phone: "337 555 0100" });
+    assert.equal(after.source, "wisp_audit");
+    assert.equal(after.phone, "337 555 0100");
+  });
+});

@@ -122,7 +122,7 @@ export function feeComparison(ero: EroAnswers, ourFee: number | null): { theirFe
 // ------------------------------------------------------------------ builder
 
 export const BUILDER_STEPS = [
-  { id: "firm", title: "Firm Details", sub: "Who this WISP covers" },
+  { id: "firm", title: "Identifying Information", sub: "Who this WISP covers" },
   { id: "systems", title: "Systems & Data", sub: "Where data lives" },
   { id: "access", title: "Access Controls", sub: "Who can reach it" },
   { id: "protect", title: "Protections", sub: "Safeguards in place" },
@@ -130,15 +130,16 @@ export const BUILDER_STEPS = [
   { id: "review", title: "Review & Pay", sub: "Finalize your WISP" },
 ] as const;
 
-export type BuilderField = { id: string; label: string; type: "text" | "tel" | "number" | "textarea" | "select"; required: boolean; placeholder?: string; options?: string[] };
+export type BuilderField = { id: string; label: string; type: "text" | "tel" | "email" | "number" | "textarea" | "select"; required: boolean; placeholder?: string; options?: string[] };
 
 export const BUILDER_FIELDS: Record<"firm" | "systems" | "access" | "protect" | "incident", BuilderField[]> = {
   firm: [
-    { id: "firm_name", label: "Firm / Business Name", type: "text", required: true },
+    { id: "firm_name", label: "Business Name", type: "text", required: true },
+    { id: "business_email", label: "Business Email", type: "email", required: true, placeholder: "you@yourfirm.com" },
+    { id: "phone", label: "Business Phone", type: "tel", required: true, placeholder: "(555) 555-0100" },
     { id: "owner_name", label: "Owner / Principal Name", type: "text", required: true },
     { id: "ein", label: "EIN (last 4 digits ok)", type: "text", required: false },
     { id: "address", label: "Business Address", type: "text", required: true },
-    { id: "phone", label: "Business Phone", type: "tel", required: true },
   ],
   systems: [
     { id: "tax_software", label: "Tax software used", type: "text", required: true, placeholder: "e.g. TaxSlayer Pro, CrossLink" },
@@ -173,7 +174,7 @@ export const DONE_DISCLAIMER = "Your WISP was generated from the information you
 
 export const DISCLAIMER = "Attorney-ready means professionally formatted for attorney review, not attorney-approved. General guidance, not legal advice.";
 
-const MAX: Record<BuilderField["type"], number> = { text: 200, tel: 30, number: 7, textarea: 4000, select: 120 };
+const MAX: Record<BuilderField["type"], number> = { text: 200, tel: 30, email: 254, number: 7, textarea: 4000, select: 120 };
 export const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export class WispInputError extends Error {
@@ -192,6 +193,7 @@ export function checkAnswers(raw: unknown): WispAnswers {
     const v = typeof r[f.id] === "string" ? (r[f.id] as string).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").trim().slice(0, MAX[f.type]) : "";
     if (f.required && !v) throw new WispInputError(`"${f.label}" is required.`, f.id);
     if (v && f.type === "select" && !f.options!.includes(v)) throw new WispInputError(`Choose an option for "${f.label}".`, f.id);
+    if (v && f.type === "email" && !EMAIL.test(v)) throw new WispInputError("Please enter a valid business email address.", f.id);
     if (v && f.type === "number" && !/^\d{1,6}$/.test(v.replace(/[\s,]/g, ""))) throw new WispInputError(`"${f.label}" must be a whole number.`, f.id);
     if (v) out[f.id] = f.type === "number" ? v.replace(/[\s,]/g, "") : v;
   }

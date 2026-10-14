@@ -133,25 +133,38 @@ export async function deleteLead(deps: LeadsDeps, id: string): Promise<void> {
  * when this email is already a lead, notes the new start and fills in a missing phone. Status and source are left alone.
  */
 export async function captureAuditStart(deps: LeadsDeps, raw: { name: unknown; email: unknown; phone: unknown }): Promise<Lead> {
+  return captureStart(deps, raw, "wisp_audit", "audit_started");
+}
+
+/**
+ * The WISP builder's first step ("Identifying Information"): business name, email and phone. Saves the visitor as a lead
+ * (source WISP builder) so they are in Leads even if they never pay. An email that is already a lead keeps its source
+ * and status; a missing phone is filled in.
+ */
+export async function captureBuilderStart(deps: LeadsDeps, raw: { name: unknown; email: unknown; phone: unknown }): Promise<Lead> {
+  return captureStart(deps, raw, "wisp_builder", "builder_started");
+}
+
+async function captureStart(deps: LeadsDeps, raw: { name: unknown; email: unknown; phone: unknown }, source: "wisp_audit" | "wisp_builder", action: string): Promise<Lead> {
   const full_name = checkName(raw.name);
   const email = checkEmail(raw.email);
   const phone = checkPhone(raw.phone);
   const existing = await deps.repo.findByEmail(email);
   if (existing) {
     const after = existing.phone ? existing : await deps.repo.updateLead(existing.id, { phone });
-    await deps.repo.addEvent({ lead_id: existing.id, action: "audit_started", detail: existing.phone && existing.phone !== phone ? { phone_given: phone } : {}, actor_id: null });
+    await deps.repo.addEvent({ lead_id: existing.id, action, detail: existing.phone && existing.phone !== phone ? { phone_given: phone } : {}, actor_id: null });
     return after;
   }
   let lead: Lead;
   try {
-    lead = await deps.repo.insertLead({ ...blank, full_name, email, phone, source: "wisp_audit", status: "new" });
+    lead = await deps.repo.insertLead({ ...blank, full_name, email, phone, source, status: "new" });
   } catch (e) {
     // The same person sending the form twice at once: the second one joins the first.
     const again = await deps.repo.findByEmail(email);
     if (!again) throw e;
     return again;
   }
-  await deps.repo.addEvent({ lead_id: lead.id, action: "created", detail: { source: "wisp_audit", started: true }, actor_id: null });
+  await deps.repo.addEvent({ lead_id: lead.id, action: "created", detail: { source, started: true }, actor_id: null });
   return lead;
 }
 

@@ -46,7 +46,7 @@ class MemoryWisp implements WispRepo {
 }
 
 const ANSWERS = {
-  firm_name: "Ánh Tax Services LLC", owner_name: "Nguyễn Thị Ánh", ein: "12-3456789", address: "1 Main St, Lake Charles, LA", phone: "(337) 555-0100",
+  firm_name: "Ánh Tax Services LLC", owner_name: "Nguyễn Thị Ánh", business_email: "anh@example.com", ein: "12-3456789", address: "1 Main St, Lake Charles, LA", phone: "(337) 555-0100",
   tax_software: "TaxSlayer Pro", data_locations: "TaxSlayer cloud; encrypted office NAS", backup_method: "Encrypted cloud backup daily",
   num_users: "3", mfa_status: "MFA on all systems", access_policy: "Owner grants access by role; removed the day someone leaves.",
   encryption: "Encrypted in transit and at rest", physical_security: "Locked cabinets, clean desk, 10-minute auto-lock.", training: "Annual training completed",
@@ -108,7 +108,7 @@ describe("the audit (owner's rules, unchanged)", () => {
   });
 
   test("answers are checked again on the server", () => {
-    assert.throws(() => checkAnswers({ ...ANSWERS, firm_name: " " }), /Firm \/ Business Name/);
+    assert.throws(() => checkAnswers({ ...ANSWERS, firm_name: " " }), /Business Name/);
     assert.throws(() => checkAnswers({ ...ANSWERS, mfa_status: "Sort of" }), /Choose an option/);
     assert.throws(() => checkAnswers({ ...ANSWERS, num_users: "three" }), /whole number/);
     const clean = checkAnswers({ ...ANSWERS, injected: "<script>", ein: "" });
@@ -264,5 +264,15 @@ describe("the WISP product in the store", () => {
     assert.deepEqual(Object.keys(calls[0] as object).sort(), ["customerId", "orderId", "planId", "sessionId"]);
     assert.equal((calls[0] as { planId: string }).planId, "plan-9");
     assert.equal(commerce.licenses.length, 0, "no license for a WISP");
+  });
+});
+
+describe("builder identifying information", () => {
+  test("the first step asks for business name, email and phone first, and checks the email", async () => {
+    const { BUILDER_FIELDS, BUILDER_STEPS, checkAnswers } = await import("../lib/wisp/content.ts");
+    assert.equal(BUILDER_STEPS[0].title, "Identifying Information");
+    assert.deepEqual(BUILDER_FIELDS.firm.map((f) => f.id), ["firm_name", "business_email", "phone", "owner_name", "ein", "address"]);
+    assert.deepEqual(BUILDER_FIELDS.firm.slice(0, 3).map((f) => f.label), ["Business Name", "Business Email", "Business Phone"]);
+    assert.throws(() => checkAnswers({ ...ANSWERS, business_email: "nope" }), /valid business email/);
   });
 });
