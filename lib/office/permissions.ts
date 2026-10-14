@@ -17,6 +17,8 @@ export type Feature = {
   href?: string;
   /** Never handed to a preparer, whatever the ERO sets. */
   eroOnly?: boolean;
+  /** Not shown to the bureau when it opens an office: the bureau sees compliance status, not the office's files. */
+  bureauHidden?: boolean;
   note?: string;
 };
 
@@ -25,10 +27,15 @@ export const FEATURES: Feature[] = [
   { key: "clients.intake", label: "Client intake", level: "preparer", status: "soon", note: "Arrives with the Return Pipeline." },
   { key: "returns.prep", label: "Return preparation", level: "preparer", status: "soon", note: "Arrives with the Return Pipeline." },
   { key: "returns.assigned", label: "My assigned returns", level: "preparer", status: "soon", note: "Arrives with the Return Pipeline." },
+  { key: "compliance.home", label: "Compliance", level: "preparer", status: "live", href: "/office/compliance", note: "WISP acknowledgment, PTIN renewal, reporting an incident." },
   { key: "office.dashboard", label: "Office dashboard", level: "ero", status: "live", href: "/office" },
   { key: "fees.view", label: "Fees & statement", level: "ero", status: "live", href: "/office/statement" },
   { key: "efile.manage", label: "E-file management", level: "ero", status: "soon", note: "Arrives with the Return Pipeline." },
   { key: "team.manage", label: "Team & permissions", level: "ero", status: "live", href: "/office/team", eroOnly: true },
+  { key: "compliance.manage", label: "Compliance management", level: "ero", status: "live", href: "/office/compliance/wisp", note: "Attest the WISP, the office checklist, reminder settings, PTIN records for the team." },
+  { key: "compliance.incidents", label: "Incident response", level: "ero", status: "live", href: "/office/compliance/incidents", note: "Work through incidents and close them." },
+  { key: "compliance.8879", label: "Form 8879 records", level: "ero", status: "live", href: "/office/compliance/8879", bureauHidden: true },
+  { key: "compliance.vault", label: "Document vault", level: "ero", status: "live", href: "/office/compliance/vault", bureauHidden: true },
   { key: "eros.manage", label: "ERO management", level: "bureau", status: "live", href: "/efin/list" },
   { key: "offices.all", label: "All offices", level: "bureau", status: "live", href: "/fees" },
 ];
@@ -44,6 +51,7 @@ export function can(role: Role, permissions: Permissions, key: string): boolean 
   const f = featureOf(key);
   if (!f) return false;
   if (key === "office.home") return true;
+  if (role === "bureau" && f.bureauHidden) return false;
   if (RANK[role] < RANK[f.level]) {
     // Below the feature's level: only a preparer, and only when their ERO handed it to them.
     return role === "preparer" && f.level === "ero" && !f.eroOnly && permissions[key] === true;
