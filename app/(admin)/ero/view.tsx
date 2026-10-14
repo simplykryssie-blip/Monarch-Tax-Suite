@@ -53,9 +53,15 @@ export function EroDashboard({ s, adding }: { s: Snapshot; adding: boolean }) {
         <section className="monarch-panel" id="ptins">
           <div className="monarch-panel-head">
             <div><h2>PTINs</h2><p>Each PTIN belongs to a person, not a firm. Shown masked. PTINs renew every year; add the renewal date so you can see what is coming.</p></div>
-            {own.length > 0 && !adding && <Link className="monarch-primary" href="/ero?add=1#add-ptin"><Icon name="plus" size={16} /> Add PTIN</Link>}
+            {!adding && <Link className="monarch-primary" href="/ero?add=1#add-ptin"><Icon name="plus" size={16} /> Add PTIN</Link>}
           </div>
 
+          {adding && own.length === 0 && (
+            <div className="efin-edit-body" id="add-ptin" style={{ padding: "0 20px 20px" }}>
+              <p className="monarch-muted" style={{ margin: "0 0 12px" }}>A PTIN is recorded under your own office. <Link href="/efin/new" className="efin-card-link">Add your firm</Link> and choose &quot;My own tax office&quot;, then come back and add the PTIN.</p>
+              <Link className="monarch-secondary" href="/ero">Cancel</Link>
+            </div>
+          )}
           {adding && own.length > 0 && (
             <div className="efin-edit-body" id="add-ptin" style={{ padding: "0 20px 20px" }}>
               <ActionForm action={addPtinAction} className="monarch-form">

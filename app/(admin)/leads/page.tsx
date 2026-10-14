@@ -59,9 +59,10 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             {chosen.length > 0 && <input type="hidden" name="tags" value={chosen.join(",")} />}
             {filtered && <Link href="/leads">Clear</Link>}
           </form>
-          {(tagCounts.length > 0 || chosen.length > 0) && (
+          {(
             <div className="tag-filter" style={{ padding: "0 20px 12px" }} role="group" aria-label="Filter by tag">
               <span className="field-label">Tags</span>
+              {tagCounts.length === 0 && chosen.length === 0 && <span className="monarch-muted">No tags yet. Add tags on a lead (or in a CSV) and they appear here to filter by.</span>}
               {[...new Set([...chosen, ...tagCounts.map((t) => t.tag)])].map((t) => {
                 const on = chosen.includes(t);
                 const n = tagCounts.find((c) => c.tag === t)?.count ?? 0;

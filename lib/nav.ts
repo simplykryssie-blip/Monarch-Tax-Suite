@@ -15,13 +15,7 @@ export const NAV: Entry[] = [
     items: [
       { label: "Home", icon: "dashboard", href: "/", section: "bureau" },
       { label: "Leads", icon: "user", href: "/leads", section: "leads" },
-      {
-        label: "My Workspace",
-        icon: "firms",
-        href: "/workspace",
-        section: "workspace",
-        items: [{ label: "Documents", icon: "document", href: "/documents" }],
-      },
+      { label: "My Workspace", icon: "firms", href: "/workspace", section: "workspace" },
       { label: "ERO Dashboard", icon: "licenses", href: "/ero", section: "ero" },
       {
         // A section header only: it opens and closes; the dashboard is the first item inside it.

@@ -85,3 +85,22 @@ describe("tiers", () => {
     assert.match(src, /catch \{\s*return "bureau"/);
   });
 });
+
+describe("menu shape", () => {
+  test("My Workspace and ERO Dashboard are separate top-level items of My Office, in order, before My Service Bureau", () => {
+    const office = NAV[0];
+    assert.ok(isBranch(office));
+    const names = office.items.map((i) => i.label);
+    assert.ok(names.indexOf("My Workspace") + 1 === names.indexOf("ERO Dashboard"));
+    assert.ok(names.indexOf("ERO Dashboard") + 1 === names.indexOf("My Service Bureau"));
+    assert.equal(isBranch(office.items[names.indexOf("My Workspace")]), false);
+  });
+
+  test("Add PTIN is not gated on having an own-office firm, and the tag filter always renders", () => {
+    const ero = readFileSync("app/(admin)/ero/view.tsx", "utf8");
+    assert.match(ero, /\{!adding && <Link className="monarch-primary" href="\/ero\?add=1#add-ptin">/);
+    const leads = readFileSync("app/(admin)/leads/page.tsx", "utf8");
+    assert.match(leads, /aria-label="Filter by tag"/);
+    assert.ok(!/tagCounts\.length > 0 \|\| chosen\.length > 0/.test(leads));
+  });
+});
