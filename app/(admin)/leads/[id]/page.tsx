@@ -15,9 +15,10 @@ const status = (v: unknown) => (typeof v === "string" && v in LEAD_STATUSES ? LE
 function eventText(e: LeadEvent): string {
   const d = e.detail;
   switch (e.action) {
-    case "created": return d.source === "wisp_audit" ? `Took the free WISP audit (score ${d.score}/100) and asked for the full results` : "Added";
+    case "created": return d.source !== "wisp_audit" ? "Added" : d.started ? "Started the free WISP audit" : `Took the free WISP audit (score ${d.score}/100)`;
+    case "audit_started": return `Started the WISP audit again${typeof d.phone_given === "string" ? ` (gave phone ${d.phone_given})` : ""}`;
     case "imported": return `Imported from a CSV (row ${d.row})`;
-    case "audit_taken": return `Took the WISP audit again (score ${d.score}/100)`;
+    case "audit_taken": return `Finished the WISP audit (score ${d.score}/100)`;
     case "status_changed": return `Status: ${status(d.from)} → ${status(d.to)}`;
     case "contacted": return d.to ? `Contacted (status: ${status(d.from)} → ${status(d.to)})` : "Contacted";
     case "edited": return `Edited: ${(Array.isArray(d.fields) ? d.fields : []).map((f) => String(f).replace(/_/g, " ").replace("full name", "name").replace(" at", "")).join(", ")}`;

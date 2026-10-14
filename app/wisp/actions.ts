@@ -13,7 +13,7 @@ import { MONARCH_TENANT_ID } from "@/lib/tenants";
 import { attachCheckout, planForBuyer, recordAudit, resendForBuyer, startPlan } from "@/lib/wisp/service.ts";
 import { requestTenant, wispDeps } from "@/lib/wisp/server";
 import { WISP_COOKIE } from "@/lib/wisp/cookie.ts";
-import { captureAuditLead, LeadInputError } from "@/lib/leads/service.ts";
+import { captureAuditLead, captureAuditStart, LeadInputError } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
 
 // Public WISP Generator actions. The tenant comes from the web address the page was opened on. Every action is
@@ -21,7 +21,7 @@ import { leadsDeps } from "@/lib/leads/server";
 
 const WISP_SLUG = "wisp-assisted-build";
 
-async function visitor(kind: "audit" | "unlock" | "checkout" | "resend", limit: number) {
+async function visitor(kind: "audit" | "start" | "checkout" | "resend", limit: number) {
   const h = await headers();
   const ip = clientAddress(h.get("x-forwarded-for"));
   const ipHash = ip ? hashClient(ip, process.env.MONARCH_ENCRYPTION_KEY) : null;
@@ -38,39 +38,38 @@ const failure = (e: unknown, what: string) => {
   return "Something went wrong on our side. Your answers are still on this page; please try again in a minute.";
 };
 
-/** Saves the finished audit (lead capture) and returns the score the server computed. Never blocks the results. */
-export async function recordAuditAction(input: { answers: unknown; ero: unknown }): Promise<{ ok: true; auditId: string } | { ok: false }> {
+export type StartResult = { ok: true } | { ok: false; error: string; field?: "name" | "email" | "phone" };
+
+/**
+ * The audit's first step: name, email and phone. Saves the visitor as a lead (source WISP audit) before the questions.
+ * A problem on our side never keeps them from the audit (it is logged); a typing mistake is shown on the form.
+ */
+export async function startAuditAction(input: { name: unknown; email: unknown; phone: unknown }): Promise<StartResult> {
+  try {
+    await visitor("start", 20);
+    await captureAuditStart(leadsDeps(await requestTenant()), input);
+    return { ok: true };
+  } catch (e) {
+    const field = e instanceof LeadInputError && (e.field === "name" || e.field === "email" || e.field === "phone") ? e.field : undefined;
+    const error = failure(e, "start");
+    if (!(e instanceof ValidationError)) return { ok: true };
+    return { ok: false, error, field };
+  }
+}
+
+/**
+ * Saves the finished audit and puts its score on the visitor's lead. Never blocks the results: a problem is logged.
+ */
+export async function recordAuditAction(input: { answers: unknown; ero: unknown; lead?: { name: unknown; email: unknown; phone: unknown } }): Promise<{ ok: true; auditId: string } | { ok: false }> {
   try {
     const who = await visitor("audit", 30);
-    const r = await recordAudit(wispDeps(await requestTenant()), input, who);
+    const tenantId = await requestTenant();
+    const r = await recordAudit(wispDeps(tenantId), input, who);
+    if (input.lead) await captureAuditLead(leadsDeps(tenantId), input.lead, { id: r.auditId, score: r.score }).catch((e: unknown) => failure(e, "audit lead"));
     return { ok: true, auditId: r.auditId };
   } catch (e) {
     failure(e, "audit");
     return { ok: false };
-  }
-}
-
-export type UnlockResult = { ok: true; auditId: string | null } | { ok: false; error: string; field?: "name" | "email" };
-
-/**
- * The results screen's "See my full results": saves the visitor as a lead (source WISP audit) with their audit and
- * score. The audit is saved again here if the earlier save didn't finish, so the lead always has its score.
- */
-export async function unlockResultsAction(input: { name: unknown; email: unknown; auditId: unknown; answers: unknown; ero: unknown }): Promise<UnlockResult> {
-  try {
-    const who = await visitor("unlock", 20);
-    const tenantId = await requestTenant();
-    const wisp = wispDeps(tenantId);
-    const saved = typeof input.auditId === "string" && /^[0-9a-f-]{36}$/.test(input.auditId) ? await wisp.repo.getAudit(input.auditId) : null;
-    const audit = saved ? { id: saved.id, score: saved.score } : await recordAudit(wisp, { answers: input.answers, ero: input.ero }, who).then((r) => ({ id: r.auditId, score: r.score }));
-    await captureAuditLead(leadsDeps(tenantId), { name: input.name, email: input.email }, audit);
-    return { ok: true, auditId: audit.id };
-  } catch (e) {
-    const field = e instanceof LeadInputError && (e.field === "name" || e.field === "email") ? e.field : undefined;
-    const error = failure(e, "unlock");
-    // A problem on our side never keeps the visitor from their results (it is logged above).
-    if (!(e instanceof ValidationError)) return { ok: true, auditId: null };
-    return { ok: false, error, field };
   }
 }
 
