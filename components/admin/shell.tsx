@@ -4,85 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "@/lib/auth-actions";
-import { Icon, type IconName } from "./icons";
+import { Icon } from "./icons";
 import { BrandMark, Wordmark } from "./brand";
 import { CommandPalette } from "./command-palette";
-
-type Leaf = { label: string; icon: IconName; href?: string };
-type Branch = { label: string; icon: IconName; href?: string; items: (Leaf | Branch)[] };
-type Entry = Leaf | Branch;
-const isBranch = (e: Entry): e is Branch => "items" in e;
-
-// Without a live data source an item is shown but not linked ("Soon"), so nothing presents placeholder content as real.
-const NAV: Entry[] = [
-  {
-    label: "My Office",
-    icon: "office",
-    items: [
-      { label: "Home", icon: "dashboard", href: "/" },
-      { label: "Leads", icon: "user", href: "/leads" },
-      { label: "My Workspace", icon: "firms", href: "/workspace" },
-      {
-        // Clicking the name opens the dashboard; the arrow opens or closes the list below it.
-        label: "My Service Bureau",
-        icon: "licenses",
-        href: "/efin",
-        items: [
-          { label: "EROs & EFINs", icon: "firms", href: "/efin/list" },
-          { label: "Renewals", icon: "bell", href: "/efin/renewals" },
-          { label: "Fees & statements", icon: "reports", href: "/fees" },
-          { label: "Office access", icon: "customers", href: "/offices" },
-        ],
-      },
-      {
-        label: "My Store",
-        icon: "store",
-        items: [
-          { label: "Dashboard", icon: "reports", href: "/store" },
-          { label: "Customers", icon: "customers", href: "/customers" },
-          { label: "Orders", icon: "orders", href: "/orders" },
-          { label: "Products", icon: "products", href: "/products" },
-          { label: "Licenses", icon: "licenses", href: "/licenses" },
-          { label: "Installations", icon: "installs", href: "/installations" },
-          { label: "Service orders", icon: "orders", href: "/service-orders" },
-          { label: "WISP Generator", icon: "checklist", href: "/store/wisp" },
-          { label: "Courses", icon: "courses" },
-          { label: "Memberships", icon: "members" },
-        ],
-      },
-    ],
-  },
-  {
-    label: "Operations",
-    icon: "automation",
-    items: [
-      { label: "Automation", icon: "automation", href: "/automation" },
-      { label: "Documents", icon: "document", href: "/documents" },
-      { label: "Forms", icon: "checklist", href: "/forms" },
-      { label: "Support", icon: "support" },
-      { label: "Marketing", icon: "marketing" },
-      { label: "Reports", icon: "reports" },
-      {
-        label: "Settings",
-        icon: "settings",
-        items: [
-          { label: "Firm profile", icon: "office", href: "/settings/firm" },
-          { label: "Email sending", icon: "bell", href: "/settings/email" },
-          { label: "Package attributes", icon: "checklist", href: "/settings/package-attributes" },
-          { label: "Archive history", icon: "reports", href: "/settings/archive" },
-          { label: "Software & banking", icon: "settings", href: "/bureau/settings" },
-          { label: "History", icon: "reports", href: "/bureau/settings/history" },
-        ],
-      },
-    ],
-  },
-];
+import { allows, type Tier } from "@/lib/tier.ts";
+import { isBranch, navFor, type Entry } from "@/lib/nav.ts";
 
 const hrefs = (e: Entry): string[] => (isBranch(e) ? e.items.flatMap(hrefs) : e.href ? [e.href] : []);
 const matches = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
 
-function crumb(pathname: string): string {
-  for (const top of NAV) {
+function crumb(pathname: string, nav: Entry[]): string {
+  for (const top of nav) {
     const trail: string[] = [];
     const walk = (e: Entry, path: string[]): boolean => {
       if (isBranch(e)) return e.items.some((c) => walk(c, [...path, e.label]));
@@ -172,8 +104,9 @@ function Popover({ trigger, children }: { trigger: (open: boolean, toggle: () =>
   );
 }
 
-export function AdminShell({ email, logoSrc, today, alerts = [], children }: { email: string; logoSrc?: string | null; today: string; alerts?: Alert[]; children: React.ReactNode }) {
+export function AdminShell({ email, logoSrc, today, alerts = [], tier = "bureau", children }: { email: string; logoSrc?: string | null; today: string; alerts?: Alert[]; tier?: Tier; children: React.ReactNode }) {
   const pathname = usePathname();
+  const nav = navFor(tier);
   const [menu, setMenu] = useState(false);
   // Every section starts open; the owner can collapse any of them.
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -209,7 +142,7 @@ export function AdminShell({ email, logoSrc, today, alerts = [], children }: { e
           </span>
         </Link>
         <nav className="mt-nav-scroll" aria-label="Main">
-          {NAV.map((e) => <Group key={e.label} entry={e} depth={0} pathname={pathname} open={open} toggle={toggle} close={() => setMenu(false)} />)}
+          {nav.map((e) => <Group key={e.label} entry={e} depth={0} pathname={pathname} open={open} toggle={toggle} close={() => setMenu(false)} />)}
         </nav>
         <div className="mt-chess" aria-hidden="true"><span>STRATEGY</span><span>GROWTH</span><span>LEGACY</span></div>
       </aside>
@@ -217,10 +150,10 @@ export function AdminShell({ email, logoSrc, today, alerts = [], children }: { e
       <main className="mt-main">
         <header className="mt-topbar">
           <button className="mt-hamburger" onClick={() => setMenu(!menu)} aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu}><Icon name="menu" size={22} /></button>
-          <div className="mt-crumb">{crumb(pathname)}</div>
+          <div className="mt-crumb">{crumb(pathname, nav)}</div>
           <CommandPalette />
           <span className="mt-date">{today}</span>
-          <Link href="/orders/internal" className="mt-new"><Icon name="plus" size={15} /><span>New license</span></Link>
+          {allows(tier, "store") && <Link href="/orders/internal" className="mt-new"><Icon name="plus" size={15} /><span>New license</span></Link>}
 
           <Popover
             trigger={(open, toggle) => (

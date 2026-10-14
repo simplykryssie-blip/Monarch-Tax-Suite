@@ -5,15 +5,15 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
-import { createLead, deleteLead, importCsv, isSource, linkFirm, markContacted, updateLead, UUID, type ImportResult } from "@/lib/leads/service.ts";
-import { firmExists, leadsDeps } from "@/lib/leads/server";
+import { createLead, deleteLead, importCsv, isSource, markContacted, updateLead, UUID, type ImportResult } from "@/lib/leads/service.ts";
+import { leadsDeps } from "@/lib/leads/server";
 
 // Leads actions. Every action re-checks administrator access and acts only on the current tenant's rows (the
 // tenant-scoped database client), so ids from another tenant are simply not found.
 
 const str = (form: FormData, k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : "");
 const to = (path: string, key: "notice" | "error", message: string) => `${path}${path.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(message)}`;
-const FIELDS = ["full_name", "email", "phone", "firm_name", "source", "status", "notes", "last_contacted_at"] as const;
+const FIELDS = ["full_name", "email", "phone", "firm_name", "source", "status", "notes", "tags", "last_contacted_at"] as const;
 const fieldsOf = (form: FormData) => Object.fromEntries(FIELDS.map((k) => [k, str(form, k)]));
 
 const failure = (e: unknown) => {
@@ -73,15 +73,6 @@ export async function markContactedAction(form: FormData) {
   await act(back, async (adminId) => {
     const lead = await markContacted(leadsDeps(), idOf(form), adminId);
     return { notice: `Marked ${lead.full_name} as contacted today.` };
-  });
-}
-
-export async function linkFirmAction(form: FormData) {
-  const id = str(form, "id");
-  await act(`/leads/${UUID.test(id) ? id : ""}`, async (adminId) => {
-    const org = str(form, "organization_id") || null;
-    await linkFirm(leadsDeps(), idOf(form), org, firmExists, adminId);
-    return { notice: org ? "Firm linked." : "Firm unlinked." };
   });
 }
 

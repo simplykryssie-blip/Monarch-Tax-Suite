@@ -4,7 +4,7 @@ import { Badge, EmptyRow, Flash, label, load, PageTitle, SetupRequired, when } f
 import { Donut } from "@/components/admin/charts";
 import { Icon } from "@/components/admin/icons";
 import { BUCKET_LABEL, bucketFor, EXPIRING_WINDOW_DAYS, statusBreakdown, type StatusBucket } from "@/lib/efin/metrics.ts";
-import { complianceExceptions } from "@/lib/efin/exceptions.ts";
+import { complianceExceptions, groupExceptions, uniqueBy } from "@/lib/efin/exceptions.ts";
 import { daysUntil, maskEfin, todayIso } from "@/lib/efin/rules.ts";
 import { loadAudit, loadSnapshot } from "@/lib/efin/service";
 import { Kpi, orgName, Verified } from "./parts";
@@ -28,16 +28,16 @@ export default async function EfinDashboard({ searchParams }: { searchParams: Pr
           const { snap: s, activity } = result.data;
           const live = s.efins.filter((e) => !e.archived_at);
           const breakdown = statusBreakdown(live, today);
-          const exceptions = complianceExceptions({ ...s, today });
+          const exceptions = groupExceptions(complianceExceptions({ ...s, today }));
           const expiring = live.filter((e) => e.recorded_expiration && e.expiration_verified && daysUntil(e.recorded_expiration, today) >= 0 && daysUntil(e.recorded_expiration, today) <= EXPIRING_WINDOW_DAYS).sort((a, b) => (a.recorded_expiration as string).localeCompare(b.recorded_expiration as string));
           const clientOrgs = new Set(s.orgs.filter((o) => o.relationship === "client").map((o) => o.id));
           const activeRoles = s.roles.filter((r) => r.status === "active" && !clientOrgs.has(r.organization_id));
           const pros = new Set(activeRoles.map((r) => r.person_id)).size;
           const locations = s.locations.filter((l) => !l.archived_at && s.orgs.some((o) => o.id === l.organization_id && !o.archived_at));
           const review = s.assignments.filter((a) => a.state === "pending_review").length;
-          const recent = [...live].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 8);
+          const recent = uniqueBy([...live], (e) => e.id).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 8);
           const slices = (Object.keys(BUCKET_LABEL) as StatusBucket[]).map((k) => ({ label: BUCKET_LABEL[k], value: breakdown[k], color: COLOR[k] }));
-          const filings = s.filings.filter((f) => !f.archived_at && live.some((e) => e.id === f.efin_id)).slice(0, 6);
+          const filings = uniqueBy(s.filings.filter((f) => !f.archived_at && live.some((e) => e.id === f.efin_id)), (f) => `${f.efin_id}|${f.software_provider}|${f.tax_year ?? ""}`).slice(0, 6);
           return (
             <>
               <div className="mt-kpis">
@@ -75,7 +75,7 @@ export default async function EfinDashboard({ searchParams }: { searchParams: Pr
                     <div className="monarch-panel-head"><div><h2>Recent activity</h2><p>The latest recorded changes.</p></div><Link className="mt-card-link" href="/bureau/settings/history">View all</Link></div>
                     <div className="monarch-table-wrap"><table>
                       <thead><tr><th>WHEN</th><th>WHO</th><th>EVENT</th></tr></thead>
-                      <tbody>{activity.length === 0 ? <EmptyRow colSpan={3}>No activity yet.</EmptyRow> : activity.map((h) => <tr key={h.id}><td>{when(h.occurred_at)}</td><td>{h.actor_email ?? "System"}</td><td><b>{label(h.event_type.replace(/\./g, " "))}</b></td></tr>)}</tbody>
+                      <tbody>{activity.length === 0 ? <EmptyRow colSpan={3}>No activity yet.</EmptyRow> : uniqueBy(activity, (h) => `${h.occurred_at}|${h.event_type}|${h.actor_email}|${h.target_id}`).map((h) => <tr key={h.id}><td>{when(h.occurred_at)}</td><td>{h.actor_email ?? "System"}</td><td><b>{label(h.event_type.replace(/\./g, " "))}</b></td></tr>)}</tbody>
                     </table></div>
                   </section>
 

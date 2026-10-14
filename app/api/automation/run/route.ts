@@ -7,6 +7,8 @@ import { runSignatureSweep } from "@/lib/documents/notify.ts";
 import { formDeps } from "@/lib/forms/server";
 import { sweepForms } from "@/lib/forms/service.ts";
 import { retryNotifications } from "@/lib/forms/after.ts";
+import { complianceDeps } from "@/lib/compliance/server";
+import { runComplianceSweep, sweepPendingUploads } from "@/lib/compliance/service.ts";
 
 // Scheduler endpoint: processes due retries. Protected by CRON_SECRET (Vercel Cron sends it as
 // "Authorization: Bearer <CRON_SECRET>"; any other scheduler can do the same). It sends no email by itself:
@@ -49,7 +51,16 @@ async function handle(request: Request) {
       console.error(`efin-renewals: ${sanitizeError(e, 160)}`);
       efin = { error: "EFIN renewal sweep failed or is not set up yet" };
     }
-    return Response.json({ processed, efin, signatures, forms });
+    // Compliance reminders (WISP review, PTIN renewal season) and abandoned vault uploads. Isolated the same way.
+    let compliance: unknown = null;
+    try {
+      const c = complianceDeps();
+      compliance = { ...(await runComplianceSweep(c)), pendingUploadsRemoved: await sweepPendingUploads(c) };
+    } catch (e) {
+      console.error(`compliance-sweep: ${sanitizeError(e, 160)}`);
+      compliance = { error: "Compliance sweep failed or is not set up yet" };
+    }
+    return Response.json({ processed, efin, signatures, forms, compliance });
   } catch (e) {
     console.error(`automation-run: ${sanitizeError(e, 160)}`);
     return new Response("Run failed", { status: 500 });

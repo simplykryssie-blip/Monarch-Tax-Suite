@@ -25,7 +25,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
       ) : (
         <>
           <div className="monarch-page-actions">
-            <span>{inView(result.data.orders, view).length} {view === "archived" ? "archived " : ""}orders · new Stripe purchases are recorded automatically by the webhook</span>
+            <span>{inView(result.data.orders, view).length} {view === "archived" ? "archived " : ""}{inView(result.data.orders, view).length === 1 ? "order" : "orders"} · new Stripe purchases are recorded automatically by the webhook</span>
             <span className="monarch-inline-actions">
               <Link className="monarch-secondary" href="/orders/internal">New internal license (no payment)</Link>
               <Link className="monarch-primary" href="/orders/reconcile">Reconcile a past purchase</Link>

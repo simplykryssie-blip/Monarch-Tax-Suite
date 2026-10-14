@@ -56,22 +56,48 @@ export async function invite(deps: OfficeDeps, actor: Actor, input: { officeId: 
   const fullName = input.fullName.replace(/\s+/g, " ").trim();
   if (fullName.length < 2 || fullName.length > 200) fail("Enter the person's name.");
   const existing = (await deps.repo.listMembers(input.officeId)).find((m) => m.email.toLowerCase() === email);
-  if (existing && existing.status !== "invited") fail(`${email} is already on this office's team.`);
+  // A pending invite, or one that was withdrawn before it was ever accepted, can be sent again with a fresh link.
+  const reinvite = existing && (existing.status === "invited" || (existing.status === "suspended" && !existing.user_id));
+  if (existing && !reinvite) fail(`${email} is already on this office's team.`);
   const token = newToken();
   const fields = { invite_token_hash: hashToken(token), invite_expires_at: new Date(now(deps).getTime() + INVITE_DAYS * 86_400_000).toISOString(), invited_by: actor.userId };
   const member = existing
-    ? await deps.repo.updateMember(existing.id, { ...fields, full_name: fullName, role })
+    ? await deps.repo.updateMember(existing.id, { ...fields, full_name: fullName, role, status: "invited" })
     : await deps.repo.insertMember({ organization_id: input.officeId, role, email, full_name: fullName, permissions: role === "preparer" ? defaultPermissions() : {}, ...fields });
   await deps.repo.addEvent({ organization_id: input.officeId, member_id: member.id, action: existing ? "invite_resent" : "invited", actor_id: actor.userId, detail: { role, email } });
   return { member, token };
 }
 
+/**
+ * The token out of what a link carries. Tolerates what pasting and chat apps do to a link: a percent-encoded token,
+ * spaces, a trailing full stop, comma or bracket, and a query string or fragment. Null when nothing like a token is there.
+ */
+export function cleanToken(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  let v = raw;
+  try { v = decodeURIComponent(v); } catch { /* keep it as it is */ }
+  v = v.trim().split(/[?#/\s]/)[0].replace(/^[^A-Za-z0-9_-]+|[^A-Za-z0-9_-]+$/g, "");
+  return /^[A-Za-z0-9_-]{40,60}$/.test(v) ? v : null;
+}
+
+export type InviteCheck<T> = { member: T; reason: "ok" } | { member: null; reason: "malformed" | "not_found" | "expired" };
+
+/**
+ * The invite a link points at, and why not when there isn't one. "not_found": the link was used, withdrawn or replaced
+ * by a newer invite (each of those clears the old link), or was never valid.
+ */
+export async function checkInvite<T extends OfficeMember>(token: unknown, lookup: (hash: string) => Promise<T | null>, at: Date = new Date()): Promise<InviteCheck<T>> {
+  const clean = cleanToken(token);
+  if (!clean) return { member: null, reason: "malformed" };
+  const m = await lookup(hashToken(clean));
+  if (!m || m.status !== "invited" || !m.invite_expires_at) return { member: null, reason: "not_found" };
+  if (Date.parse(m.invite_expires_at) < at.getTime()) return { member: null, reason: "expired" };
+  return { member: m, reason: "ok" };
+}
+
 /** The invite a link points at, while it's valid. */
 export async function inviteFor<T extends OfficeMember>(token: string, lookup: (hash: string) => Promise<T | null>, at: Date = new Date()): Promise<T | null> {
-  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{40,60}$/.test(token)) return null;
-  const m = await lookup(hashToken(token));
-  if (!m || m.status !== "invited" || !m.invite_expires_at || Date.parse(m.invite_expires_at) < at.getTime()) return null;
-  return m;
+  return (await checkInvite(token, lookup, at)).member;
 }
 
 /** Links the invite to the signed-in account. The link stops working; two-step sign-in is the next step. */
@@ -98,7 +124,9 @@ export async function setSuspended(deps: OfficeDeps, actor: Actor, memberId: str
   if (!actor.bureau && actor.member?.id === m.id) fail("You can't suspend yourself.");
   if (suspended && m.status === "suspended") return;
   if (!suspended && m.status !== "suspended") return;
-  await deps.repo.updateMember(memberId, { status: suspended ? "suspended" : m.user_id ? "active" : "invited" });
+  // A withdrawn invite has no link any more; "reactivating" it would leave an invite nobody can open.
+  if (!suspended && !m.user_id) fail("That invite was withdrawn and its link no longer works. Send a new invite instead.");
+  await deps.repo.updateMember(memberId, { status: suspended ? "suspended" : "active" });
   await deps.repo.addEvent({ organization_id: m.organization_id, member_id: m.id, action: suspended ? "suspended" : "reactivated", actor_id: actor.userId, detail: { email: m.email } });
 }
 

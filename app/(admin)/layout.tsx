@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { AdminShell } from "@/components/admin/shell";
 import { requireAdmin } from "@/lib/admin";
 import { loadAlerts } from "@/lib/attention";
+import { allows, sectionOf } from "@/lib/tier.ts";
+import { currentTier } from "@/lib/tier-server";
 
 // The owner's logo: drop it at public/brand/logo.(svg|png|webp) and it replaces the drawn placeholder mark.
 function logoSrc() {
@@ -12,6 +14,8 @@ function logoSrc() {
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const admin = await requireAdmin();
-  const alerts = await loadAlerts().catch(() => []);
-  return <AdminShell email={admin.email} alerts={alerts} logoSrc={logoSrc()} today={new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" }).format(new Date())}>{children}</AdminShell>;
+  const tier = await currentTier();
+  // Alerts about parts of the app this tier doesn't have would lead nowhere.
+  const alerts = (await loadAlerts().catch(() => [])).filter((a) => { const section = sectionOf(a.href.split(/[?#]/)[0]); return !section || allows(tier, section); });
+  return <AdminShell email={admin.email} tier={tier} alerts={alerts} logoSrc={logoSrc()} today={new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" }).format(new Date())}>{children}</AdminShell>;
 }

@@ -9,7 +9,8 @@ import { chooseOfficeAction } from "../actions";
 export default async function OfficeArea({ children }: { children: React.ReactNode }) {
   const ctx = await requireOffice();
   const mine = new Set(ctx.features.map((f) => f.key));
-  const menu = FEATURES.filter((f) => mine.has(f.key) && f.level !== "bureau" && f.key !== "office.dashboard");
+  // The Compliance Center's parts open from its own page, so the menu shows it once.
+  const menu = FEATURES.filter((f) => mine.has(f.key) && f.level !== "bureau" && f.key !== "office.dashboard" && (!f.key.startsWith("compliance.") || f.key === "compliance.home"));
   return (
     <div className="office-shell">
       <header className="office-top">

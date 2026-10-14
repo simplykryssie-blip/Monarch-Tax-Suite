@@ -5,6 +5,7 @@ import { onboardEroAction, type FormResult } from "./actions";
 import { FormattedInput } from "./formatted-input";
 import { PopupLink } from "./popup-link";
 import { displayAddress, displayPhone, formatCity, formatStreet } from "@/lib/efin/format.ts";
+import { clearFieldErrors, showFieldError } from "@/lib/field-error.ts";
 import { STRUCTURE_OPTIONS, structureLabel } from "@/lib/efin/text.ts";
 
 const STEPS = ["Firm", "Locations", "Contact", "EFIN", "Software", "Review"] as const;
@@ -50,18 +51,18 @@ export function OnboardingWizard({ options }: { options: Opt[] }) {
     for (const [k, v] of data.entries()) if (typeof v === "string" && k !== "option_ids") out[k] = v;
     return out;
   };
-  const mark = (name: string) => {
-    form.current?.querySelectorAll("[aria-invalid]").forEach((el) => el.removeAttribute("aria-invalid"));
-    const el = form.current?.querySelector<HTMLElement>(`[name="${CSS.escape(name)}"]`);
-    if (el) { el.setAttribute("aria-invalid", "true"); requestAnimationFrame(() => el.focus()); }
+  // The problem shows under its field; the banner is only for something that belongs to no field.
+  const mark = (name: string, message: string) => {
+    if (showFieldError(form.current, name, message)) setError(null);
+    else setError(message);
   };
   const need = (name: string, message: string): boolean => {
     const v = read()[name]?.trim() ?? "";
     const bad = name === "efin" ? v.replace(/\D/g, "").length !== 6 : !v;
-    if (bad) { setError(message); mark(name); }
+    if (bad) mark(name, message);
     return !bad;
   };
-  const go = (to: number) => { setError(null); if (to === last) setReview(read()); setStep(to); };
+  const go = (to: number) => { setError(null); clearFieldErrors(form.current); if (to === last) setReview(read()); setStep(to); };
   const next = () => {
     setError(null);
     if (step === 0 && !need("legal_name", "Enter the firm's legal name.")) return;
@@ -75,8 +76,8 @@ export function OnboardingWizard({ options }: { options: Opt[] }) {
       const data = new FormData(form.current!);
       const result: FormResult = await onboardEroAction(data);
       if (!result) return;
-      setError(result.error);
-      if (result.field) { setStep(stepOf(result.field)); setTimeout(() => mark(result.field!), 50); }
+      if (result.field) { setStep(stepOf(result.field)); setTimeout(() => mark(result.field!, result.error), 50); }
+      else setError(result.error);
     });
 
   const v = review;

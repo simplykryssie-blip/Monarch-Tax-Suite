@@ -49,14 +49,14 @@ How it works:
 
 ## 3. Architectural rule: system vs. workflow
 
-- **If the IRS requires it, the system enforces it, and it's locked.**
+- **If the IRS or FTC requires it, the system says so, and it's on by default.** Guided, not caged: the warning reads "Required by IRS" (or FTC), never "recommended", and the office can still decide otherwise with a reason that is kept in the history. *(Updated with Piece 2, by owner decision.)*
 - **If it's about how an office runs, the ERO configures it.**
 - **Monarch's way ships as the default template:** a starting point, not a cage.
 
 | Piece | Type | Notes |
 |---|---|---|
 | Fees & Statements | System (the math) + Hybrid (each bureau sets its fee schedule) | |
-| Compliance Center | System | IRS requirements locked; office-specific items can be added |
+| Compliance Center | System | IRS/FTC requirements built in and flagged "Required by"; offices can override with a logged reason; office-specific items can be added |
 | Return Pipeline | Workflow | Stages fully configurable per office |
 | PTIN Management | System (data and IRS deadlines) + Workflow (reminder timing) | |
 | Software Access Hub | System | **Owner decision (Q8):** links only, no stored credentials |
@@ -133,7 +133,7 @@ No piece starts until the previous one's gate passes.
 
 ### Piece 2: Compliance Center
 
-**Type:** System. IRS requirements are locked; office-specific items can be added.
+**Type:** System. IRS and FTC requirements are built in and flagged "Required by IRS/FTC". It's a tool, not an enforcement system: the office can always go ahead against a rule with a logged reason. Office-specific items can be added.
 
 **WISP. Owner decision (Q7).**
 - **One shared WISP engine** is used by both the $25 WISP Generator and the Compliance Center builder. It's the plan writer already built (`lib/wisp/plan.ts`, `lib/wisp/pdf.ts`).
@@ -145,7 +145,7 @@ No piece starts until the previous one's gate passes.
 **Form 8879. Owner decision (Q12).**
 - For each return, track the date the signed 8879 went on file and where it's kept.
 - An optional PDF upload to the document vault.
-- The **IRS 3-year retention** rule is enforced, with search and alerts as records near the end of retention.
+- The **IRS 3-year retention** rule (from the later of the return due date and the IRS received date, Publication 1345) is worked out and warned about, with search and alerts as records near the end of retention. Deleting early shows "Required by IRS" and needs a logged reason; nothing is deleted automatically.
 
 **PTIN compliance.**
 - Renewal reminders during the window, **October 16 – December 31** each year.
@@ -319,7 +319,7 @@ EROs build their own automations for their staff on the same workflow engine as 
 
 - [ ] All 8 pieces built to this spec, tenant-aware from the first line.
 - [ ] The role hierarchy (PTIN holder → ERO → Service Bureau) is in place, with inherited permissions.
-- [ ] The system vs. workflow split is respected: IRS requirements locked, office operations configurable.
+- [ ] The system vs. workflow split is respected: IRS/FTC requirements built in and flagged "Required by" (overridable with a logged reason), office operations configurable.
 - [ ] Every piece's tenant isolation gate passes, extending the Phase 2 pattern.
 - [ ] The research additions are in, as decided:
   - clear fee line items (Q2);

@@ -32,6 +32,7 @@ export type Lead = {
   source: LeadSource;
   status: LeadStatus;
   notes: string | null;
+  tags: string[];
   last_contacted_at: string | null;
   audit_id: string | null;
   audit_score: number | null;
@@ -46,12 +47,15 @@ export type Lead = {
 
 export type LeadEvent = { id: string; tenant_id: string; lead_id: string; action: string; detail: Record<string, unknown>; actor_id: string | null; created_at: string };
 
-export type LeadFilter = { q?: string; source?: LeadSource; status?: LeadStatus; from?: string; to?: string; limit?: number };
+/** `tags`: a lead must carry every tag listed. */
+export type LeadFilter = { q?: string; source?: LeadSource; status?: LeadStatus; tags?: string[]; from?: string; to?: string; limit?: number };
 
 export type LeadInsert = Omit<Lead, "id" | "tenant_id" | "created_at" | "updated_at">;
 
 export interface LeadsRepo {
   listLeads(filter: LeadFilter): Promise<Lead[]>;
+  /** Every tag in use, with how many leads carry it, for suggestions and the tag filter. */
+  tagCounts(): Promise<{ tag: string; count: number }[]>;
   getLead(id: string): Promise<Lead | null>;
   findByEmail(email: string): Promise<Lead | null>;
   findByAudit(auditId: string): Promise<Lead | null>;

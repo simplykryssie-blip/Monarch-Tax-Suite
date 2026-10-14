@@ -21,7 +21,7 @@ const PLATFORM_TABLES = new Set([
 
 const sql = (file: string) => readFileSync(join(MIGRATIONS, file), "utf8");
 const migrationFiles = readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
-const createdTables = (text: string) => [...text.matchAll(/create table if not exists public\.([a-z_]+)/g)].map((m) => m[1]);
+const createdTables = (text: string) => [...text.matchAll(/create table if not exists public\.([a-z0-9_]+)/g)].map((m) => m[1]);
 
 function foundationTables(): string[] {
   const block = sql(FOUNDATION).match(/tenant_tables text\[\] := array\[([\s\S]*?)\];/);

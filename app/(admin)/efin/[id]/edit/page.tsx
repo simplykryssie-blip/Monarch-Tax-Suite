@@ -31,7 +31,7 @@ export default async function EditFirm({ params, searchParams }: { params: Promi
       <nav className="efin-crumbs" aria-label="Breadcrumb">
         <Link href="/efin" aria-label="My Service Bureau"><Icon name="home" size={16} /></Link>
         <Link href="/efin">My Service Bureau</Link><span>›</span>
-        <Link href="/efin/list">Firms</Link><span>›</span>
+        <Link href="/efin/list">EROs & EFINs</Link><span>›</span>
         <Link href={`/efin/${id}`}>{org.legal_name}</Link><span>›</span>
         <b>Edit</b>
       </nav>

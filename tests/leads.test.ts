@@ -1,7 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { captureAuditLead, captureAuditStart, checkPhone, convertFromPurchase, createLead, dayStart, exportCsv, filterFrom, importCsv, linkFirm, markContacted, updateLead } from "../lib/leads/service.ts";
+import { captureAuditLead, captureAuditStart, checkPhone, convertFromPurchase, createLead, dayStart, exportCsv, filterFrom, importCsv, markContacted, updateLead } from "../lib/leads/service.ts";
 import { parseCsv } from "../lib/leads/csv.ts";
+import { parseTags } from "../lib/leads/tags.ts";
 import { MemoryLeads } from "./leads-memory.ts";
 
 // Leads: one person is one lead, captured from the WISP audit, converted when they buy, and worked by hand.
@@ -116,10 +117,7 @@ describe("working leads", () => {
     const u = await updateLead(s.deps, lead.id, { full_name: "Kim Lee", email: "kim@example.com", source: "manual", status: "converted", notes: "Signed up" }, ADMIN);
     assert.equal(u.status, "converted");
     assert.ok(u.converted_at);
-    await assert.rejects(linkFirm(s.deps, lead.id, "00000000-0000-4000-8000-000000000999", async () => false, ADMIN), /firm wasn't found/);
-    const f = await linkFirm(s.deps, lead.id, "00000000-0000-4000-8000-000000000123", async () => true, ADMIN);
-    assert.equal(f.organization_id, "00000000-0000-4000-8000-000000000123");
-    assert.deepEqual(s.repo.events.map((e) => e.action), ["created", "contacted", "status_changed", "edited", "firm_linked"]);
+    assert.deepEqual(s.repo.events.map((e) => e.action), ["created", "contacted", "status_changed", "edited"]);
   });
 
   test("search and filters by source, status and date", async () => {
@@ -177,7 +175,7 @@ describe("CSV", () => {
     const rows = parseCsv(csv);
     assert.deepEqual(rows[0].slice(0, 6), ["Name", "Email", "Phone", "Firm", "Source", "Status"]);
     assert.equal(rows[1][0], "'=HYPERLINK(1)");
-    assert.equal(rows[1][9], "2026-10-02");
+    assert.equal(rows[1][10], "2026-10-02");
     const fresh = setup();
     const r = await importCsv(fresh.deps, csv, "other", ADMIN);
     assert.equal(r.added, 1);
@@ -190,6 +188,43 @@ describe("CSV", () => {
 
   test("semicolon files from European spreadsheet settings", () => {
     assert.deepEqual(parseCsv("Name;Email\nA;a@example.com"), [["Name", "Email"], ["A", "a@example.com"]]);
+  });
+});
+
+describe("lead tags", () => {
+  test("tags are tidied: lower case, no repeats, commas or new lines separate them", () => {
+    assert.deepEqual(parseTags("  VIP , Facebook  Group,vip\nreferral <b>"), ["vip", "facebook group", "referral b"]);
+    assert.deepEqual(parseTags(["EROs", "eros"]), ["eros"]);
+    assert.deepEqual(parseTags(undefined), []);
+  });
+
+  test("a lead keeps its tags, and the list narrows to leads that carry every tag chosen", async () => {
+    const s = setup();
+    await createLead(s.deps, { full_name: "Ann", email: "ann@example.com", source: "referral", tags: "vip, eros" }, ADMIN);
+    await createLead(s.deps, { full_name: "Ben", email: "ben@example.com", source: "manual", tags: ["vip"] }, ADMIN);
+    await createLead(s.deps, { full_name: "Cy", email: "cy@example.com", source: "manual" }, ADMIN);
+    const names = (sp: Record<string, string>) => s.repo.listLeads(filterFrom(sp)).then((r) => r.map((l) => l.full_name).sort());
+    assert.deepEqual(await names({ tags: "vip" }), ["Ann", "Ben"]);
+    assert.deepEqual(await names({ tags: "vip,eros" }), ["Ann"]);
+    assert.deepEqual(await names({ tags: "vip", source: "manual" }), ["Ben"]);
+    assert.deepEqual(await s.repo.tagCounts(), [{ tag: "vip", count: 2 }, { tag: "eros", count: 1 }]);
+  });
+
+  test("editing tags is recorded, and too many or too long are refused", async () => {
+    const s = setup();
+    const lead = await createLead(s.deps, { full_name: "Ann", email: "ann@example.com", source: "manual", tags: "vip" }, ADMIN);
+    const u = await updateLead(s.deps, lead.id, { full_name: "Ann", email: "ann@example.com", source: "manual", tags: "vip, hot" }, ADMIN);
+    assert.deepEqual(u.tags, ["vip", "hot"]);
+    assert.deepEqual(s.repo.events.at(-1)?.detail, { fields: ["tags"] });
+    await assert.rejects(createLead(s.deps, { full_name: "X", email: "x@example.com", source: "manual", tags: Array.from({ length: 13 }, (_, i) => `t${i}`) }, ADMIN), /up to 12 tags/);
+    await assert.rejects(createLead(s.deps, { full_name: "Y", email: "y@example.com", source: "manual", tags: "x".repeat(41) }, ADMIN), /40 characters/);
+  });
+
+  test("CSV import reads a Tags column and export writes it", async () => {
+    const s = setup();
+    await importCsv(s.deps, 'Name,Email,Tags\nAnn,ann@example.com,"vip, eros"\n', "manual", ADMIN);
+    assert.deepEqual((await s.repo.findByEmail("ann@example.com"))?.tags, ["vip", "eros"]);
+    assert.match(exportCsv(await s.repo.listLeads({})), /"vip, eros"/);
   });
 });
 
