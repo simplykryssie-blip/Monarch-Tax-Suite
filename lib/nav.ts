@@ -52,7 +52,7 @@ export const NAV: Entry[] = [
     icon: "automation",
     section: "operations",
     items: [
-      { label: "Automation", icon: "automation", href: "/automation" },
+      { label: "Automation", icon: "automation", href: "/automation/workflows" },
       { label: "Forms", icon: "checklist", href: "/forms" },
     ],
   },
@@ -65,6 +65,7 @@ export const NAV: Entry[] = [
       { label: "Email sending", icon: "bell", href: "/settings/email" },
       { label: "Package attributes", icon: "checklist", href: "/settings/package-attributes" },
       { label: "Archive history", icon: "reports", href: "/settings/archive" },
+      { label: "Integrations", icon: "licenses", href: "/settings/integrations", section: "bureau" },
       { label: "Software & banking", icon: "settings", href: "/bureau/settings", section: "bureau" },
       { label: "History", icon: "reports", href: "/bureau/settings/history", section: "bureau" },
     ],

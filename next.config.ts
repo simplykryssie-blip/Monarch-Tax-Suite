@@ -12,7 +12,13 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     // /dashboard was the legacy Verexa-style page; the Monarch admin lives at /.
-    return [{ source: "/dashboard", destination: "/", permanent: false }];
+    return [
+      { source: "/dashboard", destination: "/", permanent: false },
+      // Automation: the Overview, Activity and Settings pages were replaced (run history is a pop-up; integrations moved to Settings).
+      { source: "/automation", destination: "/automation/workflows", permanent: false },
+      { source: "/automation/activity", destination: "/automation/workflows", permanent: false },
+      { source: "/automation/settings", destination: "/settings/integrations", permanent: false },
+    ];
   },
 };
 
