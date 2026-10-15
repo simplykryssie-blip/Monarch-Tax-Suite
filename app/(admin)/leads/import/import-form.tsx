@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import { LEAD_SOURCES, SOURCE_KEYS } from "@/lib/leads/types.ts";
 import { importLeadsAction, type ImportState } from "../actions";
 
 export function ImportForm() {
@@ -11,10 +10,9 @@ export function ImportForm() {
     <>
       <form action={action} className="monarch-panel monarch-form" style={{ padding: 20 }}>
         <label>CSV file *<input name="file" type="file" accept=".csv,text/csv" required /></label>
-        <label>Source for rows without one *
-          <select name="source" required defaultValue="other">
-            {SOURCE_KEYS.map((s) => <option key={s} value={s}>{LEAD_SOURCES[s]}</option>)}
-          </select>
+        <label>Name this import *
+          <input name="import_name" required maxLength={100} placeholder="e.g. Facebook group, October" autoComplete="off" />
+          <small className="monarch-muted">Every lead from this file is labelled &ldquo;Import: &lt;this name&gt;&rdquo; as its source. A row with its own Source column keeps it.</small>
         </label>
         <div className="is-wide"><button className="monarch-primary" disabled={pending}>{pending ? "Importing…" : "Import leads"}</button></div>
       </form>

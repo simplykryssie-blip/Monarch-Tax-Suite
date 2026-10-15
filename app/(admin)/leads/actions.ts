@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
-import { createLead, deleteLead, importCsv, isSource, markContacted, updateLead, UUID, type ImportResult } from "@/lib/leads/service.ts";
+import { createLead, deleteLead, importCsv, markContacted, updateLead, UUID, type ImportResult } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
 
 // Leads actions. Every action re-checks administrator access and acts only on the current tenant's rows (the
@@ -93,9 +93,7 @@ export async function importLeadsAction(_prev: ImportState, form: FormData): Pro
     if (!(file instanceof File) || file.size === 0) throw new ValidationError("Choose a CSV file.");
     if (file.size > 2_000_000) throw new ValidationError("That file is larger than 2 MB. Split it and import each part.");
     if (!/\.csv$/i.test(file.name) && !/csv|text\/plain/i.test(file.type)) throw new ValidationError("Choose a .csv file (in Excel or Google Sheets: File → Download → CSV).");
-    const source = str(form, "source");
-    if (!isSource(source)) throw new ValidationError("Choose the source for rows that don't name one.");
-    const result = await importCsv(leadsDeps(), await file.text(), source, admin.userId);
+    const result = await importCsv(leadsDeps(), await file.text(), str(form, "import_name"), admin.userId);
     revalidatePath("/leads", "layout");
     return { ok: true, result };
   } catch (e) {

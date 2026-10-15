@@ -1,5 +1,6 @@
 "use client";
 
+import { RichEditor } from "@/components/admin/rich-editor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -275,7 +276,7 @@ export function FormBuilder(props: Props) {
       <div className="mf-panel-body">
         <h3>{FIELD_LABELS[f.type]}</h3>
         {f.type === "paragraph" ? (
-          <label>Text<textarea rows={6} value={f.text ?? ""} onChange={(e) => updateField(f.id, { text: e.target.value })} maxLength={3000} /></label>
+          <RichEditor key={f.id} name={`paragraph_${f.id}`} initial={f.text ?? ""} variant="form" label="Text" rows={6} maxLength={3000} onChange={(md) => updateField(f.id, { text: md.slice(0, 3000) })} />
         ) : (
           <label>{f.type === "heading" ? "Heading" : "Question"}<input value={f.label} onChange={(e) => updateField(f.id, { label: e.target.value })} maxLength={300} /></label>
         )}

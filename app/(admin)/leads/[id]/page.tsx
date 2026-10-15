@@ -42,7 +42,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
       <form action={updateLeadAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
         <h2 className="is-wide">Details</h2>
         <input type="hidden" name="id" value={lead.id} />
-        <LeadFields tagOptions={tagOptions} v={{ ...lead, phone: lead.phone ?? "", firm_name: lead.firm_name ?? "", notes: lead.notes ?? "", tags: lead.tags.join(","), last_contacted_at: dateValue(lead.last_contacted_at) }} />
+        <LeadFields showSource tagOptions={tagOptions} v={{ ...lead, phone: lead.phone ?? "", firm_name: lead.firm_name ?? "", notes: lead.notes ?? "", tags: lead.tags.join(","), last_contacted_at: dateValue(lead.last_contacted_at) }} />
         <div className="is-wide"><button className="monarch-primary">Save</button><small className="monarch-muted"> Last changed {when(lead.updated_at)}</small></div>
       </form>
 

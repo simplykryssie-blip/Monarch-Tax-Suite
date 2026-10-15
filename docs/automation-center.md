@@ -51,7 +51,7 @@ The customer's email contains `/setup?t=<token>`. The token is random (256-bit),
 
 Failed email attempts that look temporary retry automatically with backoff (1 min, 5 min, 30 min, 2 h, ...), up to each workflow's attempt limit (default 4). Configuration problems (missing key, unverified domain) and permanent rejections do not retry; they appear as **Failed** with a plain-language reason and a **Retry** button. A retry resumes after the last step that succeeded, so an email is never sent twice.
 
-Scheduled retries run when something calls `GET/POST /api/automation/run` with `Authorization: Bearer <CRON_SECRET>`. No schedule is added to `vercel.json` (a plan limit could otherwise block deploys). Use any scheduler you already have (for example a Vercel cron on a plan that allows it, or an external uptime/cron service) pointed at that URL. Without a scheduler, retries still work by hand from Activity.
+Scheduled retries run when something calls `GET/POST /api/automation/run` with `Authorization: Bearer <CRON_SECRET>`. `vercel.json` runs it once a day (11:00 UTC), which every Vercel plan allows; `CRON_SECRET` is set in Vercel (production) and Vercel Cron sends it automatically. It also runs the daily renewal, signature, form and compliance sweeps. For more frequent retries, point any other scheduler at that URL. Without a scheduler, retries still work by hand from Activity.
 
 ## Privacy and security
 
@@ -112,3 +112,7 @@ Status (Not started / Invitation sent / In progress / Awaiting CRM connection / 
 *Needs you (manual):* a real Resend send (needs `MONARCH_EMAIL_FROM` on a verified domain); a real GoHighLevel OAuth install; the browser walkthrough on Preview with a test license and an allow-listed email; applying the two migrations.
 
 *Decisions/limits:* **paid** licenses are still created pending and an administrator issues the key (existing control); the customer's first email says it is being prepared and a second email goes out when you issue the key. The setup link is reusable until it expires or is replaced, so customers can reopen their instructions after completing. Installation status is "confirmed by an administrator"; Monarch does not crawl the customer's site.
+
+## Message editor
+
+Email templates are written in a visual editor (text type, size, colour, bold, italic, underline, lists, placeholders, links and pictures) and still save as Markdown. The format is a small safe subset (`lib/richtext.ts`): headings (`#`, `##`), lists, `**bold**`, `*italic*`, `++underline++`, `[text](https://link)`, `![alt](https://picture)`, `[text]{color=#b00020 size=18}` and `{{placeholders}}`. Nothing else is passed through as HTML, links and pictures must be https, and placeholder values are escaped and inserted last so a customer's name can never add formatting. A "Markdown" switch shows the underlying text. SMS stays plain text. Pictures are added by address (https); uploading pictures is not built yet.

@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/admin";
 import { EmptyRow, Flash, PageTitle } from "@/components/admin/ui";
 import { filterFrom } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
-import { LEAD_SOURCES, LEAD_STATUSES, SOURCE_KEYS, STATUS_KEYS } from "@/lib/leads/types.ts";
+import { LEAD_STATUSES, sourceName, STATUS_KEYS } from "@/lib/leads/types.ts";
 import { day, leadsLoad, LeadsSetupRequired, sourceLabel, StatusBadge } from "./parts";
 
 type SP = { q?: string; source?: string; status?: string; tags?: string; from?: string; to?: string; notice?: string; error?: string };
@@ -15,8 +15,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const filter = filterFrom(sp);
   const result = await leadsLoad(async () => {
     const repo = leadsDeps().repo;
-    const [leads, tagCounts] = await Promise.all([repo.listLeads({ ...filter, limit: 500 }), repo.tagCounts()]);
-    return { leads, tagCounts };
+    const [leads, tagCounts, sourceCounts] = await Promise.all([repo.listLeads({ ...filter, limit: 500 }), repo.tagCounts(), repo.sourceCounts()]);
+    return { leads, tagCounts, sourceCounts };
   });
   const chosen = filter.tags ?? [];
   const params = (tags: string[]) => {
@@ -32,7 +32,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       <PageTitle title="Leads">Every prospect in one place, whatever brought them in. The free WISP audit adds leads on its own; add others by hand or import a spreadsheet.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <LeadsSetupRequired message={result.message} /> : (() => {
-        const { leads, tagCounts } = result.data;
+        const { leads, tagCounts, sourceCounts } = result.data;
         return (
         <section className="monarch-panel">
           <div className="monarch-panel-head">
@@ -47,7 +47,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             <input name="q" type="search" placeholder="Search name, email or firm" defaultValue={filter.q ?? ""} aria-label="Search" maxLength={100} />
             <select name="source" defaultValue={filter.source ?? ""} aria-label="Source">
               <option value="">Any source</option>
-              {SOURCE_KEYS.map((s) => <option key={s} value={s}>{LEAD_SOURCES[s]}</option>)}
+              {[...new Set([...(filter.source ? [filter.source] : []), ...sourceCounts.map((c) => c.source)])].map((s) => <option key={s} value={s}>{sourceName(s)}</option>)}
             </select>
             <select name="status" defaultValue={filter.status ?? ""} aria-label="Status">
               <option value="">Any status</option>

@@ -1,5 +1,5 @@
 import { ValidationError } from "../commerce/validation.ts";
-import { LEAD_SOURCES, LEAD_STATUSES, SOURCE_KEYS, STATUS_KEYS, type Lead, type LeadFilter, type LeadSource, type LeadStatus, type LeadsDeps } from "./types.ts";
+import { LEAD_SOURCES, LEAD_STATUSES, leadSource, SOURCE_MAX, sourceName, STATUS_KEYS, type Lead, type LeadFilter, type LeadSource, type LeadStatus, type LeadsDeps } from "./types.ts";
 import { parseCsv } from "./csv.ts";
 import { parseTags, TAG_LENGTH, TAG_MAX } from "./tags.ts";
 
@@ -22,7 +22,9 @@ const nowOf = (deps: LeadsDeps) => deps.now?.() ?? new Date();
 const text = (raw: unknown, max: number) => (typeof raw === "string" ? raw.trim().replace(/\s+/g, " ").slice(0, max) : "");
 const optional = (raw: unknown, max: number) => text(raw, max) || null;
 
-export const isSource = (v: unknown): v is LeadSource => typeof v === "string" && (SOURCE_KEYS as string[]).includes(v);
+/** A source label as typed or imported: one line, up to 120 characters. Blank is not a source. */
+export const cleanSource = (v: unknown): string => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, SOURCE_MAX) : "");
+export const isSource = (v: unknown): v is LeadSource => cleanSource(v) !== "";
 export const isStatus = (v: unknown): v is LeadStatus => typeof v === "string" && (STATUS_KEYS as string[]).includes(v);
 
 export function checkName(raw: unknown): string {
@@ -67,7 +69,8 @@ export type LeadForm = { full_name: string; email: string; phone: string | null;
 /** What the admin typed into the add or edit form, checked. */
 export function checkLeadForm(raw: Record<string, unknown>): LeadForm {
   const notes = typeof raw.notes === "string" ? raw.notes.trim().slice(0, 10000) : "";
-  if (!isSource(raw.source)) throw new LeadInputError("Choose where this lead came from.", "source");
+  // A lead added by hand is "Manual" unless the source is changed.
+  const source = cleanSource(raw.source) || leadSource.manual;
   const status = raw.status === undefined || raw.status === "" ? "new" : raw.status;
   if (!isStatus(status)) throw new LeadInputError("Choose a status.", "status");
   return {
@@ -75,7 +78,7 @@ export function checkLeadForm(raw: Record<string, unknown>): LeadForm {
     email: checkEmail(raw.email),
     phone: optional(raw.phone, 40),
     firm_name: optional(raw.firm_name, 200),
-    source: raw.source,
+    source,
     status,
     notes: notes || null,
     tags: checkTags(raw.tags),
@@ -171,6 +174,34 @@ async function captureStart(deps: LeadsDeps, raw: { name: unknown; email: unknow
 }
 
 /**
+ * A form submission whose form is set to add respondents to Leads. The source is the form's name ("Form: Intake").
+ * A person who is already a lead keeps their source and status; a missing phone is filled in.
+ */
+export async function captureFormLead(deps: LeadsDeps, raw: { formName: string; name: unknown; email: unknown; phone?: unknown }): Promise<Lead> {
+  const email = checkEmail(raw.email);
+  const fromEmail = email.split("@")[0].replace(/[._-]+/g, " ").trim() || "Form respondent";
+  const full_name = typeof raw.name === "string" && raw.name.trim() ? checkName(raw.name) : fromEmail.slice(0, 200);
+  const phone = raw.phone === undefined || raw.phone === "" || raw.phone === null ? null : (() => { try { return checkPhone(raw.phone); } catch { return null; } })();
+  const source = leadSource.form(cleanSource(raw.formName) || "Form");
+  const existing = await deps.repo.findByEmail(email);
+  if (existing) {
+    const after = !existing.phone && phone ? await deps.repo.updateLead(existing.id, { phone }) : existing;
+    await deps.repo.addEvent({ lead_id: existing.id, action: "form_submitted", detail: { form: source }, actor_id: null });
+    return after;
+  }
+  let lead: Lead;
+  try {
+    lead = await deps.repo.insertLead({ ...blank, full_name, email, phone, source, status: "new" });
+  } catch (e) {
+    const again = await deps.repo.findByEmail(email);
+    if (!again) throw e;
+    return again;
+  }
+  await deps.repo.addEvent({ lead_id: lead.id, action: "created", detail: { source }, actor_id: null });
+  return lead;
+}
+
+/**
  * The finished WISP audit: its score goes on the lead who started it (found by email). If starting didn't save the
  * lead, it's created here from the same details.
  */
@@ -221,7 +252,7 @@ export function filterFrom(sp: Record<string, string | undefined>): LeadFilter {
   return {
     ...(tags.length ? { tags } : {}),
     q: text(sp.q, 100) || undefined,
-    source: isSource(sp.source) ? sp.source : undefined,
+    source: cleanSource(sp.source) || undefined,
     status: isStatus(sp.status) ? sp.status : undefined,
     from: day(sp.from),
     to: day(sp.to),
@@ -277,7 +308,10 @@ export type ImportResult = { added: number; skipped: { row: number; reason: stri
  * Phone, Firm, Source, Status, Notes and Last contacted are optional). Rows without a known source get the one chosen
  * for the import. An email that is already a lead, or appears twice, is skipped and listed.
  */
-export async function importCsv(deps: LeadsDeps, csv: string, defaultSource: LeadSource, actorId: string): Promise<ImportResult> {
+export async function importCsv(deps: LeadsDeps, csv: string, importName: string, actorId: string): Promise<ImportResult> {
+  const name = cleanSource(importName).replace(/^Import:\s*/i, "");
+  if (!name) throw new ValidationError("Name this import (for example, \"Facebook group, October\") so its leads show where they came from.");
+  const defaultSource = leadSource.import(name);
   const rows = parseCsv(csv);
   if (rows.length < 2) throw new ValidationError("That file has no rows under its header.");
   if (rows.length - 1 > IMPORT_MAX_ROWS) throw new ValidationError(`That file has ${rows.length - 1} rows. Import up to ${IMPORT_MAX_ROWS} at a time.`);
@@ -291,7 +325,9 @@ export async function importCsv(deps: LeadsDeps, csv: string, defaultSource: Lea
     if (cells.every((c) => !c.trim())) continue;
     const raw: Record<string, unknown> = {};
     cols.forEach((k, j) => { if (k) raw[k] = cells[j] ?? ""; });
-    raw.source = (typeof raw.source === "string" && byLabel(LEAD_SOURCES, raw.source)) || defaultSource;
+    // Rows that name their own source keep it; the rest are labelled with the import's name.
+    const given = cleanSource(raw.source);
+    raw.source = (given && (Object.entries(LEAD_SOURCES).find(([, label]) => label.toLowerCase() === given.toLowerCase())?.[0] ?? given)) || defaultSource;
     raw.status = (typeof raw.status === "string" && raw.status.trim() ? byLabel(LEAD_STATUSES, raw.status) ?? "invalid" : "new");
     if (typeof raw.last_contacted_at === "string") raw.last_contacted_at = csvDate(raw.last_contacted_at);
     try {
@@ -326,7 +362,7 @@ export function exportCsv(leads: Lead[]): string {
   const head = ["Name", "Email", "Phone", "Firm", "Source", "Status", "Tags", "Audit score", "Notes", "Created", "Last contacted", "Converted"];
   const lines = [head.map(cell).join(",")];
   for (const l of leads) {
-    lines.push([l.full_name, l.email, l.phone, l.firm_name, LEAD_SOURCES[l.source], LEAD_STATUSES[l.status], l.tags.join(", "), l.audit_score ?? "", l.notes, day(l.created_at), day(l.last_contacted_at), day(l.converted_at)].map(cell).join(","));
+    lines.push([l.full_name, l.email, l.phone, l.firm_name, sourceName(l.source), LEAD_STATUSES[l.status], l.tags.join(", "), l.audit_score ?? "", l.notes, day(l.created_at), day(l.last_contacted_at), day(l.converted_at)].map(cell).join(","));
   }
   return `${lines.join("\r\n")}\r\n`;
 }
