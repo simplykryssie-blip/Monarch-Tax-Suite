@@ -33,7 +33,7 @@ export default async function FormBuildPage({ params, searchParams }: { params: 
     <>
       <PageTitle title={form.name} back={{ href: "/forms", label: "Forms" }}>{brand ? `Firm: ${brand.name}. ` : ""}{version ? `Published version ${version.version}.` : "Not published yet."} Drag questions onto the page; the draft saves as you go.</PageTitle>
       <Flash notice={notice} error={error} />
-      <FormTabs form={form} active="build" />
+      <FormTabs form={form} active="build" link={link} />
       <FormBuilder
         formId={form.id}
         initial={draft}

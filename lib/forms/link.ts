@@ -5,11 +5,10 @@ import { brandFor, type FormDeps } from "./service.ts";
 import type { FormSettings } from "./settings.ts";
 
 /**
- * A form's public link, built fresh from the request being served: in production the form's brand's web address
- * (when one is set), otherwise the host this request came in on. Never cached and never read from the environment,
- * so a Preview always shows its own address.
+ * A form's public link: the form's firm's own web address. Null when none is set (and the request is not on the
+ * office's own domain): links never use a Vercel address.
  */
-export async function formLink(deps: FormDeps, publicId: string, settings: FormSettings): Promise<string> {
+export async function formLink(deps: FormDeps, publicId: string, settings: FormSettings): Promise<string | null> {
   const [brand, h] = await Promise.all([brandFor(deps, settings), headers()]);
-  return formPublicUrl({ publicId, brand, requestHost: hostFromHeaders(h), production: process.env.VERCEL_ENV === "production" });
+  return formPublicUrl({ publicId, brand, requestHost: hostFromHeaders(h) });
 }

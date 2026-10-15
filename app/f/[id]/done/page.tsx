@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { formContext, RECEIPT_COOKIE, receiptValid } from "@/lib/forms/public";
 import { isPublicId } from "@/lib/forms/service.ts";
 import { formatInZone } from "@/lib/documents/signing.ts";
+import { ThemedPage } from "@/components/forms/themed-page";
+import { DEFAULT_THEME } from "@/lib/forms/theme.ts";
 import { RichMessage } from "@/components/forms/rich-message";
 
 export const metadata: Metadata = { title: "Submitted", robots: { index: false, follow: false } };
@@ -17,8 +19,7 @@ export default async function FormDonePage({ params, searchParams }: { params: P
   const sub = ctx && subId && /^[0-9a-f-]{36}$/.test(subId) ? await ctx.deps.repo.getSubmission(subId).catch(() => null) : null;
   const valid = receiptValid(sub, token, ctx?.pf?.form.id);
   return (
-    <main className="monarch-public">
-      <div className="monarch-public-card" style={{ maxWidth: 720 }}>
+    <ThemedPage theme={ctx?.pf?.settings.theme ?? DEFAULT_THEME} firm={firm} maxWidth={720}>
         {firm && <div className="monarch-eyebrow">{firm.toUpperCase()}</div>}
         <h1>{valid ? "Submitted" : "Thank you"}</h1>
         {valid ? (
@@ -32,7 +33,6 @@ export default async function FormDonePage({ params, searchParams }: { params: P
         ) : (
           <p>Your submission was received. The download of your copy is no longer available on this page.</p>
         )}
-      </div>
-    </main>
+    </ThemedPage>
   );
 }

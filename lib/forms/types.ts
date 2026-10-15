@@ -136,6 +136,11 @@ export interface FormsRepo {
   updateUpload(id: string, patch: Partial<Pick<UploadRow, "status" | "sha256">>): Promise<UploadRow>;
   deleteUploads(ids: string[]): Promise<void>;
 
+  /** Staff-entered values of staff-only fields, by field key. */
+  listInternalValues(submissionId: string): Promise<Record<string, string>>;
+  /** Saves one value (an empty value removes it). */
+  setInternalValue(submissionId: string, fieldKey: string, value: string, userId: string | null): Promise<void>;
+
   addEvent(input: Omit<FormEvent, "id" | "created_at">): Promise<void>;
   listEvents(submissionId: string, limit: number): Promise<FormEvent[]>;
 

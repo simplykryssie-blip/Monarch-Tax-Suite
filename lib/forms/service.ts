@@ -5,6 +5,7 @@ import type { CrmSecrets } from "../crm/crypto.ts";
 import { DOCUMENT_URL_SECONDS } from "../documents/files.ts";
 import { isSignaturePng } from "../documents/signing.ts";
 import type { TenantProfile } from "../documents/types.ts";
+import { checkTheme, type FormTheme } from "./theme.ts";
 import { answerText, checkAnswers, draftAnswers, type AddressAnswer, type Answers } from "./answers.ts";
 import { allFields, checkDefinition, checkPublishable, DefinitionError, DISPLAY_TYPES, emptyDefinition, hasSignature, inputFields, MAX_FILE_BYTES, MAX_SUBMISSION_FILE_BYTES, type Field, type FormDefinition } from "./definition.ts";
 import { buildFirmPayload, efinFrom } from "./firm.ts";
@@ -134,7 +135,7 @@ export function displayAnswer(field: Field, value: StoredAnswers[string] | undef
 
 const cleanName = (v: string) => v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
 
-export async function createForm(deps: FormDeps, input: { name: string; description?: string | null; brandDomainId?: string | null; adminId: string }): Promise<FormRow> {
+export async function createForm(deps: FormDeps, input: { name: string; description?: string | null; brandDomainId?: string | null; addToLeads?: boolean; adminId: string }): Promise<FormRow> {
   const name = cleanName(input.name);
   if (name.length < 2) throw new ValidationError("Give the form a name.");
   // With several firms/brands the form must say which one it belongs to; with one, that one is used.
@@ -145,7 +146,7 @@ export async function createForm(deps: FormDeps, input: { name: string; descript
     brandId = brands.find((b) => b.id === input.brandDomainId)?.id ?? null;
     if (!brandId) throw new ValidationError("Choose which firm this form belongs to.");
   }
-  const form = await deps.repo.insertForm({ name, description: input.description?.trim().slice(0, 1000) || null, public_id: newPublicId(), draft_definition: emptyDefinition(), settings: { ...DEFAULT_SETTINGS, brand_domain_id: brandId }, created_by: input.adminId });
+  const form = await deps.repo.insertForm({ name, description: input.description?.trim().slice(0, 1000) || null, public_id: newPublicId(), draft_definition: emptyDefinition(), settings: { ...DEFAULT_SETTINGS, add_to_leads: input.addToLeads === true, brand_domain_id: brandId }, created_by: input.adminId });
   await event(deps, form.id, null, "created", input.adminId);
   return form;
 }
@@ -259,12 +260,29 @@ export async function saveSettings(deps: FormDeps, formId: string, raw: unknown,
   let settings: FormSettings;
   try {
     const catalog = await catalogOf(deps);
-    settings = checkSettings(raw, await settingsDefinition(deps, form), senderIds, { brandIds: catalog.brands.map((b) => b.id), senderDomain: catalog.senderDomain });
+    // The settings page doesn't send the look of the form; keep it as it was.
+    const given = (raw ?? {}) as Record<string, unknown>;
+    settings = checkSettings({ ...given, theme: given.theme ?? readSettings(form.settings).theme }, await settingsDefinition(deps, form), senderIds, { brandIds: catalog.brands.map((b) => b.id), senderDomain: catalog.senderDomain });
   } catch (e) {
     throw new ValidationError(e instanceof Error ? e.message : "Those settings could not be saved.");
   }
   await deps.repo.updateForm(form.id, { settings });
   await event(deps, form.id, null, "settings_saved", adminId);
+  return settings;
+}
+
+/** Saves how the public form looks (colours, font, images, custom CSS). Checked; the rest of the settings are kept. */
+export async function saveTheme(deps: FormDeps, formId: string, raw: unknown, adminId: string): Promise<FormSettings> {
+  const form = await mustForm(deps, formId);
+  let theme: FormTheme;
+  try {
+    theme = checkTheme(raw);
+  } catch (e) {
+    throw new ValidationError(e instanceof Error ? e.message : "That look could not be saved.");
+  }
+  const settings = { ...readSettings(form.settings), theme };
+  await deps.repo.updateForm(form.id, { settings });
+  await event(deps, form.id, null, "theme_saved", adminId);
   return settings;
 }
 
@@ -757,6 +775,28 @@ export async function setSubmissionStatus(deps: FormDeps, submissionId: string, 
   if (!sub || sub.status === "draft") throw new ValidationError("Submission not found.");
   await deps.repo.updateSubmission(sub.id, { status });
   await event(deps, sub.form_id, sub.id, "status_changed", actorId, { from: sub.status, to: status });
+}
+
+/**
+ * Staff fill in a submission's staff-only fields. Only fields marked internal in the version the respondent used can
+ * be set; the respondent's own (locked) answers are never touched. Recorded.
+ */
+export async function saveInternalValues(deps: FormDeps, submissionId: string, values: Record<string, string>, actorId: string) {
+  const sub = await deps.repo.getSubmission(submissionId);
+  if (!sub || sub.status === "draft") throw new ValidationError("Submission not found.");
+  const version = await deps.repo.getVersion(sub.version_id);
+  const fields = new Map(inputFields(version?.definition ?? emptyDefinition()).filter((f) => f.internal).map((f) => [f.key, f]));
+  const existing = await deps.repo.listInternalValues(sub.id);
+  let changed = 0;
+  for (const [key, raw] of Object.entries(values)) {
+    const f = fields.get(key);
+    if (!f) continue;
+    const value = f.type === "short_text" ? raw.replace(/\s+/g, " ").trim().slice(0, 2000) : raw.replace(/\r\n?/g, "\n").trim().slice(0, 25000);
+    if ((existing[key] ?? "") === value) continue;
+    await deps.repo.setInternalValue(sub.id, key, value, actorId);
+    changed++;
+  }
+  if (changed) await event(deps, sub.form_id, sub.id, "internal_saved", actorId, { fields: changed });
 }
 
 export async function recordView(deps: FormDeps, sub: Submission, actorId: string) {

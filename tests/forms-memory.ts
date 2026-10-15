@@ -111,6 +111,14 @@ export class MemoryFormsRepo implements FormsRepo {
   async updateUpload(id: string, patch: Partial<UploadRow>) { const u = this.uploads.find((x) => x.id === id)!; Object.assign(u, patch); return this.c(u); }
   async deleteUploads(ids: string[]) { this.uploads = this.uploads.filter((u) => !ids.includes(u.id)); }
 
+  internal = new Map<string, string>();
+  async listInternalValues(submissionId: string) {
+    return Object.fromEntries([...this.internal].filter(([k]) => k.startsWith(`${submissionId}:`)).map(([k, v]) => [k.slice(submissionId.length + 1), v]));
+  }
+  async setInternalValue(submissionId: string, fieldKey: string, value: string) {
+    if (value) this.internal.set(`${submissionId}:${fieldKey}`, value);
+    else this.internal.delete(`${submissionId}:${fieldKey}`);
+  }
   async addEvent(input: Omit<FormEvent, "id" | "created_at">) { this.events.push({ ...this.c(input), id: randomUUID(), created_at: this.now() }); }
   async listEvents(submissionId: string, limit: number) { return this.c(this.events.filter((e) => e.submission_id === submissionId).slice(-limit).reverse()); }
   async latestPaidOrderId(customerId: string) { return this.orders.filter((o) => o.customer_id === customerId).sort((a, b) => b.paid_at.localeCompare(a.paid_at))[0]?.id ?? null; }

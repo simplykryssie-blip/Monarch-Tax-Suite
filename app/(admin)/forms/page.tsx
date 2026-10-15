@@ -36,7 +36,10 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
           <section className="monarch-panel" style={{ padding: 20 }}>
             <h2>New form</h2>
             <form action={createFormAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
-              <input name="name" placeholder="Form name, for example ERO application" required minLength={2} maxLength={120} aria-label="Form name" />
+              <span style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", flex: "1 1 100%" }}>
+                <input name="name" placeholder="Form name, for example ERO application" required minLength={2} maxLength={120} aria-label="Form name" style={{ flex: "1 1 280px", width: "auto" }} />
+                <label className="monarch-check" style={{ whiteSpace: "nowrap" }} title="Everyone who submits this form is added to Leads, with the form's name as their source."><input type="checkbox" name="add_to_leads" /> Forms-to-Leads: add respondents to Leads</label>
+              </span>
               {result.data.brands.length > 1 && (
                 <label>Which firm does this form belong to?{" "}
                   <select name="brand_domain_id" required defaultValue="">

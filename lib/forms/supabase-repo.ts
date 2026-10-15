@@ -115,6 +115,18 @@ export class SupabaseFormsRepo implements FormsRepo {
     unwrap(await this.db.from("form_uploads").delete().in("id", ids));
   }
 
+  async listInternalValues(submissionId: string) {
+    const rows = unwrap(await this.db.from("form_internal_values").select("field_key, value").eq("submission_id", submissionId)) as { field_key: string; value: string }[];
+    return Object.fromEntries(rows.map((r) => [r.field_key, r.value]));
+  }
+  async setInternalValue(submissionId: string, fieldKey: string, value: string, userId: string | null) {
+    if (!value) {
+      unwrap(await this.db.from("form_internal_values").delete().eq("submission_id", submissionId).eq("field_key", fieldKey));
+      return;
+    }
+    unwrap(await this.db.from("form_internal_values").upsert({ submission_id: submissionId, field_key: fieldKey, value, updated_by: userId, updated_at: new Date().toISOString() }, { onConflict: "submission_id,field_key" }));
+  }
+
   async addEvent(input: Omit<FormEvent, "id" | "created_at">) {
     unwrap(await this.db.from("form_events").insert(input));
   }

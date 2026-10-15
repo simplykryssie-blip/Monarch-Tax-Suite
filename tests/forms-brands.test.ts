@@ -104,16 +104,17 @@ async function submitted(s: Awaited<ReturnType<typeof setup>>, formId: string) {
 }
 
 describe("the public link", () => {
-  test("is built from the request's own host on Preview, never from a stored domain", () => {
-    const url = formPublicUrl({ publicId: "Abc123", brand: brand(), requestHost: "monarch-git-forms-piece2-verexa.vercel.app", production: false });
-    assert.equal(url, "https://monarch-git-forms-piece2-verexa.vercel.app/f/Abc123");
-    assert.equal(formPublicUrl({ publicId: "Abc123", brand: null, requestHost: "localhost:3000", production: false }), "http://localhost:3000/f/Abc123");
+  test("never uses a Vercel address, even on Preview", () => {
+    assert.equal(formPublicUrl({ publicId: "Abc123", brand: brand({ linkHost: null }), requestHost: "monarch-git-forms-piece2-verexa.vercel.app" }), null);
+    assert.equal(formPublicUrl({ publicId: "Abc123", brand: brand({ linkHost: "x.vercel.app" }), requestHost: "y.vercel.app" }), null);
+    assert.equal(formPublicUrl({ publicId: "Abc123", brand: brand(), requestHost: "monarch-git-forms-piece2-verexa.vercel.app" }), "https://monarchtaxsuite.com/f/Abc123", "the office's own domain, on every deployment");
+    assert.equal(formPublicUrl({ publicId: "Abc123", brand: null, requestHost: "localhost:3000" }), "http://localhost:3000/f/Abc123");
   });
 
   test("uses the form's firm's web address in production", () => {
     assert.equal(formPublicUrl({ publicId: "Abc123", brand: brand(), requestHost: "app.monarchtaxsuite.com", production: true }), "https://monarchtaxsuite.com/f/Abc123");
     assert.equal(formPublicUrl({ publicId: "Abc123", brand: brand({ id: "d2", name: "MKB", linkHost: "forms.mkb.test" }), requestHost: "app.monarchtaxsuite.com", production: true }), "https://forms.mkb.test/f/Abc123");
-    assert.equal(formPublicUrl({ publicId: "Abc123", brand: brand({ linkHost: null }), requestHost: "app.monarchtaxsuite.com", production: true }), "https://app.monarchtaxsuite.com/f/Abc123", "no web address set: the request's host");
+    assert.equal(formPublicUrl({ publicId: "Abc123", brand: brand({ linkHost: null }), requestHost: "app.monarchtaxsuite.com", production: true }), "https://app.monarchtaxsuite.com/f/Abc123", "no web address set: the office's own domain it is served on");
   });
 
   test("reads the forwarded host and refuses anything that is not a host", () => {
@@ -196,8 +197,8 @@ describe("the form's emails", () => {
     const s = await setup({ brands: ["monarch"] });
     const form = await publishedForm(s, s.ids.monarch);
     const pf = (await publicForm(s.deps, form.public_id))!;
-    const formUrl = formPublicUrl({ publicId: form.public_id, brand: brand(), requestHost: "preview-xyz.vercel.app", production: false });
+    const formUrl = formPublicUrl({ publicId: form.public_id, brand: brand(), requestHost: "preview-xyz.vercel.app" })!;
     assert.equal(await sendResumeLink(s.auto, s.deps, { pf, email: "anh@example.com", token: "t".repeat(43), expiresAt: new Date().toISOString(), formUrl }), null);
-    assert.match(s.email.sent[0].text, new RegExp(`https://preview-xyz\\.vercel\\.app/f/${form.public_id}\\?resume=t{43}`));
+    assert.match(s.email.sent[0].text, new RegExp(`https://monarchtaxsuite\\.com/f/${form.public_id}\\?resume=t{43}`));
   });
 });

@@ -3,7 +3,7 @@
 import { RichText } from "./rich-text";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { removeFormUploadAction, saveFormForLaterAction, startFormUploadAction, submitFormAction, type SubmitResult } from "@/app/f/[id]/actions";
-import { checkAnswer, US_STATES } from "@/lib/forms/answers";
+import { checkAnswer, startingAnswers, US_STATES } from "@/lib/forms/answers";
 import { DISPLAY_TYPES, type DateBound, type Field, type FormDefinition } from "@/lib/forms/definition";
 import { evaluate, type RawAnswer, type RawAnswers } from "@/lib/forms/logic";
 import type { SignaturePayload } from "@/lib/forms/signature-input";
@@ -81,7 +81,7 @@ function SignaturePad({ onChange, disabled }: { onChange: (dataUrl: string) => v
 
 export function FormRenderer(props: FormRendererProps) {
   const { definition: def, mode } = props;
-  const [answers, setAnswers] = useState<RawAnswers>(props.initialAnswers ?? {});
+  const [answers, setAnswers] = useState<RawAnswers>(() => startingAnswers(def, props.initialAnswers ?? {}));
   const [pageId, setPageId] = useState(def.pages[0]?.id ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -259,7 +259,7 @@ export function FormRenderer(props: FormRendererProps) {
       case "paragraph":
         return <RichText text={f.text ?? ""} />;
       case "long_text":
-        return <textarea id={id} rows={5} maxLength={f.maxLength ?? 5000} placeholder={f.placeholder} value={text} onChange={(e) => set(f.key, e.target.value)} {...aria} />;
+        return <textarea id={id} rows={5} maxLength={f.maxLength ?? 5000} placeholder={f.placeholder} value={text} readOnly={f.locked} className={f.locked ? "is-locked" : undefined} onChange={(e) => !f.locked && set(f.key, e.target.value)} {...aria} />;
       case "dropdown":
         return (
           <select id={id} value={text} onChange={(e) => set(f.key, e.target.value)} {...aria}>
@@ -344,7 +344,7 @@ export function FormRenderer(props: FormRendererProps) {
         const type = f.type === "email" ? "email" : f.type === "phone" ? "tel" : "text";
         const mode = f.type === "number" ? (f.decimals ? "decimal" : "numeric") : f.format === "efin" || f.format === "ein" ? "numeric" : undefined;
         const auto = f.sensitive ? "off" : f.type === "email" ? "email" : f.type === "phone" ? "tel" : undefined;
-        return <input id={id} type={type} inputMode={mode} autoComplete={auto} spellCheck={f.sensitive ? false : undefined} maxLength={f.type === "short_text" && !f.format ? f.maxLength ?? 200 : 60} placeholder={f.placeholder} value={text} onChange={(e) => set(f.key, e.target.value)} {...aria} />;
+        return <input id={id} type={type} inputMode={mode} autoComplete={auto} spellCheck={f.sensitive ? false : undefined} maxLength={f.type === "short_text" && !f.format ? f.maxLength ?? 200 : 60} placeholder={f.placeholder} value={text} readOnly={f.locked} className={f.locked ? "is-locked" : undefined} onChange={(e) => !f.locked && set(f.key, e.target.value)} {...aria} />;
       }
     }
   };
@@ -384,17 +384,16 @@ export function FormRenderer(props: FormRendererProps) {
             <section key={s.id} className="is-wide mf-section">
               {s.title && <h2>{s.title}</h2>}
               {s.description && <p className="monarch-muted" style={{ whiteSpace: "pre-wrap" }}>{s.description}</p>}
-              <div className="monarch-form">
+              <div className="monarch-form mf-grid">
                 {fields.map((f) => {
                   const display = DISPLAY_TYPES.includes(f.type);
-                  const grouped = ["radio", "checkboxes", "address", "file", "signature"].includes(f.type);
-                  const cls = f.width === "half" && !grouped ? "" : "is-wide";
-                  if (display) return <div key={f.id} className="is-wide">{input(f)}</div>;
+                  if (display) return <div key={f.id} className="w-full">{input(f)}</div>;
                   return (
-                    <div key={f.id} className={`mf-field ${cls}`}>
-                      <label htmlFor={grouped ? undefined : `q-${f.id}`} id={`q-${f.id}-label`} className="mf-label">
+                    <div key={f.id} className={`mf-field w-${f.width}`}>
+                      <label htmlFor={["radio", "checkboxes", "address", "file", "signature"].includes(f.type) ? undefined : `q-${f.id}`} id={`q-${f.id}-label`} className="mf-label">
                         {f.label}{f.required ? <span aria-hidden="true" className="mf-req"> *</span> : <span className="monarch-muted"> (optional)</span>}
                       </label>
+                      {f.locked && <small className="mf-lock">This answer is filled in for you and can&apos;t be changed.</small>}
                       {f.help && <small id={`q-${f.id}-help`} className="monarch-muted" style={{ whiteSpace: "pre-wrap" }}>{f.help}</small>}
                       {input(f)}
                       {errors[f.key] && <small id={`q-${f.id}-err`} className="mf-error" role="alert">{errors[f.key]}</small>}

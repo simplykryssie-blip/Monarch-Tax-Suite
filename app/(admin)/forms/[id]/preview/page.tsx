@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { formDeps } from "@/lib/forms/server";
+import { ThemedPage } from "@/components/forms/themed-page";
 import { FormRenderer } from "@/components/forms/form-renderer";
-import { emptyDefinition, type FormDefinition } from "@/lib/forms/definition.ts";
+import { emptyDefinition, publicDefinition, type FormDefinition } from "@/lib/forms/definition.ts";
 import { readSettings } from "@/lib/forms/settings.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -25,10 +26,10 @@ export default async function FormPreviewPage({ params, searchParams }: { params
         <a className={phone ? "monarch-secondary" : "monarch-primary"} href={`/forms/${id}/preview`}>Computer width</a>
         <a className={phone ? "monarch-primary" : "monarch-secondary"} href={`/forms/${id}/preview?width=phone`}>Phone width</a>
       </p>
-      <div className="monarch-public-card" style={{ maxWidth: phone ? 390 : 820, margin: "0 auto" }}>
-        <FormRenderer mode="preview" publicId={form.public_id} definition={def} formName={form.name} description={form.description} firmName={profile?.display_name ?? "Your firm"}
+      <ThemedPage theme={readSettings(form.settings).theme} firm={profile?.display_name ?? "Your firm"} maxWidth={phone ? 390 : 820} wrapper="div">
+        <FormRenderer mode="preview" publicId={form.public_id} definition={publicDefinition(def)} formName={form.name} description={form.description} firmName={profile?.display_name ?? "Your firm"}
           consentText={form.signature_consent} allowSaveLater={false} respondentEmailKey={null} stamp="" />
-      </div>
+      </ThemedPage>
       <p className="monarch-muted" style={{ textAlign: "center" }}>Show/hide and skip logic work here as they will for respondents. {readSettings(form.settings).allow_save_later ? "Save and continue later is on." : ""}</p>
     </div>
   );

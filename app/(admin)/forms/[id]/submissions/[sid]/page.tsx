@@ -4,20 +4,20 @@ import { after } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { formDeps } from "@/lib/forms/server";
 import { displayAnswer, recordView, seenFieldIds } from "@/lib/forms/service.ts";
-import { DISPLAY_TYPES } from "@/lib/forms/definition.ts";
+import { DISPLAY_TYPES, inputFields } from "@/lib/forms/definition.ts";
 import { readSettings } from "@/lib/forms/settings.ts";
 import { REVIEW_STATUSES, type StoredAnswers } from "@/lib/forms/types.ts";
 import { formatInZone } from "@/lib/documents/signing.ts";
 import { Badge, Flash, PageTitle, when } from "@/components/admin/ui";
 import { FormTabs, formsLoad, FormsSetupRequired } from "@/components/forms/admin-bits";
 import { RevealAnswer } from "@/components/forms/reveal-answer";
-import { relinkCustomerAction, remakePdfAction, retryFirmAction, submissionStatusAction } from "../../../actions";
+import { relinkCustomerAction, remakePdfAction, retryFirmAction, saveInternalValuesAction, submissionStatusAction } from "../../../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const EVENT_LABELS: Record<string, string> = {
   submitted: "Submitted", spam: "Marked as spam", pdf_made: "PDF made", pdf_remade: "PDF made again", notified: "Firm notified", confirmation_sent: "Confirmation emailed to the respondent", confirmation_not_sent: "Confirmation not sent",
   customer_linked: "Linked to the customer", customer_created: "Customer created", firm_created: "Firm created in My Service Bureau", firm_linked: "Linked to an existing firm",
-  firm_failed: "Firm record not made", relink_requested: "Customer link requested", viewed: "Viewed", revealed: "Sensitive answer shown", file_viewed: "File opened", pdf_downloaded: "PDF downloaded", status_changed: "Status changed", draft_saved: "Saved for later",
+  firm_failed: "Firm record not made", relink_requested: "Customer link requested", viewed: "Viewed", revealed: "Sensitive answer shown", file_viewed: "File opened", pdf_downloaded: "PDF downloaded", status_changed: "Status changed", draft_saved: "Saved for later", internal_saved: "Staff-only fields updated",
 };
 
 export default async function SubmissionPage({ params, searchParams }: { params: Promise<{ id: string; sid: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -29,17 +29,18 @@ export default async function SubmissionPage({ params, searchParams }: { params:
     const deps = formDeps();
     const [form, sub] = await Promise.all([deps.repo.getForm(id), deps.repo.getSubmission(sid)]);
     if (!form || !sub || sub.form_id !== form.id || sub.status === "draft") return null;
-    const [version, uploads, events, profile] = await Promise.all([deps.repo.getVersion(sub.version_id), deps.repo.listUploads(sub.id), deps.repo.listEvents(sub.id, 100), deps.profile()]);
-    return { deps, form, sub, version, uploads, events, tz: profile?.time_zone ?? "America/New_York" };
+    const [version, uploads, events, profile, internalValues] = await Promise.all([deps.repo.getVersion(sub.version_id), deps.repo.listUploads(sub.id), deps.repo.listEvents(sub.id, 100), deps.profile(), deps.repo.listInternalValues(sub.id).catch(() => ({} as Record<string, string>))]);
+    return { deps, form, sub, version, uploads, events, internalValues, tz: profile?.time_zone ?? "America/New_York" };
   });
   if (!result.ok) return <FormsSetupRequired message={result.message} />;
   if (!result.data) notFound();
-  const { deps, form, sub, version, uploads, events, tz } = result.data;
+  const { deps, form, sub, version, uploads, events, tz, internalValues } = result.data;
   const confirmationProblem = sub.confirmation_sent_at ? null : (events.find((e) => e.type === "confirmation_not_sent")?.detail.reason as string | undefined) ?? null;
   after(() => recordView(deps, sub, admin.userId).catch(() => undefined));
   const answers = sub.answers as StoredAnswers;
   // Unanswered questions the respondent saw are listed as "no answer"; hidden and skipped ones are not.
   const seen = version ? seenFieldIds(version.definition, answers) : new Set<string>();
+  const internalFields = version ? inputFields(version.definition).filter((f) => f.internal) : [];
   const stamp = (iso: string | null) => (iso ? formatInZone(new Date(iso), tz) : "—");
   return (
     <>
@@ -53,7 +54,7 @@ export default async function SubmissionPage({ params, searchParams }: { params:
           <h2>Answers</h2>
           {sub.spam_reason && <p className="monarch-alert is-error">Marked as spam: {sub.spam_reason}.</p>}
           {version?.definition.pages.map((p) => p.sections.map((s) => {
-            const rows = s.fields.filter((f) => !DISPLAY_TYPES.includes(f.type) && f.type !== "signature" && (answers[f.key] !== undefined || seen.has(f.id)));
+            const rows = s.fields.filter((f) => !f.internal && !DISPLAY_TYPES.includes(f.type) && f.type !== "signature" && (answers[f.key] !== undefined || seen.has(f.id)));
             if (!rows.length) return null;
             return (
               <div key={s.id} style={{ marginBottom: 16 }}>
@@ -77,6 +78,27 @@ export default async function SubmissionPage({ params, searchParams }: { params:
               </div>
             );
           }))}
+          {internalFields.length > 0 && (
+            <form action={saveInternalValuesAction} style={{ marginBottom: 16 }}>
+              <input type="hidden" name="id" value={sub.id} /><input type="hidden" name="form_id" value={form.id} />
+              <h3 style={{ margin: "8px 0" }}>Staff only</h3>
+              <p className="monarch-muted">Only your team sees these. The person who filled in the form never does.</p>
+              <div className="monarch-form">
+                {internalFields.map((f) => {
+                  const value = internalValues[f.key] ?? f.defaultValue ?? "";
+                  return (
+                    <label key={f.id} className={f.type === "long_text" ? "is-wide" : undefined}>{f.label || f.key}
+                      {f.help && <small className="monarch-muted">{f.help}</small>}
+                      {f.type === "long_text" ? <textarea name={`internal_${f.key}`} rows={4} maxLength={25000} defaultValue={value} /> : f.type === "dropdown" || f.type === "radio" ? (
+                        <select name={`internal_${f.key}`} defaultValue={value}><option value="">(none)</option>{f.options?.map((o) => <option key={o} value={o}>{o}</option>)}</select>
+                      ) : <input name={`internal_${f.key}`} type={f.type === "date" ? "date" : f.type === "email" ? "email" : "text"} maxLength={2000} defaultValue={value} />}
+                    </label>
+                  );
+                })}
+                <div className="is-wide"><button className="monarch-secondary">Save staff-only fields</button></div>
+              </div>
+            </form>
+          )}
           {sub.signature && (
             <div>
               <h3>Signature</h3>

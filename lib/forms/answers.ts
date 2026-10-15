@@ -124,19 +124,40 @@ export function checkAnswer(field: Field, raw: RawAnswer, today: string): { valu
   }
 }
 
+/**
+ * Pre-filled, locked answers always carry the builder's value, whatever the browser sent. Staff-only fields are never
+ * accepted from a respondent.
+ */
+export function withLocked(def: FormDefinition, raw: RawAnswers): RawAnswers {
+  const out: RawAnswers = { ...raw };
+  for (const f of inputFields(def)) {
+    if (f.internal) delete out[f.key];
+    else if (f.locked && f.defaultValue) out[f.key] = f.defaultValue;
+  }
+  return out;
+}
+
+/** The answers a respondent starts with: every pre-filled value, then anything they already entered. */
+export function startingAnswers(def: FormDefinition, entered: RawAnswers = {}): RawAnswers {
+  const out: RawAnswers = {};
+  for (const f of inputFields(def)) if (f.defaultValue && !f.internal) out[f.key] = f.defaultValue;
+  return withLocked(def, { ...out, ...entered });
+}
+
 export type CheckedAnswers = { answers: Answers; errors: Record<string, string>; visible: Set<string>; signatureVisible: boolean };
 
 /**
  * Checks every visible field. Answers to hidden or skipped fields are dropped, even if the browser sent them.
  * `signed` says whether the respondent completed the signature field (checked separately).
  */
-export function checkAnswers(def: FormDefinition, raw: RawAnswers, opts: { today: string; signed: boolean }): CheckedAnswers {
+export function checkAnswers(def: FormDefinition, rawIn: RawAnswers, opts: { today: string; signed: boolean }): CheckedAnswers {
+  const raw = withLocked(def, rawIn);
   const { visible } = evaluate(def, raw);
   const answers: Answers = {};
   const errors: Record<string, string> = {};
   let signatureVisible = false;
   for (const f of inputFields(def)) {
-    if (!visible.has(f.id) || DISPLAY_TYPES.includes(f.type)) continue;
+    if (f.internal || !visible.has(f.id) || DISPLAY_TYPES.includes(f.type)) continue;
     if (f.type === "signature") {
       signatureVisible = true;
       if (f.required && !opts.signed) errors[f.key] = `${f.label || "Signature"}: sign before submitting.`;
@@ -150,11 +171,12 @@ export function checkAnswers(def: FormDefinition, raw: RawAnswers, opts: { today
 }
 
 /** A saved-for-later draft: no required checks, only lengths clamped and shapes kept. */
-export function draftAnswers(def: FormDefinition, raw: RawAnswers): RawAnswers {
+export function draftAnswers(def: FormDefinition, rawIn: RawAnswers): RawAnswers {
   const out: RawAnswers = {};
+  const raw = withLocked(def, rawIn);
   for (const f of inputFields(def)) {
     const v = raw[f.key];
-    if (f.type === "signature" || v === undefined || v === null) continue;
+    if (f.internal || f.type === "signature" || v === undefined || v === null) continue;
     if (typeof v === "string") out[f.key] = clean(v, f.type === "long_text" ? 25000 : 2000);
     else if (Array.isArray(v)) out[f.key] = f.type === "file"
       ? v.slice(0, 5).map((x) => (typeof x === "string" ? { id: x, name: "" } : { id: String(x?.id ?? "").slice(0, 36), name: clean(String(x?.name ?? ""), 160) }))
