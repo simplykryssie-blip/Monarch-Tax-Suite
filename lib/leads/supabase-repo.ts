@@ -32,6 +32,15 @@ export class SupabaseLeadsRepo implements LeadsRepo {
     }
     return out;
   }
+  async sourceCounts() {
+    const counts = new Map<string, number>();
+    for (let from = 0; ; from += 1000) {
+      const rows = unwrap(await this.db.from("leads").select("source").order("id").range(from, from + 999)) as { source: string }[];
+      for (const r of rows) counts.set(r.source, (counts.get(r.source) ?? 0) + 1);
+      if (rows.length < 1000) break;
+    }
+    return [...counts].map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
+  }
   async tagCounts() {
     const counts = new Map<string, number>();
     for (let from = 0; ; from += 1000) {

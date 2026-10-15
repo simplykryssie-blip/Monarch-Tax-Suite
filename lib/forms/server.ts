@@ -1,3 +1,5 @@
+import { captureFormLead } from "../leads/service.ts";
+import { leadsDeps } from "../leads/server";
 import "server-only";
 import { createHmac } from "node:crypto";
 import { SupabaseCommerceRepo } from "../commerce/supabase-repo.ts";
@@ -37,6 +39,7 @@ export function formDeps(tenantId: string = currentTenantId()): FormDeps {
     secrets,
     linkKey: createHmac("sha256", master).update("monarch:form-links:v1").digest(),
     profile: () => docs.getProfile().catch(() => null),
+    addLead: (input) => captureFormLead(leadsDeps(tenantId), input),
     brandCatalog: async () => {
       const [domains, list] = await Promise.all([senders.listDomains(), senders.listSenders()]);
       return brandCatalogFrom(domains, list);

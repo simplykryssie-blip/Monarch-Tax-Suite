@@ -31,6 +31,8 @@ export type FormDeps = {
   profile: () => Promise<TenantProfile | null>;
   /** The tenant's firms/brands (connected sending domains) and which brand each verified sender belongs to. */
   brandCatalog?: () => Promise<{ brands: Brand[]; senderDomain: Record<string, string> }>;
+  /** Adds a respondent to Leads (source: the form's name). Wired on the server; absent in tests. */
+  addLead?: (input: { formName: string; name: string | null; email: string }) => Promise<unknown>;
   now?: () => Date;
 };
 

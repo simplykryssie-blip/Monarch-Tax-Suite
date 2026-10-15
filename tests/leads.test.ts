@@ -103,7 +103,9 @@ describe("working leads", () => {
     assert.equal(lead.status, "new");
     assert.equal(new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(lead.last_contacted_at!)), "2026-10-10");
     await assert.rejects(createLead(s.deps, { full_name: "Kim 2", email: "KIM@example.com", source: "manual" }, ADMIN), /already a lead/);
-    await assert.rejects(createLead(s.deps, { full_name: "X", email: "x@example.com", source: "billboard" }, ADMIN), /came from/);
+    // No source given: it is Manual. A typed one is kept as written.
+    assert.equal((await createLead(s.deps, { full_name: "Y", email: "y@example.com" }, ADMIN)).source, "manual");
+    assert.equal((await createLead(s.deps, { full_name: "Z", email: "z@example.com", source: "  Billboard   on I-10 " }, ADMIN)).source, "Billboard on I-10");
     await assert.rejects(createLead(s.deps, { full_name: "X", email: "x@example.com", source: "manual", status: "won" }, ADMIN), /status/);
     await assert.rejects(createLead(s.deps, { full_name: "X", email: "x@example.com", source: "manual", last_contacted_at: "10/45/2026" }, ADMIN), /valid date/);
   });
@@ -132,7 +134,7 @@ describe("working leads", () => {
     assert.deepEqual(await list({ status: "new" }), ["Ben", "Ann"]);
     assert.deepEqual(await list({ from: "2026-10-11", to: "2026-10-11" }), ["Ben"]);
     assert.deepEqual(await list({ to: "2026-10-10" }), ["Ann"]);
-    assert.deepEqual(filterFrom({ source: "nope", status: "x", from: "yesterday" }), { q: undefined, source: undefined, status: undefined, from: undefined, to: undefined });
+    assert.deepEqual(filterFrom({ source: "", status: "x", from: "yesterday" }), { q: undefined, source: undefined, status: undefined, from: undefined, to: undefined });
     assert.equal(dayStart("2026-10-11"), "2026-10-11T05:00:00.000Z");
   });
 });
@@ -149,7 +151,7 @@ describe("CSV", () => {
       ",nobody@example.com,,,,,,\r\n" +
       "Cy,cy@example.com,,,,Won,,\r\n" +
       ",,,,,,,\r\n";
-    const r = await importCsv(s.deps, csv, "referral", ADMIN);
+    const r = await importCsv(s.deps, csv, "Facebook group, October", ADMIN);
     assert.equal(r.added, 2);
     assert.deepEqual(r.skipped.map((x) => x.row), [4, 5, 6, 7]);
     assert.match(r.skipped[0].reason, /already a lead/);
@@ -159,13 +161,14 @@ describe("CSV", () => {
     assert.equal(ann.source, "facebook_group");
     assert.equal(ann.status, "interested");
     assert.equal(ann.notes, 'Said "call me"\nnext week');
-    assert.equal((await s.repo.findByEmail("ben@example.com"))!.source, "referral");
+    assert.equal((await s.repo.findByEmail("ben@example.com"))!.source, "Import: Facebook group, October");
   });
 
   test("a file without Name and Email columns is refused", async () => {
     const s = setup();
     await assert.rejects(importCsv(s.deps, "Phone,Notes\n555,hi\n", "other", ADMIN), /Name and Email/);
     await assert.rejects(importCsv(s.deps, "Name,Email\n", "other", ADMIN), /no rows/);
+    await assert.rejects(importCsv(s.deps, "Name,Email\nA,a@example.com\n", "  ", ADMIN), /Name this import/);
   });
 
   test("export round-trips through import, and spreadsheet formulas are neutralised", async () => {
@@ -249,5 +252,29 @@ describe("WISP builder lead", () => {
     const after = await captureBuilderStart(s.deps, { name: "Ann Tax", email: "ann@example.com", phone: "337 555 0100" });
     assert.equal(after.source, "wisp_audit");
     assert.equal(after.phone, "337 555 0100");
+  });
+});
+
+describe("lead source is assigned by how the lead arrived", () => {
+  test("a form respondent becomes a lead sourced from the form's name; an existing lead keeps theirs", async () => {
+    const { captureFormLead } = await import("../lib/leads/service.ts");
+    const s = setup();
+    const lead = await captureFormLead(s.deps, { formName: "Tax Pro Interest", name: "Dee Preparer", email: "Dee@Example.com" });
+    assert.equal(lead.source, "Form: Tax Pro Interest");
+    assert.equal(lead.email, "dee@example.com");
+    const again = await captureFormLead(s.deps, { formName: "Other Form", name: "Dee", email: "dee@example.com", phone: "(337) 555-0100" });
+    assert.equal(again.source, "Form: Tax Pro Interest");
+    assert.equal(again.phone, "(337) 555-0100");
+    const noName = await captureFormLead(s.deps, { formName: "Tax Pro Interest", name: null, email: "pat.smith@example.com" });
+    assert.equal(noName.full_name, "pat smith");
+  });
+
+  test("the source can be changed afterwards, and the filter lists the sources in use", async () => {
+    const s = setup();
+    const lead = await createLead(s.deps, { full_name: "Ann", email: "ann@example.com" }, ADMIN);
+    await updateLead(s.deps, lead.id, { full_name: "Ann", email: "ann@example.com", source: "Referral from Bo" }, ADMIN);
+    assert.equal((await s.repo.getLead(lead.id))!.source, "Referral from Bo");
+    assert.deepEqual(await s.repo.sourceCounts(), [{ source: "Referral from Bo", count: 1 }]);
+    assert.deepEqual((await s.repo.listLeads(filterFrom({ source: "Referral from Bo" }))).map((l) => l.full_name), ["Ann"]);
   });
 });

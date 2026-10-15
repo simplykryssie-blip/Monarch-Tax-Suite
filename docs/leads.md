@@ -78,3 +78,7 @@
    - Take the audit at `/wisp`, enter a name and email at the results, and check the lead in **Leads**.
    - Add a lead by hand, then import a small CSV and export it.
 3. **Production:** the migration needs your approval. Until it's applied there, the audit's results still open; leads just aren't saved.
+
+## Source is assigned automatically
+
+A lead's source is a label set by how they arrived: the form's name (`Form: Tax Pro Interest`, when the form's settings say to add respondents to Leads), `Manual`, `Funnel: …`, `Page: …`, `Import: <name>` (you name each import when you upload it; a row with its own Source column keeps it), `WISP audit` or `WISP builder`. It can be edited on the lead and is still a filter. There is no source dropdown on the add form. Funnels and pages don't exist yet; `leadSource.funnel()` and `leadSource.page()` (lib/leads/types.ts) are ready for them.

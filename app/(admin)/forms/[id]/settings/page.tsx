@@ -96,6 +96,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         <label>Respondent&apos;s email question<QuestionSelect name="email_key" value={s.respondent.email_key} fields={fields} types={["email"]} none="Automatic: the form's first email question" /></label>
         <label>Respondent&apos;s name question<QuestionSelect name="name_key" value={s.respondent.name_key} fields={fields} types={["short_text"]} none="Automatic: the first name question" /></label>
         <label className="monarch-check is-wide"><input type="checkbox" name="create_customer" defaultChecked={s.create_customer} /> Link each submission to the customer with that email (for example, from their package purchase), and create the customer when there isn&apos;t one.</label>
+        <label className="monarch-check is-wide"><input type="checkbox" name="add_to_leads" defaultChecked={s.add_to_leads} /> Add each respondent to Leads, with this form&apos;s name as their source. Someone who is already a lead keeps their source and status.</label>
 
         <h2 className="is-wide">Firm record (My Service Bureau)</h2>
         <label className="monarch-check is-wide"><input type="checkbox" name="firm_enabled" defaultChecked={s.firm.enabled} /> Create or link the respondent&apos;s tax office as a firm. A firm already linked to the customer, or with the same EFIN, is linked; otherwise a new one is created.</label>

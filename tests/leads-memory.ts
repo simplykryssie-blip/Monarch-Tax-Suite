@@ -10,6 +10,11 @@ export class MemoryLeads implements LeadsRepo {
   clock: () => Date = () => new Date();
   private c = <T>(v: T): T => structuredClone(v);
   async listLeads(f: LeadFilter) { return this.c(this.leads.filter((l) => matchesFilter(l, f)).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, f.limit ?? 500)); }
+  async sourceCounts() {
+    const counts = new Map<string, number>();
+    for (const l of this.leads) counts.set(l.source, (counts.get(l.source) ?? 0) + 1);
+    return [...counts].map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
+  }
   async tagCounts() {
     const counts = new Map<string, number>();
     for (const l of this.leads) for (const t of l.tags) counts.set(t, (counts.get(t) ?? 0) + 1);

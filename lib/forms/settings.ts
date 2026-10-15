@@ -27,6 +27,8 @@ export type FormSettings = {
   respondent: { email_key: string | null; name_key: string | null };
   /** Link the submission to the customer with the respondent's email, creating one when there is none. */
   create_customer: boolean;
+  /** Add each respondent to Leads, labelled with this form's name as the source. */
+  add_to_leads: boolean;
   firm: FirmMap;
   notify: { recipients: string[]; sender_id: string | null };
   /** The firm/brand (a connected sending domain) the form belongs to: its public link and emails use that brand. */
@@ -48,6 +50,7 @@ export type FormSettings = {
 export const DEFAULT_SETTINGS: FormSettings = {
   respondent: { email_key: null, name_key: null },
   create_customer: true,
+  add_to_leads: false,
   firm: { enabled: false, relationship: "partner", legal_name_key: null, dba_name_key: null, ein_key: null, efin_key: null, address_key: null, people: [] },
   notify: { recipients: [], sender_id: null },
   brand_domain_id: null,
@@ -111,6 +114,7 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
     name_key: pick(fields, r.respondent?.name_key, text, "respondent's name"),
   };
   const create_customer = r.create_customer !== false && r.create_customer !== "off";
+  const add_to_leads = r.add_to_leads === true || r.add_to_leads === "on";
 
   const fr = r.firm ?? {};
   const enabled = fr.enabled === true || fr.enabled === "on";
@@ -171,6 +175,7 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
   return {
     respondent,
     create_customer,
+    add_to_leads,
     firm,
     notify: { recipients, sender_id: sender || null },
     brand_domain_id: brand || null,
