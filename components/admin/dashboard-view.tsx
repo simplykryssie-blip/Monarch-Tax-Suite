@@ -45,7 +45,7 @@ export function DashboardView({ data, x, months = 12 }: { data: Data; x: Extras;
 
       <div className="mt-quick">
         <QuickLink href="/orders/internal" icon="licenses" title="Create a license" note="Complimentary or internal" />
-        <QuickLink href="/automation/activity" icon="automation" title="Automation activity" note="Emails, retries, setup links" />
+        <QuickLink href="/automation/workflows" icon="automation" title="Automation" note="Workflows, pipelines, templates, run history" />
         <QuickLink href="/installations" icon="installs" title="Installations" note={`${m.openInstallations} need attention`} />
         <QuickLink href="/products" icon="products" title="Products" note={`${m.publishedProducts} published`} />
       </div>
@@ -101,9 +101,9 @@ export function DashboardView({ data, x, months = 12 }: { data: Data; x: Extras;
           <div className="mt-card-head"><div><h2>Automation</h2><p>Last 30 days</p></div><Link className="mt-card-link" href="/automation">Open →</Link></div>
           <div className="mt-card-body">
             <div className="mt-stat-row">
-              <Link href="/automation/activity?status=succeeded" className="mt-stat" style={{ textDecoration: "none", color: "inherit" }}><b>{x.runs.ok}</b><span>Succeeded</span></Link>
-              <Link href="/automation/activity?status=failed" className="mt-stat" style={{ textDecoration: "none", color: "inherit" }}><b>{x.runs.failed}</b><span>Failed</span></Link>
-              <Link href="/automation/activity?status=retrying" className="mt-stat" style={{ textDecoration: "none", color: "inherit" }}><b>{x.runs.waiting}</b><span>Waiting</span></Link>
+              <Link href="/automation/workflows" className="mt-stat" style={{ textDecoration: "none", color: "inherit" }}><b>{x.runs.ok}</b><span>Succeeded</span></Link>
+              <Link href="/automation/workflows" className="mt-stat" style={{ textDecoration: "none", color: "inherit" }}><b>{x.runs.failed}</b><span>Failed</span></Link>
+              <Link href="/automation/workflows" className="mt-stat" style={{ textDecoration: "none", color: "inherit" }}><b>{x.runs.waiting}</b><span>Waiting</span></Link>
             </div>
             <BarRows total={Math.max(data.installations.length, 1)} empty="No installations yet." rows={[
               { label: "Installations active", value: installCounts.active ?? 0, href: "/installations", tone: "ink" },
@@ -215,7 +215,7 @@ export function buildTasks(m: ReturnType<typeof computeMetrics>, x: Extras): Tas
     { title: "Licenses waiting for a key", note: "Issue the key so the customer can set up", count: m.pendingLicenses, href: "/licenses" },
     { title: "Customers still setting up", note: "Active licenses that have not finished setup", count: settingUp, href: "/licenses" },
     { title: "Installations needing attention", note: "Requested, in progress or blocked", count: m.openInstallations, href: "/installations" },
-    { title: "Automations that failed", note: "Emails or steps to retry", count: x.runs.failed, href: "/automation/activity?status=failed" },
+    { title: "Automations that failed", note: "Emails or steps to retry", count: x.runs.failed, href: "/automation/workflows" },
   ];
 }
 

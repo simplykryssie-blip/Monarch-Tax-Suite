@@ -15,6 +15,6 @@ export async function loadAlerts(): Promise<Alert[]> {
   return [
     { title: "Licenses waiting for a key", note: "Issue the key so the customer can set up", count: licenses.filter((l) => l.status === "pending").length, href: "/licenses" },
     { title: "Installations needing attention", note: "Requested, in progress or blocked", count: installs.filter((i) => i.status === "requested" || i.status === "in_progress" || i.status === "blocked").length, href: "/installations" },
-    { title: "Automations that failed", note: "Emails or steps to retry (last 30 days)", count: failed.filter((e) => !e.is_test && Date.parse(e.created_at) >= since).length, href: "/automation/activity?status=failed" },
+    { title: "Automations that failed", note: "Emails or steps to retry (last 30 days)", count: failed.filter((e) => !e.is_test && Date.parse(e.created_at) >= since).length, href: "/automation/workflows" },
   ];
 }

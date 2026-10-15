@@ -759,3 +759,17 @@ html[data-popup] body{background:#fff}
 .re-placeholders{border:1px solid #e3dfd2;border-radius:6px;padding:8px 12px;background:#fff}.re-placeholders summary{cursor:pointer;font-weight:600}
 .re-placeholders ul{list-style:none;margin:8px 0;padding:0;display:grid;gap:4px}
 .re-token{border:1px solid #e3dfd2;border-radius:4px;background:#faf9f5;padding:1px 6px;font-family:ui-monospace,monospace;font-size:12.5px;cursor:pointer}.re-token:hover{background:#efe7c8}
+.run-history{width:min(1100px,96vw);max-height:88vh;border:1px solid #e3dfd2;border-radius:10px;padding:0;overflow:auto}
+.run-history::backdrop{background:rgba(20,18,12,.45)}
+.run-history-body{padding:16px 20px}.run-history-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.run-history td{vertical-align:top}.run-ok{color:#1f6f43;font-weight:600}.run-err{color:#a8322b;font-weight:600}.run-skip{color:#8a6d00;font-weight:600}
+.pb-name{display:block;max-width:420px}
+.pb-row{list-style:none;margin:12px 0;padding:4px 2px 12px;display:flex;gap:12px;overflow-x:auto;align-items:flex-start}
+.pb-stage{flex:0 0 190px;border:1px solid #e3dfd2;border-top:5px solid #64748b;border-radius:8px;background:#fff;padding:10px;display:grid;gap:8px;cursor:grab}
+.pb-stage.is-over{outline:2px dashed #c9b46a}.pb-stage.is-drag{opacity:.5}
+.pb-top{display:flex;gap:4px;align-items:center}.pb-num{font-weight:700;color:#6b7280;margin-right:auto}.pb-grip{color:#9ca3af;letter-spacing:-2px}
+.pb-icon{border:1px solid #e3dfd2;background:#faf9f5;border-radius:4px;width:26px;height:26px;cursor:pointer;font-size:11px}.pb-icon:disabled{opacity:.35;cursor:default}.pb-icon.is-danger{color:#a8322b}
+.pb-colors{display:flex;gap:5px;flex-wrap:wrap}.pb-swatch{width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #d8d4c6;cursor:pointer}.pb-swatch.is-on{box-shadow:0 0 0 2px #111}
+.pb-done{font-size:12.5px;display:flex;gap:6px;align-items:center}
+.pb-add{flex:0 0 140px;align-self:center}
+.pb-flow{font-size:13px;color:#4b4943;line-height:2}.pb-flow i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
