@@ -6,11 +6,13 @@ import { LEGAL_PAGES_APPROVED } from "@/lib/legal";
 import { ProductView } from "@/components/storefront/product-view";
 import { commerceRepo } from "@/lib/admin";
 import { shareMeta } from "@/lib/site-meta";
+import { Reviews } from "@/components/storefront/reviews";
+import { reviewsRepo } from "@/lib/reviews/server";
 import { publishedProductBySlug, toStorefrontImages } from "@/lib/storefront";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: Promise<{ slug: string }>; searchParams?: Promise<{ error?: string }> };
+type Params = { params: Promise<{ slug: string }>; searchParams?: Promise<{ error?: string; rn?: string; re?: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const product = await publishedProductBySlug((await params).slug);
@@ -22,9 +24,14 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 /** Public product page. Drafts, unpublished and archived products return 404. */
 export default async function ShopProductPage({ params, searchParams }: Params) {
   const product = await publishedProductBySlug((await params).slug);
-  const error = (await searchParams)?.error?.slice(0, 300);
+  const sp = await searchParams;
+  const error = sp?.error?.slice(0, 300);
+  const reviewNotice = sp?.rn?.slice(0, 300);
+  const reviewError = sp?.re?.slice(0, 300);
   if (!product) notFound();
   const images = toStorefrontImages(await commerceRepo().listProductImages([product.id]));
+  // Reviews are optional: if their table isn't installed yet the product page still works.
+  const reviews = await reviewsRepo().listForProduct(product.id, false).catch(() => null);
   return (
     <main className="sf-page">
       <Link className="sf-back" href="/shop">← All products</Link>
@@ -36,6 +43,7 @@ export default async function ShopProductPage({ params, searchParams }: Params) 
           purchase={LEGAL_PAGES_APPROVED ? <BuyForm slug={product.slug} installationOptions={product.installation_options} licensed={product.access_type === "license"} error={error} wisp={product.metadata?.delivery === "wisp_generator"} /> : undefined}
         />
       </div>
+      {reviews && <Reviews slug={product.slug} reviews={reviews} notice={reviewNotice} error={reviewError} />}
     </main>
   );
 }
