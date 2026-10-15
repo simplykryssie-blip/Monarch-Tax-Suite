@@ -4,7 +4,8 @@ import { ArchivePanel } from "@/components/admin/archive";
 import { EVENTS } from "@/lib/automation/events.ts";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import type { Action, Condition } from "@/lib/automation/types.ts";
-import { saveWorkflowAction, testWorkflowAction, workflowStatusAction } from "../../actions";
+import { commerceRepo } from "@/lib/admin";
+import { saveWorkflowAction, testWorkflowAction, testWorkflowWithClientAction, workflowStatusAction } from "../../actions";
 
 const SLOTS = [0, 1, 2, 3, 4];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -21,6 +22,7 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
   const conditions: Partial<Condition>[] = wf?.conditions ?? [];
   const actions: Partial<Action>[] = wf?.actions ?? [{ type: "send_email" }];
   const history = wf ? await deps.repo.listExecutions({ workflow_id: wf.id, limit: 10 }) : [];
+  const clients = wf ? (await commerceRepo().listCustomers().catch(() => [])).slice().sort((a, b) => (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email)).slice(0, 500) : [];
   return (
     <>
       <PageTitle title={wf ? wf.name : "New workflow"} back={{ href: "/automation/workflows", label: "Workflows" }}>
@@ -86,10 +88,22 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
           <section className="monarch-panel" style={{ padding: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
             {wf.status !== "archived" && <form action={workflowStatusAction}><input type="hidden" name="id" value={wf.id} /><input type="hidden" name="status" value={wf.status === "active" ? "paused" : "active"} /><button className="monarch-primary">{wf.status === "active" ? "Pause" : "Turn on"}</button></form>}
             <form action={testWorkflowAction}><input type="hidden" name="id" value={wf.id} /><button className="monarch-primary">Run a safe test</button></form>
-            <p className="monarch-muted">A test uses sample data and emails only you. It never touches a customer, license or CRM.</p>
+            <p className="monarch-muted">A safe test uses sample data and emails only you. It never touches a customer, license or CRM.</p>
+          </section>
+          <section className="monarch-panel" style={{ padding: 20 }}>
+            <h2>Test with a client</h2>
+            <p className="monarch-muted">Runs every step end to end for the client you choose. Steps that would send an email, text or document are checked (the message is filled in and the recipient found) but <b>never sent</b>, and the test carries on to the next step. Each step&apos;s result is in Run history.</p>
+            <form action={testWorkflowWithClientAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
+              <input type="hidden" name="id" value={wf.id} />
+              <select name="customer_id" required defaultValue="" aria-label="Test client">
+                <option value="" disabled>{clients.length ? "Choose a client…" : "No clients yet"}</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.full_name ?? c.email}{c.full_name ? ` (${c.email})` : ""}</option>)}
+              </select>
+              <button className="monarch-primary" disabled={clients.length === 0}>Run test</button>
+            </form>
           </section>
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Recent runs</h2></div></div>
+            <div className="monarch-panel-head"><div><h2>Recent runs</h2><p>Every step of every run is in Run history (top right).</p></div></div>
             <div className="monarch-table-wrap"><table><thead><tr><th>WHEN</th><th>STATUS</th><th>TRIES</th><th>PROBLEM</th></tr></thead><tbody>
               {history.length === 0 ? <tr><td colSpan={4} className="monarch-empty">No runs yet.</td></tr> : history.map((e) => <tr key={e.id}><td>{when(e.created_at)}{e.is_test ? " (test)" : ""}</td><td><Badge value={e.status} /></td><td>{e.attempts}/{e.max_attempts}</td><td>{e.error ?? "—"}</td></tr>)}
             </tbody></table></div>

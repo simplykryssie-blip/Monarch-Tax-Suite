@@ -1,5 +1,6 @@
 "use client";
 
+import { RichText } from "./rich-text";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { removeFormUploadAction, saveFormForLaterAction, startFormUploadAction, submitFormAction, type SubmitResult } from "@/app/f/[id]/actions";
 import { checkAnswer, US_STATES } from "@/lib/forms/answers";
@@ -256,7 +257,7 @@ export function FormRenderer(props: FormRendererProps) {
       case "heading":
         return <h2 style={{ margin: "8px 0 0", fontSize: 20 }}>{f.label}</h2>;
       case "paragraph":
-        return <p style={{ whiteSpace: "pre-wrap", margin: 0, color: "#4b4943", lineHeight: 1.6 }}>{f.text}</p>;
+        return <RichText text={f.text ?? ""} />;
       case "long_text":
         return <textarea id={id} rows={5} maxLength={f.maxLength ?? 5000} placeholder={f.placeholder} value={text} onChange={(e) => set(f.key, e.target.value)} {...aria} />;
       case "dropdown":

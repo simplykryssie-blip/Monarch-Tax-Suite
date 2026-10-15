@@ -1,4 +1,4 @@
-import { LEAD_SOURCES, LEAD_STATUSES, type LeadSource, type LeadStatus } from "@/lib/leads/types.ts";
+import { LEAD_STATUSES, sourceName, type LeadSource, type LeadStatus } from "@/lib/leads/types.ts";
 
 // Small pieces shared by the Leads pages.
 
@@ -8,7 +8,7 @@ export function StatusBadge({ status }: { status: LeadStatus }) {
   return <span className={`monarch-badge ${STATUS_CLASS[status]}`}>{LEAD_STATUSES[status]}</span>;
 }
 
-export const sourceLabel = (s: LeadSource) => LEAD_SOURCES[s];
+export const sourceLabel = (s: LeadSource) => sourceName(s);
 
 /** A date for the list (no time). */
 export function day(iso: string | null) {

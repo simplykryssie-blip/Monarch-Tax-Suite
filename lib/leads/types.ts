@@ -1,6 +1,10 @@
 // Leads: every prospect in one list, whatever funnel they came from. Lead → Customer (on purchase) → Firm (for EROs).
 
-export const LEAD_SOURCES = {
+/**
+ * Where a lead came from is a label set automatically by how they arrived, and editable afterwards. These are the
+ * built-in ones; a form, funnel, page or import adds its own ("Form: Intake", "Import: Facebook group Oct").
+ */
+export const LEAD_SOURCES: Record<string, string> = {
   wisp_audit: "WISP audit",
   wisp_builder: "WISP builder",
   facebook_group: "Facebook group",
@@ -8,9 +12,19 @@ export const LEAD_SOURCES = {
   website: "Website",
   manual: "Manual",
   other: "Other",
-} as const;
-export type LeadSource = keyof typeof LEAD_SOURCES;
-export const SOURCE_KEYS = Object.keys(LEAD_SOURCES) as LeadSource[];
+};
+export type LeadSource = string;
+export const SOURCE_MAX = 120;
+
+/** The label for each way a lead can arrive. */
+export const leadSource = {
+  manual: "manual",
+  form: (name: string) => `Form: ${name}`.slice(0, SOURCE_MAX),
+  funnel: (name: string) => `Funnel: ${name}`.slice(0, SOURCE_MAX),
+  page: (name: string) => `Page: ${name}`.slice(0, SOURCE_MAX),
+  import: (name: string) => `Import: ${name}`.slice(0, SOURCE_MAX),
+};
+export const sourceName = (s: string) => LEAD_SOURCES[s] ?? s;
 
 export const LEAD_STATUSES = {
   new: "New",
@@ -54,6 +68,8 @@ export type LeadInsert = Omit<Lead, "id" | "tenant_id" | "created_at" | "updated
 
 export interface LeadsRepo {
   listLeads(filter: LeadFilter): Promise<Lead[]>;
+  /** Every source in use, with how many leads came from it, for the source filter. */
+  sourceCounts(): Promise<{ source: string; count: number }[]>;
   /** Every tag in use, with how many leads carry it, for suggestions and the tag filter. */
   tagCounts(): Promise<{ tag: string; count: number }[]>;
   getLead(id: string): Promise<Lead | null>;

@@ -392,6 +392,34 @@ async function runAction(deps: AutomationDeps, exec: Execution, event: Automatio
   return runSendEmail(deps, exec, event, action, index);
 }
 
+// -------------------------------------------------------------- client test
+
+/** A test with a real client: sending steps are checked but never sent, and everything else runs. */
+const isClientTest = (exec: Execution, event: AutomationEvent) => exec.is_test && event.data.test_client === true;
+
+async function dryRunStep(deps: AutomationDeps, event: AutomationEvent, action: Action): Promise<ActionOutcome> {
+  if (action.type === "record_note") return { status: "ok", detail: action.note.slice(0, 300) };
+  if (action.type === "send_email") {
+    const template = await deps.repo.getTemplate(action.template_id);
+    if (!template) return { status: "failed", kind: "permanent", detail: "The email template for this step no longer exists. Choose another template in the workflow." };
+    if (!template.active) return { status: "failed", kind: "config", detail: `The template "${template.name}" is switched off. Turn it on before this workflow can send it.` };
+    const values = await contextFor(deps, event);
+    // A setup link is made only for a real send; the test shows where it would go.
+    if (action.include_setup_link || variablesIn(template.subject, template.body).includes("setup_link")) values.setup_link = "https://example.com/setup-link-made-when-sent";
+    try {
+      const rendered = renderTemplate(template.subject, template.body, { ...SAMPLE_VALUES, ...values }, { supportEmail: deps.config.supportEmail });
+      const to = action.to === "support" ? "Monarch support" : (await recipientFor(deps, event, "customer")) ?? "the client (no email address on file)";
+      return { status: "skipped", kind: "skipped", detail: `Skipped in test: would email "${template.name}" to ${to} with the subject "${rendered.subject}". The message filled in without problems.` };
+    } catch (e) {
+      return { status: "failed", kind: "permanent", detail: sanitizeError(e, 200) };
+    }
+  }
+  const what = action.type === "request_signature" ? "request a signature on" : "send";
+  const doc = deps.documents ? await deps.documents.repo.getDocument(action.document_id).catch(() => null) : null;
+  if (deps.documents && !doc) return { status: "failed", kind: "permanent", detail: "The document for this step no longer exists. Choose another document in the workflow." };
+  return { status: "skipped", kind: "skipped", detail: `Skipped in test: would ${what} "${doc?.name ?? "the document"}" to the client.` };
+}
+
 // -------------------------------------------------------------- execution
 
 export async function processExecution(deps: AutomationDeps, executionId: string): Promise<Execution | null> {
@@ -412,7 +440,7 @@ export async function processExecution(deps: AutomationDeps, executionId: string
     if (done) continue;
     let outcome: ActionOutcome;
     try {
-      outcome = await runAction(deps, claimed, event, wf.actions[i], i);
+      outcome = isClientTest(claimed, event) ? await dryRunStep(deps, event, wf.actions[i]) : await runAction(deps, claimed, event, wf.actions[i], i);
     } catch (e) {
       outcome = { status: "failed", kind: "transient", detail: sanitizeError(e, 240) };
     }
@@ -477,6 +505,22 @@ export async function runTest(deps: AutomationDeps, workflowId: string, admin: {
   const { event } = await deps.repo.insertEvent({ event_key: `test:${randomBytes(9).toString("base64url")}`, event_type: wf.trigger_event, license_id: null, customer_id: null, order_id: null, data: { test_recipient: admin.email } });
   const { execution } = await deps.repo.insertExecution({ workflow_id: wf.id, event_id: event.id, is_test: true, max_attempts: 1, next_attempt_at: iso(deps) });
   await deps.repo.addAudit({ actor_id: admin.id, action: "workflow_test_run", target_type: "workflow", target_id: wf.id, detail: {} });
+  return (await processExecution(deps, execution.id)) ?? execution;
+}
+
+/**
+ * Tests a workflow end to end with a real client chosen by the administrator. Steps that would send an email or text
+ * (or a document) are checked and skipped, so nothing reaches the client, and the run carries on to the next step. Every
+ * step's result is recorded in the run history.
+ */
+export async function runClientTest(deps: AutomationDeps, workflowId: string, customerId: string, admin: { id: string; email: string }): Promise<Execution> {
+  const wf = await deps.repo.getWorkflow(workflowId);
+  if (!wf) throw new Error("Workflow not found.");
+  const customer = await deps.commerce.getCustomer(customerId);
+  if (!customer) throw new Error("Choose a client to test with.");
+  const { event } = await deps.repo.insertEvent({ event_key: `client-test:${randomBytes(9).toString("base64url")}`, event_type: wf.trigger_event, license_id: null, customer_id: customer.id, order_id: null, data: { test_client: true, test_recipient: admin.email } });
+  const { execution } = await deps.repo.insertExecution({ workflow_id: wf.id, event_id: event.id, is_test: true, max_attempts: 1, next_attempt_at: iso(deps) });
+  await deps.repo.addAudit({ actor_id: admin.id, action: "workflow_client_test", target_type: "workflow", target_id: wf.id, detail: { customer_id: customer.id } });
   return (await processExecution(deps, execution.id)) ?? execution;
 }
 

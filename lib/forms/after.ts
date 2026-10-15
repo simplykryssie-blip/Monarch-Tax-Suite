@@ -120,6 +120,11 @@ export async function afterSubmit(auto: AutomationDeps, deps: FormDeps, submissi
   let customerId: string | null = null;
   await step("customer", async () => { customerId = await linkCustomer(deps, submission, settings); });
   await step("firm", () => linkFirm(deps, submission.id, settings));
+  // Respondents become leads when the form is set to, with the form's name as the source. Never blocks the rest.
+  await step("lead", async () => {
+    if (!settings.add_to_leads || !submission.respondent_email) return;
+    await deps.addLead?.({ formName: pf.form.name, name: submission.respondent_name, email: submission.respondent_email });
+  });
   const fresh = (await deps.repo.getSubmission(submission.id).catch(() => null)) ?? submission;
   await step("notify", () => notifyFirm(auto, deps, fresh));
   await step("confirm", () => confirmRespondent(auto, deps, fresh));

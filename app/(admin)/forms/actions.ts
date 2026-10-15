@@ -108,6 +108,7 @@ export async function saveFormSettingsAction(form: FormData) {
     const raw = {
       respondent: { email_key: str(form, "email_key"), name_key: str(form, "name_key") },
       create_customer: form.get("create_customer") === "on",
+      add_to_leads: form.get("add_to_leads") === "on",
       firm: {
         enabled: form.get("firm_enabled") === "on", relationship: str(form, "firm_relationship"),
         legal_name_key: str(form, "firm_legal_name"), dba_name_key: str(form, "firm_dba"), ein_key: str(form, "firm_ein"), efin_key: str(form, "firm_efin"), address_key: str(form, "firm_address"),

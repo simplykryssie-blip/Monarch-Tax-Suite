@@ -68,7 +68,7 @@ async function Body({ data }: { data: Data }) {
           </dl>
           <span className="mt-section-go">Open store dashboard <Icon name="arrow" size={14} /></span>
         </Link>
-        <Link href="/automation" className="mt-section">
+        <Link href="/automation/workflows" className="mt-section">
           <span className="mt-section-ico"><Icon name="automation" size={22} /></span>
           <h2>Operations</h2>
           <p>Automations, emails and customer onboarding.</p>

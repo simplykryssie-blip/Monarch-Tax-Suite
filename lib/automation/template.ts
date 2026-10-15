@@ -1,3 +1,5 @@
+import { blockHtml, parseRich, richToText } from "../richtext.ts";
+
 // Email template rendering. Templates are plain text with {{variable}} placeholders from a fixed list.
 // Everything is HTML-escaped; there is no expression evaluation, no includes and no raw HTML.
 
@@ -60,10 +62,12 @@ export function renderTemplate(subjectTemplate: string, bodyTemplate: string, va
   if (unknown.length) throw new Error(`Unknown template variable(s): ${unknown.join(", ")}`);
 
   const subject = oneLine(fill(subjectTemplate, values, "text")).slice(0, 200);
-  const blocks = bodyTemplate.replace(/\r\n/g, "\n").split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+  const blocks = parseRich(bodyTemplate);
+  const val = (name: string) => clean(values[name] ?? "");
 
   const htmlBlocks = blocks.map((block) => {
-    const only = block.match(/^\{\{\s*([A-Za-z0-9_]+)\s*\}\}$/)?.[1];
+    // A paragraph that is only one of these placeholders gets special treatment.
+    const only = block.t === "p" && block.c.length === 1 && block.c[0].t === "token" ? block.c[0].name : null;
     if (only === "setup_link" && safeUrl(values.setup_link ?? "")) {
       const href = esc(values.setup_link);
       return `<p style="margin:24px 0"><a href="${href}" style="background:#111;color:#e8d9a8;text-decoration:none;padding:12px 22px;border-radius:4px;font-weight:600;display:inline-block">Open your setup page</a></p><p style="font-size:12px;color:#6b665a;word-break:break-all">Or copy this address: ${href}</p>`;
@@ -71,15 +75,14 @@ export function renderTemplate(subjectTemplate: string, bodyTemplate: string, va
     if (only === "embed_instructions") {
       return `<pre style="background:#f6f4ee;border:1px solid #e3dfd2;border-radius:4px;padding:12px;font-size:12px;white-space:pre-wrap;word-break:break-word">${esc(clean(values.embed_instructions ?? "", 4000))}</pre>`;
     }
-    if (block.startsWith("# ")) return `<h2 style="font-size:20px;margin:0 0 12px;color:#111">${fill(block.slice(2), values, "html")}</h2>`;
-    return `<p style="margin:0 0 14px;line-height:1.6">${fill(block, values, "html").replace(/\n/g, "<br>")}</p>`;
+    return blockHtml(block, val);
   });
 
   const text = blocks
     .map((block) => {
-      const only = block.match(/^\{\{\s*([A-Za-z0-9_]+)\s*\}\}$/)?.[1];
+      const only = block.t === "p" && block.c.length === 1 && block.c[0].t === "token" ? block.c[0].name : null;
       if (only === "embed_instructions") return clean(values.embed_instructions ?? "", 4000);
-      return fill(block.startsWith("# ") ? block.slice(2) : block, values, "text");
+      return richToText([block], Object.fromEntries(Object.keys(values).map((k) => [k, val(k)])));
     })
     .join("\n\n");
 

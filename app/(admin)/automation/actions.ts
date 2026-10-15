@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { ValidationError } from "@/lib/commerce/validation.ts";
-import { retryExecution, runTest } from "@/lib/automation/engine.ts";
+import { retryExecution, runClientTest, runTest } from "@/lib/automation/engine.ts";
+import { archivePipeline, createPipeline, DEFAULT_RETURN_STAGES, makeDefault, savePipeline } from "@/lib/pipelines/service.ts";
+import { pipelinesRepo } from "@/lib/pipelines/server";
+import { createSms, setSmsActive, updateSms } from "@/lib/automation/sms.ts";
+import { SupabaseSmsRepo } from "@/lib/automation/sms-repo";
+import { tenantDb } from "@/lib/admin";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { installDefaults } from "@/lib/automation/defaults.ts";
@@ -124,14 +129,14 @@ export async function testTemplateAction(form: FormData) {
 }
 
 export async function retryExecutionAction(form: FormData) {
-  await mutate("/automation/activity", async (a) => {
+  await mutate("/automation/workflows", async (a) => {
     const exec = await retryExecution(automationDeps(), id(form), a.id);
     return { notice: exec.status === "succeeded" ? "Retried. It worked this time." : `Retried. Status: ${exec.status}.` };
   });
 }
 
 export async function revokeLinkAction(form: FormData) {
-  await mutate("/automation/activity", async (a) => {
+  await mutate("/settings/integrations", async (a) => {
     await automationDeps().repo.revokeLink(id(form), new Date().toISOString());
     await automationDeps().repo.addAudit({ actor_id: a.id, action: "setup_link_revoked", target_type: "link", target_id: id(form), detail: {} });
     return { notice: "Setup link revoked." };
@@ -139,8 +144,74 @@ export async function revokeLinkAction(form: FormData) {
 }
 
 export async function installDefaultsAction() {
-  await mutate("/automation", async (a) => {
+  await mutate("/automation/workflows", async (a) => {
     const r = await installDefaults(automationDeps().repo, a.id);
     return { notice: r.workflows || r.templates ? `Added ${r.templates} template${r.templates === 1 ? "" : "s"} and ${r.workflows} workflow${r.workflows === 1 ? "" : "s"}, each with the status listed before you added it. Existing templates and workflows were not changed.` : "The standard templates and workflows are already installed." };
+  });
+}
+
+// ---- Testing with a client
+
+export async function testWorkflowWithClientAction(form: FormData) {
+  await mutate(`/automation/workflows/${str(form, "id")}`, async (a) => {
+    const exec = await runClientTest(automationDeps(), id(form), id(form, "customer_id"), a);
+    const skipped = exec.action_log.filter((l) => l.status === "skipped").length;
+    return {
+      notice: exec.status === "succeeded"
+        ? `Test finished: ${exec.action_log.length} step${exec.action_log.length === 1 ? "" : "s"} checked${skipped ? `, ${skipped} not sent (emails and documents are never sent in a test)` : ""}. See Run history for each step.`
+        : `Test ${exec.status}: ${exec.error ?? "see Run history for details"}`,
+    };
+  });
+}
+
+// ---- Pipelines
+
+export async function createPipelineAction(form: FormData) {
+  await mutate("/automation/pipelines", async (a) => {
+    const kind = str(form, "kind") === "returns" ? "returns" : "custom";
+    const p = await createPipeline(pipelinesRepo(), { name: str(form, "name"), kind, stages: str(form, "stages") || (kind === "returns" ? DEFAULT_RETURN_STAGES : [{ name: "To do" }, { name: "Doing" }, { name: "Done", done: true }]) }, a.id);
+    return { to: `/automation/pipelines/${p.id}`, notice: "Pipeline created. Add, rename and reorder its stages below." };
+  });
+}
+
+export async function savePipelineAction(form: FormData) {
+  await mutate(`/automation/pipelines/${str(form, "id")}`, async () => {
+    await savePipeline(pipelinesRepo(), id(form), { name: str(form, "name"), stages: str(form, "stages") });
+    return { notice: "Pipeline saved." };
+  });
+}
+
+export async function defaultPipelineAction(form: FormData) {
+  await mutate(`/automation/pipelines/${str(form, "id")}`, async () => {
+    await makeDefault(pipelinesRepo(), id(form));
+    return { notice: "This pipeline now runs the My Work board." };
+  });
+}
+
+export async function archivePipelineAction(form: FormData) {
+  await mutate("/automation/pipelines", async () => {
+    const archive = str(form, "archive") === "yes";
+    await archivePipeline(pipelinesRepo(), id(form), archive);
+    return { notice: archive ? "Pipeline archived." : "Pipeline restored." };
+  });
+}
+
+// ---- Text (SMS) templates: plain text, saved for when text messaging is connected
+
+const smsRepo = () => new SupabaseSmsRepo(tenantDb());
+
+export async function saveSmsAction(form: FormData) {
+  const existing = str(form, "id");
+  await mutate(existing ? `/automation/templates/sms/${existing}` : "/automation/templates/sms/new", async (a) => {
+    const t = existing ? await updateSms(smsRepo(), id(form), { name: str(form, "name"), body: str(form, "body") }) : await createSms(smsRepo(), { name: str(form, "name"), body: str(form, "body") }, a.id);
+    return { to: `/automation/templates/sms/${t.id}`, notice: "Text template saved." };
+  });
+}
+
+export async function smsActiveAction(form: FormData) {
+  await mutate(`/automation/templates/sms/${str(form, "id")}`, async () => {
+    const active = str(form, "active") === "yes";
+    await setSmsActive(smsRepo(), id(form), active);
+    return { notice: active ? "Text template is on." : "Text template is off." };
   });
 }

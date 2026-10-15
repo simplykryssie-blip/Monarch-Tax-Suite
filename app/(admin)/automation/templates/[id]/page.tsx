@@ -3,6 +3,7 @@ import { Badge, Flash, PageTitle } from "@/components/admin/ui";
 import { workflowsUsing } from "@/lib/automation/admin.ts";
 import { automationConfig, automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { renderTemplate, SAMPLE_VALUES, VARIABLES } from "@/lib/automation/template.ts";
+import { RichEditor } from "@/components/admin/rich-editor";
 import { saveTemplateAction, templateActiveAction, testTemplateAction } from "../../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,7 +24,7 @@ export default async function TemplateEditor({ params, searchParams }: { params:
   }
   return (
     <>
-      <PageTitle title={t ? t.name : "New template"} back={{ href: "/automation/templates", label: "Email templates" }}>{t ? <>Status: <Badge value={t.active ? "active" : "inactive"} /></> : "Write the subject and message. Unknown placeholders are rejected."}</PageTitle>
+      <PageTitle title={t ? t.name : "New template"} back={{ href: "/automation/templates", label: "Templates" }}>{t ? <>Status: <Badge value={t.active ? "active" : "inactive"} /></> : "Write the subject and message. Unknown placeholders are rejected."}</PageTitle>
       <Flash notice={notice} error={error} />
       <form action={saveTemplateAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
         {t && <input type="hidden" name="id" value={t.id} />}
@@ -35,14 +36,9 @@ export default async function TemplateEditor({ params, searchParams }: { params:
             {senders.map((s) => <option key={s.id} value={s.id}>{s.from_name} &lt;{s.address}&gt;</option>)}
           </select>
         </label>
-        <label className="is-wide">Message<textarea name="body" required rows={14} maxLength={20000} defaultValue={t?.body} /></label>
+        <div className="is-wide"><RichEditor name="body" initial={t?.body ?? ""} variant="email" label="Message" placeholders={Object.entries(VARIABLES).map(([name, note]) => ({ name, note }))} /></div>
         <div className="is-wide"><button className="monarch-primary">Save template</button></div>
       </form>
-      <section className="monarch-panel" style={{ padding: 20 }}>
-        <h2>Placeholders you can use</h2>
-        <ul>{Object.entries(VARIABLES).map(([k, v]) => <li key={k}><code>{`{{${k}}}`}</code> {v}</li>)}</ul>
-        <p className="monarch-muted">Values are escaped before sending, so a customer&apos;s name can never inject markup.</p>
-      </section>
       {t && (
         <>
           <section className="monarch-panel" style={{ padding: 20 }}>
