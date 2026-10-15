@@ -59,7 +59,9 @@ export async function saveFormForLaterAction(publicId: string, input: { token: s
     const who = await formVisitor(publicId, "save");
     const ctx = await context(publicId);
     const { token, draft, pf } = await saveForLater(ctx.deps, publicId, { token: tokenOf(input.token), answers: input.answers ?? {}, email: str(input.email, 254) }, who);
-    const failed = await sendResumeLink(automationDeps(ctx.tenantId), ctx.deps, { pf, email: draft.resume_email!, token, expiresAt: draft.draft_expires_at!, formUrl: await formLink(ctx.deps, publicId, pf.settings) });
+    const formUrl = await formLink(ctx.deps, publicId, pf.settings);
+    if (!formUrl) return { ok: false, error: "Your answers are saved, but this office has not finished setting up its web address, so we couldn't email your link. Please contact the office." };
+    const failed = await sendResumeLink(automationDeps(ctx.tenantId), ctx.deps, { pf, email: draft.resume_email!, token, expiresAt: draft.draft_expires_at!, formUrl });
     if (failed && !failed.startsWith("Not sent")) return { ok: false, error: "Your answers are saved, but the email with your link could not be sent. Keep this page open and try again." };
     return { ok: true, token, email: draft.resume_email! };
   } catch (e) {

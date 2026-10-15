@@ -100,7 +100,7 @@ export const SAMPLE_VALUES: Record<string, string> = {
   tax_year: "2026",
   order_number: "1000",
   authorized_domain: "example-sample.com",
-  setup_link: "https://monarch-tax-suite.vercel.app/setup?t=SAMPLE-LINK-NOT-REAL",
+  setup_link: "https://app.yourfirm.com/setup?t=SAMPLE-LINK-NOT-REAL",
   crm_status: "Connected",
   crm_account: "Sample Tax Co (GoHighLevel)",
   installation_status: "active",
@@ -112,5 +112,5 @@ export const SAMPLE_VALUES: Record<string, string> = {
   service_response_time: "SAMPLE: 2 business days",
   service_next_step: "SAMPLE: we will email you to confirm the details",
   support_email: "support@monarchtaxsuite.com",
-  app_url: "https://monarch-tax-suite.vercel.app",
+  app_url: "https://app.yourfirm.com",
 };

@@ -7,7 +7,9 @@ import { checkDefinition, inputFields, type Field, type FormDefinition } from "@
 import { FIRM_RELATIONSHIPS, FIRM_ROLE_LABELS, FIRM_ROLES, readSettings } from "@/lib/forms/settings.ts";
 import { Flash, PageTitle, when } from "@/components/admin/ui";
 import { FormTabs, formsLoad, FormsSetupRequired } from "@/components/forms/admin-bits";
-import { duplicateFormAction, formStatusAction, saveFormDetailsAction, saveFormSettingsAction } from "../../actions";
+import { duplicateFormAction, formStatusAction, saveFormDetailsAction, saveFormSettingsAction, saveFormThemeAction } from "../../actions";
+import { ColorField } from "@/components/forms/color-field";
+import { FORM_FONTS } from "@/lib/forms/theme.ts";
 import { ArchivePanel } from "@/components/admin/archive";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -44,6 +46,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
   if (!result.data) notFound();
   const { form, version, def, senders, versions, submitted, brands, link } = result.data;
   const s = readSettings(form.settings);
+  const theme = s.theme;
   const fields = def ? inputFields(def) : [];
   const brandName = brands.find((b) => b.id === s.brand_domain_id)?.name ?? (brands.length === 1 ? brands[0].name : null);
   const closeLocal = s.close_at ? new Date(s.close_at).toISOString().slice(0, 16) : "";
@@ -52,11 +55,11 @@ export default async function FormSettingsPage({ params, searchParams }: { param
     <>
       <PageTitle title={form.name} back={{ href: "/forms", label: "Forms" }}>Settings: what the form is called, who it links to, who is told, and when it closes.</PageTitle>
       <Flash notice={notice} error={error} />
-      <FormTabs form={form} active="settings" />
+      <FormTabs form={form} active="settings" link={link} />
 
       <section className="monarch-panel" style={{ padding: 20 }}>
         <h2>Public link</h2>
-        {version && form.status === "published" ? <p><code>{link}</code> · <a href={link} target="_blank" rel="noreferrer">Open</a></p> : <p className="monarch-muted">{version ? "The form is not taking submissions right now." : "Publish the form from the Build tab to make its link live."}</p>}
+        {!link ? <p className="monarch-alert is-error">Your form links need your own web address. Add it under Settings → Email sending (the firm&apos;s &ldquo;web address&rdquo;), for example <code>forms.yourfirm.com</code>, and connect that domain to this app. Until then no public link is shown, because links never use a hosting address.</p> : version && form.status === "published" ? <p><code>{link}</code> · <a href={link} target="_blank" rel="noreferrer">Open</a></p> : <p className="monarch-muted">{version ? "The form is not taking submissions right now." : "Publish the form from the Build tab to make its link live."}</p>}
         <p className="monarch-muted">Form id for workflow conditions (<code>form_id</code>): <code>{form.id}</code> · Versions published: {versions.length}{version ? ` (current v${version.version}, ${when(version.published_at)})` : ""} · Real submissions: {submitted}</p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {form.status === "published" && <form action={formStatusAction}><input type="hidden" name="id" value={form.id} /><input type="hidden" name="to" value="closed" /><button className="monarch-secondary">Close the form</button></form>}
@@ -67,7 +70,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
 
       <form action={saveFormDetailsAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
         <input type="hidden" name="id" value={form.id} />
-        <h2 className="is-wide">Details and signing consent</h2>
+        <h2 className="is-wide">Form name and signing consent</h2>
         <label>Name<input name="name" required minLength={2} maxLength={120} defaultValue={form.name} /></label>
         <label>Description shown under the title (optional)<input name="description" maxLength={1000} defaultValue={form.description ?? ""} /></label>
         <label className="is-wide">Signing consent statement (needed when the form has a signature question)
@@ -91,22 +94,33 @@ export default async function FormSettingsPage({ params, searchParams }: { param
             <small className="monarch-muted is-wide">The public link uses this firm&apos;s web address, and the form&apos;s emails come from this firm&apos;s sending addresses. Set each firm&apos;s name and web address in Settings → Email sending.</small>
           </>
         ) : brands.length === 1 ? <input type="hidden" name="brand_domain_id" value={brands[0].id} /> : null}
-        <h2 className="is-wide">Respondent and customer</h2>
+        <h2 className="is-wide">Who filled out the form, and which customer is it?</h2>
+        <p className="monarch-muted is-wide" style={{ margin: 0 }}>Every submission is saved on its own. These choices tell the system <b>who the person is</b> so their submission can be matched to a customer record and so we can email them a confirmation.</p>
         {!def && <p className="monarch-alert is-error is-wide">The draft has a problem (see the Build tab), so questions can&apos;t be listed here until it&apos;s fixed or published.</p>}
-        <label>Respondent&apos;s email question<QuestionSelect name="email_key" value={s.respondent.email_key} fields={fields} types={["email"]} none="Automatic: the form's first email question" /></label>
-        <label>Respondent&apos;s name question<QuestionSelect name="name_key" value={s.respondent.name_key} fields={fields} types={["short_text"]} none="Automatic: the first name question" /></label>
-        <label className="monarch-check is-wide"><input type="checkbox" name="create_customer" defaultChecked={s.create_customer} /> Link each submission to the customer with that email (for example, from their package purchase), and create the customer when there isn&apos;t one.</label>
-        <label className="monarch-check is-wide"><input type="checkbox" name="add_to_leads" defaultChecked={s.add_to_leads} /> Add each respondent to Leads, with this form&apos;s name as their source. Someone who is already a lead keeps their source and status.</label>
+        <label>Which question is their email address?<QuestionSelect name="email_key" value={s.respondent.email_key} fields={fields} types={["email"]} none="Pick for me: the first email question" />
+          <small className="monarch-muted">We use this to find their customer record, email their confirmation, and send a save-and-continue link.</small>
+        </label>
+        <label>Which question is their name?<QuestionSelect name="name_key" value={s.respondent.name_key} fields={fields} types={["short_text"]} none="Pick for me: the first question that asks for a name" />
+          <small className="monarch-muted">Shown at the top of each submission and on the customer record.</small>
+        </label>
+        <label className="monarch-check is-wide"><input type="checkbox" name="create_customer" defaultChecked={s.create_customer} /> <span><b>Connect each submission to a customer record.</b> If a customer with that email already exists (for example from a package purchase), the submission is attached to them. If not, a new customer is created.</span></label>
+        <label className="monarch-check is-wide"><input type="checkbox" name="add_to_leads" defaultChecked={s.add_to_leads} /> <span><b>Forms-to-Leads: add each respondent to Leads.</b> The form&apos;s name becomes their source. Someone who is already a lead keeps their current source and status.</span></label>
 
-        <h2 className="is-wide">Firm record (My Service Bureau)</h2>
-        <label className="monarch-check is-wide"><input type="checkbox" name="firm_enabled" defaultChecked={s.firm.enabled} /> Create or link the respondent&apos;s tax office as a firm. A firm already linked to the customer, or with the same EFIN, is linked; otherwise a new one is created.</label>
-        <label>Relationship<select name="firm_relationship" defaultValue={s.firm.relationship}>{FIRM_RELATIONSHIPS.map((r) => <option key={r} value={r}>{RELATIONSHIP_LABELS[r]}</option>)}</select></label>
-        <label>Legal business name<QuestionSelect name="firm_legal_name" value={s.firm.legal_name_key} fields={fields} types={["short_text"]} /></label>
-        <label>DBA name<QuestionSelect name="firm_dba" value={s.firm.dba_name_key} fields={fields} types={["short_text"]} /></label>
-        <label>Office address<QuestionSelect name="firm_address" value={s.firm.address_key} fields={fields} types={["address"]} /></label>
-        <label>EFIN (a short answer checked as EFIN)<QuestionSelect name="firm_efin" value={s.firm.efin_key} fields={fields} types={["short_text"]} format="efin" /></label>
-        <label>EIN (a short answer checked as EIN)<QuestionSelect name="firm_ein" value={s.firm.ein_key} fields={fields} types={["short_text"]} format="ein" /></label>
-        <fieldset className="is-wide" style={{ display: "grid", gap: 8 }}><legend>People (the ERO first; up to 6 here)</legend>
+        <h2 className="is-wide">Set up a new tax office from this form (optional)</h2>
+        <p className="monarch-muted is-wide" style={{ margin: 0 }}>Use this for onboarding forms, such as an ERO application. When someone submits, we can create their tax office in <b>My Service Bureau</b> automatically, with its EFIN and EIN, and up to <b>6 people</b> (owner, ERO, preparers) each with their own contact details and PTIN. Leave it off for ordinary forms.</p>
+        <label className="monarch-check is-wide"><input type="checkbox" name="firm_enabled" defaultChecked={s.firm.enabled} /> <span><b>Create or link a tax office from each submission.</b> If the customer already has an office, or an office with the same EFIN exists, we link to it. Otherwise a new office is created, marked &ldquo;onboarding in progress&rdquo; for you to review.</span></label>
+        <label>How are they related to you?<select name="firm_relationship" defaultValue={s.firm.relationship}>{FIRM_RELATIONSHIPS.map((r) => <option key={r} value={r}>{RELATIONSHIP_LABELS[r]}</option>)}</select></label>
+        <label>Which question is the legal business name?<QuestionSelect name="firm_legal_name" value={s.firm.legal_name_key} fields={fields} types={["short_text"]} /></label>
+        <label>Which question is the &ldquo;doing business as&rdquo; name?<QuestionSelect name="firm_dba" value={s.firm.dba_name_key} fields={fields} types={["short_text"]} /></label>
+        <label>Which question is the office address?<QuestionSelect name="firm_address" value={s.firm.address_key} fields={fields} types={["address"]} /></label>
+        <label>Which question is the EFIN?<QuestionSelect name="firm_efin" value={s.firm.efin_key} fields={fields} types={["short_text"]} format="efin" />
+          <small className="monarch-muted">The IRS e-file number. Only short answers set to &ldquo;Check as EFIN&rdquo; in the builder are listed.</small>
+        </label>
+        <label>Which question is the EIN?<QuestionSelect name="firm_ein" value={s.firm.ein_key} fields={fields} types={["short_text"]} format="ein" />
+          <small className="monarch-muted">The business&apos;s federal tax ID. Only short answers set to &ldquo;Check as EIN&rdquo; are listed.</small>
+        </label>
+        <fieldset className="is-wide" style={{ display: "grid", gap: 8 }}><legend>People at the office (up to 6; put the ERO first)</legend>
+          <small className="monarch-muted">For each person, choose their role and which question holds their name, email, phone and PTIN. Leave a row on &ldquo;Name: (none)&rdquo; to skip it.</small>
           {people.map((p, i) => (
             <span key={i} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <select name={`p_role_${i}`} defaultValue={p?.role ?? (i === 0 ? "ero" : "tax_preparer")} aria-label={`Person ${i + 1} role`}>{FIRM_ROLES.map((r) => <option key={r} value={r}>{FIRM_ROLE_LABELS[r]}</option>)}</select>
@@ -116,7 +130,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
               <QuestionSelect name={`p_ptin_${i}`} value={p?.ptin_key ?? null} fields={fields} types={["short_text"]} format="ptin" none="PTIN: (none)" />
             </span>
           ))}
-          <small className="monarch-muted">EFINs, EINs and PTINs are encrypted the same way My Service Bureau stores them. New firms start as onboarding in progress, with the EFIN unconfirmed and a draft ERO assignment, for you to review.</small>
+          <small className="monarch-muted">EFINs, EINs and PTINs are encrypted the same way My Service Bureau stores them. New offices start with the EFIN unconfirmed and a draft ERO assignment.</small>
         </fieldset>
 
         <h2 className="is-wide">Notifications</h2>
@@ -126,23 +140,57 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         <label className="is-wide">Extra text for the confirmation email (optional)<textarea name="confirmation_email_text" rows={2} maxLength={2000} defaultValue={s.confirmation_email_text} /></label>
         <small className="monarch-muted is-wide">The notice to you has the form, number, time and respondent, with a link to the submission. Answers and files stay in the admin.</small>
 
-        <h2 className="is-wide">After submission</h2>
-        <fieldset className="is-wide" style={{ display: "grid", gap: 6 }}><legend>What respondents see after they submit</legend>
-          <label className="monarch-check"><input type="radio" name="after_submit" value="message" defaultChecked={s.after_submit !== "redirect"} /> Show the confirmation message (with a button to download their PDF copy)</label>
-          <label className="monarch-check"><input type="radio" name="after_submit" value="redirect" defaultChecked={s.after_submit === "redirect"} /> Send them to a web page</label>
-        </fieldset>
-        <label className="is-wide">Confirmation message<textarea name="confirmation_message" rows={4} maxLength={2000} defaultValue={s.confirmation_message} />
-          <small className="monarch-muted">Put <b>**two asterisks**</b> around words to make them bold. Press Enter for a new line; leave a blank line for a new paragraph.</small>
-        </label>
-        <label className="is-wide">Web page to send them to (when chosen above)<input name="redirect_url" type="url" inputMode="url" maxLength={2000} defaultValue={s.redirect_url ?? ""} placeholder="https://www.yourfirm.com/thank-you" />
-          <small className="monarch-muted">A full address starting with https://. Respondents who are sent there won&apos;t see the Download PDF button, but every other step (PDF, records, emails, workflows) still runs.</small>
-        </label>
+        <h2 className="is-wide">What happens when they click Submit?</h2>
+        <p className="monarch-muted is-wide" style={{ margin: 0 }}>Choose <b>one</b>. Either way the submission is saved, the PDF is made, and your emails and workflows run.</p>
+        <div className="is-wide mf-after">
+          <div className="mf-choice">
+            <label className="monarch-check"><input type="radio" name="after_submit" value="message" defaultChecked={s.after_submit !== "redirect"} /> <b>Show a thank-you message</b></label>
+            <small className="monarch-muted">The respondent stays on your form page and sees the message below, with a button to download their PDF copy.</small>
+            <label>Message they will see<textarea name="confirmation_message" rows={4} maxLength={2000} defaultValue={s.confirmation_message} />
+              <small className="monarch-muted">Put <b>**two asterisks**</b> around words to make them bold. Press Enter for a new line; leave a blank line for a new paragraph.</small>
+            </label>
+          </div>
+          <div className="mf-choice">
+            <label className="monarch-check"><input type="radio" name="after_submit" value="redirect" defaultChecked={s.after_submit === "redirect"} /> <b>Send them to another web page</b></label>
+            <small className="monarch-muted">The respondent is taken straight to the address below, for example a thank-you page on your own website. They won&apos;t see the message or the PDF button.</small>
+            <label>Web address to send them to<input name="redirect_url" type="url" inputMode="url" maxLength={2000} defaultValue={s.redirect_url ?? ""} placeholder="https://www.yourfirm.com/thank-you" />
+              <small className="monarch-muted">A full address starting with https://</small>
+            </label>
+          </div>
+        </div>
         <h2 className="is-wide">Closing and limits</h2>
         <label className="is-wide">Message when the form is closed<textarea name="closed_message" rows={2} maxLength={1000} defaultValue={s.closed_message} /></label>
         <label>Close automatically at (UTC, optional)<input type="datetime-local" name="close_at" defaultValue={closeLocal} /></label>
         <label>Stop after this many submissions (optional)<input type="number" name="max_submissions" min={1} defaultValue={s.max_submissions ?? ""} /></label>
         <label className="monarch-check is-wide"><input type="checkbox" name="allow_save_later" defaultChecked={s.allow_save_later} /> Let respondents save and continue later (we email them a link that works for 30 days)</label>
         <div className="is-wide"><button className="monarch-primary">Save settings</button></div>
+      </form>
+
+      <form action={saveFormThemeAction} className="monarch-panel monarch-form" style={{ padding: 20 }} encType="multipart/form-data" id="look">
+        <input type="hidden" name="id" value={form.id} />
+        <h2 className="is-wide">Look of the form</h2>
+        <p className="monarch-muted is-wide" style={{ margin: 0 }}>Make the public form match your office. Anything you leave on &ldquo;Standard&rdquo; keeps the default look. <a href={`/forms/${form.id}/preview`} target="_blank" rel="noreferrer">Preview the draft</a>{link && version && form.status === "published" ? <> · <a href={link} target="_blank" rel="noreferrer">Open the live form</a></> : null}</p>
+        <ColorField name="background" label="Page background" value={theme.background} />
+        <ColorField name="card" label="Form background" value={theme.card} />
+        <ColorField name="header" label="Header colour" value={theme.header} />
+        <ColorField name="text" label="Text colour" value={theme.text} />
+        <ColorField name="button" label="Button colour" value={theme.button} />
+        <label>Font<select name="font" defaultValue={theme.font}>{Object.entries(FORM_FONTS).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}</select></label>
+        <label>Logo (PNG, JPG or WebP, up to 4 MB)
+          <input type="file" name="logo_file" accept="image/png,image/jpeg,image/webp" />
+          {theme.logo_url && <span className="monarch-muted">Current logo: <a href={theme.logo_url} target="_blank" rel="noreferrer">view</a> <label className="monarch-check" style={{ display: "inline-flex" }}><input type="checkbox" name="logo_remove" /> Remove it</label></span>}
+          <input type="hidden" name="logo_url" value={theme.logo_url ?? ""} />
+        </label>
+        <label>Header image (shown behind the logo across the top)
+          <input type="file" name="header_file" accept="image/png,image/jpeg,image/webp" />
+          {theme.header_image_url && <span className="monarch-muted">Current image: <a href={theme.header_image_url} target="_blank" rel="noreferrer">view</a> <label className="monarch-check" style={{ display: "inline-flex" }}><input type="checkbox" name="header_remove" /> Remove it</label></span>}
+          <input type="hidden" name="header_url" value={theme.header_image_url ?? ""} />
+        </label>
+        <label className="is-wide">Custom CSS (optional, for designers)
+          <textarea name="custom_css" rows={8} maxLength={10000} spellCheck={false} defaultValue={theme.custom_css} style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }} placeholder={"body { background: #faf7f0; }\nh1 { font-family: Georgia, serif; color: #12324f; }\n.monarch-primary { border-radius: 999px; }"} />
+          <small className="monarch-muted">Change the page background, text colours, fonts and overall look. Your CSS only affects this form: <code>body</code> means the form&apos;s page. Imports, scripts, fixed-position overlays and unsafe values are removed automatically. Images must be https:// addresses.</small>
+        </label>
+        <div className="is-wide"><button className="monarch-primary">Save the look</button></div>
       </form>
 
       <ArchivePanel entity="form" id={form.id} />

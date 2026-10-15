@@ -3,11 +3,11 @@
 import { RichEditor } from "@/components/admin/rich-editor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { publishFormAction, saveDraftAction } from "@/app/(admin)/forms/actions";
 import {
-  CONDITION_OPS, DISPLAY_TYPES, FIELD_LABELS, FIELD_TYPES, FILE_KINDS, IDENTIFIER_FORMATS, LIMITS, MAX_FILES_PER_FIELD, OP_LABELS, checkDefinition, keyFromLabel, newField, newId,
+  CONDITION_OPS, DEFAULT_TYPES, DISPLAY_TYPES, FIELD_WIDTHS, FULL_ROW_TYPES, INTERNAL_TYPES, WIDTH_LABELS, FIELD_LABELS, FIELD_TYPES, FILE_KINDS, IDENTIFIER_FORMATS, LIMITS, MAX_FILES_PER_FIELD, OP_LABELS, checkDefinition, keyFromLabel, newField, newId,
   type Condition, type Field, type FieldType, type FormDefinition, type Page, type Section, type ShowRule, type SkipRule,
 } from "@/lib/forms/definition";
 
@@ -66,10 +66,10 @@ function PaletteItem({ type, onAdd }: { type: FieldType; onAdd: () => void }) {
 function FieldCard({ field, sectionId, selected, problem, onSelect, onMove, onDuplicate, onDelete }: { field: Field; sectionId: string; selected: boolean; problem: boolean; onSelect: () => void; onMove: (dir: -1 | 1) => void; onDuplicate: () => void; onDelete: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id, data: { kind: "field", sectionId } });
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }} className={`mf-card${selected ? " is-selected" : ""}${problem ? " has-problem" : ""}${field.width === "half" ? " is-half" : ""}`}>
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }} className={`mf-card${selected ? " is-selected" : ""}${problem ? " has-problem" : ""} w-${field.width}${field.internal ? " is-internal" : ""}`}>
       <button type="button" className="mf-grip" aria-label={`Drag to move "${field.label || field.key}"`} {...listeners} {...attributes}>⠿</button>
       <button type="button" className="mf-card-body" onClick={onSelect} aria-pressed={selected}>
-        <small>{FIELD_LABELS[field.type]}{field.required ? " · required" : ""}{field.format ? ` · ${field.format.toUpperCase()}` : field.sensitive ? " · sensitive" : ""}</small>
+        <small>{FIELD_LABELS[field.type]}{field.internal ? " · staff only" : ""}{field.locked ? " · locked value" : field.defaultValue ? " · pre-filled" : ""}{field.required ? " · required" : ""}{field.format ? ` · ${field.format.toUpperCase()}` : field.sensitive ? " · sensitive" : ""}</small>
         <b>{field.type === "paragraph" ? (field.text ?? "").slice(0, 80) : field.label || <i>No label</i>}</b>
         {!DISPLAY_TYPES.includes(field.type) && <code>{field.key}</code>}
       </button>
@@ -274,7 +274,7 @@ export function FormBuilder(props: Props) {
     const display = DISPLAY_TYPES.includes(f.type);
     return (
       <div className="mf-panel-body">
-        <h3>{FIELD_LABELS[f.type]}</h3>
+        <h3>{FIELD_LABELS[f.type]}{f.internal && <span className="mf-badge">STAFF ONLY</span>}</h3>
         {f.type === "paragraph" ? (
           <RichEditor key={f.id} name={`paragraph_${f.id}`} initial={f.text ?? ""} variant="form" label="Text" rows={6} maxLength={3000} onChange={(md) => updateField(f.id, { text: md.slice(0, 3000) })} />
         ) : (
@@ -282,17 +282,34 @@ export function FormBuilder(props: Props) {
         )}
         {!display && (
           <>
-            <label>Key <small className="monarch-muted">(names the answer in the PDF, CSV, workflows and {"{{form.key}}"} merge fields)</small>
+            <label>Field ID (for automations)
+              <small className="monarch-muted">Used to reference this field&apos;s answer in emails, workflows, and exports. Your clients never see this.</small>
               <span style={{ display: "flex", gap: 6 }}>
                 <input value={f.key} onChange={(e) => updateField(f.id, { key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 40) })} maxLength={40} />
-                <button type="button" className="monarch-secondary" onClick={() => { const t = taken(); t.delete(f.key); updateField(f.id, { key: keyFromLabel(f.label, t) }); }}>From question</button>
+                <button type="button" className="monarch-secondary" onClick={() => { const t = taken(); t.delete(f.key); updateField(f.id, { key: keyFromLabel(f.label, t) }); }}>Make from label</button>
               </span>
             </label>
             <label>Help text (optional)<textarea rows={2} value={f.help ?? ""} onChange={(e) => updateField(f.id, { help: e.target.value })} maxLength={500} /></label>
             {["short_text", "long_text", "number", "email", "phone"].includes(f.type) && <label>Placeholder (optional)<input value={f.placeholder ?? ""} onChange={(e) => updateField(f.id, { placeholder: e.target.value })} maxLength={120} /></label>}
-            <label className="monarch-check"><input type="checkbox" checked={f.required} onChange={(e) => updateField(f.id, { required: e.target.checked })} /> Required</label>
-            {!["radio", "checkboxes", "address", "file", "signature"].includes(f.type) && (
-              <label>Width<select value={f.width} onChange={(e) => updateField(f.id, { width: e.target.value as Field["width"] })}><option value="full">Full width</option><option value="half">Half (two side by side on a computer)</option></select></label>
+            {!f.internal && <label className="monarch-check"><input type="checkbox" checked={f.required} onChange={(e) => updateField(f.id, { required: e.target.checked })} /> Required</label>}
+            {INTERNAL_TYPES.includes(f.type) && (
+              <label className="monarch-check"><input type="checkbox" checked={!!f.internal} onChange={(e) => updateField(f.id, { internal: e.target.checked || undefined, required: e.target.checked ? false : f.required, locked: e.target.checked ? undefined : f.locked })} /> Staff only: your team fills this in on the submission; the person filling in the form never sees it</label>
+            )}
+            {!FULL_ROW_TYPES.includes(f.type) && (
+              <label>Width on the page
+                <select value={f.width} onChange={(e) => updateField(f.id, { width: e.target.value as Field["width"] })}>{FIELD_WIDTHS.map((w) => <option key={w} value={w}>{WIDTH_LABELS[w]}</option>)}</select>
+                <small className="monarch-muted">Put two fields next to each other (for example phone and email) by giving each &ldquo;Half a row&rdquo;. Fields that fit on a row share it, in order. On a phone they stack.</small>
+              </label>
+            )}
+            {DEFAULT_TYPES.includes(f.type) && (
+              <>
+                {f.type === "long_text"
+                  ? <label>Pre-filled value (optional)<textarea rows={3} value={f.defaultValue ?? ""} onChange={(e) => updateField(f.id, { defaultValue: e.target.value, locked: e.target.value ? f.locked : undefined })} maxLength={20000} /></label>
+                  : <label>Pre-filled value (optional)<input value={f.defaultValue ?? ""} onChange={(e) => updateField(f.id, { defaultValue: e.target.value, locked: e.target.value ? f.locked : undefined })} maxLength={1000} /></label>}
+                {!f.internal && (
+                  <label className="monarch-check"><input type="checkbox" checked={!!f.locked} disabled={!f.defaultValue} onChange={(e) => updateField(f.id, { locked: e.target.checked || undefined })} /> Pre-fill and lock: the value appears in the field and the person filling in the form can&apos;t change it</label>
+                )}
+              </>
             )}
           </>
         )}
@@ -393,7 +410,7 @@ export function FormBuilder(props: Props) {
             </div>
             {page.sections.map((s) => (
               <SectionBox key={s.id} section={s} selected={sel?.kind === "section" && sel.id === s.id} onSelect={() => setSel({ kind: "section", id: s.id })} empty={!s.fields.length}>
-                <SortableContext items={s.fields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                <SortableContext items={s.fields.map((f) => f.id)} strategy={rectSortingStrategy}>
                   {s.fields.map((f) => (
                     <FieldCard
                       key={f.id} field={f} sectionId={s.id} selected={sel?.kind === "field" && sel.id === f.id} problem={problem?.target === f.id}

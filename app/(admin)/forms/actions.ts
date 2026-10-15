@@ -7,8 +7,11 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { formDeps } from "@/lib/forms/server";
-import { linkFirm, makePdf, relinkRespondent, createForm, duplicateForm, emptySpam, publishForm, revealAnswer, saveDraft, saveFormDetails, saveSettings, setFormStatus, setSubmissionStatus, submitForm, SubmissionInvalid } from "@/lib/forms/service.ts";
+import { linkFirm, makePdf, relinkRespondent, createForm, duplicateForm, emptySpam, publishForm, revealAnswer, saveDraft, saveFormDetails, saveSettings, setFormStatus, saveInternalValues, saveTheme, setSubmissionStatus, submitForm, SubmissionInvalid } from "@/lib/forms/service.ts";
 import { readSettings } from "@/lib/forms/settings.ts";
+import { randomUUID } from "node:crypto";
+import { imageStore } from "@/lib/admin";
+import { validateImage } from "@/lib/commerce/images.ts";
 import { REVIEW_STATUSES, type SubmissionStatus } from "@/lib/forms/types.ts";
 import { signatureFrom, type SignaturePayload } from "@/lib/forms/signature-input.ts";
 import type { RawAnswers } from "@/lib/forms/logic.ts";
@@ -52,7 +55,7 @@ async function act(back: string, fn: (adminId: string) => Promise<{ to?: string;
 
 export async function createFormAction(form: FormData) {
   await act("/forms", async (adminId) => {
-    const f = await createForm(formDeps(), { name: str(form, "name"), description: str(form, "description"), brandDomainId: str(form, "brand_domain_id"), adminId });
+    const f = await createForm(formDeps(), { name: str(form, "name"), description: str(form, "description"), brandDomainId: str(form, "brand_domain_id"), addToLeads: form.get("add_to_leads") === "on", adminId });
     return { to: `/forms/${f.id}`, notice: "Form created. Drag questions onto the page to build it." };
   });
 }
@@ -132,6 +135,36 @@ export async function saveFormSettingsAction(form: FormData) {
   });
 }
 
+const IMAGE_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as const;
+
+/** Stores a logo or header image in public image storage and returns its address. */
+async function uploadThemeImage(formId: string, file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const { type } = validateImage({ bytes, declaredType: file.type, fileName: file.name, altText: null });
+  const store = imageStore();
+  const path = `forms/${formId}/${randomUUID()}.${IMAGE_EXT[type]}`;
+  await store.put(path, bytes, type);
+  return store.publicUrl(path);
+}
+
+export async function saveFormThemeAction(form: FormData) {
+  await act(`/forms/${str(form, "id")}/settings`, async (adminId) => {
+    const id = idOf(form);
+    const url = async (field: "logo" | "header") => {
+      const file = form.get(`${field}_file`);
+      if (file instanceof File && file.size > 0) return uploadThemeImage(id, file);
+      return form.get(`${field}_remove`) === "on" ? "" : str(form, `${field}_url`);
+    };
+    const raw = {
+      background: str(form, "background"), card: str(form, "card"), text: str(form, "text"), header: str(form, "header"), button: str(form, "button"),
+      font: str(form, "font"), custom_css: str(form, "custom_css"),
+      logo_url: await url("logo"), header_image_url: await url("header"),
+    };
+    await saveTheme(formDeps(), id, raw, adminId);
+    return { notice: "Look saved. Open the public form to see it." };
+  });
+}
+
 export async function submissionStatusAction(form: FormData) {
   const back = `/forms/${str(form, "form_id")}/submissions/${str(form, "id")}`;
   await act(back, async (adminId) => {
@@ -139,6 +172,16 @@ export async function submissionStatusAction(form: FormData) {
     if (!REVIEW_STATUSES.includes(status)) throw new ValidationError("Choose a status.");
     await setSubmissionStatus(formDeps(), idOf(form), status, adminId);
     return { notice: "Status changed." };
+  });
+}
+
+export async function saveInternalValuesAction(form: FormData) {
+  const back = `/forms/${str(form, "form_id")}/submissions/${str(form, "id")}`;
+  await act(back, async (adminId) => {
+    const values: Record<string, string> = {};
+    for (const [k, v] of form.entries()) if (k.startsWith("internal_") && typeof v === "string") values[k.slice("internal_".length)] = v;
+    await saveInternalValues(formDeps(), idOf(form), values, adminId);
+    return { notice: "Staff-only fields saved." };
   });
 }
 

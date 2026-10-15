@@ -1,6 +1,7 @@
 import { cleanRedirectUrl } from "./message.ts";
 import { inputFields, type Field, type FieldType, type FormDefinition } from "./definition.ts";
 import { EMAIL } from "./answers.ts";
+import { checkTheme, DEFAULT_THEME, readTheme, ThemeError, type FormTheme } from "./theme.ts";
 
 // Per-form settings: who the respondent is, the customer and firm records a submission links to or creates,
 // notifications, messages and limits. Pure, so the settings page and the server use the same checks.
@@ -45,6 +46,8 @@ export type FormSettings = {
   close_at: string | null;
   max_submissions: number | null;
   allow_save_later: boolean;
+  /** How the public page looks: colours, font, logo, header image and custom CSS. */
+  theme: FormTheme;
 };
 
 export const DEFAULT_SETTINGS: FormSettings = {
@@ -63,6 +66,7 @@ export const DEFAULT_SETTINGS: FormSettings = {
   close_at: null,
   max_submissions: null,
   allow_save_later: true,
+  theme: DEFAULT_THEME,
 };
 
 export class SettingsError extends Error {}
@@ -79,6 +83,7 @@ export function readSettings(raw: unknown): FormSettings {
     respondent: { ...DEFAULT_SETTINGS.respondent, ...(r.respondent ?? {}) },
     firm: { ...DEFAULT_SETTINGS.firm, ...(r.firm ?? {}), people: Array.isArray(r.firm?.people) ? r.firm.people : [] },
     notify: { ...DEFAULT_SETTINGS.notify, ...(r.notify ?? {}), recipients: Array.isArray(r.notify?.recipients) ? r.notify.recipients : [] },
+    theme: readTheme(r.theme),
   };
 }
 
@@ -172,6 +177,14 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
   const max = maxRaw ? Number(maxRaw) : null;
   if (max !== null && (!Number.isInteger(max) || max < 1 || max > 1_000_000)) throw new SettingsError("The submission limit must be a whole number, 1 or more.");
 
+  let theme: FormTheme;
+  try {
+    theme = checkTheme(r.theme);
+  } catch (e) {
+    if (e instanceof ThemeError) throw new SettingsError(e.message);
+    throw e;
+  }
+
   return {
     respondent,
     create_customer,
@@ -188,6 +201,7 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
     close_at: closeAt ? new Date(closeAt).toISOString() : null,
     max_submissions: max,
     allow_save_later: r.allow_save_later !== false && r.allow_save_later !== "off",
+    theme,
   };
 }
 

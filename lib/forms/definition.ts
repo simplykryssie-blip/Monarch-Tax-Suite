@@ -23,6 +23,18 @@ export const FIELD_LABELS: Record<FieldType, string> = {
 
 export type DateBound = { kind: "fixed"; date: string } | { kind: "relative"; days: number };
 
+export const FIELD_WIDTHS = ["full", "two_thirds", "half", "third"] as const;
+export type FieldWidth = (typeof FIELD_WIDTHS)[number];
+export const WIDTH_LABELS: Record<FieldWidth, string> = { full: "Full row", two_thirds: "Two thirds of a row", half: "Half a row (two side by side)", third: "One third (three side by side)" };
+/** Columns a width takes out of the form's 6-column grid. */
+export const WIDTH_COLUMNS: Record<FieldWidth, number> = { full: 6, two_thirds: 4, half: 3, third: 2 };
+/** Types that can't share a row: they need the room. */
+export const FULL_ROW_TYPES: FieldType[] = ["signature", "file", "heading", "paragraph"];
+/** Types that can hold a staff-only value. Uploads and signatures are the respondent's own. */
+export const INTERNAL_TYPES: FieldType[] = ["short_text", "long_text", "number", "email", "phone", "date", "dropdown", "radio"];
+/** Types that take a starting value. */
+export const DEFAULT_TYPES: FieldType[] = ["short_text", "long_text"];
+
 export type Field = {
   id: string;
   type: FieldType;
@@ -32,7 +44,13 @@ export type Field = {
   help?: string;
   placeholder?: string;
   required: boolean;
-  width: "full" | "half";
+  /** Share of the row: fields that fit on one row sit side by side (like columns in a form builder). */
+  width: FieldWidth;
+  /** short_text and long_text: the value the field starts with. With `locked`, the respondent can't change it. */
+  defaultValue?: string;
+  locked?: boolean;
+  /** Staff-only: answered or noted by staff on the submission, never shown to the person filling in the form. */
+  internal?: boolean;
   /** short_text: stored encrypted and shown masked. Always on for identifier formats. */
   sensitive?: boolean;
   format?: IdentifierFormat | null;
@@ -135,6 +153,16 @@ export function newField(type: FieldType, taken: Set<string>): Field {
 
 export const allFields = (def: FormDefinition): Field[] => def.pages.flatMap((p) => p.sections.flatMap((s) => s.fields));
 export const inputFields = (def: FormDefinition): Field[] => allFields(def).filter((f) => !DISPLAY_TYPES.includes(f.type));
+/** The definition the person filling in the form gets: staff-only fields (and rules aimed at them) are removed. */
+export function publicDefinition(def: FormDefinition): FormDefinition {
+  const hidden = new Set(allFields(def).filter((f) => f.internal).map((f) => f.id));
+  if (!hidden.size) return def;
+  return {
+    ...def,
+    pages: def.pages.map((p) => ({ ...p, sections: p.sections.map((s) => ({ ...s, fields: s.fields.filter((f) => !hidden.has(f.id)) })) })),
+    rules: def.rules.filter((r) => !hidden.has(r.target)),
+  };
+}
 export const hasSignature = (def: FormDefinition) => allFields(def).some((f) => f.type === "signature");
 
 // ------------------------------------------------------------------------------------------------ checking
@@ -176,7 +204,10 @@ function cleanField(raw: unknown, keys: Set<string>): Field {
   if (!KEY.test(key)) throw new DefinitionError(`"${label || "A field"}" needs a key of lowercase letters, numbers and underscores, starting with a letter.`, id);
   if (keys.has(key)) throw new DefinitionError(`Two fields use the key "${key}". Each key must be unique.`, id);
   keys.add(key);
-  const f: Field = { id, type, key, label, required: !display && r.required === true, width: r.width === "half" ? "half" : "full" };
+  const internal = INTERNAL_TYPES.includes(type) && r.internal === true;
+  const width = FIELD_WIDTHS.includes(r.width as FieldWidth) && !FULL_ROW_TYPES.includes(type) ? (r.width as FieldWidth) : "full";
+  const f: Field = { id, type, key, label, required: !display && !internal && r.required === true, width };
+  if (internal) f.internal = true;
   const help = longStr(r.help, 500);
   if (help) f.help = help;
   const placeholder = str(r.placeholder, 120);
@@ -189,6 +220,12 @@ function cleanField(raw: unknown, keys: Set<string>): Field {
       f.minLength = intOrNull(r.minLength, 0, cap);
       f.maxLength = intOrNull(r.maxLength, 1, cap) ?? (type === "short_text" ? 200 : 5000);
       if (f.minLength !== null && f.minLength > f.maxLength) throw new DefinitionError(`${named}: the minimum length is more than the maximum.`, id);
+      const start = type === "short_text" ? str(r.defaultValue, 2000) : longStr(r.defaultValue, 25000);
+      if (start) {
+        if (start.length > f.maxLength) throw new DefinitionError(`${named}: the pre-filled value is longer than the maximum length.`, id);
+        f.defaultValue = start;
+        if (r.locked === true && !internal) f.locked = true;
+      }
       if (type === "short_text") {
         const format = IDENTIFIER_FORMATS.includes(r.format as IdentifierFormat) ? (r.format as IdentifierFormat) : null;
         f.format = format;
@@ -254,6 +291,7 @@ function cleanConditions(raw: unknown, ownerName: string, before: Map<string, Fi
     const fieldId = str(c?.field, 30);
     const field = before.get(fieldId);
     if (!field) throw new DefinitionError(`${ownerName} tests a field that was deleted or comes after it. Rules can only test fields that appear earlier in the form.`, target);
+    if (field.internal) throw new DefinitionError(`${ownerName} tests "${field.label}", which is staff-only. Respondents never see it, so rules can't depend on it.`, target);
     if (DISPLAY_TYPES.includes(field.type) || field.type === "signature" || field.type === "file") {
       if (c?.op !== "answered" && c?.op !== "empty") throw new DefinitionError(`${ownerName}: "${field.label}" can only be tested for "is answered" or "is empty".`, target);
     }

@@ -4,7 +4,7 @@ import { Badge } from "@/components/admin/ui";
 
 // Shared pieces of the Form Builder admin pages.
 
-export function FormTabs({ form, active }: { form: Pick<FormRow, "id" | "name" | "status" | "public_id" | "current_version_id">; active: "build" | "settings" | "submissions" }) {
+export function FormTabs({ form, active, link }: { form: Pick<FormRow, "id" | "name" | "status" | "public_id" | "current_version_id">; active: "build" | "settings" | "submissions"; link?: string | null }) {
   const tabs = [
     { key: "build", label: "Build", href: `/forms/${form.id}` },
     { key: "settings", label: "Settings", href: `/forms/${form.id}/settings` },
@@ -13,7 +13,7 @@ export function FormTabs({ form, active }: { form: Pick<FormRow, "id" | "name" |
   return (
     <nav className="mf-tabs" aria-label="Form sections">
       {tabs.map((t) => <Link key={t.key} href={t.href} className={t.key === active ? "is-active" : undefined} aria-current={t.key === active ? "page" : undefined}>{t.label}</Link>)}
-      <span className="mf-tabs-meta"><Badge value={form.status} />{form.current_version_id && form.status === "published" && <a href={`/f/${form.public_id}`} target="_blank" rel="noreferrer">Open the public form ↗</a>}</span>
+      <span className="mf-tabs-meta"><Badge value={form.status} />{form.current_version_id && form.status === "published" && link && <a href={link} target="_blank" rel="noreferrer">Open the public form ↗</a>}</span>
     </nav>
   );
 }

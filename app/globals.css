@@ -317,3 +317,27 @@ a{color:inherit}
 .mf-form .mf-signature label.monarch-check{display:flex;flex-direction:row;align-items:flex-start;gap:8px;font-weight:400}
 .mf-form .mf-choices{flex-direction:column}
 .mf-form .mf-signature .mf-choices{flex-direction:row;gap:18px}
+/* Forms fixes: side-by-side fields. The builder canvas and the public form share a 6-column grid. */
+.mf-section-box{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.mf-section-box>.mf-section-head,.mf-section-box>.mf-drop-hint{grid-column:1/-1}
+.mf-card.w-full{grid-column:span 6}.mf-card.w-two_thirds{grid-column:span 4}.mf-card.w-half{grid-column:span 3}.mf-card.w-third{grid-column:span 2}
+.mf-card.is-internal{border-style:dashed;background:#f4f1e8}
+.mf-badge{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:3px;background:#efe6cc;color:#6d5a35;font-size:10px;letter-spacing:.4px}
+.mf-form .mf-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px}
+.mf-form .mf-grid>.w-full{grid-column:span 6}.mf-form .mf-grid>.w-two_thirds{grid-column:span 4}.mf-form .mf-grid>.w-half{grid-column:span 3}.mf-form .mf-grid>.w-third{grid-column:span 2}
+.mf-form input[readonly].is-locked,.mf-form textarea[readonly].is-locked{background:#f1efe8;color:#4b4943;cursor:not-allowed}
+.mf-lock{font-size:11px;color:#77746b}
+@media(max-width:680px){.mf-form .mf-grid>*{grid-column:span 6!important}.mf-section-box .mf-card{grid-column:span 6!important}}
+/* Themed public forms (colours, font, header, logo) set by the office in Settings → Look of the form. */
+.monarch-public.mf-themed{background:var(--mf-bg,var(--paper));color:var(--mf-text,var(--ink));font-family:var(--mf-font,var(--font-ui))}
+.mf-themed .monarch-public-card{background:var(--mf-card,#fff);color:var(--mf-text,var(--ink))}
+.mf-themed h1,.mf-themed h2,.mf-themed .mf-form label,.mf-themed .monarch-form label,.mf-themed legend{color:var(--mf-text,inherit);font-family:var(--mf-font,var(--font-display))}
+.mf-themed input,.mf-themed select,.mf-themed textarea,.mf-themed button{font-family:var(--mf-font,inherit)}
+.mf-themed .monarch-primary{background:var(--mf-button,#171714);border-color:var(--mf-button,#171714);color:var(--mf-on-button,#e3c57c)}
+.mf-themed .mf-progress div{background:var(--mf-button,var(--gold))}
+.mf-banner{margin:-28px -28px 22px;padding:22px 28px;min-height:72px;display:flex;align-items:center;gap:14px;background-color:var(--mf-header,transparent);background-size:cover;background-position:center;border-radius:7px 7px 0 0;color:var(--mf-on-header,inherit)}
+.mf-banner .mf-logo{max-height:64px;max-width:min(260px,60%);object-fit:contain;display:block}
+@media(max-width:680px){.mf-banner{margin:-20px -20px 18px;padding:16px 20px}}
+.mf-after{display:grid;gap:12px}
+.mf-choice{border:1px solid #dcd9d0;border-radius:6px;padding:14px;display:grid;gap:8px;background:#fdfcfa}
+.mf-choice:has(input[type=radio]:checked){border-color:#b8902f;box-shadow:0 0 0 2px rgba(200,162,74,.2)}

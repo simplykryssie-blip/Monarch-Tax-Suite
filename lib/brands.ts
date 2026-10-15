@@ -30,16 +30,22 @@ export function hostFromHeaders(h: { get(name: string): string | null }): string
   return /^[a-z0-9.-]+(:\d{1,5})?$/.test(raw) && raw.length <= 260 ? raw : null;
 }
 
+/** Hosting-platform addresses (Vercel). Never shown to a respondent or put in a link. */
+export const isPlatformHost = (host: string | null | undefined): boolean => !!host && /(^|\.)(vercel\.app|vercel\.sh|now\.sh|vercel\.dev)(:\d+)?$/i.test(host.trim());
+const isLocalHost = (host: string) => /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
+
 /**
- * Where a form's public link points. In production, the form's brand's web address when one is set. Otherwise
- * (Preview, local, or no brand address) the host of the request being served right now, so the link always opens on
- * the deployment the administrator is looking at. `fallbackOrigin` is only for code running without a request.
+ * Where a form's public link points: the form's firm's own web address (Settings → Email sending), in every
+ * environment. Without one, only localhost (development) or the office's own custom domain can be used; a hosting
+ * platform address (*.vercel.app) is never returned, so the answer is null and the office is asked to set its domain.
  */
-export function formPublicUrl(input: { publicId: string; brand: Brand | null; requestHost: string | null; production: boolean; fallbackOrigin?: string | null }): string {
+export function formPublicUrl(input: { publicId: string; brand: Brand | null; requestHost: string | null; production?: boolean; fallbackOrigin?: string | null }): string | null {
   const path = `/f/${input.publicId}`;
-  if (input.production && input.brand?.linkHost) return `https://${input.brand.linkHost}${path}`;
-  if (input.requestHost) return `${/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(input.requestHost) ? "http" : "https"}://${input.requestHost}${path}`;
-  return `${(input.fallbackOrigin ?? "").replace(/\/$/, "")}${path}`;
+  if (input.brand?.linkHost && !isPlatformHost(input.brand.linkHost)) return `https://${input.brand.linkHost}${path}`;
+  const host = input.requestHost;
+  if (host && isLocalHost(host)) return `http://${host}${path}`;
+  if (host && !isPlatformHost(host)) return `https://${host}${path}`;
+  return null;
 }
 
 /** The tenant's brands, and which brand each live sender on a verified domain belongs to (sender id -> domain id). */
