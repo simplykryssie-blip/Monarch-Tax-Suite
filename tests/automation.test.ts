@@ -6,7 +6,7 @@ import { MemoryAutomationRepo } from "./automation-memory.ts";
 import { createProduct } from "../lib/commerce/catalog.ts";
 import { createInternalLicense, handleStripeEvent, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
 import { CrmSecrets } from "../lib/crm/crypto.ts";
-import { createSetupLink, emitEvent, processExecution, retryExecution, runDue, runTest, BACKOFF_SECONDS, type AutomationDeps } from "../lib/automation/engine.ts";
+import { createSetupLink, emitEvent, processExecution, retryExecution, runClientTest, runDue, runTest, BACKOFF_SECONDS, type AutomationDeps } from "../lib/automation/engine.ts";
 import { installDefaults, missingDefaults } from "../lib/automation/defaults.ts";
 import { openSetupLink, resolveSetupSession } from "../lib/automation/onboarding.ts";
 import { createTemplate, duplicateWorkflow, removeWorkflow, sendTemplateTest, setTemplateActive, setWorkflowStatus, workflowsUsing } from "../lib/automation/admin.ts";
@@ -312,6 +312,34 @@ describe("test mode and safe tests", () => {
     assert.equal(repo.links.length, 0);
     await runTest(deps, wf.id, ADMIN);
     assert.equal(email.sent.length, 2, "tests are repeatable");
+  });
+});
+
+describe("testing with a client", () => {
+  test("sending steps are checked but never sent, the run carries on, and every step is recorded", async () => {
+    const { deps, repo, email, commerce } = await setup();
+    const wf = await workflowByKey(repo, "manual_license_created");
+    // A second step after the email, so we can see the run continue past the skipped send.
+    await repo.updateWorkflow(wf.id, { actions: [...wf.actions, { type: "record_note", note: "Checked the onboarding" }] });
+    const client = await commerce.createCustomer({ email: "client@example.com", full_name: "Casey Client", stripe_customer_id: null });
+    const x = await runClientTest(deps, wf.id, client.id, ADMIN);
+    assert.equal(x.status, "succeeded");
+    assert.equal(email.sent.length, 0, "nothing is sent to the client or to the admin");
+    assert.deepEqual(x.action_log.map((l) => l.status), ["skipped", "ok"]);
+    assert.match(x.action_log[0].detail, /Skipped in test: would email .* to client@example\.com/);
+    assert.equal(repo.links.length, 0);
+  });
+
+  test("a switched-off template or an unknown client is reported", async () => {
+    const { deps, repo, commerce } = await setup();
+    const wf = await workflowByKey(repo, "manual_license_created");
+    const client = await commerce.createCustomer({ email: "client@example.com", full_name: "Casey", stripe_customer_id: null });
+    await assert.rejects(runClientTest(deps, wf.id, "00000000-0000-4000-8000-0000000000ff", ADMIN), /Choose a client/);
+    const first = wf.actions[0];
+    if (first.type === "send_email") await repo.updateTemplate(first.template_id, { active: false });
+    const x = await runClientTest(deps, wf.id, client.id, ADMIN);
+    assert.equal(x.status, "failed");
+    assert.match(x.error ?? "", /switched off/);
   });
 });
 

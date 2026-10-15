@@ -22,10 +22,11 @@ export const PAGES: SearchHit[] = [
   { id: "p-efin-ren", group: "Pages", title: "EFIN renewals & compliance", detail: "My Service Bureau", href: "/efin/renewals" },
   { id: "p-efin-his", group: "Pages", title: "History (activity log)", detail: "Settings", href: "/bureau/settings/history" },
   { id: "p-settings", group: "Pages", title: "Settings: tax software and bank options", detail: "Settings", href: "/bureau/settings" },
-  { id: "p-auto", group: "Pages", title: "Automation", detail: "Operations", href: "/automation" },
+  { id: "p-auto", group: "Pages", title: "Automation", detail: "Operations", href: "/automation/workflows" },
   { id: "p-wf", group: "Pages", title: "Workflows", detail: "Automation", href: "/automation/workflows" },
   { id: "p-tpl", group: "Pages", title: "Email templates", detail: "Automation", href: "/automation/templates" },
-  { id: "p-act", group: "Pages", title: "Automation activity", detail: "Automation", href: "/automation/activity" },
+  { id: "p-pipe", group: "Pages", title: "Pipelines", detail: "Automation", href: "/automation/pipelines" },
+  { id: "p-integ", group: "Pages", title: "Integrations", detail: "Settings", href: "/settings/integrations" },
   { id: "p-newlic", group: "Pages", title: "Create a license", detail: "Action", href: "/orders/internal" },
   { id: "p-rec", group: "Pages", title: "Reconcile a payment", detail: "Action", href: "/orders/reconcile" },
 ];

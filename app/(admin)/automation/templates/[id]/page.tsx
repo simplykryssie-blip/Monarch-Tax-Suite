@@ -24,7 +24,7 @@ export default async function TemplateEditor({ params, searchParams }: { params:
   }
   return (
     <>
-      <PageTitle title={t ? t.name : "New template"} back={{ href: "/automation/templates", label: "Email templates" }}>{t ? <>Status: <Badge value={t.active ? "active" : "inactive"} /></> : "Write the subject and message. Unknown placeholders are rejected."}</PageTitle>
+      <PageTitle title={t ? t.name : "New template"} back={{ href: "/automation/templates", label: "Templates" }}>{t ? <>Status: <Badge value={t.active ? "active" : "inactive"} /></> : "Write the subject and message. Unknown placeholders are rejected."}</PageTitle>
       <Flash notice={notice} error={error} />
       <form action={saveTemplateAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
         {t && <input type="hidden" name="id" value={t.id} />}
