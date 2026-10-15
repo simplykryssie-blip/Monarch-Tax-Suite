@@ -112,3 +112,53 @@ describe("run history", () => {
     assert.deepEqual(by("d").map((r) => r.result), ["completed", "waiting"]);
   });
 });
+
+describe("creating a pipeline twice", () => {
+  const two = [{ name: "Start" }, { name: "End", done: true }];
+  test("a repeated create returns the first pipeline instead of inserting another", async () => {
+    const repo = new MemoryPipelines();
+    const t0 = new Date("2026-10-15T17:37:42Z");
+    const a = await createPipeline(repo, { name: "Onboarding", stages: two }, "u", () => t0);
+    repo.rows[0].created_at = t0.toISOString();
+    const b = await createPipeline(repo, { name: " onboarding ", stages: two }, "u", () => new Date(t0.getTime() + 1700));
+    assert.equal(b.id, a.id);
+    assert.equal(repo.rows.length, 1);
+    const later = await createPipeline(repo, { name: "Onboarding", stages: two }, "u", () => new Date(t0.getTime() + 5 * 60_000));
+    assert.notEqual(later.id, a.id, "a deliberate create a few minutes later is a new pipeline");
+  });
+
+  test("the quick start never makes a second tax-return pipeline", async () => {
+    const repo = new MemoryPipelines();
+    const a = await createPipeline(repo, { name: "Tax returns", kind: "returns", stages: DEFAULT_RETURN_STAGES, quickStart: true }, "u");
+    const b = await createPipeline(repo, { name: "Tax returns", kind: "returns", stages: DEFAULT_RETURN_STAGES, quickStart: true }, "u", () => new Date("2027-01-01T00:00:00Z"));
+    assert.equal(b.id, a.id);
+    assert.equal(repo.rows.length, 1);
+    assert.equal(returnsStages(await repo.list()).pipeline?.id, a.id);
+  });
+
+  test("a race the check misses is caught by the database's unique name and returns the first", async () => {
+    const repo = new MemoryPipelines();
+    const first = await createPipeline(repo, { name: "Onboarding", stages: two }, "u");
+    const realInsert = repo.insert.bind(repo);
+    let listed = 0;
+    repo.list = async () => (listed++ === 0 ? [] : structuredClone(repo.rows));
+    repo.insert = async () => { throw new Error('duplicate key value violates unique constraint "pipelines_active_name_key"'); };
+    const again = await createPipeline(repo, { name: "Onboarding", stages: two }, "u", () => new Date("2027-01-01T00:00:00Z"));
+    assert.equal(again.id, first.id);
+    repo.insert = realInsert;
+  });
+
+  test("renaming, editing stages, adding, removing and reordering all update the same record", async () => {
+    const repo = new MemoryPipelines();
+    const p = await createPipeline(repo, { name: "Tax returns", kind: "returns", stages: DEFAULT_RETURN_STAGES, quickStart: true }, "u");
+    const noComplete = DEFAULT_RETURN_STAGES.filter((s) => s.id !== "complete").map((s, i, all) => ({ ...s, done: i === all.length - 1 }));
+    await savePipeline(repo, p.id, { name: "Tax Return Intake", stages: noComplete });
+    await savePipeline(repo, p.id, { name: "Tax Return Intake", stages: [...noComplete].reverse().map((s, i) => ({ ...s, done: i === 0 })) });
+    await savePipeline(repo, p.id, { name: "Tax Return Intake", stages: [...noComplete, { name: "Extra", done: false }] });
+    assert.equal(repo.rows.length, 1);
+    assert.equal(repo.rows[0].name, "Tax Return Intake");
+    assert.equal(repo.rows[0].stages.length, 8);
+    assert.equal(returnsStages(await repo.list()).pipeline?.id, p.id);
+  });
+});
+

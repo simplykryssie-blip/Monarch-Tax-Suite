@@ -169,7 +169,7 @@ export async function testWorkflowWithClientAction(form: FormData) {
 export async function createPipelineAction(form: FormData) {
   await mutate("/automation/pipelines", async (a) => {
     const kind = str(form, "kind") === "returns" ? "returns" : "custom";
-    const p = await createPipeline(pipelinesRepo(), { name: str(form, "name"), kind, stages: str(form, "stages") || (kind === "returns" ? DEFAULT_RETURN_STAGES : [{ name: "To do" }, { name: "Doing" }, { name: "Done", done: true }]) }, a.id);
+    const p = await createPipeline(pipelinesRepo(), { name: str(form, "name"), kind, quickStart: str(form, "quick") === "1", stages: str(form, "stages") || (kind === "returns" ? DEFAULT_RETURN_STAGES : [{ name: "To do" }, { name: "Doing" }, { name: "Done", done: true }]) }, a.id);
     return { to: `/automation/pipelines/${p.id}`, notice: "Pipeline created. Add, rename and reorder its stages below." };
   });
 }

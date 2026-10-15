@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SubmitOnce } from "./submit-once";
 import { MAX_STAGES, MIN_STAGES, STAGE_COLORS } from "@/lib/pipelines/service.ts";
 import type { Stage } from "@/lib/pipelines/types.ts";
 
@@ -60,7 +61,7 @@ export function PipelineBuilder({ id, name, stages: initial, action, canSave = t
         {stages.length < MAX_STAGES && <li className="pb-add"><button type="button" className="monarch-secondary" onClick={add}>+ Add stage</button></li>}
       </ol>
       <div className="pb-flow" aria-hidden="true">{stages.map((s, i) => <span key={s.id}><i style={{ background: s.color }} />{s.name || "…"}{i < stages.length - 1 && " →"} </span>)}</div>
-      <div style={{ marginTop: 12 }}><button className="monarch-primary" disabled={!canSave}>Save pipeline</button></div>
+      <div style={{ marginTop: 12 }}><SubmitOnce className="monarch-primary" busy="Saving…" disabled={!canSave}>Save pipeline</SubmitOnce></div>
     </form>
   );
 }
