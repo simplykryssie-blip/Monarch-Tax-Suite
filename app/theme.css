@@ -773,3 +773,21 @@ html[data-popup] body{background:#fff}
 .pb-done{font-size:12.5px;display:flex;gap:6px;align-items:center}
 .pb-add{flex:0 0 140px;align-self:center}
 .pb-flow{font-size:13px;color:#4b4943;line-height:2}.pb-flow i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+.subtabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid #e3dfd2;margin-bottom:16px}
+.subtab{padding:8px 16px;border-radius:6px 6px 0 0;text-decoration:none;color:#4b4943;font-weight:600;border-bottom:3px solid transparent}
+.subtab:hover{background:#faf9f5}.subtab.is-on{color:#111;border-bottom-color:#c9a227}
+.wb{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
+.wb-col{flex:0 0 240px;background:#faf9f5;border:1px solid #e3dfd2;border-top:4px solid #64748b;border-radius:8px;min-height:140px;display:flex;flex-direction:column}
+.wb-col.is-over{outline:2px dashed #c9b46a}
+.wb-head{padding:8px 10px;display:flex;justify-content:space-between;gap:6px;font-weight:700;font-size:13px}.wb-head small{color:#6b7280;font-weight:600}
+.wb-cards{padding:0 8px 8px;display:grid;gap:8px;flex:1}
+.wb-card{background:#fff;border:1px solid #e3dfd2;border-radius:6px;padding:8px 10px;cursor:grab;display:grid;gap:3px;font-size:13px}
+.wb-card.is-drag{opacity:.45}.wb-card a{font-weight:700;color:#111;text-decoration:none}.wb-card a:hover{text-decoration:underline}
+.wb-kind{display:inline-block;padding:0 7px;border-radius:999px;font-size:11px;font-weight:700;background:#eef1f6;color:#2b3445}
+.wb-kind.is-extension{background:#fff3cd;color:#7a5c00}.wb-kind.is-amendment{background:#e8dcff;color:#4b2a8a}
+.wb-late{color:#a8322b;font-weight:700}
+.wb-empty{color:#9ca3af;font-size:12px;padding:6px 2px}
+.cl-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 14px;border-bottom:1px solid #e3dfd2}
+.cl-tabs a{padding:7px 14px;text-decoration:none;color:#4b4943;font-weight:600;border-bottom:3px solid transparent}.cl-tabs a.is-on{color:#111;border-bottom-color:#c9a227}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.match-exact{color:#1f6f43;font-weight:700}.match-possible{color:#8a6d00;font-weight:700}.match-none{color:#9ca3af}
