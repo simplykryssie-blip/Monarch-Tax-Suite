@@ -9,7 +9,7 @@ import { emailConfig } from "@/lib/automation/email.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { AlreadyRegisteredError, cleanAttribute, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
 import { documentDeps } from "@/lib/documents/server";
-import { cleanLinkHost } from "@/lib/brands.ts";
+import { cleanLinkHost, defaultLinkHost } from "@/lib/brands.ts";
 import { currentTenantId, MONARCH_TENANT_ID } from "@/lib/tenants.ts";
 
 // Firm profile, sending domains and senders, and package attributes for the current tenant. Every action re-checks
@@ -71,8 +71,11 @@ export async function connectDomainAction(form: FormData) {
       created = await api.findByName(domain);
       if (!created) throw e;
     }
-    await repo.insertDomain({ domain, provider_domain_id: created.id, status: created.status, dns_records: created.records, created_by: adminId });
-    return `${domain} added. Add the DNS records shown below at your domain host, then press Check.`;
+    const row = await repo.insertDomain({ domain, provider_domain_id: created.id, status: created.status, dns_records: created.records, created_by: adminId });
+    // The form web address is set for them: forms.<their domain>. They can change it, but never have to invent it.
+    const host = defaultLinkHost(domain);
+    await repo.updateDomain(row.id, { link_host: host });
+    return `${domain} added. Add the DNS records shown below at your domain host, then press Check. Form links will use https://${host}.`;
   });
 }
 

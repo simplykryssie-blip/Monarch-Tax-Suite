@@ -93,7 +93,7 @@ export async function resolveSender(repo: SendersRepo | null, senderId: string |
 const DOMAIN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
 export function cleanDomain(raw: string): string {
   const d = raw.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/\.$/, "");
-  if (!DOMAIN.test(d) || d.length > 253) throw new ValidationError("Enter a domain like mail.yourfirm.com (no http://, no @).");
+  if (!DOMAIN.test(d) || d.length > 253) throw new ValidationError("Enter your domain, like yourfirm.com or mail.yourfirm.com (no http://, no @).");
   return d;
 }
 export function cleanLocalPart(raw: string): string {

@@ -1,5 +1,6 @@
 import { requireAdmin } from "@/lib/admin";
 import { automationDeps } from "@/lib/automation/server";
+import { defaultLinkHost } from "@/lib/brands.ts";
 import { senderAddress } from "@/lib/automation/senders.ts";
 import { Badge, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 import { addSenderAction, archiveSenderAction, checkDomainAction, connectDomainAction, defaultSenderAction, saveBrandAction } from "../actions";
@@ -53,7 +54,7 @@ export default async function EmailSendingPage({ searchParams }: { searchParams:
           </section>
 
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Domains and brands</h2><p className="monarch-muted">A domain must be verified (its DNS records added) before anything is sent from it. Each domain is one of your firms or brands: name it, and give the web address its public form links should use. With more than one brand, each form chooses the brand it belongs to.</p></div></div>
+            <div className="monarch-panel-head"><div><h2>Domains and brands</h2><p className="monarch-muted">A domain must be verified (its DNS records added) before anything is sent from it. Each domain is one of your firms or brands. Its form links use the web address shown (set for you as forms.&lt;your domain&gt;; change it only if you prefer another). With more than one brand, each form chooses the brand it belongs to.</p></div></div>
             {result.data.domains.map((d) => (
               <div key={d.id} style={{ padding: "12px 20px", borderTop: "1px solid #eee" }}>
                 <p><b>{d.domain}</b> <Badge value={d.status} /> {d.last_checked_at && <small className="monarch-muted">checked {when(d.last_checked_at)}</small>}</p>
@@ -66,15 +67,17 @@ export default async function EmailSendingPage({ searchParams }: { searchParams:
                 <form action={saveBrandAction} className="monarch-inline-form" style={{ flexWrap: "wrap", margin: "8px 0" }}>
                   <input type="hidden" name="id" value={d.id} />
                   <input name="brand_name" defaultValue={d.brand_name ?? ""} placeholder="Brand name, e.g. Monarch Tax Suite" maxLength={120} aria-label="Brand name" />
-                  <input name="link_host" defaultValue={d.link_host ?? ""} placeholder="Web address for form links, e.g. app.yourfirm.com" maxLength={253} aria-label="Web address for form links" />
+                  <input name="link_host" defaultValue={d.link_host ?? defaultLinkHost(d.domain)} placeholder="Web address for form links" maxLength={253} aria-label="Web address for form links" />
                   <button className="monarch-secondary">Save brand</button>
                 </form>
+                <p className="monarch-muted" style={{ margin: "4px 0" }}>Form links: <code>https://{d.link_host ?? defaultLinkHost(d.domain)}/f/…</code>. At your domain host, add a CNAME record named <code>{(d.link_host ?? defaultLinkHost(d.domain)).split(".")[0]}</code> pointing to <code>cname.vercel-dns.com</code>; the same address must also be added to the app&apos;s hosting (Vercel → Domains).</p>
                 <form action={checkDomainAction}><input type="hidden" name="id" value={d.id} /><button className="monarch-secondary">{d.status === "verified" ? "Check again" : "Check verification"}</button></form>
               </div>
             ))}
             <form action={connectDomainAction} className="monarch-inline-form" style={{ padding: 20 }}>
-              <input name="domain" required placeholder="mail.yourfirm.com" maxLength={253} aria-label="Domain" />
+              <input name="domain" required placeholder="yourfirm.com  or  mail.yourfirm.com" maxLength={253} aria-label="Domain" />
               <button className="monarch-primary">Add domain</button>
+              <small className="monarch-muted" style={{ flexBasis: "100%" }}>Use your main domain (<code>yourfirm.com</code>, so emails come from you@yourfirm.com) or a subdomain (<code>mail.yourfirm.com</code>), whichever you prefer. A subdomain keeps these emails separate from your regular mailbox DNS; the main domain looks the most professional. Both work.</small>
             </form>
           </section>
         </>
