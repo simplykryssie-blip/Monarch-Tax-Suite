@@ -5,10 +5,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "@/lib/auth-actions";
 import { Icon } from "./icons";
-import { BrandMark, Wordmark } from "./brand";
 import { CommandPalette } from "./command-palette";
 import { allows, type Tier } from "@/lib/tier.ts";
 import { isBranch, navFor, type Entry } from "@/lib/nav.ts";
+import { PLATFORM, type TenantBrand } from "@/lib/platform-brand";
 
 const hrefs = (e: Entry): string[] => (isBranch(e) ? e.items.flatMap(hrefs) : e.href ? [e.href] : []);
 const matches = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
@@ -26,7 +26,7 @@ function crumb(pathname: string, nav: Entry[]): string {
     };
     if (walk(top, [])) return trail.join("  /  ");
   }
-  return "Monarch Tax Suite";
+  return PLATFORM.name;
 }
 
 function Group({ entry, depth, pathname, open, toggle, close }: { entry: Entry; depth: number; pathname: string; open: Record<string, boolean>; toggle: (k: string) => void; close: () => void }) {
@@ -104,7 +104,7 @@ function Popover({ trigger, children }: { trigger: (open: boolean, toggle: () =>
   );
 }
 
-export function AdminShell({ email, logoSrc, today, alerts = [], tier = "bureau", children }: { email: string; logoSrc?: string | null; today: string; alerts?: Alert[]; tier?: Tier; children: React.ReactNode }) {
+export function AdminShell({ email, tenant, today, alerts = [], tier = "bureau", children }: { email: string; tenant?: TenantBrand; today: string; alerts?: Alert[]; tier?: Tier; children: React.ReactNode }) {
   const pathname = usePathname();
   const nav = navFor(tier);
   const [menu, setMenu] = useState(false);
@@ -124,33 +124,37 @@ export function AdminShell({ email, logoSrc, today, alerts = [], tier = "bureau"
   return (
     <div className="mt-shell">
       <aside className={"mt-sidebar" + (menu ? " is-open" : "")} aria-hidden={!menu} id="mt-flyout">
-        <Link href="/" className="mt-brand" onClick={() => setMenu(false)} aria-label="Monarch Tax Suite home">
+        <Link href="/" className="mt-brand" onClick={() => setMenu(false)} aria-label={`${PLATFORM.name} home`}>
           <span className="mt-brand-plate">
-            {logoSrc ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="mt-logo-full" src={logoSrc} alt="Monarch Tax Suite" width={1000} height={253} />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="mt-logo-small" src="/brand/mark.png" alt="" width={420} height={282} />
-              </>
-            ) : (
-              <>
-                <BrandMark size={46} />
-                <Wordmark />
-              </>
-            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="mt-logo-full" src={PLATFORM.logo} alt={PLATFORM.name} width={900} height={747} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="mt-logo-small" src={PLATFORM.mark} alt="" width={420} height={345} />
           </span>
         </Link>
         <nav className="mt-nav-scroll" aria-label="Main">
           {nav.map((e) => <Group key={e.label} entry={e} depth={0} pathname={pathname} open={open} toggle={toggle} close={() => setMenu(false)} />)}
         </nav>
-        <div className="mt-chess" aria-hidden="true"><span>STRATEGY</span><span>GROWTH</span><span>LEGACY</span></div>
+        <div className="mt-chess" aria-hidden="true"><span>STREAMLINE</span><span>AUTOMATE</span><span>GROW</span></div>
       </aside>
       {menu && <button className="mt-scrim" onClick={() => setMenu(false)} aria-label="Close menu" />}
       <main className="mt-main">
         <header className="mt-topbar">
           <button className="mt-hamburger" onClick={() => setMenu(!menu)} aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu}><Icon name="menu" size={22} /></button>
+          <Link href="/" className="mt-topmark" aria-label={`${PLATFORM.name} home`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={PLATFORM.mark} alt="" width={32} height={26} />
+          </Link>
           <div className="mt-crumb">{crumb(pathname, nav)}</div>
+          {tenant && (
+            <span className="mt-account" title={`You are working in the ${tenant.name} account`}>
+              {tenant.mark && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={tenant.mark} alt="" width={22} height={22} />
+              )}
+              <span><small>Account</small><b>{tenant.name}</b></span>
+            </span>
+          )}
           <CommandPalette />
           <span className="mt-date">{today}</span>
           {allows(tier, "store") && <Link href="/orders/internal" className="mt-new"><Icon name="plus" size={15} /><span>New license</span></Link>}
@@ -198,7 +202,7 @@ export function AdminShell({ email, logoSrc, today, alerts = [], tier = "bureau"
         </header>
         <div className="mt-content">
           {children}
-          <footer className="mt-footer"><b>MONARCH TAX SUITE</b><span>Admin workspace · live data</span></footer>
+          <footer className="mt-footer"><b>{PLATFORM.eyebrow}</b><span>{PLATFORM.tagline}</span></footer>
         </div>
       </main>
     </div>

@@ -67,7 +67,7 @@ export default async function EmailSendingPage({ searchParams }: { searchParams:
                 )}
                 <form action={saveBrandAction} className="monarch-inline-form" style={{ flexWrap: "wrap", margin: "8px 0" }}>
                   <input type="hidden" name="id" value={d.id} />
-                  <input name="brand_name" defaultValue={d.brand_name ?? ""} placeholder="Brand name, e.g. Monarch Tax Suite" maxLength={120} aria-label="Brand name" />
+                  <input name="brand_name" defaultValue={d.brand_name ?? ""} placeholder="Your firm or brand name" maxLength={120} aria-label="Brand name" />
                   <input name="link_host" defaultValue={d.link_host ?? defaultLinkHost(d.domain)} placeholder="Web address for form links" maxLength={253} aria-label="Web address for form links" />
                   <button className="monarch-secondary">Save brand</button>
                 </form>
