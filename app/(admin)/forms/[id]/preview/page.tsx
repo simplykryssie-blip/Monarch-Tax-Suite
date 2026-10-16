@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { formDeps } from "@/lib/forms/server";
 import { ThemedPage } from "@/components/forms/themed-page";
+import { brandedTheme } from "@/lib/branding/brand.ts";
+import { loadBrand } from "@/lib/branding/server";
 import { FormRenderer } from "@/components/forms/form-renderer";
 import { emptyDefinition, publicDefinition, type FormDefinition } from "@/lib/forms/definition.ts";
 import { readSettings } from "@/lib/forms/settings.ts";
@@ -18,6 +20,7 @@ export default async function FormPreviewPage({ params, searchParams }: { params
   const form = await deps.repo.getForm(id);
   if (!form) notFound();
   const profile = await deps.profile();
+  const brand = await loadBrand();
   const def = (Array.isArray((form.draft_definition as FormDefinition).pages) ? form.draft_definition : emptyDefinition()) as FormDefinition;
   const phone = width === "phone";
   return (
@@ -26,7 +29,7 @@ export default async function FormPreviewPage({ params, searchParams }: { params
         <a className={phone ? "monarch-secondary" : "monarch-primary"} href={`/forms/${id}/preview`}>Computer width</a>
         <a className={phone ? "monarch-primary" : "monarch-secondary"} href={`/forms/${id}/preview?width=phone`}>Phone width</a>
       </p>
-      <ThemedPage theme={readSettings(form.settings).theme} firm={profile?.display_name ?? "Your firm"} maxWidth={phone ? 390 : 820} wrapper="div">
+      <ThemedPage theme={brandedTheme(readSettings(form.settings).theme, brand)} poweredBy={brand.showPoweredBy} firm={profile?.display_name ?? "Your firm"} maxWidth={phone ? 390 : 820} wrapper="div">
         <FormRenderer mode="preview" publicId={form.public_id} definition={publicDefinition(def)} formName={form.name} description={form.description} firmName={profile?.display_name ?? "Your firm"}
           consentText={form.signature_consent} allowSaveLater={false} respondentEmailKey={null} stamp="" />
       </ThemedPage>

@@ -62,6 +62,7 @@ export const NAV: Entry[] = [
     section: "settings",
     items: [
       { label: "Firm profile", icon: "office", href: "/settings/firm" },
+      { label: "Branding", icon: "office", href: "/settings/branding" },
       { label: "Email sending", icon: "bell", href: "/settings/email" },
       { label: "Text messaging", icon: "bell", href: "/settings/sms" },
       { label: "Package attributes", icon: "checklist", href: "/settings/package-attributes" },

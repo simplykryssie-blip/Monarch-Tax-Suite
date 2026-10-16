@@ -6,6 +6,8 @@ import { formLink } from "@/lib/forms/link";
 import { FormRenderer } from "@/components/forms/form-renderer";
 import { formContext } from "@/lib/forms/public";
 import { ThemedPage } from "@/components/forms/themed-page";
+import { brandedTheme } from "@/lib/branding/brand.ts";
+import { loadBrand } from "@/lib/branding/server";
 import { DEFAULT_THEME, type FormTheme } from "@/lib/forms/theme.ts";
 import { publicDefinition } from "@/lib/forms/definition.ts";
 import { isPublicId, resumeDraft, startStamp } from "@/lib/forms/service.ts";
@@ -13,8 +15,8 @@ import { respondentKeys } from "@/lib/forms/settings.ts";
 
 export const metadata: Metadata = { title: "Form", robots: { index: false, follow: false } };
 
-const Shell = ({ firm, theme = DEFAULT_THEME, children }: { firm?: string; theme?: FormTheme; children: React.ReactNode }) => (
-  <ThemedPage theme={theme} firm={firm}>
+const Shell = ({ firm, theme = DEFAULT_THEME, poweredBy = false, children }: { firm?: string; theme?: FormTheme; poweredBy?: boolean; children: React.ReactNode }) => (
+  <ThemedPage theme={theme} firm={firm} poweredBy={poweredBy}>
     {firm && <div className="monarch-eyebrow">{firm.toUpperCase()}</div>}
     {children}
   </ThemedPage>
@@ -26,6 +28,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
   const { resume } = await searchParams;
   const ctx = isPublicId(id) ? await formContext(id).catch(() => null) : null;
   const firm = ctx?.firmName ?? "";
+  const brand = ctx ? await loadBrand(ctx.tenantId).catch(() => null) : null;
   if (!ctx?.pf) return <Shell firm={firm}><p>This form link is not valid. Check that you copied the whole address.</p></Shell>;
   const { pf } = ctx;
   // A form opened on a hosting-platform address (*.vercel.app) is sent to the office's own web address.
@@ -33,10 +36,10 @@ export default async function PublicFormPage({ params, searchParams }: { params:
     const own = await formLink(ctx.deps, id, pf.settings).catch(() => null);
     if (own && !isPlatformHost(new URL(own).host)) redirect(`${own}${resume ? `?resume=${encodeURIComponent(resume)}` : ""}`);
   }
-  if (pf.state !== "open") return <Shell firm={firm} theme={pf.settings.theme}><h1>{pf.form.name}</h1><p style={{ whiteSpace: "pre-wrap" }}>{pf.settings.closed_message}</p></Shell>;
+  if (pf.state !== "open") return <Shell firm={firm} theme={brandedTheme(pf.settings.theme, brand)} poweredBy={!!brand?.showPoweredBy}><h1>{pf.form.name}</h1><p style={{ whiteSpace: "pre-wrap" }}>{pf.settings.closed_message}</p></Shell>;
   const resumed = resume ? await resumeDraft(ctx.deps, pf, resume) : null;
   return (
-    <ThemedPage theme={pf.settings.theme} firm={firm}>
+    <ThemedPage theme={brandedTheme(pf.settings.theme, brand)} firm={firm} poweredBy={!!brand?.showPoweredBy}>
         {resume && !resumed && <p className="monarch-alert is-error">That saved-form link has expired or was already used. You can start the form again below.</p>}
         {resumed && <p className="monarch-notice"><b>WELCOME BACK</b> Your saved answers and files are filled in. Check them, then continue.</p>}
         <FormRenderer

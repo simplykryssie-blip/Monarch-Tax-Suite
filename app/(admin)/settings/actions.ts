@@ -8,6 +8,11 @@ import { automationDeps } from "@/lib/automation/server";
 import { emailConfig } from "@/lib/automation/email.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { AlreadyRegisteredError, cleanAttribute, removeDomain, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
+import { randomUUID } from "node:crypto";
+import { imageStore } from "@/lib/admin";
+import { validateImage } from "@/lib/commerce/images.ts";
+import { BrandError, checkBrand } from "@/lib/branding/brand.ts";
+import { brandRepo } from "@/lib/branding/server";
 import { formDeps } from "@/lib/forms/server";
 import { readSettings } from "@/lib/forms/settings.ts";
 import { documentDeps } from "@/lib/documents/server";
@@ -95,6 +100,46 @@ export async function checkDomainAction(form: FormData) {
     const now = await api.get(row.provider_domain_id);
     await repo.updateDomain(id, { status: now.status, dns_records: now.records, last_checked_at: new Date().toISOString() });
     return now.status === "verified" ? `${row.domain} is verified. You can send from it.` : `${row.domain} is not verified yet. DNS changes can take a few hours; check again later.`;
+  });
+}
+
+const BRAND_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as const;
+
+async function uploadBrandImage(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const { type } = validateImage({ bytes, declaredType: file.type, fileName: file.name, altText: null });
+  const store = imageStore();
+  const path = `brands/${currentTenantId()}/${randomUUID()}.${BRAND_EXT[type]}`;
+  await store.put(path, bytes, type);
+  return store.publicUrl(path);
+}
+
+export async function saveBrandingAction(form: FormData) {
+  await act("/settings/branding", async (adminId) => {
+    const image = async (field: "logo" | "mark") => {
+      const file = form.get(`${field}_file`);
+      if (file instanceof File && file.size > 0) return uploadBrandImage(file);
+      return form.get(`${field}_remove`) === "on" ? "" : str(form, `${field}_url`);
+    };
+    let input;
+    try {
+      input = checkBrand({
+        name: str(form, "name"), tagline: str(form, "tagline"), support_email: str(form, "support_email"), app_host: str(form, "app_host"),
+        primary_color: str(form, "primary_color"), accent_color: str(form, "accent_color"), sidebar_color: str(form, "sidebar_color"),
+        white_label_admin: form.get("white_label_admin") === "on", show_powered_by: form.get("show_powered_by") === "on",
+        logo_url: await image("logo"), mark_url: await image("mark"),
+      });
+    } catch (e) {
+      if (e instanceof BrandError) throw new ValidationError(e.message);
+      throw e;
+    }
+    try {
+      await brandRepo().save(input, adminId);
+    } catch (e) {
+      if (/tenant_brands_app_host_key|duplicate key/i.test(e instanceof Error ? e.message : "")) throw new ValidationError("That sign-in address is already used by another account.");
+      throw e;
+    }
+    return "Branding saved.";
   });
 }
 

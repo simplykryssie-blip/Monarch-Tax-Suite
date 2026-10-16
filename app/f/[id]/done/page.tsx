@@ -4,6 +4,8 @@ import { formContext, RECEIPT_COOKIE, receiptValid } from "@/lib/forms/public";
 import { isPublicId } from "@/lib/forms/service.ts";
 import { formatInZone } from "@/lib/documents/signing.ts";
 import { ThemedPage } from "@/components/forms/themed-page";
+import { brandedTheme } from "@/lib/branding/brand.ts";
+import { loadBrand } from "@/lib/branding/server";
 import { DEFAULT_THEME } from "@/lib/forms/theme.ts";
 import { RichMessage } from "@/components/forms/rich-message";
 
@@ -15,11 +17,12 @@ export default async function FormDonePage({ params, searchParams }: { params: P
   const { error } = await searchParams;
   const ctx = isPublicId(id) ? await formContext(id).catch(() => null) : null;
   const firm = ctx?.firmName ?? "";
+  const brand = ctx ? await loadBrand(ctx.tenantId).catch(() => null) : null;
   const [subId, token] = ((await cookies()).get(RECEIPT_COOKIE)?.value ?? "").split(".");
   const sub = ctx && subId && /^[0-9a-f-]{36}$/.test(subId) ? await ctx.deps.repo.getSubmission(subId).catch(() => null) : null;
   const valid = receiptValid(sub, token, ctx?.pf?.form.id);
   return (
-    <ThemedPage theme={ctx?.pf?.settings.theme ?? DEFAULT_THEME} firm={firm} maxWidth={720}>
+    <ThemedPage theme={brandedTheme(ctx?.pf?.settings.theme ?? DEFAULT_THEME, brand)} firm={firm} maxWidth={720} poweredBy={!!brand?.showPoweredBy}>
         {firm && <div className="monarch-eyebrow">{firm.toUpperCase()}</div>}
         <h1>{valid ? "Submitted" : "Thank you"}</h1>
         {valid ? (

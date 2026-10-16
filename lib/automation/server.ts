@@ -8,6 +8,8 @@ import { documentDeps } from "../documents/server";
 import { formDeps } from "../forms/server";
 import { answerStrings } from "../forms/service.ts";
 import { inputFields } from "../forms/definition.ts";
+import { emailBrandOf } from "../branding/brand.ts";
+import { loadBrand } from "../branding/server";
 import { SupabaseSendersRepo } from "./supabase-senders.ts";
 import type { ResolvedSender } from "./senders.ts";
 import type { WorkflowCatalog } from "./validate.ts";
@@ -61,6 +63,7 @@ export function automationDeps(tenantId: string = currentTenantId()): Automation
     services: new SupabaseServiceOrdersRepo(db),
     email: new ResendEmailSender(emailConfig(env())),
     config: automationConfig(),
+    brand: async () => emailBrandOf(await loadBrand(tenantId)),
     documents,
     senders: new SupabaseSendersRepo(db),
     fallbackSender: platformSender(tenantId),
