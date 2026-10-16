@@ -138,9 +138,12 @@ export class AlreadyRegisteredError extends ValidationError {
 export class ResendDomains {
   private key: string | null;
   private fetchImpl: typeof fetch;
-  constructor(key: string | null, fetchImpl: typeof fetch = fetch) {
+  /** The environment variable the key came from, so a refusal can say exactly which one to change. */
+  private source: string;
+  constructor(key: string | null, fetchImpl: typeof fetch = fetch, source: string | null = null) {
     this.key = key;
     this.fetchImpl = fetchImpl;
+    this.source = source ?? "RESEND_API_KEY";
   }
   private async call(path: string, init: RequestInit = {}): Promise<Record<string, unknown>> {
     if (!this.key) throw new ValidationError("Email sending is not configured (RESEND_API_KEY).");
@@ -151,7 +154,7 @@ export class ResendDomains {
       throw new Error(`Could not reach the email provider: ${sanitizeError(e, 120)}`);
     }
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    if (res.status === 401 || res.status === 403) throw new ValidationError("The email provider key can send email but cannot manage domains. Use a full-access Resend API key in RESEND_API_KEY to connect domains here.");
+    if (res.status === 401 || res.status === 403) throw new ValidationError(`Resend refused the key in ${this.source} (${res.status}): it can send email but cannot manage domains. In Resend create an API key with "Full access", save it as ${this.source} in Vercel for Production (replace the old value), then redeploy. A changed variable only takes effect on a new deployment.`);
     if (res.status === 409 || (res.status === 422 && /already/i.test(String(body.message ?? "")))) throw new AlreadyRegisteredError();
     if (!res.ok) throw new ValidationError(`The email provider refused the request: ${sanitizeError(String(body.message ?? res.status), 160)}`);
     return body;

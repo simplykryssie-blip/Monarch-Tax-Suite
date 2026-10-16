@@ -36,7 +36,7 @@ async function act(back: string, fn: (adminId: string) => Promise<string>) {
   redirect(target);
 }
 
-const domains = () => new ResendDomains(emailConfig(process.env).apiKey);
+const domains = () => { const c = emailConfig(process.env); return new ResendDomains(c.apiKey, fetch, c.keySource); };
 
 export async function saveFirmProfileAction(form: FormData) {
   await act("/settings/firm", async (adminId) => {
