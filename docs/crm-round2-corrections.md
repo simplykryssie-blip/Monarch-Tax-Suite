@@ -150,3 +150,75 @@ These need the Preview deployment pointed at the test project, and a Twilio test
 3. On approval: apply `20261031090000_tenant_brands` (if it is not on production yet), then `20261031100000`, then `20261101090000` on production, *then* deploy. The migrations only add things, so the code running today keeps working once they're on.
 4. Run the image move script on production (dry run first).
 5. In Vercel, add `TWILIO_FROM_NUMBER` (or `TWILIO_MESSAGING_SERVICE_SID`), if not already there, for Monarch's own texts.
+
+---
+
+# Round 3: Forms Settings rework, and texting billing with self-serve setup
+
+Migrations (both additive):
+- `20261102090000_forms_delete.sql`
+- `20261103090000_sms_billing.sql`
+
+Gate: `supabase/tests/round3_gate.sql` (rolls back by design). Tests: `tests/sms-billing.test.ts`, plus new cases in `tests/forms-*.test.ts`.
+
+## Forms Settings
+
+1. **"How are they related to you?"** starts empty. It's required only when **Create or link a tax office from each submission** is ticked.
+   - The office mappings and **People at the office** only appear while that box is ticked (CSS, no script).
+   - Both are collapsible.
+2. **Submit behaviour radios:** the gap is fixed. The text-input style (full width, padding) was being applied to radio buttons.
+3. **Logo and header image:** choose one from **Images** or upload a new one.
+   - A library picture still used by a form's look or the brand can't be deleted.
+4. **Archive:** there's no "Reason for archiving" box on forms. Archive itself is unchanged.
+5. **Delete this form:** type the form's name to confirm.
+   - If the form has submissions, **Delete with submissions** must be ticked.
+   - Only the submission rows go (answers, uploads, PDFs, internal values). Leads, contacts, customers and tax offices made from them are kept.
+   - Files follow the 24-hour window.
+   - The database still refuses to delete a submitted form anywhere else. The one exception is `delete_form_with_submissions`, for that one form, and it runs as the tenant.
+
+## Texting: prices
+
+| | Paid by card | Monthly, from credits |
+|---|---|---|
+| Credit pack | $25 = 1,000 credits | n/a |
+| Toll-free number (recommended) | $5 one time (setup and carrier verification; no campaign, ever) | 110 credits ($2.75) |
+| Local number | $23.50 one time (setup and brand/campaign registration) | 130 credits ($3.25) |
+
+Charges are labelled by what they're for. Nothing shows how they're built up. All prices are in `lib/sms/pricing.ts`.
+
+## Texting: how it works
+
+- **Payments:** Stripe Checkout on the platform's own account, with `metadata.purpose` set to `sms_credits` or `sms_setup`.
+  - Handled through the existing webhook, and again when the office returns from Checkout (once, either way).
+  - Nothing is issued unless Stripe says it's paid, for that office, for exactly the amount recorded when the checkout started.
+- **Credits:** they can only be bought, spent on a text, returned when a text is refused, taken for the monthly renewal, or forfeited.
+  - Tenants can't write the ledger. The only writers are database functions scoped to the requesting tenant.
+  - No transfers, no refunds, no manual credits.
+- **Renewal:**
+  1. On the due date, the monthly fee is taken from credits.
+  2. If it can't be: texting is paused and the office is emailed.
+  3. Retry on day 3, then day 7.
+  4. If still unpaid: the number is released.
+  5. 30 days after the due date: any remaining credits are forfeited.
+  - Buying credits while paused renews at once.
+- **Guided registration** (*Settings → Text messaging*). The office does everything itself:
+  1. Chooses toll-free or local, and answers the business, contact and opt-in questions, including a picture of where clients agree, chosen from Images.
+  2. Picks a number.
+  3. Pays.
+- **After payment is confirmed:**
+  - its own subaccount and API key are created;
+  - the number is bought into it (another of the same kind if the chosen one was taken);
+  - the registration is submitted with the office's own key: toll-free verification, or the 10DLC chain (business profile linked to the platform's primary profile, A2P profile, brand, messaging service, then the campaign once the brand is approved).
+  - Every step is recorded and resumes after a failure.
+- **Daily job:** for every office, it finishes stalled setups, reads registration statuses and runs renewals. It reads only tenant ids at platform level; everything else runs as each office.
+
+## Needed before offices can use it (owner)
+
+- **Toll-free:** nothing more. Uses the owner's Twilio account (auth token, or a Main API key) as the parent.
+- **Local numbers:** set `TWILIO_PRIMARY_CUSTOMER_PROFILE_SID` (the owner's approved primary business profile, `BU…`). Until then local numbers are shown as unavailable and can't be bought.
+- **Notices** go to the office's firm-profile email, from `MONARCH_EMAIL_FROM`.
+- **Twilio field names:** the registration calls follow Twilio's current API as I know it. Twilio test credentials can't run registrations, so one real toll-free registration should be run end to end (any rejection reason is shown on the page) before offering this widely.
+
+## Test project status
+
+Not applied yet. Every write through the Supabase connector timed out, even a trivial one, and nothing was applied or left behind; read-only queries kept working. Apply the two migrations above in the test project's SQL editor (or retry once the connector accepts writes), then run `supabase/tests/round3_gate.sql`.
