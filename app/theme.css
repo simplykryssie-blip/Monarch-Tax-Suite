@@ -21,8 +21,8 @@ button,input,select,textarea{font-family:inherit}
 .mt-shell{min-height:100vh;display:flex;background:var(--paper)}
 .mt-sidebar{width:272px;position:fixed;inset:0 auto 0 0;z-index:30;background:#fff;color:var(--ink);display:flex;flex-direction:column;border-right:1px solid var(--line)}
 .mt-brand{display:block;margin:16px 14px 6px;text-decoration:none;color:inherit}
-.mt-brand-plate{display:flex;align-items:center;justify-content:center;background:radial-gradient(120% 140% at 20% 0%,#1d1a12 0%,#0b0b0a 62%);border-radius:16px;padding:14px 14px;border:1px solid #2a2619;box-shadow:inset 0 0 0 1px rgba(212,174,85,.22),0 6px 18px rgba(11,11,10,.18);min-height:84px}
-.mt-brand-plate img{width:100%;height:auto;display:block}
+.mt-brand-plate{display:flex;align-items:center;justify-content:center;background:radial-gradient(120% 140% at 20% 0%,#10304f 0%,#07101e 62%);border-radius:16px;padding:14px 18px;border:1px solid #17304a;box-shadow:inset 0 0 0 1px rgba(56,189,248,.22),0 6px 18px rgba(7,16,30,.22);min-height:84px}
+.mt-brand-plate img{width:100%;height:auto;max-height:150px;object-fit:contain;display:block}
 .mt-logo-mark,.mt-logo-img{flex-shrink:0;display:block;object-fit:contain}
 .mt-wordmark{display:flex;flex-direction:column;line-height:1;margin-left:12px}
 .mt-wordmark b{font-family:var(--font-display);font-weight:700;font-size:22px;letter-spacing:.16em;background:var(--metal);-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -323,10 +323,10 @@ kbd{font-family:var(--font-ui);font-size:11.5px;font-weight:600;color:#7a7a7a;bo
 
 /* sign-in */
 .mt-login{min-height:100vh;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);background:#fff}
-.mt-login-brand{position:relative;background:linear-gradient(90deg,rgba(8,8,7,.9) 0%,rgba(8,8,7,.55) 55%,rgba(8,8,7,.2) 100%),url("/brand/chess.jpg") 62% center/cover no-repeat,#0b0b0a;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:18px;padding:64px;color:#fff;overflow:hidden}
-.mt-login-brand:after{content:"";position:absolute;right:0;top:0;bottom:0;width:1px;background:linear-gradient(180deg,transparent,#b88c2c 30%,#f1dc9b 50%,#8a6420 75%,transparent)}
-.mt-login-brand img{width:min(440px,100%);height:auto}
-.mt-login-brand p{margin:14px 0 0;font-size:13px;letter-spacing:.32em;text-transform:uppercase;color:#d7c07a}
+.mt-login-brand{position:relative;background:radial-gradient(90% 80% at 30% 20%,#12365a 0%,#07101e 70%),#07101e;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:18px;padding:64px;color:#fff;overflow:hidden}
+.mt-login-brand:after{content:"";position:absolute;right:0;top:0;bottom:0;width:1px;background:linear-gradient(180deg,transparent,#2563eb 30%,#65d62c 70%,transparent)}
+.mt-login-brand img{width:min(360px,100%);height:auto}
+.mt-login-brand p{margin:14px 0 0;font-size:13px;letter-spacing:.32em;text-transform:uppercase;color:#7dd3fc}
 .mt-login-brand small{font-size:15px;color:#bdb8a8}
 .mt-login-form{display:flex;align-items:center;justify-content:center;padding:40px 24px}
 .mt-login-form form{width:min(400px,100%);display:flex;flex-direction:column;gap:8px}
@@ -371,8 +371,8 @@ kbd{font-family:var(--font-ui);font-size:11.5px;font-weight:600;color:#7a7a7a;bo
 .mt-hamburger{display:grid;place-items:center;border:1px solid var(--line);background:#fff;border-radius:12px;width:42px;height:42px;cursor:pointer;color:var(--ink);transition:border-color .15s,box-shadow .15s}
 .mt-hamburger:hover{border-color:#c8a24a;box-shadow:0 0 0 3px rgba(200,162,74,.14)}
 .mt-collapse{display:none}
-.mt-chess{margin:0 12px 14px;height:104px;border-radius:14px;background:linear-gradient(180deg,rgba(11,11,10,.05),rgba(11,11,10,.78)),url("/brand/chess-pieces.jpg") 62% 34%/cover no-repeat;display:flex;align-items:flex-end;justify-content:center;gap:12px;padding:0 10px 12px;box-shadow:inset 0 0 0 1px rgba(212,174,85,.35)}
-.mt-chess span{font-size:10px;letter-spacing:.3em;color:#f1dc9b;font-weight:600}
+.mt-chess{margin:0 12px 14px;height:64px;border-radius:14px;background:radial-gradient(120% 140% at 20% 0%,#10304f 0%,#07101e 62%);display:flex;align-items:center;justify-content:center;gap:10px;padding:0 10px;box-shadow:inset 0 0 0 1px rgba(56,189,248,.3)}
+.mt-chess span{font-size:9.5px;letter-spacing:.2em;font-weight:700;color:#e8f1fb}.mt-chess span:nth-child(2){color:#38bdf8}.mt-chess span:nth-child(3){color:#a3e635}
 .mt-sidebar .mt-nav-scroll{flex:1}
 @media(min-width:861px){.mt-topbar{padding-left:24px}}
 
@@ -807,3 +807,13 @@ html[data-popup] body{background:#fff}
 .cl-tabs a{padding:7px 14px;text-decoration:none;color:#4b4943;font-weight:600;border-bottom:3px solid transparent}.cl-tabs a.is-on{color:#111;border-bottom-color:#c9a227}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
 .match-exact{color:#1f6f43;font-weight:700}.match-possible{color:#8a6d00;font-weight:700}.match-none{color:#9ca3af}
+
+/* The account (tenant) you are working in, shown beside the platform brand. */
+.mt-account{display:inline-flex;align-items:center;gap:8px;padding:5px 12px 5px 8px;border:1px solid var(--line);border-radius:999px;background:#fff;white-space:nowrap}
+.mt-account img{width:22px;height:22px;object-fit:contain;border-radius:4px}
+.mt-account span{display:flex;flex-direction:column;line-height:1.15}
+.mt-account small{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.mt-account b{font-size:12.5px}
+@media(max-width:860px){.mt-account small{display:none}.mt-account{padding:4px 10px 4px 6px}}
+@media(max-width:560px){.mt-account span{display:none}}
+.mt-topmark{display:flex;align-items:center;flex-shrink:0}.mt-topmark img{height:26px;width:auto;display:block}

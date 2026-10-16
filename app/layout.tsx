@@ -4,14 +4,15 @@ import "@fontsource/playfair-display/600.css";
 import "@fontsource/playfair-display/700.css";
 import "./globals.css";
 import "./theme.css";
-import { OG_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site-meta";
+import { SITE_URL } from "@/lib/site-meta";
+import { PLATFORM } from "@/lib/platform-brand";
 export const metadata: Metadata = {
-  title: "Monarch Tax Suite | Admin Workspace",
-  description: "The Monarch Tax Suite internal operations platform.",
+  title: { default: `${PLATFORM.name} | Admin Workspace`, template: `%s | ${PLATFORM.name}` },
+  description: PLATFORM.description,
   metadataBase: new URL(SITE_URL),
-  icons: { icon: [{ url: "/monarch-favicon-32.png", sizes: "32x32", type: "image/png" }], apple: "/monarch-apple-touch-icon.png" },
-  openGraph: { type: "website", siteName: SITE_NAME, images: [OG_IMAGE] },
-  twitter: { card: "summary_large_image", images: [OG_IMAGE.url] },
+  icons: { icon: [{ url: PLATFORM.favicon, sizes: "32x32", type: "image/png" }], apple: PLATFORM.appleIcon },
+  openGraph: { type: "website", siteName: PLATFORM.name, images: [PLATFORM.ogImage] },
+  twitter: { card: "summary_large_image", images: [PLATFORM.ogImage.url] },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return (
     <html lang="en" suppressHydrationWarning>

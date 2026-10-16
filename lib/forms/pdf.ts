@@ -98,7 +98,7 @@ export async function buildSubmissionPdf(input: SubmissionPdfInput): Promise<Uin
   pdf.setAuthor(drawable(regular, input.firmName));
   pdf.setCreationDate(input.generatedAt);
   pdf.setModificationDate(input.generatedAt);
-  pdf.setProducer("Monarch Tax Suite");
+  pdf.setProducer("Verexa HQ");
 
   let page: PDFPage = pdf.addPage(PAGE);
   let y = PAGE[1] - MARGIN;

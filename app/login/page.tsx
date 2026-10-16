@@ -8,11 +8,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <AuthFrame>
       <form action={signIn}>
         <h1>Welcome back</h1>
-        <p className="mt-login-sub">Sign in to your Monarch Tax Suite workspace.</p>
+        <p className="mt-login-sub">Sign in to your Verexa HQ workspace.</p>
         {notice && <p className="mt-login-notice" role="status">{notice}</p>}
         <input type="hidden" name="next" value={next ?? "/"} />
         <label htmlFor="email">Email</label>
-        <input id="email" name="email" type="email" autoComplete="email" defaultValue="info@monarchtaxsuite.com" required />
+        <input id="email" name="email" type="email" autoComplete="email" required />
         <div className="mt-login-row">
           <label htmlFor="password">Password</label>
           <Link href="/forgot-password" className="mt-login-link">Forgot password?</Link>

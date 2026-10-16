@@ -37,7 +37,7 @@ export const isFromHeader = (v: string) => FROM.test(v);
 export function emailConfigProblems(c: EmailConfig): string[] {
   const problems: string[] = [];
   if (!c.apiKey) problems.push("Set RESEND_API_KEY in Vercel (server-side).");
-  if (!c.from) problems.push("Set MONARCH_EMAIL_FROM to an address on a domain verified in Resend, for example Monarch Tax Suite <notifications@yourdomain.com>.");
+  if (!c.from) problems.push("Set MONARCH_EMAIL_FROM to an address on a domain verified in Resend, for example Your Firm <notifications@yourdomain.com>.");
   else if (!FROM.test(c.from)) problems.push("MONARCH_EMAIL_FROM is not a valid sender address.");
   if (c.replyTo && !isEmailAddress(c.replyTo)) problems.push("MONARCH_EMAIL_REPLY_TO is not a valid email address.");
   return problems;
