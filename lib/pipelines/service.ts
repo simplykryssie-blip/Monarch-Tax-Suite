@@ -53,17 +53,48 @@ const checkName = (raw: unknown) => {
   return name;
 };
 
-export async function createPipeline(repo: PipelinesRepo, input: { name: unknown; kind?: unknown; stages: unknown }, actorId: string): Promise<Pipeline> {
+/** A create request repeated within this long, with the same name, is the same click arriving twice. */
+export const DUPLICATE_CREATE_WINDOW_MS = 60_000;
+
+/**
+ * Creates a pipeline. Creating is the only path that inserts (saving, renaming and every stage change update the
+ * existing record). It is also safe to repeat: a double-clicked or re-sent create returns the pipeline the first one
+ * made, and the standard-pipeline quick start never makes a second tax-return pipeline.
+ */
+export async function createPipeline(repo: PipelinesRepo, input: { name: unknown; kind?: unknown; stages: unknown; quickStart?: boolean }, actorId: string, now: () => Date = () => new Date()): Promise<Pipeline> {
   const kind: PipelineKind = input.kind === "returns" ? "returns" : "custom";
+  const name = checkName(input.name);
+  const stages = checkStages(input.stages);
   const existing = await repo.list();
+  const active = existing.filter((p) => !p.archived_at);
+  if (input.quickStart && kind === "returns") {
+    const have = active.find((p) => p.kind === "returns" && p.is_default) ?? active.find((p) => p.kind === "returns");
+    if (have) return have;
+  }
+  const again = active.find((p) => p.kind === kind && p.name.toLowerCase() === name.toLowerCase() && now().getTime() - Date.parse(p.created_at) < DUPLICATE_CREATE_WINDOW_MS);
+  if (again) return again;
   const isDefault = kind === "returns" && !existing.some((p) => p.kind === "returns" && !p.archived_at);
-  return repo.insert({ name: checkName(input.name), kind, stages: checkStages(input.stages), is_default: isDefault, created_by: actorId });
+  try {
+    return await repo.insert({ name, kind, stages, is_default: isDefault, created_by: actorId });
+  } catch (e) {
+    // Two requests racing past the check above: the database allows one, and the other gets that one back.
+    if (/duplicate key|pipelines_active_name_key/i.test(e instanceof Error ? e.message : "")) {
+      const same = (await repo.list()).find((p) => !p.archived_at && p.kind === kind && p.name.toLowerCase() === name.toLowerCase());
+      if (same) return same;
+    }
+    throw e;
+  }
 }
 
 export async function savePipeline(repo: PipelinesRepo, id: string, input: { name: unknown; stages: unknown }): Promise<Pipeline> {
   const p = await repo.get(id);
   if (!p || p.archived_at) throw new ValidationError("That pipeline wasn't found.");
-  return repo.update(id, { name: checkName(input.name), stages: checkStages(input.stages) });
+  try {
+    return await repo.update(id, { name: checkName(input.name), stages: checkStages(input.stages) });
+  } catch (e) {
+    if (/duplicate key|pipelines_active_name_key/i.test(e instanceof Error ? e.message : "")) throw new ValidationError("Another pipeline already has that name. Choose a different name.");
+    throw e;
+  }
 }
 
 /** Makes this the returns pipeline the My Work board uses. */
