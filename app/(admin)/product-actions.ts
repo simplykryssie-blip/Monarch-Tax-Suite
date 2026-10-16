@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { commerceRepo, imageStore, requireAdmin, stripeClient } from "@/lib/admin";
+import { appOrigin, commerceRepo, imageStore, requireAdmin, stripeClient } from "@/lib/admin";
 import { createProduct, duplicateProduct, editProduct, setProductStatus } from "@/lib/commerce/catalog.ts";
 import { removeProductImage, setPrimaryImage, updateImageAlt, uploadProductImage } from "@/lib/commerce/images.ts";
 import { createStripePrice, createStripeProduct, syncStripeProductInfo, type StripePort, type SyncResult } from "@/lib/commerce/stripe-sync.ts";
@@ -154,11 +154,11 @@ async function stripeAction(form: FormData, run: (port: StripePort, productId: s
 }
 
 export async function syncStripeProductInfoAction(form: FormData) {
-  await stripeAction(form, (port, productId) => syncStripeProductInfo(commerceRepo(), imageStore(), port, productId, stripeCatalogPort()));
+  await stripeAction(form, async (port, productId) => syncStripeProductInfo(commerceRepo(), imageStore(await appOrigin()), port, productId, stripeCatalogPort()));
 }
 
 export async function createStripeProductAction(form: FormData) {
-  await stripeAction(form, (port, productId) => createStripeProduct(commerceRepo(), imageStore(), port, productId));
+  await stripeAction(form, async (port, productId) => createStripeProduct(commerceRepo(), imageStore(await appOrigin()), port, productId));
 }
 
 export async function createStripePriceAction(form: FormData) {

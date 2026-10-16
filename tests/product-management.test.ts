@@ -87,7 +87,7 @@ describe("product images", () => {
   test("upload stores the file in storage and only path + metadata in the database", async () => {
     const { repo, store, product } = await setup();
     const image = await uploadProductImage(repo, store, product.id, upload(png(), "image/png", "  Calculator  screenshot "), "admin");
-    assert.match(image.storage_path, new RegExp(`^products/${product.id}/[0-9a-f-]{36}\\.png$`));
+    assert.match(image.storage_path, new RegExp(`^images/products/${product.id}/[0-9a-f-]{36}\\.png$`));
     assert.equal(image.is_primary, true, "first image is primary");
     assert.equal(image.alt_text, "Calculator screenshot");
     assert.equal(image.width, 800);

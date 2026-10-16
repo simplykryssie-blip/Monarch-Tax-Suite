@@ -25,6 +25,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
       <Flash notice={notice} error={error} />
       <section className="monarch-panel"><div className="monarch-table-wrap"><table><thead><tr><th>CONNECTION</th><th>STATE</th><th>DETAILS</th></tr></thead><tbody>
         <Row label="Resend (email)" ok={s.resend.configured} detail={s.resend.configured ? `Key from ${s.resend.keySource}. Sending as ${s.resend.sender}${s.resend.replyTo ? `, replies to ${s.resend.replyTo}` : ""}. Sender domain ${domain.domain ?? "unknown"}: ${domainText}.` : s.resend.problems.join(" ")} />
+        <Row label="Twilio (text messages)" ok={s.twilio.configured} detail={s.twilio.configured ? "Account SID, auth token and sending number are set. Staff can text clients from their profile." : s.twilio.problems.join(" ")} />
         <Row label="GoHighLevel app" ok={s.highlevel.appConfigured} detail={s.highlevel.appConfigured ? "Client ID and secret are set." : "HIGHLEVEL_CLIENT_ID / HIGHLEVEL_CLIENT_SECRET are not set."} />
         <Row label="Stripe" ok={s.stripe.secretKey && s.stripe.webhookSecret} detail={`Secret key ${s.stripe.secretKey ? "set" : "missing"} (${s.stripe.mode} mode); webhook secret ${s.stripe.webhookSecret ? "set" : "missing"}.`} />
         <Row label="Encryption key (setup links)" ok={s.app.encryptionKey} detail={s.app.encryptionKey ? "Present." : "MONARCH_ENCRYPTION_KEY is missing, so setup links cannot work."} />

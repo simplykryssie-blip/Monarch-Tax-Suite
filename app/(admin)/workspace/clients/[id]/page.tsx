@@ -2,10 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { ClientDocUpload } from "@/components/workspace/client-doc-upload";
+import { SubmitOnce } from "@/components/admin/submit-once";
 import { balance, defaultInvoiceLines, dollars, invoiceView } from "@/lib/workspace/rules.ts";
 import { RETURN_KINDS } from "@/lib/workspace/types.ts";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
-import { addNoteAction, addReturnAction, addTaskAction, archiveClientAction, createInvoiceAction, deleteClientDocAction, invoiceStatusAction, logMessageAction, openClientDocAction, saveClientAction, toggleTaskAction } from "../../actions";
+import { addNoteAction, addReturnAction, addTaskAction, archiveClientAction, createInvoiceAction, deleteClientDocAction, invoiceStatusAction, logMessageAction, openClientDocAction, saveClientAction, sendMessageAction, toggleTaskAction } from "../../actions";
+import { SMS_MAX } from "@/lib/automation/sms.ts";
+import { smsConfig, smsConfigProblems, toE164 } from "@/lib/automation/twilio.ts";
+import { emailConfig, emailConfigProblems } from "@/lib/automation/email.ts";
 import { WorkspaceSetup } from "../../setup";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -99,21 +103,58 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         </>
       )}
 
-      {tab === "messages" && (
+      {tab === "messages" && (() => {
+        const emailProblem = emailConfigProblems(emailConfig(process.env))[0] ?? null;
+        const smsProblem = smsConfigProblems(smsConfig(process.env))[0] ?? null;
+        const mobile = toE164(client.phone);
+        return (
         <>
+          <section className="monarch-panel" style={{ padding: 20 }}>
+            <h2>Send a message</h2>
+            {client.archived_at ? <p className="monarch-muted">This client is archived. Restore them on the Overview tab to send messages.</p> : (
+              <div className="grid2">
+                <form action={sendMessageAction} className="monarch-form">
+                  <h3 className="is-wide">Email {client.email ? <small className="monarch-muted">to {client.email}</small> : null}</h3>
+                  <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="channel" value="email" />
+                  {!client.email ? <p className="is-wide monarch-muted">Add an email address on the Overview tab to email this client.</p> : emailProblem ? <p className="is-wide monarch-muted">Email sending isn&apos;t set up yet: {emailProblem}</p> : (
+                    <>
+                      <label className="is-wide">Subject *<input name="subject" required maxLength={200} /></label>
+                      <label className="is-wide">Message *<textarea name="body" required rows={6} maxLength={4000} /></label>
+                      <div className="is-wide"><SubmitOnce className="monarch-primary" busy="Sending…">Send email</SubmitOnce></div>
+                    </>
+                  )}
+                </form>
+                <form action={sendMessageAction} className="monarch-form">
+                  <h3 className="is-wide">Text {mobile ? <small className="monarch-muted">to {mobile}</small> : null}</h3>
+                  <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="channel" value="sms" />
+                  {!mobile ? <p className="is-wide monarch-muted">Add a mobile number on the Overview tab to text this client.</p> : smsProblem ? <p className="is-wide monarch-muted">Text messaging isn&apos;t connected yet: {smsProblem}</p> : (
+                    <>
+                      <label className="is-wide">Message *<textarea name="body" required rows={4} maxLength={SMS_MAX} /><small className="monarch-muted">Up to {SMS_MAX} characters. Only text clients who agreed to receive texts.</small></label>
+                      <div className="is-wide"><SubmitOnce className="monarch-primary" busy="Sending…">Send text</SubmitOnce></div>
+                    </>
+                  )}
+                </form>
+              </div>
+            )}
+          </section>
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Messages</h2><p>A log of what was said to and by this client. Sending from here isn&apos;t built; log the message after you send it.</p></div></div>
+            <div className="monarch-panel-head"><div><h2>History</h2><p>Messages sent from here, and messages you logged.</p></div></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>WHEN</th><th>HOW</th><th>MESSAGE</th></tr></thead>
+              <thead><tr><th>WHEN</th><th>HOW</th><th>MESSAGE</th><th>STATUS</th></tr></thead>
               <tbody>
-                {messages.length === 0 ? <EmptyRow colSpan={3}>No messages logged yet.</EmptyRow> : messages.map((m) => (
-                  <tr key={m.id}><td style={{ whiteSpace: "nowrap" }}>{when(m.occurred_at)}</td><td>{m.direction === "in" ? "From client" : "To client"} · {CHANNELS[m.channel]}</td><td style={{ whiteSpace: "pre-wrap" }}>{m.subject && <b>{m.subject}<br /></b>}{m.body}</td></tr>
+                {messages.length === 0 ? <EmptyRow colSpan={4}>No messages yet.</EmptyRow> : messages.map((m) => (
+                  <tr key={m.id}>
+                    <td style={{ whiteSpace: "nowrap" }}>{when(m.occurred_at)}</td>
+                    <td>{m.direction === "in" ? "From client" : "To client"} · {CHANNELS[m.channel]}{m.sent_to && <small className="monarch-subcell">{m.sent_to}</small>}</td>
+                    <td style={{ whiteSpace: "pre-wrap" }}>{m.subject && <b>{m.subject}<br /></b>}{m.body}</td>
+                    <td>{m.status === "sent" ? <Badge value="sent" /> : m.status === "failed" ? <><Badge value="failed" />{m.error && <small className="monarch-subcell">{m.error}</small>}</> : <span className="monarch-muted">Logged</span>}</td>
+                  </tr>
                 ))}
               </tbody>
             </table></div>
           </section>
           <form action={logMessageAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
-            <h2 className="is-wide">Log a message</h2>
+            <h2 className="is-wide">Log a message sent elsewhere</h2>
             <input type="hidden" name="client_id" value={client.id} />
             <label>Direction<select name="direction" defaultValue="out"><option value="out">I sent it</option><option value="in">Client sent it</option></select></label>
             <label>How<select name="channel" defaultValue="email">{Object.entries(CHANNELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
@@ -123,7 +164,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             <div className="is-wide"><button className="monarch-primary">Log message</button></div>
           </form>
         </>
-      )}
+        );
+      })()}
 
       {tab === "work" && (
         <>

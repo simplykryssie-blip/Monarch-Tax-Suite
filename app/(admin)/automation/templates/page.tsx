@@ -25,7 +25,7 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
           </tbody></table></div>
       </section>
       <section className="monarch-panel">
-        <div className="monarch-panel-head"><div><h2>Text messages (SMS)</h2><p>Plain text, no formatting. Saved here for when text messaging is connected; nothing sends a text yet.</p></div><Link className="monarch-primary" href="/automation/templates/sms/new">New text template</Link></div>
+        <div className="monarch-panel-head"><div><h2>Text messages (SMS)</h2><p>Plain text, no formatting. Workflows don&apos;t send texts yet; staff can text a client from the client&apos;s Messages tab once Twilio is connected.</p></div><Link className="monarch-primary" href="/automation/templates/sms/new">New text template</Link></div>
         <div className="monarch-table-wrap"><table>
           <thead><tr><th>NAME</th><th>MESSAGE</th><th>STATUS</th><th>UPDATED</th></tr></thead>
           <tbody>

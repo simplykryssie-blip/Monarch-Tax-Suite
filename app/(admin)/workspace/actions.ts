@@ -9,7 +9,8 @@ import { pipelinesRepo } from "@/lib/pipelines/server";
 import { returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
 import { addClient, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveClient, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
-import { docDeps, workspaceRepo } from "@/lib/workspace/server";
+import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
+import { sendClientMessage } from "@/lib/workspace/send.ts";
 
 // My Workspace actions. Each re-checks administrator access and acts only on the current tenant's rows.
 
@@ -121,6 +122,14 @@ export async function addNoteAction(form: FormData) {
   await act(clientPage(id, "notes"), async (adminId) => {
     await addNote(workspaceRepo(), id, str(form, "body"), adminId);
     return { notice: "Note added." };
+  });
+}
+
+export async function sendMessageAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id, "messages"), async (adminId) => {
+    const m = await sendClientMessage(sendDeps(), id, raw(form), adminId);
+    return { notice: m.channel === "sms" ? `Text sent to ${m.sent_to}.` : `Email sent to ${m.sent_to}.` };
   });
 }
 

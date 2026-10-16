@@ -59,6 +59,17 @@ export async function clientDocLink(d: DocDeps, id: string): Promise<string> {
 export async function deleteClientDoc(d: DocDeps, id: string): Promise<void> {
   const doc = UUID.test(id) ? await d.repo.getDoc(id) : null;
   if (!doc) throw new ValidationError("That document wasn't found.");
-  if (doc.file_path.startsWith(`${d.tenantId}/clients/${doc.client_id}/`)) await d.store.remove([doc.file_path]).catch(() => undefined);
   await d.repo.deleteDoc(doc.id);
+  // The file goes with the record. If storage can't be reached now, it is queued and the scheduler deletes it.
+  if (doc.file_path.startsWith(`${d.tenantId}/clients/${doc.client_id}/`)) await d.store.remove([doc.file_path]).catch(() => undefined);
+}
+
+/** Uploads that were started more than a day ago and never finished: their files (if any arrived) and records go. */
+export async function sweepPendingClientDocs(d: DocDeps, now = new Date()): Promise<number> {
+  const stale = await d.repo.listStalePendingDocs(new Date(now.getTime() - 86_400_000).toISOString());
+  for (const doc of stale) {
+    if (doc.file_path.startsWith(`${d.tenantId}/clients/`)) await d.store.remove([doc.file_path]).catch(() => undefined);
+    await d.repo.deleteDoc(doc.id);
+  }
+  return stale.length;
 }

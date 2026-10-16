@@ -1,5 +1,7 @@
 import type { ArchiveLogEntry } from "../archive.ts";
 import "server-only";
+import { isMediaPath, LEGACY_IMAGE_BUCKET, mediaType, mediaUrl, tenantBucket } from "../storage/paths.ts";
+import { removeObjects, uploadToTenantBucket } from "../storage/objects.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ImageStore,
@@ -238,24 +240,37 @@ export class SupabaseCommerceRepo implements CommerceRepo {
   }
 }
 
-export const PRODUCT_IMAGE_BUCKET = "product-images";
+export const PRODUCT_IMAGE_BUCKET = LEGACY_IMAGE_BUCKET;
 
-/** Supabase Storage for product images; service-role client only (server-side). */
+/**
+ * Product images in the tenant's own private bucket (images/products/...), shown through /media. Images uploaded before
+ * per-tenant buckets keep their old products/... path in the shared bucket until moved; they are still shown, copied
+ * into the tenant's bucket when a product is duplicated, and deleted from wherever they are. Server-side only.
+ */
 export class SupabaseImageStore implements ImageStore {
-  constructor(private db: SupabaseClient) {}
-  private bucket() { return this.db.storage.from(PRODUCT_IMAGE_BUCKET); }
+  constructor(private db: SupabaseClient, private tenantId: string, private origin = "") {}
+  private legacy() { return this.db.storage.from(LEGACY_IMAGE_BUCKET); }
   async put(path: string, bytes: Uint8Array, contentType: ImageType) {
-    const { error } = await this.bucket().upload(path, bytes, { contentType, upsert: false, cacheControl: "31536000" });
-    if (error) throw new Error(`Image upload failed: ${error.message}`);
+    if (!isMediaPath(path)) throw new Error("Images are stored under images/ in the account's own bucket.");
+    await uploadToTenantBucket(this.db, this.tenantId, path, bytes, contentType);
   }
   async remove(paths: string[]) {
-    if (paths.length === 0) return;
-    const { error } = await this.bucket().remove(paths);
-    if (error) throw new Error(`Image removal failed: ${error.message}`);
+    const own = paths.filter(isMediaPath);
+    const old = paths.filter((p) => !isMediaPath(p));
+    await removeObjects(this.db, tenantBucket(this.tenantId), own);
+    await removeObjects(this.db, LEGACY_IMAGE_BUCKET, old);
   }
   async copy(from: string, to: string) {
-    const { error } = await this.bucket().copy(from, to);
-    if (error) throw new Error(`Image copy failed: ${error.message}`);
+    if (isMediaPath(from)) {
+      const { error } = await this.db.storage.from(tenantBucket(this.tenantId)).copy(from, to);
+      if (error) throw new Error(`Image copy failed: ${error.message}`);
+      return;
+    }
+    const { data, error } = await this.legacy().download(from);
+    if (error || !data) throw new Error(`Image copy failed: ${error?.message ?? "not found"}`);
+    await this.put(to, new Uint8Array(await data.arrayBuffer()), (mediaType(to) ?? "image/png") as ImageType);
   }
-  publicUrl(path: string) { return this.bucket().getPublicUrl(path).data.publicUrl; }
+  publicUrl(path: string) {
+    return isMediaPath(path) ? mediaUrl(this.origin, this.tenantId, path) : this.legacy().getPublicUrl(path).data.publicUrl;
+  }
 }

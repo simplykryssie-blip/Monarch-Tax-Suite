@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { archivePipeline, checkStages, createPipeline, DEFAULT_RETURN_STAGES, makeDefault, returnsStages, savePipeline } from "../lib/pipelines/service.ts";
+import { archivePipeline, checkStages, createPipeline, deletePipeline, DEFAULT_RETURN_STAGES, makeDefault, returnsStages, savePipeline } from "../lib/pipelines/service.ts";
 import type { Pipeline, PipelineInput, PipelinesRepo } from "../lib/pipelines/types.ts";
 import { checkSms, smsSegments } from "../lib/automation/sms.ts";
 import { historyRows } from "../lib/automation/history.ts";
@@ -20,6 +20,7 @@ class MemoryPipelines implements PipelinesRepo {
     Object.assign(p, structuredClone(patch));
     return structuredClone(p);
   }
+  async remove(id: string) { this.rows = this.rows.filter((p) => p.id !== id); }
 }
 
 describe("pipelines", () => {
@@ -159,6 +160,33 @@ describe("creating a pipeline twice", () => {
     assert.equal(repo.rows[0].name, "Tax Return Intake");
     assert.equal(repo.rows[0].stages.length, 8);
     assert.equal(returnsStages(await repo.list()).pipeline?.id, p.id);
+  });
+
+  test("full lifecycle: create, edit, archive, restore, delete", async () => {
+    const repo = new MemoryPipelines();
+    const returns = await createPipeline(repo, { name: "Tax returns", kind: "returns", stages: DEFAULT_RETURN_STAGES, quickStart: true }, "u");
+    const p = await createPipeline(repo, { name: "Bookkeeping", stages: [{ name: "To do" }, { name: "Done", done: true }] }, "u");
+    await savePipeline(repo, p.id, { name: "Monthly bookkeeping", stages: [{ name: "To do" }, { name: "Doing" }, { name: "Done", done: true }] });
+    assert.equal((await repo.get(p.id))?.stages.length, 3);
+
+    await assert.rejects(deletePipeline(repo, p.id), /Archive the pipeline first/);
+    await archivePipeline(repo, p.id, true);
+    await assert.rejects(savePipeline(repo, p.id, { name: "X pipeline", stages: [{ name: "A" }, { name: "B", done: true }] }), /wasn't found/);
+    await archivePipeline(repo, p.id, false);
+    assert.equal((await repo.get(p.id))?.archived_at, null);
+
+    // A restore can't make two active pipelines with the same name.
+    await archivePipeline(repo, p.id, true);
+    await createPipeline(repo, { name: "monthly BOOKKEEPING", stages: [{ name: "A" }, { name: "B", done: true }] }, "u", () => new Date("2027-01-01T00:00:00Z"));
+    await assert.rejects(archivePipeline(repo, p.id, false), /already called/);
+
+    const gone = await deletePipeline(repo, p.id);
+    assert.equal(gone.id, p.id);
+    assert.equal(await repo.get(p.id), null);
+    await assert.rejects(deletePipeline(repo, p.id), /wasn't found/);
+    // The default returns pipeline can be neither archived nor deleted.
+    await assert.rejects(archivePipeline(repo, returns.id, true), /runs the My Work board/);
+    await assert.rejects(deletePipeline(repo, returns.id), /Archive the pipeline first/);
   });
 });
 

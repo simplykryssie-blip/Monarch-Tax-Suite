@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 const source = readFileSync(new URL("../lib/supabase/proxy.ts", import.meta.url), "utf8");
 const list = source.match(/const PUBLIC_PATHS: string\[\] = \[([\s\S]*?)\];/)?.[1] ?? "";
 
-for (const path of ["/setup", "/api/automation/run", "/integrations", "/api/stripe/webhook", "/api/integrations/crm/", "/api/leads", "/d/", "/sign/", "/f/"]) {
+for (const path of ["/setup", "/api/automation/run", "/integrations", "/api/stripe/webhook", "/api/integrations/crm/", "/api/leads", "/d/", "/sign/", "/f/", "/media/"]) {
   test(`${path} is reachable without an admin session`, () => {
     assert.ok(list.includes(`"${path}"`), `${path} missing from PUBLIC_PATHS`);
   });

@@ -179,12 +179,10 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         <label>Logo (PNG, JPG or WebP, up to 4 MB)
           <input type="file" name="logo_file" accept="image/png,image/jpeg,image/webp" />
           {theme.logo_url && <span className="monarch-muted">Current logo: <a href={theme.logo_url} target="_blank" rel="noreferrer">view</a> <label className="monarch-check" style={{ display: "inline-flex" }}><input type="checkbox" name="logo_remove" /> Remove it</label></span>}
-          <input type="hidden" name="logo_url" value={theme.logo_url ?? ""} />
         </label>
         <label>Header image (shown behind the logo across the top)
           <input type="file" name="header_file" accept="image/png,image/jpeg,image/webp" />
           {theme.header_image_url && <span className="monarch-muted">Current image: <a href={theme.header_image_url} target="_blank" rel="noreferrer">view</a> <label className="monarch-check" style={{ display: "inline-flex" }}><input type="checkbox" name="header_remove" /> Remove it</label></span>}
-          <input type="hidden" name="header_url" value={theme.header_image_url ?? ""} />
         </label>
         <label className="is-wide">Custom CSS (optional, for designers)
           <textarea name="custom_css" rows={8} maxLength={10000} spellCheck={false} defaultValue={theme.custom_css} style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }} placeholder={"body { background: #faf7f0; }\nh1 { font-family: Georgia, serif; color: #12324f; }\n.monarch-primary { border-radius: 999px; }"} />

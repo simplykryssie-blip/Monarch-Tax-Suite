@@ -4,7 +4,7 @@ import { workflowsUsing } from "@/lib/automation/admin.ts";
 import { automationConfig, automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { renderTemplate, SAMPLE_VALUES, VARIABLES } from "@/lib/automation/template.ts";
 import { RichEditor } from "@/components/admin/rich-editor";
-import { saveTemplateAction, templateActiveAction, testTemplateAction } from "../../actions";
+import { saveTemplateAction, templateActiveAction, testTemplateAction, uploadEmailImageAction } from "../../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -36,7 +36,7 @@ export default async function TemplateEditor({ params, searchParams }: { params:
             {senders.map((s) => <option key={s.id} value={s.id}>{s.from_name} &lt;{s.address}&gt;</option>)}
           </select>
         </label>
-        <div className="is-wide"><RichEditor name="body" initial={t?.body ?? ""} variant="email" label="Message" placeholders={Object.entries(VARIABLES).map(([name, note]) => ({ name, note }))} /></div>
+        <div className="is-wide"><RichEditor name="body" initial={t?.body ?? ""} variant="email" label="Message" placeholders={Object.entries(VARIABLES).map(([name, note]) => ({ name, note }))} uploadImage={uploadEmailImageAction} /></div>
         <div className="is-wide"><button className="monarch-primary">Save template</button></div>
       </form>
       {t && (

@@ -16,7 +16,13 @@ export type ClientReturn = {
 export type ReturnInput = Pick<ClientReturn, "client_id" | "tax_year" | "kind" | "parent_id" | "stage_id" | "due_on" | "notes">;
 
 export type ClientDoc = { id: string; tenant_id: string; client_id: string; return_id: string | null; title: string; file_path: string; file_type: string; size_bytes: number | null; status: "pending" | "stored"; uploaded_by: string | null; created_at: string };
-export type ClientMessage = { id: string; tenant_id: string; client_id: string; direction: "out" | "in"; channel: "email" | "sms" | "call" | "other"; subject: string | null; body: string; occurred_at: string; created_by: string | null; created_at: string };
+export type ClientMessage = {
+  id: string; tenant_id: string; client_id: string; direction: "out" | "in"; channel: "email" | "sms" | "call" | "other"; subject: string | null; body: string; occurred_at: string; created_by: string | null; created_at: string;
+  /** "logged": written down by staff; "sent" / "failed": sent from the profile. */
+  status: "logged" | "sent" | "failed"; sent_to: string | null; provider_id: string | null; error: string | null;
+};
+type SendFields = "status" | "sent_to" | "provider_id" | "error";
+export type NewClientMessage = Omit<ClientMessage, "id" | "tenant_id" | "created_at" | SendFields> & Partial<Pick<ClientMessage, SendFields>>;
 export type ClientTask = { id: string; tenant_id: string; client_id: string; return_id: string | null; title: string; due_on: string | null; done_at: string | null; created_by: string | null; created_at: string };
 export type ClientNote = { id: string; tenant_id: string; client_id: string; body: string; created_by: string | null; created_at: string };
 
@@ -53,9 +59,11 @@ export interface WorkspaceRepo {
   insertDoc(input: Omit<ClientDoc, "id" | "tenant_id" | "created_at">): Promise<ClientDoc>;
   updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status">>): Promise<ClientDoc>;
   deleteDoc(id: string): Promise<void>;
+  /** Uploads started before `before` that were never finished. */
+  listStalePendingDocs(before: string): Promise<ClientDoc[]>;
 
   listMessages(clientId: string): Promise<ClientMessage[]>;
-  insertMessage(input: Omit<ClientMessage, "id" | "tenant_id" | "created_at">): Promise<ClientMessage>;
+  insertMessage(input: NewClientMessage): Promise<ClientMessage>;
   listTasks(f?: { clientId?: string; openOnly?: boolean }): Promise<ClientTask[]>;
   insertTask(input: Pick<ClientTask, "client_id" | "return_id" | "title" | "due_on" | "created_by">): Promise<ClientTask>;
   updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at">>): Promise<ClientTask>;

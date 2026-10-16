@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unwrap } from "./supabase-repo.ts";
+import { removeObjects } from "../storage/objects.ts";
 import { STORED_CONTENT_TYPE, type DownloadEvent, type FileStore, type ProductFile, type ProductFilesRepo } from "./product-files.ts";
 
 export const PRODUCT_FILE_BUCKET = "product-files";
@@ -51,10 +52,9 @@ export class SupabaseFileStore implements FileStore {
     if (error || !data) throw new Error(`Could not sign the download: ${error?.message ?? "no URL"}`);
     return data.signedUrl;
   }
+  /** Deletes the files; if storage can't be reached they are queued and the scheduler removes them later. */
   async remove(paths: string[]) {
-    if (!paths.length) return;
-    const { error } = await this.bucket().remove(paths);
-    if (error) throw new Error(`File removal failed: ${error.message}`);
+    await removeObjects(this.db, PRODUCT_FILE_BUCKET, paths);
   }
 }
 

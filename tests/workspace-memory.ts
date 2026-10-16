@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Client, ClientDoc, ClientInput, ClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
+import type { Client, ClientDoc, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
 
 // The workspace in memory, with the database rules that matter: one original and one extension per client per year,
 // unique invoice numbers. Returns copies.
@@ -28,9 +28,10 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async insertDoc(input: Omit<ClientDoc, "id" | "tenant_id" | "created_at">) { const d: ClientDoc = { ...this.c(input), id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.docs.push(d); return this.c(d); }
   async updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status">>) { const d = this.docs.find((x) => x.id === id)!; Object.assign(d, patch); return this.c(d); }
   async deleteDoc(id: string) { this.docs = this.docs.filter((d) => d.id !== id); }
+  async listStalePendingDocs(before: string) { return this.c(this.docs.filter((d) => d.status === "pending" && d.created_at < before)); }
 
   async listMessages(clientId: string) { return this.c(this.messages.filter((m) => m.client_id === clientId)); }
-  async insertMessage(input: Omit<ClientMessage, "id" | "tenant_id" | "created_at">) { const m: ClientMessage = { ...this.c(input), id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.messages.push(m); return this.c(m); }
+  async insertMessage(input: NewClientMessage) { const m: ClientMessage = { status: "logged", sent_to: null, provider_id: null, error: null, ...this.c(input), id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.messages.push(m); return this.c(m); }
   async listTasks(f: { clientId?: string; openOnly?: boolean } = {}) { return this.c(this.tasks.filter((t) => (!f.clientId || t.client_id === f.clientId) && (!f.openOnly || !t.done_at))); }
   async insertTask(input: Pick<ClientTask, "client_id" | "return_id" | "title" | "due_on" | "created_by">) { const t: ClientTask = { ...this.c(input), id: randomUUID(), tenant_id: "t", done_at: null, created_at: this.at() }; this.tasks.push(t); return this.c(t); }
   async updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at">>) { const t = this.tasks.find((x) => x.id === id)!; Object.assign(t, patch); return this.c(t); }

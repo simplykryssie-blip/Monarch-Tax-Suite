@@ -16,6 +16,8 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   "/d/", "/sign/",
   // Public forms: anyone with the link may fill them in; every action is limited per visitor and checked again on the server.
   "/f/",
+  // Account images shown in emails, public forms and the shop: image files only, read from that tenant's own bucket.
+  "/media/",
   // The WISP Generator: public audit and builder; downloads need the buying browser's secret or the emailed link token.
   "/wisp",
   // Office invites: the one-time link token is the credential. The rest of /office requires sign-in and two-step sign-in.

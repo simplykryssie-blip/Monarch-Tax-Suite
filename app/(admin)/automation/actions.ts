@@ -5,11 +5,15 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { retryExecution, runClientTest, runTest } from "@/lib/automation/engine.ts";
-import { archivePipeline, createPipeline, DEFAULT_RETURN_STAGES, makeDefault, savePipeline } from "@/lib/pipelines/service.ts";
+import { archivePipeline, createPipeline, DEFAULT_RETURN_STAGES, deletePipeline, makeDefault, savePipeline } from "@/lib/pipelines/service.ts";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { createSms, setSmsActive, updateSms } from "@/lib/automation/sms.ts";
 import { SupabaseSmsRepo } from "@/lib/automation/sms-repo";
-import { tenantDb } from "@/lib/admin";
+import { appOrigin, imageStore, tenantDb } from "@/lib/admin";
+import { currentTenantId } from "@/lib/tenants.ts";
+import { mediaUrl } from "@/lib/storage/paths.ts";
+import { deleteLibraryImage, uploadLibraryImage } from "@/lib/images/service.ts";
+import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { installDefaults } from "@/lib/automation/defaults.ts";
@@ -192,7 +196,15 @@ export async function archivePipelineAction(form: FormData) {
   await mutate("/automation/pipelines", async () => {
     const archive = str(form, "archive") === "yes";
     await archivePipeline(pipelinesRepo(), id(form), archive);
-    return { notice: archive ? "Pipeline archived." : "Pipeline restored." };
+    return { notice: archive ? "Pipeline archived. It's listed under Archived pipelines, where you can restore or delete it." : "Pipeline restored." };
+  });
+}
+
+export async function deletePipelineAction(form: FormData) {
+  await mutate("/automation/pipelines", async () => {
+    if (str(form, "confirm") !== "yes") throw new ValidationError("Tick the box to confirm the pipeline should be deleted.");
+    const p = await deletePipeline(pipelinesRepo(), id(form));
+    return { notice: `Pipeline "${p.name}" deleted.` };
   });
 }
 
@@ -213,5 +225,43 @@ export async function smsActiveAction(form: FormData) {
     const active = str(form, "active") === "yes";
     await setSmsActive(smsRepo(), id(form), active);
     return { notice: active ? "Text template is on." : "Text template is off." };
+  });
+}
+
+// ---- Images for emails: kept in the account's own private storage and shown through /media
+
+const imagesRepo = () => new SupabaseImagesRepo(tenantDb());
+
+async function libraryUpload(form: FormData, actorId: string) {
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new ValidationError("Choose a picture to upload.");
+  return uploadLibraryImage(imagesRepo(), imageStore(), { bytes: new Uint8Array(await file.arrayBuffer()), declaredType: file.type, fileName: file.name, altText: str(form, "alt") }, actorId);
+}
+
+export async function uploadLibraryImageAction(form: FormData) {
+  await mutate("/automation/images", async (a) => {
+    await libraryUpload(form, a.id);
+    return { notice: "Picture uploaded. Copy its email code, or add it from the Picture button in any email template." };
+  });
+}
+
+/** Called by the email editor's "Upload a picture": stores it and returns the address the email shows it from. */
+export async function uploadEmailImageAction(form: FormData): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const session = await requireAdmin();
+  try {
+    const image = await libraryUpload(form, session.userId);
+    revalidatePath("/automation/images");
+    return { ok: true, url: mediaUrl(await appOrigin(), currentTenantId(), image.storage_path) };
+  } catch (e) {
+    if (e instanceof ValidationError) return { ok: false, error: e.message };
+    console.error(`email image upload failed: ${sanitizeError(e, 200)}`);
+    return { ok: false, error: /relation|schema cache|does not exist/i.test(e instanceof Error ? e.message : "") ? "Image storage isn't installed yet. Apply the tenant storage migration first." : "The picture could not be uploaded. Please try again." };
+  }
+}
+
+export async function deleteLibraryImageAction(form: FormData) {
+  await mutate("/automation/images", async () => {
+    await deleteLibraryImage(imagesRepo(), imageStore(), id(form));
+    return { notice: "Picture deleted, including its stored file." };
   });
 }

@@ -8,6 +8,9 @@ import { documentDeps } from "./documents/server";
 import { removeDocument } from "./documents/service.ts";
 import { formDeps } from "./forms/server";
 import { removeForm } from "./forms/service.ts";
+import { readSettings } from "./forms/settings.ts";
+import { staleThemeImages } from "./forms/theme-images.ts";
+import { SupabaseCommerceRepo, SupabaseImageStore } from "./commerce/supabase-repo.ts";
 import { ENTITY, type ArchiveEntity, type ArchiveFacts, type ArchiveLogEntry, type ArchiveLogRow, type ArchiveRow } from "./archive.ts";
 import type { ArchiveStore } from "./archive-service.ts";
 
@@ -77,18 +80,30 @@ export class SupabaseArchiveStore implements ArchiveStore {
     if (entity === "form") {
       const deps = formDeps(this.tenantId);
       if ((await deps.repo.countSubmitted(row.id)) > 0) throw new ValidationError("This form has submissions, and those are kept. It stays archived.");
-      await removeForm(deps, row.id, "owner");
+      const forms = await deps.repo.listForms();
+      const theme = readSettings(forms.find((f) => f.id === row.id)?.settings).theme;
+      if ((await removeForm(deps, row.id, "owner")) === "deleted") {
+        const others = forms.filter((f) => f.id !== row.id).map((f) => readSettings(f.settings).theme);
+        await this.images().remove(staleThemeImages(this.tenantId, row.id, theme, null, others)).catch(() => undefined);
+      }
       return;
     }
     if (entity === "workflow" && (await new SupabaseAutomationRepo(this.db).hasExecutions(row.id))) {
       throw new ValidationError("This workflow has run, and its history is kept. It stays archived.");
     }
+    // A product's images are deleted with it (its rows go by cascade), so their files are removed from storage too.
+    const images = entity === "product" ? await new SupabaseCommerceRepo(this.db).listProductImages([row.id]) : [];
     const r = await this.db.from(ENTITY[entity].table).delete().eq("id", row.id).select("id");
     if (r.error) {
       if (r.error.code === "23503" || /foreign key/i.test(r.error.message)) throw new ValidationError(keptBecause(entity, `${r.error.message} ${r.error.details ?? ""}`));
       throw new Error(r.error.message);
     }
     if (rows(r).length !== 1) throw new ValidationError(`That ${ENTITY[entity].noun} was not found.`);
+    if (images.length) await this.images().remove(images.map((i) => i.storage_path)).catch(() => undefined);
+  }
+
+  private images() {
+    return new SupabaseImageStore(this.db, this.tenantId);
   }
 
   async log(entry: ArchiveLogEntry) {

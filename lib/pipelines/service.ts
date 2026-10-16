@@ -110,7 +110,30 @@ export async function archivePipeline(repo: PipelinesRepo, id: string, archive: 
   const p = await repo.get(id);
   if (!p) throw new ValidationError("That pipeline wasn't found.");
   if (archive && p.is_default) throw new ValidationError("This pipeline runs the My Work board. Make another tax-return pipeline the default first.");
-  return repo.update(id, { archived_at: archive ? new Date().toISOString() : null });
+  if (!archive && p.archived_at) {
+    // Active pipelines of one kind have unique names, so a restore can't bring back a second "Tax returns".
+    const clash = (await repo.list()).find((o) => o.id !== id && !o.archived_at && o.kind === p.kind && o.name.toLowerCase() === p.name.toLowerCase());
+    if (clash) throw new ValidationError(`Another pipeline is already called "${clash.name}". Rename or archive that one first, then restore this one.`);
+  }
+  try {
+    return await repo.update(id, { archived_at: archive ? new Date().toISOString() : null });
+  } catch (e) {
+    if (/duplicate key|pipelines_active_name_key/i.test(e instanceof Error ? e.message : "")) throw new ValidationError("Another pipeline already has that name. Rename or archive it first.");
+    throw e;
+  }
+}
+
+/**
+ * Deletes a pipeline for good. Only an archived pipeline can be deleted, so it is never the one running My Work.
+ * Returns on the board keep their stage; nothing else points at a pipeline.
+ */
+export async function deletePipeline(repo: PipelinesRepo, id: string): Promise<Pipeline> {
+  const p = await repo.get(id);
+  if (!p) throw new ValidationError("That pipeline wasn't found.");
+  if (!p.archived_at) throw new ValidationError("Archive the pipeline first. Only archived pipelines can be deleted.");
+  if (p.is_default) throw new ValidationError("This pipeline runs the My Work board, so it can't be deleted.");
+  await repo.remove(id);
+  return p;
 }
 
 /** The stages the My Work board uses: the default returns pipeline, or the built-in set when there isn't one. */

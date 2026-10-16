@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Client, ClientDoc, ClientInput, ClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
+import type { Client, ClientDoc, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
 
 // Workspace rows for one tenant, on the tenant client: the database's tenant policies scope every query.
 const unwrap = <T>(r: { data: T | null; error: { message: string } | null }): T => {
@@ -39,9 +39,10 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   async insertDoc(input: Omit<ClientDoc, "id" | "tenant_id" | "created_at">) { return unwrap(await this.db.from("client_docs").insert(input).select("*").single()) as ClientDoc; }
   async updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status">>) { return unwrap(await this.db.from("client_docs").update(patch).eq("id", id).select("*").single()) as ClientDoc; }
   async deleteDoc(id: string) { unwrap(await this.db.from("client_docs").delete().eq("id", id)); }
+  async listStalePendingDocs(before: string) { return unwrap(await this.db.from("client_docs").select("*").eq("status", "pending").lt("created_at", before).limit(200)) as ClientDoc[]; }
 
   async listMessages(clientId: string) { return unwrap(await this.db.from("client_messages").select("*").eq("client_id", clientId).order("occurred_at", { ascending: false }).limit(300)) as ClientMessage[]; }
-  async insertMessage(input: Omit<ClientMessage, "id" | "tenant_id" | "created_at">) { return unwrap(await this.db.from("client_messages").insert(input).select("*").single()) as ClientMessage; }
+  async insertMessage(input: NewClientMessage) { return unwrap(await this.db.from("client_messages").insert(input).select("*").single()) as ClientMessage; }
   async listTasks(f: { clientId?: string; openOnly?: boolean } = {}) {
     let q = this.db.from("client_tasks").select("*").order("due_on", { ascending: true, nullsFirst: false }).limit(1000);
     if (f.clientId) q = q.eq("client_id", f.clientId);

@@ -10,7 +10,10 @@ import { formDeps } from "@/lib/forms/server";
 import { linkFirm, makePdf, relinkRespondent, createForm, duplicateForm, emptySpam, publishForm, revealAnswer, saveDraft, saveFormDetails, saveSettings, setFormStatus, saveInternalValues, saveTheme, setSubmissionStatus, submitForm, SubmissionInvalid } from "@/lib/forms/service.ts";
 import { readSettings } from "@/lib/forms/settings.ts";
 import { randomUUID } from "node:crypto";
-import { imageStore } from "@/lib/admin";
+import { appOrigin, imageStore } from "@/lib/admin";
+import { currentTenantId } from "@/lib/tenants.ts";
+import { mediaPathFromUrl } from "@/lib/storage/paths.ts";
+import { staleThemeImages } from "@/lib/forms/theme-images.ts";
 import { validateImage } from "@/lib/commerce/images.ts";
 import { REVIEW_STATUSES, type SubmissionStatus } from "@/lib/forms/types.ts";
 import { signatureFrom, type SignaturePayload } from "@/lib/forms/signature-input.ts";
@@ -137,12 +140,12 @@ export async function saveFormSettingsAction(form: FormData) {
 
 const IMAGE_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as const;
 
-/** Stores a logo or header image in public image storage and returns its address. */
-async function uploadThemeImage(formId: string, file: File): Promise<string> {
+/** Stores a logo or header image in the account's own private storage and returns the address it is shown at. */
+async function uploadThemeImage(formId: string, file: File, origin: string): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const { type } = validateImage({ bytes, declaredType: file.type, fileName: file.name, altText: null });
-  const store = imageStore();
-  const path = `forms/${formId}/${randomUUID()}.${IMAGE_EXT[type]}`;
+  const store = imageStore(origin);
+  const path = `images/forms/${formId.toLowerCase()}/${randomUUID()}.${IMAGE_EXT[type]}`;
   await store.put(path, bytes, type);
   return store.publicUrl(path);
 }
@@ -150,17 +153,38 @@ async function uploadThemeImage(formId: string, file: File): Promise<string> {
 export async function saveFormThemeAction(form: FormData) {
   await act(`/forms/${str(form, "id")}/settings`, async (adminId) => {
     const id = idOf(form);
+    const deps = formDeps();
+    const before = readSettings((await deps.repo.getForm(id))?.settings).theme;
+    const origin = await appOrigin();
+    const uploaded: string[] = [];
     const url = async (field: "logo" | "header") => {
       const file = form.get(`${field}_file`);
-      if (file instanceof File && file.size > 0) return uploadThemeImage(id, file);
-      return form.get(`${field}_remove`) === "on" ? "" : str(form, `${field}_url`);
+      if (file instanceof File && file.size > 0) {
+        const u = await uploadThemeImage(id, file, origin);
+        uploaded.push(u);
+        return u;
+      }
+      // Only the image already saved can be kept; anything else would point the form at a file it doesn't own.
+      const kept = field === "logo" ? before.logo_url : before.header_image_url;
+      return form.get(`${field}_remove`) === "on" ? "" : kept ?? "";
     };
     const raw = {
       background: str(form, "background"), card: str(form, "card"), text: str(form, "text"), header: str(form, "header"), button: str(form, "button"),
       font: str(form, "font"), custom_css: str(form, "custom_css"),
       logo_url: await url("logo"), header_image_url: await url("header"),
     };
-    await saveTheme(formDeps(), id, raw, adminId);
+    let saved;
+    try {
+      saved = await saveTheme(deps, id, raw, adminId);
+    } catch (e) {
+      // The look wasn't saved, so the files just uploaded for it are not used: delete them.
+      const store = imageStore();
+      await store.remove(uploaded.map((u) => mediaPathFromUrl(u, currentTenantId())).filter((p): p is string => !!p)).catch(() => undefined);
+      throw e;
+    }
+    // Replaced or removed images are deleted from storage (unless another form shows the same one).
+    const others = (await deps.repo.listForms()).filter((f) => f.id !== id).map((f) => readSettings(f.settings).theme);
+    await imageStore().remove(staleThemeImages(currentTenantId(), id, before, saved.theme, others)).catch(() => undefined);
     return { notice: "Look saved. Open the public form to see it." };
   });
 }

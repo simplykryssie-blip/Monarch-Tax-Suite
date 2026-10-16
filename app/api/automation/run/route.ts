@@ -9,6 +9,11 @@ import { sweepForms } from "@/lib/forms/service.ts";
 import { retryNotifications } from "@/lib/forms/after.ts";
 import { complianceDeps } from "@/lib/compliance/server";
 import { runComplianceSweep, sweepPendingUploads } from "@/lib/compliance/service.ts";
+import { sweepStorageCleanup } from "@/lib/storage/objects.ts";
+import { sweepPendingClientDocs } from "@/lib/workspace/docs.ts";
+import { docDeps } from "@/lib/workspace/server";
+import { tenantClient } from "@/lib/supabase/service";
+import { currentTenantId } from "@/lib/tenants.ts";
 
 // Scheduler endpoint: processes due retries. Protected by CRON_SECRET (Vercel Cron sends it as
 // "Authorization: Bearer <CRON_SECRET>"; any other scheduler can do the same). It sends no email by itself:
@@ -60,7 +65,15 @@ async function handle(request: Request) {
       console.error(`compliance-sweep: ${sanitizeError(e, 160)}`);
       compliance = { error: "Compliance sweep failed or is not set up yet" };
     }
-    return Response.json({ processed, efin, signatures, forms, compliance });
+    // Storage: files whose records were deleted while storage was unreachable, and client uploads never finished.
+    let storage: unknown = null;
+    try {
+      storage = { ...(await sweepStorageCleanup(tenantClient(currentTenantId()))), clientUploadsRemoved: await sweepPendingClientDocs(docDeps()) };
+    } catch (e) {
+      console.error(`storage-sweep: ${sanitizeError(e, 160)}`);
+      storage = { error: "Storage sweep failed or is not set up yet" };
+    }
+    return Response.json({ processed, efin, signatures, forms, compliance, storage });
   } catch (e) {
     console.error(`automation-run: ${sanitizeError(e, 160)}`);
     return new Response("Run failed", { status: 500 });

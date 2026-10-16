@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ValidationError } from "./validation.ts";
 import type { CommerceRepo, ImageStore, ImageType, ProductImage } from "./types.ts";
 
-// Product images: files go to object storage under products/<product>/<uuid>.<ext>;
+// Product images: files go to the tenant's private bucket under images/products/<product>/<uuid>.<ext>;
 // the database keeps only the path and metadata. Every function here is called
 // from server actions after the administrator check.
 
@@ -92,7 +92,7 @@ export async function uploadProductImage(
   if (replaceImageId && !replacing) throw new ValidationError("The image to replace was not found.");
   if (!replacing && existing.length >= MAX_IMAGES_PER_PRODUCT) throw new ValidationError(`A product can have at most ${MAX_IMAGES_PER_PRODUCT} images.`);
 
-  const path = `products/${productId}/${randomUUID()}.${EXT[type]}`;
+  const path = `images/products/${productId}/${randomUUID()}.${EXT[type]}`;
   await store.put(path, input.bytes, type);
   try {
     if (replacing) await repo.deleteProductImage(replacing.id);
@@ -145,7 +145,7 @@ export async function updateImageAlt(repo: CommerceRepo, imageId: string, alt: s
 /** Copies every image of one product to another as independent files. */
 export async function copyProductImages(repo: CommerceRepo, store: ImageStore, fromProductId: string, toProductId: string, actorId: string) {
   for (const image of (await repo.listProductImages([fromProductId])).sort((a, b) => a.sort_order - b.sort_order)) {
-    const path = `products/${toProductId}/${randomUUID()}.${EXT[image.content_type]}`;
+    const path = `images/products/${toProductId}/${randomUUID()}.${EXT[image.content_type]}`;
     await store.copy(image.storage_path, path);
     await repo.addProductImage({
       product_id: toProductId,

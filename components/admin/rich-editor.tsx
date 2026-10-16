@@ -16,6 +16,8 @@ type Props = {
   rows?: number;
   label?: string;
   onChange?: (markdown: string) => void;
+  /** Stores a picture in the account's own storage and returns its address (email variant only). */
+  uploadImage?: (form: FormData) => Promise<{ ok: true; url: string } | { ok: false; error: string }>;
 };
 
 const SIZES = [["Small", 13], ["Normal", 0], ["Large", 20], ["Huge", 28]] as const;
@@ -24,7 +26,7 @@ function ToolButton({ title, onClick, children }: { title: string; onClick: () =
   return <button type="button" className="re-btn" title={title} aria-label={title} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>{children}</button>;
 }
 
-export function RichEditor({ name, initial, variant, placeholders = [], maxLength = 20000, rows = 12, label = "Message", onChange }: Props) {
+export function RichEditor({ name, initial, variant, placeholders = [], maxLength = 20000, rows = 12, label = "Message", onChange, uploadImage }: Props) {
   const area = useRef<HTMLDivElement>(null);
   const saved = useRef<Range | null>(null);
   const [md, setMd] = useState(initial);
@@ -33,6 +35,7 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
   const [url, setUrl] = useState("https://");
   const [alt, setAlt] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const email = variant === "email";
 
   const publish = useCallback((next: string) => { setMd(next); onChange?.(next); }, [onChange]);
@@ -116,6 +119,25 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
     sync();
   }
 
+  async function uploadPicture(file: File | undefined) {
+    if (!file || !uploadImage) return;
+    if (file.size > 4 * 1024 * 1024) { setProblem("Pictures can be at most 4 MB."); return; }
+    setProblem(null);
+    setUploading(true);
+    const form = new FormData();
+    form.set("file", file);
+    form.set("alt", alt);
+    try {
+      const r = await uploadImage(form);
+      if (r.ok) setUrl(r.url);
+      else setProblem(r.error);
+    } catch {
+      setProblem("The picture could not be uploaded. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <div className="re">
       <input type="hidden" name={name} value={md} />
@@ -152,7 +174,13 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
         <div className="re-panel">
           <input aria-label={panel === "link" ? "Link address" : "Picture address"} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" />
           {panel === "image" && <input aria-label="Picture description" value={alt} onChange={(e) => setAlt(e.target.value)} placeholder="Describe the picture" maxLength={120} />}
-          <button type="button" className="monarch-primary efin-small" onClick={panel === "link" ? applyLink : applyImage}>{panel === "link" ? "Add link" : "Add picture"}</button>
+          {panel === "image" && uploadImage && (
+            <label className="monarch-secondary efin-small" style={{ cursor: "pointer" }}>
+              {uploading ? "Uploading…" : "Upload a picture"}
+              <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={uploading} onChange={(e) => { void uploadPicture(e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
+          )}
+          <button type="button" className="monarch-primary efin-small" disabled={uploading} onClick={panel === "link" ? applyLink : applyImage}>{panel === "link" ? "Add link" : "Add picture"}</button>
           <button type="button" className="monarch-secondary efin-small" onClick={() => setPanel(null)}>Cancel</button>
         </div>
       )}

@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unwrap } from "../commerce/supabase-repo.ts";
+import { removeObjects } from "../storage/objects.ts";
 import type { Delivery, DocumentEvent, DocumentStore, DocumentsRepo, DocumentVersion, LibraryDocument, NewDelivery, NewSignatureRequest, ProfilePatch, SignatureRequest, SignatureStatus, TenantProfile } from "./types.ts";
 
 export const DOCUMENT_BUCKET = "tenant-documents";
@@ -123,9 +124,8 @@ export class SupabaseDocumentStore implements DocumentStore {
     if (error || !data) throw new Error(`Could not sign the link: ${error?.message ?? "no URL"}`);
     return data.signedUrl;
   }
+  /** Deletes the files; if storage can't be reached they are queued and the scheduler removes them later. */
   async remove(paths: string[]) {
-    if (!paths.length) return;
-    const { error } = await this.bucket().remove(paths);
-    if (error) throw new Error(`File removal failed: ${error.message}`);
+    await removeObjects(this.db, this.bucketName, paths);
   }
 }

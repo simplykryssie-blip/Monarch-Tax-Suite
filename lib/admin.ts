@@ -21,9 +21,12 @@ export function commerceRepo() {
   return new SupabaseCommerceRepo(tenantDb());
 }
 
-/** Product image storage (service role; call only after requireAdmin for writes). */
-export function imageStore() {
-  return new SupabaseImageStore(tenantDb());
+/**
+ * Image storage in the current tenant's own bucket (service role; call only after requireAdmin for writes). Addresses
+ * are relative (/media/...) unless an origin is given; pass `await appOrigin()` where the address leaves the app.
+ */
+export function imageStore(origin = "") {
+  return new SupabaseImageStore(tenantDb(), currentTenantId(), origin);
 }
 
 /** Service orders for the current tenant. */

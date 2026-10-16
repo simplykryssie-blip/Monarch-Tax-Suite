@@ -13,4 +13,5 @@ export class SupabasePipelinesRepo implements PipelinesRepo {
   async get(id: string) { return unwrap(await this.db.from("pipelines").select("*").eq("id", id).maybeSingle()) as Pipeline | null; }
   async insert(input: PipelineInput & { is_default: boolean; created_by: string | null }) { return unwrap(await this.db.from("pipelines").insert(input).select("*").single()) as Pipeline; }
   async update(id: string, patch: Partial<Pick<Pipeline, "name" | "stages" | "is_default" | "archived_at">>) { return unwrap(await this.db.from("pipelines").update(patch).eq("id", id).select("*").single()) as Pipeline; }
+  async remove(id: string) { unwrap(await this.db.from("pipelines").delete().eq("id", id)); }
 }

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { unwrap } from "../commerce/supabase-repo.ts";
+import { removeObjects } from "../storage/objects.ts";
 import { tenantDb } from "../admin";
 import { assignmentProblems, EfinRuleError, forField, hasLiveHistory, last4, tracksTeam, normalizeEfin, normalizeEin, normalizePtin, parseDay, planTransition, todayIso } from "./rules.ts";
 import type { AssignmentRole, AssignmentRow, AssignmentState, AuditRow, CredentialRow, DocRow, EfinRow, FilingRow, LocationRow, OptionRow, OrgOptionRow, OrgRow, PersonRow, RenewalTaskRow, RoleRow, Verification } from "./types.ts";
@@ -502,7 +503,7 @@ async function deleteOrgDocuments(orgId: string) {
     throw new Error(error.message);
   }
   const paths = ((data ?? []) as { storage_path: string | null }[]).map((d) => d.storage_path).filter(Boolean) as string[];
-  if (paths.length) await c.storage.from(DOC_BUCKET).remove(paths);
+  if (paths.length) await removeObjects(c, DOC_BUCKET, paths);
   if ((data ?? []).length) must(await c.from("compliance_documents").delete().eq("subject_type", "organization").eq("subject_id", orgId));
 }
 
@@ -745,7 +746,7 @@ export async function uploadDocument(actor: Actor, form: FormData) {
   if (up.error) throw /bucket not found/i.test(up.error.message) ? new Error("relation firm-documents bucket does not exist (schema cache)") : new Error(up.error.message);
   const ins = await client.from("compliance_documents").insert({ id, subject_type: "organization", subject_id: orgId, kind, title, storage_path: path, notes: text(form.get("notes"), 2000, "Notes"), verification_status: oneOf(form.get("verification_status") || "unverified", VERIFICATION, "Confirmation"), created_by: actor.id });
   if (ins.error) {
-    await client.storage.from(DOC_BUCKET).remove([path]); // do not leave an orphan file
+    await removeObjects(client, DOC_BUCKET, [path]).catch(() => undefined); // do not leave an orphan file (queued if storage is down)
     throw new Error(ins.error.message);
   }
   await audit(actor, { type: "document.uploaded", targetType: "document", targetId: id, organizationId: orgId, changes: { kind, title, bytes: file.size } });
@@ -768,7 +769,7 @@ export async function deleteDocument(actor: Actor, docId: string) {
   const client = db();
   const doc = unwrap(await client.from("compliance_documents").select("id, subject_id, storage_path, title").eq("id", id).maybeSingle() as never) as { id: string; subject_id: string; storage_path: string | null; title: string } | null;
   if (!doc) throw new EfinNotFound("That document could not be found.");
-  if (doc.storage_path) await client.storage.from(DOC_BUCKET).remove([doc.storage_path]);
+  if (doc.storage_path) await removeObjects(client, DOC_BUCKET, [doc.storage_path]);
   unwrap(await client.from("compliance_documents").delete().eq("id", id) as never);
   await audit(actor, { type: "document.deleted", targetType: "document", targetId: id, organizationId: doc.subject_id, changes: { title: doc.title } });
 }

@@ -22,4 +22,5 @@ export interface PipelinesRepo {
   get(id: string): Promise<Pipeline | null>;
   insert(input: PipelineInput & { is_default: boolean; created_by: string | null }): Promise<Pipeline>;
   update(id: string, patch: Partial<Pick<Pipeline, "name" | "stages" | "is_default" | "archived_at">>): Promise<Pipeline>;
+  remove(id: string): Promise<void>;
 }

@@ -16,6 +16,7 @@ import { SupabaseCrmRepo } from "../crm/supabase-repo.ts";
 import type { AutomationConfig, AutomationDeps, EmitInput } from "./engine.ts";
 import { emitEvent, runDue } from "./engine.ts";
 import { emailConfig, emailConfigProblems, ResendEmailSender } from "./email.ts";
+import { smsConfig, smsConfigProblems } from "./twilio.ts";
 import { sanitizeError } from "./sanitize.ts";
 import { SupabaseAutomationRepo } from "./supabase-repo.ts";
 
@@ -130,6 +131,7 @@ export async function runDueSafe(limit = 10): Promise<number> {
 
 export type IntegrationStatus = {
   resend: { configured: boolean; keySource: string | null; sender: string | null; replyTo: string | null; problems: string[] };
+  twilio: { configured: boolean; problems: string[] };
   highlevel: { appConfigured: boolean };
   stripe: { secretKey: boolean; webhookSecret: boolean; mode: "test" | "live" | "unknown" };
   app: { encryptionKey: boolean; appUrl: string | null; schedulerSecret: boolean; environment: string; testRecipients: number };
@@ -142,6 +144,7 @@ export function integrationStatus(): IntegrationStatus {
   const sk = e.STRIPE_SECRET_KEY ?? "";
   return {
     resend: { configured: emailConfigProblems(cfg).length === 0, keySource: cfg.keySource, sender: cfg.from, replyTo: cfg.replyTo, problems: emailConfigProblems(cfg) },
+    twilio: { configured: smsConfigProblems(smsConfig(e)).length === 0, problems: smsConfigProblems(smsConfig(e)) },
     highlevel: { appConfigured: Boolean(e.HIGHLEVEL_CLIENT_ID && e.HIGHLEVEL_CLIENT_SECRET) },
     stripe: { secretKey: Boolean(sk), webhookSecret: Boolean(e.STRIPE_WEBHOOK_SECRET), mode: /^(sk|rk)_test_/.test(sk) ? "test" : /^(sk|rk)_live_/.test(sk) ? "live" : "unknown" },
     app: { encryptionKey: CrmSecrets.fromBase64(e.MONARCH_ENCRYPTION_KEY) !== null, appUrl: e.NEXT_PUBLIC_APP_URL ?? null, schedulerSecret: Boolean(e.CRON_SECRET), environment: automationConfig().env, testRecipients: automationConfig().testRecipients.length },
