@@ -1,6 +1,6 @@
 // Where a tenant's images live and how they are addressed. Pure helpers (no server imports) so tests can use them.
 //
-// Every tenant has its own private bucket, tenant-{tenant_id} (migration 20261031090000_tenant_storage_and_sending).
+// Every tenant has its own private bucket, tenant-{tenant_id} (migration 20261031100000_tenant_storage_and_sending).
 // Images in it are kept under images/... and shown through the app at /media/{tenant_id}/images/..., which reads only
 // image files, only from that tenant's bucket. Nothing else (documents, uploads) is ever served from /media.
 

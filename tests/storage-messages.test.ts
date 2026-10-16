@@ -52,7 +52,7 @@ describe("each tenant has its own private image bucket", () => {
   });
 
   test("the migration makes a private bucket for every tenant, and one for each new tenant; none are public", () => {
-    const sql = readFileSync(new URL("../supabase/migrations/20261031090000_tenant_storage_and_sending.sql", import.meta.url), "utf8");
+    const sql = readFileSync(new URL("../supabase/migrations/20261031100000_tenant_storage_and_sending.sql", import.meta.url), "utf8");
     assert.match(sql, /insert into storage\.buckets[\s\S]*values \(b, b, false,/);
     assert.match(sql, /for t in select id from public\.tenants loop\s+perform public\.ensure_tenant_bucket\(t\)/);
     assert.match(sql, /after insert on public\.tenants for each row execute function public\.tenants_make_bucket\(\)/);

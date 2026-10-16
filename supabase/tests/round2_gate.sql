@@ -1,5 +1,5 @@
 -- CRM Round 2 / Part B gate: per-tenant private buckets, the 24-hour delete queue, per-tenant texting and credits.
--- Run it in the SQL editor of the TEST project after 20261031090000 and 20261101090000. It uses two throwaway tenants
+-- Run it in the SQL editor of the TEST project after 20261031100000 and 20261101090000. It uses two throwaway tenants
 -- and example.com data only, and it never commits: it ends by raising an exception that carries the results, so
 -- everything it did is rolled back. Read the results in the error message: every line should start with PASS.
 --

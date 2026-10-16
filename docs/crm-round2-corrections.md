@@ -1,6 +1,6 @@
 # CRM Round 2: remaining corrections
 
-Migration: `supabase/migrations/20261031090000_tenant_storage_and_sending.sql`
+Migration: `supabase/migrations/20261031100000_tenant_storage_and_sending.sql`
 Tests: `tests/storage-messages.test.ts`, `tests/pipelines.test.ts`
 
 ## 1. Per-tenant private image buckets
@@ -112,7 +112,7 @@ Bank CSV import still needs a manual review for each match. Product reviews stil
 ## Test project gate (2026-10-16)
 
 Applied to the **test project only** (`monarch-test-throwaway`, `riuylqgpebchhinybxxz`):
-- `20261031090000_tenant_storage_and_sending.sql`
+- `20261031100000_tenant_storage_and_sending.sql`
 - `20261101090000_tenant_sms.sql`
 - a small follow-up that locks down two functions (now folded into the first file).
 
@@ -147,6 +147,6 @@ These need the Preview deployment pointed at the test project, and a Twilio test
 
 1. ~~Apply both migrations on the test project and run the gate~~ (done, above).
 2. **Owner review.** Production is approved separately.
-3. On approval: apply `20261031090000` then `20261101090000` on production, *then* deploy. The migrations only add things, so the code running today keeps working once they're on.
+3. On approval: apply `20261031090000_tenant_brands` (if it is not on production yet), then `20261031100000`, then `20261101090000` on production, *then* deploy. The migrations only add things, so the code running today keeps working once they're on.
 4. Run the image move script on production (dry run first).
 5. In Vercel, add `TWILIO_FROM_NUMBER` (or `TWILIO_MESSAGING_SERVICE_SID`), if not already there, for Monarch's own texts.

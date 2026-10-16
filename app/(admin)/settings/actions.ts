@@ -9,7 +9,8 @@ import { emailConfig } from "@/lib/automation/email.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { AlreadyRegisteredError, cleanAttribute, removeDomain, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
 import { randomUUID } from "node:crypto";
-import { imageStore } from "@/lib/admin";
+import { appOrigin, imageStore } from "@/lib/admin";
+import { mediaPathFromUrl } from "@/lib/storage/paths.ts";
 import { validateImage } from "@/lib/commerce/images.ts";
 import { BrandError, checkBrand } from "@/lib/branding/brand.ts";
 import { brandRepo } from "@/lib/branding/server";
@@ -105,21 +106,24 @@ export async function checkDomainAction(form: FormData) {
 
 const BRAND_EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as const;
 
+/** Stores a brand logo in the account's own private storage; returns the full https address emails and pages show it at. */
 async function uploadBrandImage(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const { type } = validateImage({ bytes, declaredType: file.type, fileName: file.name, altText: null });
-  const store = imageStore();
-  const path = `brands/${currentTenantId()}/${randomUUID()}.${BRAND_EXT[type]}`;
+  const store = imageStore(await appOrigin());
+  const path = `images/brands/${randomUUID()}.${BRAND_EXT[type]}`;
   await store.put(path, bytes, type);
   return store.publicUrl(path);
 }
 
 export async function saveBrandingAction(form: FormData) {
   await act("/settings/branding", async (adminId) => {
+    const before = await brandRepo().get().catch(() => null);
     const image = async (field: "logo" | "mark") => {
       const file = form.get(`${field}_file`);
       if (file instanceof File && file.size > 0) return uploadBrandImage(file);
-      return form.get(`${field}_remove`) === "on" ? "" : str(form, `${field}_url`);
+      // Only the image already saved can be kept; anything else would point the brand at a file it doesn't own.
+      return form.get(`${field}_remove`) === "on" ? "" : (field === "logo" ? before?.logo_url : before?.mark_url) ?? "";
     };
     let input;
     try {
@@ -133,12 +137,19 @@ export async function saveBrandingAction(form: FormData) {
       if (e instanceof BrandError) throw new ValidationError(e.message);
       throw e;
     }
+    let saved;
     try {
-      await brandRepo().save(input, adminId);
+      saved = await brandRepo().save(input, adminId);
     } catch (e) {
       if (/tenant_brands_app_host_key|duplicate key/i.test(e instanceof Error ? e.message : "")) throw new ValidationError("That sign-in address is already used by another account.");
       throw e;
     }
+    // A replaced or removed logo's file is deleted after the 24-hour window (only this account's own brand images).
+    const stale = [before?.logo_url, before?.mark_url]
+      .filter((u): u is string => !!u && u !== saved.logo_url && u !== saved.mark_url)
+      .map((u) => mediaPathFromUrl(u, currentTenantId()))
+      .filter((p): p is string => !!p && p.startsWith("images/brands/"));
+    await imageStore().discard([...new Set(stale)]).catch(() => undefined);
     return "Branding saved.";
   });
 }

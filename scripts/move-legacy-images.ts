@@ -1,5 +1,5 @@
 // One-time move of images uploaded before per-tenant buckets (the shared, public product-images bucket) into each
-// tenant's own private bucket, tenant-{tenant_id}. Run it after migration 20261031090000_tenant_storage_and_sending.
+// tenant's own private bucket, tenant-{tenant_id}. Run it after migration 20261031100000_tenant_storage_and_sending.
 //
 //   NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... APP_ORIGIN=https://your-app.example \
 //     node scripts/move-legacy-images.ts            # shows what it would do
