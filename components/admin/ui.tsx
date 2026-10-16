@@ -28,7 +28,7 @@ export function PageTitle({ title, children, back }: { title: string; children?:
           ← {back.label}
         </Link>
       )}
-      <div className="monarch-eyebrow">MONARCH TAX SUITE / ADMINISTRATION</div>
+      <div className="monarch-eyebrow">VEREXA HQ / ADMINISTRATION</div>
       <h1>{title}</h1>
       {children && <p>{children}</p>}
     </div>
