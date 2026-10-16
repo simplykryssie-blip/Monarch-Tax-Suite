@@ -5,7 +5,8 @@ import { checkDefinition, publicDefinition, inputFields, type Field, type FormDe
 import { checkAnswers, draftAnswers, startingAnswers, withLocked } from "../lib/forms/answers.ts";
 import { checkSettings, readSettings, DEFAULT_SETTINGS, SettingsError } from "../lib/forms/settings.ts";
 import { checkTheme, isThemed, readTheme, sanitizeCss, ThemeError } from "../lib/forms/theme.ts";
-import { isPlatformHost } from "../lib/brands.ts";
+import { defaultLinkHost, isPlatformHost } from "../lib/brands.ts";
+import { cleanDomain } from "../lib/automation/senders.ts";
 import { saveInternalValues, type FormDeps } from "../lib/forms/service.ts";
 
 // Forms fixes: side-by-side fields, pre-filled and locked values, staff-only fields, the look of the form.
@@ -159,5 +160,20 @@ describe("hosting addresses", () => {
   test("Vercel hosts are recognised", () => {
     for (const h of ["monarch-tax-suite.vercel.app", "x-git-branch-team.vercel.app", "a.b.vercel.app:443", "foo.vercel.sh"]) assert.equal(isPlatformHost(h), true, h);
     for (const h of ["forms.mkb.test", "monarchtaxsuite.com", "vercel.app.example.com", "localhost:3000", null]) assert.equal(isPlatformHost(h), false, String(h));
+  });
+});
+
+describe("sending domains and form web addresses", () => {
+  test("a main domain and a subdomain are both accepted", () => {
+    assert.equal(cleanDomain("MKBFinancialGroup.com"), "mkbfinancialgroup.com");
+    assert.equal(cleanDomain("https://mail.mkbfinancialgroup.com/"), "mail.mkbfinancialgroup.com");
+    assert.throws(() => cleanDomain("me@mkbfinancialgroup.com"), /Enter your domain/);
+    assert.throws(() => cleanDomain("localhost"), /Enter your domain/);
+  });
+  test("the form web address is set from the domain", () => {
+    assert.equal(defaultLinkHost("mkbfinancialgroup.com"), "forms.mkbfinancialgroup.com");
+    assert.equal(defaultLinkHost("mail.mkbfinancialgroup.com"), "forms.mkbfinancialgroup.com");
+    assert.equal(defaultLinkHost("send.acme.co"), "forms.acme.co");
+    assert.equal(defaultLinkHost("tax.acme.com"), "forms.tax.acme.com", "a real subdomain is kept");
   });
 });

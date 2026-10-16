@@ -39,7 +39,7 @@ test("the platform can find a domain already on its own account", async () => {
 
 test("domain and attribute input is cleaned", () => {
   assert.equal(cleanDomain("https://Mail.AcmeTax.test/"), "mail.acmetax.test");
-  assert.throws(() => cleanDomain("office@acmetax.test"), /Enter a domain/);
+  assert.throws(() => cleanDomain("office@acmetax.test"), /Enter your domain/);
   assert.deepEqual(cleanAttribute({ key: "Flow_Type", label: "Flow type", kind: "choice", options: "ptin_holder, standard_ero, ptin_holder" }), { key: "flow_type", label: "Flow type", kind: "choice", options: ["ptin_holder", "standard_ero"] });
   assert.throws(() => cleanAttribute({ key: "1bad", label: "Bad", kind: "choice", options: "a,b" }), /lowercase letters/);
   assert.throws(() => cleanAttribute({ key: "tier", label: "Tier", kind: "choice", options: "only" }), /at least two options/);

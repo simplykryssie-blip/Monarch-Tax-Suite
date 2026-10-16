@@ -48,6 +48,18 @@ export function formPublicUrl(input: { publicId: string; brand: Brand | null; re
   return null;
 }
 
+const SENDER_PREFIXES = new Set(["mail", "send", "email", "mg", "em", "notify", "notifications", "updates", "smtp", "bounce"]);
+
+/**
+ * The web address a firm's form links use when the office hasn't chosen one: forms.<its own domain>. A sending
+ * subdomain such as mail.yourfirm.com maps to its parent (forms.yourfirm.com), so the office never has to invent it.
+ */
+export function defaultLinkHost(domain: string): string {
+  const labels = domain.trim().toLowerCase().split(".").filter(Boolean);
+  const root = labels.length > 2 && SENDER_PREFIXES.has(labels[0]) ? labels.slice(1) : labels;
+  return `forms.${root.join(".")}`;
+}
+
 /** The tenant's brands, and which brand each live sender on a verified domain belongs to (sender id -> domain id). */
 export function brandCatalogFrom(domains: BrandDomain[], senders: { id: string; domain_id: string; archived_at: string | null }[]): { brands: Brand[]; senderDomain: Record<string, string> } {
   const verified = new Set(domains.filter((d) => d.status === "verified").map((d) => d.id));
