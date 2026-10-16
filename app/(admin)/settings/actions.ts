@@ -7,7 +7,7 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps } from "@/lib/automation/server";
 import { emailConfig } from "@/lib/automation/email.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
-import { AlreadyRegisteredError, cleanAttribute, removeDomain, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
+import { addSender, AlreadyRegisteredError, cleanAttribute, removeDomain, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
 import { randomUUID } from "node:crypto";
 import { appOrigin, imageStore } from "@/lib/admin";
 import { mediaPathFromUrl } from "@/lib/storage/paths.ts";
@@ -197,9 +197,9 @@ export async function addSenderAction(form: FormData) {
     if (!(await repo.getDomain(domainId))) throw new ValidationError("Choose a domain.");
     const replyTo = str(form, "reply_to").trim().toLowerCase();
     if (replyTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo)) throw new ValidationError("Enter a valid reply-to address, or leave it blank.");
-    const sender = await repo.insertSender({ domain_id: domainId, from_name: cleanFromName(str(form, "from_name")), local_part: cleanLocalPart(str(form, "local_part")), reply_to: replyTo || null, created_by: adminId });
+    const { sender, restored } = await addSender(repo, { domain_id: domainId, from_name: cleanFromName(str(form, "from_name")), local_part: cleanLocalPart(str(form, "local_part")), reply_to: replyTo || null, created_by: adminId });
     if (!(await repo.listSenders()).some((s) => s.is_default && !s.archived_at)) await repo.setDefaultSender(sender.id);
-    return "Sending address added.";
+    return restored ? "Sending address added back." : "Sending address added.";
   });
 }
 

@@ -114,6 +114,20 @@ export async function removeDomain(repo: SendersRepo, id: string, usedBy: { form
   return d.domain;
 }
 
+/**
+ * Adds a sending address. One that was removed earlier is brought back (with the new name and reply-to) instead of
+ * failing on its name; one that is already live says so.
+ */
+export async function addSender(repo: SendersRepo, input: Pick<SenderRow, "domain_id" | "from_name" | "local_part" | "reply_to" | "created_by">): Promise<{ sender: SenderRow; restored: boolean }> {
+  const existing = (await repo.listSenders()).find((s) => s.domain_id === input.domain_id && s.local_part === input.local_part);
+  if (existing && !existing.archived_at) {
+    const d = await repo.getDomain(input.domain_id);
+    throw new ValidationError(`${d ? senderAddress(existing, d) : input.local_part} is already one of your sending addresses.`);
+  }
+  if (existing) return { sender: await repo.updateSender(existing.id, { from_name: input.from_name, reply_to: input.reply_to, archived_at: null }), restored: true };
+  return { sender: await repo.insertSender(input), restored: false };
+}
+
 // ------------------------------------------------------------- validation
 
 const DOMAIN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
