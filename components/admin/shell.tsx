@@ -8,7 +8,8 @@ import { Icon } from "./icons";
 import { CommandPalette } from "./command-palette";
 import { allows, type Tier } from "@/lib/tier.ts";
 import { isBranch, navFor, type Entry } from "@/lib/nav.ts";
-import { PLATFORM, type TenantBrand } from "@/lib/platform-brand";
+import { PLATFORM } from "@/lib/platform-brand";
+import { adminBrandVars, type Brand } from "@/lib/branding/brand.ts";
 
 const hrefs = (e: Entry): string[] => (isBranch(e) ? e.items.flatMap(hrefs) : e.href ? [e.href] : []);
 const matches = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
@@ -104,9 +105,13 @@ function Popover({ trigger, children }: { trigger: (open: boolean, toggle: () =>
   );
 }
 
-export function AdminShell({ email, tenant, today, alerts = [], tier = "bureau", children }: { email: string; tenant?: TenantBrand; today: string; alerts?: Alert[]; tier?: Tier; children: React.ReactNode }) {
+export function AdminShell({ email, brand, today, alerts = [], tier = "bureau", children }: { email: string; brand?: Brand; today: string; alerts?: Alert[]; tier?: Tier; children: React.ReactNode }) {
   const pathname = usePathname();
   const nav = navFor(tier);
+  // White-labelled accounts see their own brand in the shell; everyone else sees the platform brand.
+  const white = !!brand?.whiteLabelAdmin;
+  const id = white && brand ? { name: brand.name, logo: brand.logoUrl, mark: brand.markUrl ?? brand.logoUrl, eyebrow: brand.name.toUpperCase(), tagline: brand.tagline ?? "" } : { name: PLATFORM.name, logo: PLATFORM.logo, mark: PLATFORM.mark, eyebrow: PLATFORM.eyebrow, tagline: PLATFORM.tagline };
+  const tenant = brand;
   const [menu, setMenu] = useState(false);
   // Every section starts open; the owner can collapse any of them.
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -122,35 +127,45 @@ export function AdminShell({ email, tenant, today, alerts = [], tier = "bureau",
   const total = attention.reduce((n, a) => n + a.count, 0);
 
   return (
-    <div className="mt-shell">
+    <div className={"mt-shell" + (white ? " is-white-label" : "")} style={white && brand ? (adminBrandVars(brand) as React.CSSProperties) : undefined}>
       <aside className={"mt-sidebar" + (menu ? " is-open" : "")} aria-hidden={!menu} id="mt-flyout">
-        <Link href="/" className="mt-brand" onClick={() => setMenu(false)} aria-label={`${PLATFORM.name} home`}>
+        <Link href="/" className="mt-brand" onClick={() => setMenu(false)} aria-label={`${id.name} home`}>
           <span className="mt-brand-plate">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="mt-logo-full" src={PLATFORM.logo} alt={PLATFORM.name} width={900} height={747} />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="mt-logo-small" src={PLATFORM.mark} alt="" width={420} height={345} />
+            {id.logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="mt-logo-full" src={id.logo} alt={id.name} width={900} height={747} />
+            ) : (
+              <b className="mt-brand-name">{id.name}</b>
+            )}
+            {id.mark && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="mt-logo-small" src={id.mark} alt="" width={420} height={345} />
+            )}
           </span>
         </Link>
         <nav className="mt-nav-scroll" aria-label="Main">
           {nav.map((e) => <Group key={e.label} entry={e} depth={0} pathname={pathname} open={open} toggle={toggle} close={() => setMenu(false)} />)}
         </nav>
-        <div className="mt-chess" aria-hidden="true"><span>STREAMLINE</span><span>AUTOMATE</span><span>GROW</span></div>
+        {(!white || brand?.tagline) && <div className="mt-chess" aria-hidden="true">{white ? <span>{brand?.tagline ?? ""}</span> : <><span>STREAMLINE</span><span>AUTOMATE</span><span>GROW</span></>}</div>}
       </aside>
       {menu && <button className="mt-scrim" onClick={() => setMenu(false)} aria-label="Close menu" />}
       <main className="mt-main">
         <header className="mt-topbar">
           <button className="mt-hamburger" onClick={() => setMenu(!menu)} aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu}><Icon name="menu" size={22} /></button>
-          <Link href="/" className="mt-topmark" aria-label={`${PLATFORM.name} home`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={PLATFORM.mark} alt="" width={32} height={26} />
+          <Link href="/" className="mt-topmark" aria-label={`${id.name} home`}>
+            {id.mark ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={id.mark} alt="" width={32} height={26} />
+            ) : (
+              <b>{id.name}</b>
+            )}
           </Link>
           <div className="mt-crumb">{crumb(pathname, nav)}</div>
-          {tenant && (
+          {tenant && !white && (
             <span className="mt-account" title={`You are working in the ${tenant.name} account`}>
-              {tenant.mark && (
+              {tenant.markUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={tenant.mark} alt="" width={22} height={22} />
+                <img src={tenant.markUrl} alt="" width={22} height={22} />
               )}
               <span><small>Account</small><b>{tenant.name}</b></span>
             </span>
@@ -202,7 +217,7 @@ export function AdminShell({ email, tenant, today, alerts = [], tier = "bureau",
         </header>
         <div className="mt-content">
           {children}
-          <footer className="mt-footer"><b>{PLATFORM.eyebrow}</b><span>{PLATFORM.tagline}</span></footer>
+          <footer className="mt-footer"><b>{id.eyebrow}</b><span>{id.tagline}</span></footer>
         </div>
       </main>
     </div>

@@ -33,7 +33,12 @@ export type AutomationConfig = {
   testRecipients: string[];
 };
 
+/** A tenant's look for its customer emails (name, logo, colour, support address). Absent: the Monarch default. */
+export type EmailBrandSource = () => Promise<import("../branding/brand.ts").EmailBrand | null>;
+
 export type AutomationDeps = {
+  /** The tenant's email brand. Optional: tests and the default render the standard look. */
+  brand?: EmailBrandSource;
   repo: AutomationRepo;
   commerce: CommerceRepo;
   crm: { getLiveConnection(licenseId: string): Promise<{ status: string; provider: string; location_name: string | null } | null>; getLeadSettings(licenseId: string): Promise<{ business_name: string | null } | null> } | null;
@@ -180,7 +185,8 @@ const FAILURE_TEXT: Record<string, string> = {
 /** Real values for one event. Only fields a customer should see; never keys, tokens or lead contents. */
 async function contextFor(deps: AutomationDeps, event: AutomationEvent): Promise<Record<string, string>> {
   const origin = (await deps.config.origin()).replace(/\/$/, "");
-  const values: Record<string, string> = { support_email: deps.config.supportEmail, app_url: origin };
+  const eb = (await deps.brand?.().catch(() => null)) ?? null;
+  const values: Record<string, string> = { support_email: eb?.supportEmail ?? deps.config.supportEmail, app_url: origin };
   const license = event.license_id ? await deps.commerce.getLicense(event.license_id) : null;
   const customerId = event.customer_id ?? license?.customer_id ?? null;
   const customer = customerId ? await deps.commerce.getCustomer(customerId) : null;
@@ -285,7 +291,8 @@ async function runSendEmail(deps: AutomationDeps, exec: Execution, event: Automa
 
   let rendered;
   try {
-    rendered = renderTemplate(template.subject, template.body, values, { supportEmail: deps.config.supportEmail });
+    const eb = (await deps.brand?.().catch(() => null)) ?? null;
+    rendered = renderTemplate(template.subject, template.body, values, { ...(eb ?? {}), supportEmail: eb?.supportEmail ?? deps.config.supportEmail });
   } catch (e) {
     return { status: "failed", kind: "permanent", detail: sanitizeError(e, 200) };
   }
@@ -407,7 +414,8 @@ async function dryRunStep(deps: AutomationDeps, event: AutomationEvent, action: 
     // A setup link is made only for a real send; the test shows where it would go.
     if (action.include_setup_link || variablesIn(template.subject, template.body).includes("setup_link")) values.setup_link = "https://example.com/setup-link-made-when-sent";
     try {
-      const rendered = renderTemplate(template.subject, template.body, { ...SAMPLE_VALUES, ...values }, { supportEmail: deps.config.supportEmail });
+      const eb = (await deps.brand?.().catch(() => null)) ?? null;
+      const rendered = renderTemplate(template.subject, template.body, { ...SAMPLE_VALUES, ...values }, { ...(eb ?? {}), supportEmail: eb?.supportEmail ?? deps.config.supportEmail });
       const to = action.to === "support" ? "Monarch support" : (await recipientFor(deps, event, "customer")) ?? "the client (no email address on file)";
       return { status: "skipped", kind: "skipped", detail: `Skipped in test: would email "${template.name}" to ${to} with the subject "${rendered.subject}". The message filled in without problems.` };
     } catch (e) {

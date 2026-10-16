@@ -75,7 +75,7 @@ describe("server code reaches tenant data through the tenant client", () => {
 
   test("platform access is limited to platform tables", () => {
     const uses = files.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/platformClient\("([a-z_]+)"\)\.(from|rpc)\("([a-z_]+)"/g)].map((m) => `${m[1]}:${m[3]}`));
-    assert.deepEqual(uses.sort(), ["admin_lookup:admin_users", "document_link:document_deliveries", "form_link:forms", "office_invite:office_members", "office_member:office_members", "office_member:office_members", "rate_limit:hit_rate_limit", "wisp_link:email_domains"]);
+    assert.deepEqual(uses.sort(), ["admin_lookup:admin_users", "brand_host:tenant_brands", "document_link:document_deliveries", "form_link:forms", "office_invite:office_members", "office_member:office_members", "office_member:office_members", "rate_limit:hit_rate_limit", "wisp_link:email_domains"]);
     // The one platform use that isn't a table: creating the sign-in for an accepted office invite.
     const other = files.filter((f) => !f.endsWith("lib/supabase/service.ts") && /platformClient\(/.test(readFileSync(f, "utf8").replace(/platformClient\("[a-z_]+"\)\.(from|rpc)\("[a-z_]+"/g, "").replace(/platformClient\("office_invite"\)\.auth\.admin\.createUser\(/g, "")));
     assert.deepEqual(other, []);
