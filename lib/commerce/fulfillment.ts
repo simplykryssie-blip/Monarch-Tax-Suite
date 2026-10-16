@@ -30,8 +30,9 @@ import {
 // after the webhook route has verified the Stripe signature.
 // ---------------------------------------------------------------------------
 
-type CheckoutSession = {
+export type CheckoutSession = {
   id: string;
+  status?: string | null;
   payment_status: "paid" | "unpaid" | "no_payment_required";
   payment_intent: string | { id: string } | null;
   amount_total: number | null;
@@ -62,6 +63,8 @@ export type FulfillmentDeps = {
    * thrown: the payment is recorded either way, and the buyer's confirmation page (or an administrator) retries.
    */
   wisp?: (input: { sessionId: string; planId: string | null; customerId: string; orderId: string }) => Promise<unknown>;
+  /** Text messaging checkouts (credit packs, number setup): paid by a tax office to the platform. */
+  sms?: (session: CheckoutSession) => Promise<string>;
   now?: () => string;
 };
 
@@ -218,6 +221,11 @@ const notSellableNote = (product: Pick<Product, "status">) =>
 
 async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSession, paid: boolean): Promise<EventOutcome> {
   if (session.metadata?.purpose === "annual_update") return handleUpdateCheckout(deps, session, paid);
+  if (session.metadata?.purpose === "sms_credits" || session.metadata?.purpose === "sms_setup") {
+    if (!deps.sms) return { status: "ignored", detail: "Text messaging checkouts aren't handled here." };
+    if (!paid) return { status: "ignored", detail: "Text messaging checkout not paid yet." };
+    return { status: "processed", detail: `Text messaging checkout: ${await deps.sms(session)}.` };
+  }
   const { repo } = deps;
   const at = nowIso(deps);
   const productIds = await deps.listCheckoutProductIds(session.id);

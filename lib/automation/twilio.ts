@@ -180,16 +180,66 @@ export class TwilioAccounts {
     const r = await this.call<{ sid: string; secret: string }>("POST", `/Accounts/${subaccountSid}/Keys.json`, { FriendlyName: friendlyName.slice(0, 64) });
     return { sid: r.sid, secret: r.secret };
   }
-  async searchNumbers(subaccountSid: string, areaCode: string): Promise<AvailableNumber[]> {
-    const q = new URLSearchParams({ AreaCode: areaCode, SmsEnabled: "true", PageSize: "10" });
-    const r = await this.call<{ available_phone_numbers?: { phone_number: string; friendly_name: string; locality?: string | null; region?: string | null }[] }>("GET", `/Accounts/${subaccountSid}/AvailablePhoneNumbers/US/Local.json?${q}`);
+  /** Numbers free to buy: local ones in an area code, or toll-free ones. */
+  async searchNumbers(accountSid: string, want: { type: "local" | "toll_free"; areaCode?: string }): Promise<AvailableNumber[]> {
+    const q = new URLSearchParams({ SmsEnabled: "true", PageSize: "10" });
+    if (want.type === "local" && want.areaCode) q.set("AreaCode", want.areaCode);
+    const kind = want.type === "toll_free" ? "TollFree" : "Local";
+    const r = await this.call<{ available_phone_numbers?: { phone_number: string; friendly_name: string; locality?: string | null; region?: string | null }[] }>("GET", `/Accounts/${accountSid}/AvailablePhoneNumbers/US/${kind}.json?${q}`);
     return (r.available_phone_numbers ?? []).map((n) => ({ phoneNumber: n.phone_number, friendlyName: n.friendly_name, locality: n.locality ?? null, region: n.region ?? null }));
   }
   async buyNumber(subaccountSid: string, phoneNumber: string): Promise<{ sid: string; phoneNumber: string }> {
     const r = await this.call<{ sid: string; phone_number: string }>("POST", `/Accounts/${subaccountSid}/IncomingPhoneNumbers.json`, { PhoneNumber: phoneNumber });
     return { sid: r.sid, phoneNumber: r.phone_number };
   }
+  /** Gives a number back to Twilio (it stops costing anything and can't be got back). */
+  async releaseNumber(subaccountSid: string, phoneNumberSid: string): Promise<void> {
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`https://api.twilio.com/2010-04-01/Accounts/${subaccountSid}/IncomingPhoneNumbers/${phoneNumberSid}.json`, {
+        method: "DELETE",
+        headers: { Authorization: basic(this.login.username, this.login.password) },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (e) {
+      throw new Error(`Could not reach Twilio: ${sanitizeError(e, 160)}`);
+    }
+    if (!res.ok && res.status !== 404) throw new Error(`Twilio refused to release the number (${res.status}).`);
+  }
   async setStatus(subaccountSid: string, status: "active" | "suspended"): Promise<void> {
     await this.call("POST", `/Accounts/${subaccountSid}.json`, { Status: status });
+  }
+}
+
+// ---------------------------------------------------------------- an office's own account (its API key)
+
+/**
+ * Twilio calls made as one office, with its own API key: its carrier registration (toll-free verification, or the
+ * A2P 10DLC business profile, brand and campaign) and its messaging service. Form fields may repeat (MessageSamples).
+ */
+export class TwilioApi {
+  private login: { username: string; password: string };
+  private fetchImpl: typeof fetch;
+  constructor(login: { username: string; password: string }, fetchImpl: typeof fetch = fetch) {
+    this.login = login;
+    this.fetchImpl = fetchImpl;
+  }
+  async request<T = Record<string, unknown>>(method: "GET" | "POST", url: string, fields?: [string, string][]): Promise<T> {
+    if (!/^https:\/\/(api|messaging|trusthub)\.twilio\.com\//.test(url)) throw new Error("Not a Twilio address.");
+    const body = fields ? new URLSearchParams(fields).toString() : undefined;
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method,
+        headers: { Authorization: basic(this.login.username, this.login.password), ...(body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}) },
+        body,
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (e) {
+      throw new Error(`Could not reach Twilio: ${sanitizeError(e, 160)}`);
+    }
+    const data = (await res.json().catch(() => ({}))) as T & { message?: string; code?: number };
+    if (!res.ok) throw new Error(`Twilio refused the request (${res.status}${data.code ? `, error ${data.code}` : ""}): ${sanitizeError(data.message ?? "", 240)}`);
+    return data;
   }
 }

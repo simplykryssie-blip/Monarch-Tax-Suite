@@ -10,6 +10,7 @@ import { retryNotifications } from "@/lib/forms/after.ts";
 import { complianceDeps } from "@/lib/compliance/server";
 import { runComplianceSweep, sweepPendingUploads } from "@/lib/compliance/service.ts";
 import { sweepStorageCleanup } from "@/lib/storage/objects.ts";
+import { runSmsSweep } from "@/lib/sms/server";
 import { sweepPendingClientDocs } from "@/lib/workspace/docs.ts";
 import { docDeps } from "@/lib/workspace/server";
 import { tenantClient } from "@/lib/supabase/service";
@@ -73,7 +74,15 @@ async function handle(request: Request) {
       console.error(`storage-sweep: ${sanitizeError(e, 160)}`);
       storage = { error: "Storage sweep failed or is not set up yet" };
     }
-    return Response.json({ processed, efin, signatures, forms, compliance, storage });
+    // Text messaging, every office: setups that stopped, carrier registration statuses, monthly number renewals.
+    let sms: unknown = null;
+    try {
+      sms = await runSmsSweep();
+    } catch (e) {
+      console.error(`sms-sweep: ${sanitizeError(e, 160)}`);
+      sms = { error: "Texting sweep failed or is not set up yet" };
+    }
+    return Response.json({ processed, efin, signatures, forms, compliance, storage, sms });
   } catch (e) {
     console.error(`automation-run: ${sanitizeError(e, 160)}`);
     return new Response("Run failed", { status: 500 });

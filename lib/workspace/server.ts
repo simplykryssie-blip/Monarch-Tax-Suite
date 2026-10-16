@@ -31,7 +31,7 @@ export async function sendDeps(tenantId: string = currentTenantId()): Promise<Se
       credits: sms.route.billing === "credits"
         ? {
           spend: (n, ref) => sms.repo.spend(n, ref),
-          refund: (n, ref) => sms.repo.credit({ delta: n, kind: "refund", reference: ref, note: "Text not sent", created_by: null }),
+          refund: async (_n, ref) => { await sms.repo.reverseSend(ref); },
           balance: () => sms.repo.balance(),
         }
         : null,

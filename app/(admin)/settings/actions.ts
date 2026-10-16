@@ -19,8 +19,8 @@ import { readSettings } from "@/lib/forms/settings.ts";
 import { documentDeps } from "@/lib/documents/server";
 import { cleanLinkHost, defaultLinkHost } from "@/lib/brands.ts";
 import { currentTenantId, MONARCH_TENANT_ID } from "@/lib/tenants.ts";
-import { buyNumber, setupSmsAccount } from "@/lib/sms/service.ts";
-import { smsSetupDeps } from "@/lib/sms/server";
+import { advanceRegistration, chooseNumber, provision, saveSetupChoices, startCreditsCheckout, startSetupCheckout } from "@/lib/sms/service.ts";
+import { smsPayments, smsSetupDeps } from "@/lib/sms/server";
 
 // Firm profile, sending domains and senders, and package attributes for the current tenant. Every action re-checks
 // administrator access; the tenant-scoped client means only this tenant's rows can be read or changed.
@@ -253,19 +253,58 @@ export async function deleteAttributeAction(form: FormData) {
   });
 }
 
-// ---- Text messaging: this office's own Twilio subaccount, number and credits
+// ---- Text messaging: this office's own number, registration and credits (self-serve)
 
-export async function setupSmsAction() {
+export async function saveSmsSetupAction(form: FormData) {
   await act("/settings/sms", async (adminId) => {
-    const profile = await documentDeps().repo.getProfile().catch(() => null);
-    await setupSmsAccount(smsSetupDeps(), profile?.display_name || profile?.legal_name || "Office", adminId);
-    return "Your texting account is set up. Next, choose a number.";
+    const raw = Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string")) as Record<string, string>;
+    const account = await saveSetupChoices(await smsSetupDeps(), raw, adminId);
+    return account.chosen_number ? "Saved. Next, pay for the setup." : "Saved. Next, choose your number.";
   });
 }
 
-export async function buySmsNumberAction(form: FormData) {
+export async function chooseSmsNumberAction(form: FormData) {
   await act("/settings/sms", async () => {
-    const account = await buyNumber(smsSetupDeps(), str(form, "number"));
-    return `${account.from_number} is now your texting number. Texts can be sent once carriers approve your registration.`;
+    const account = await chooseNumber(await smsSetupDeps(), str(form, "number"));
+    return `${account.chosen_number} is held for you until you pay. If someone else takes it first, you get another of the same kind.`;
+  });
+}
+
+/** Sends the office to Stripe Checkout (setup, or a credit pack). Errors come back to the settings page. */
+async function toCheckout(start: (adminId: string) => Promise<string>) {
+  const admin = await requireAdmin();
+  let target: string;
+  try {
+    target = await start(admin.userId);
+  } catch (e) {
+    const message = e instanceof ValidationError ? e.message : "The card payment couldn't be started. Nothing was charged. Please try again.";
+    if (!(e instanceof ValidationError)) console.error(`sms checkout failed: ${sanitizeError(e, 200)}`);
+    target = withParam("/settings/sms", "error", message);
+  }
+  redirect(target);
+}
+
+export async function startSmsSetupCheckoutAction() {
+  await toCheckout(async (adminId) => {
+    const d = await smsSetupDeps();
+    return startSetupCheckout(d, smsPayments(), { origin: await appOrigin(), email: d.officeEmail }, adminId);
+  });
+}
+
+export async function buySmsCreditsAction(form: FormData) {
+  await toCheckout(async (adminId) => {
+    const d = await smsSetupDeps();
+    return startCreditsCheckout(d, smsPayments(), str(form, "packs"), { origin: await appOrigin(), email: d.officeEmail }, adminId);
+  });
+}
+
+/** Retries a setup that stopped, or reads the carrier registration's status now instead of waiting for the daily check. */
+export async function checkSmsStatusAction() {
+  await act("/settings/sms", async () => {
+    const d = await smsSetupDeps();
+    const before = await d.repo.get();
+    const a = before?.provision_status === "error" || before?.provision_status === "provisioning" ? await provision(d) : await advanceRegistration(d);
+    if (a?.provision_status === "error") throw new ValidationError(`Setup hasn't finished: ${a.provision_error ?? "unknown problem"}. It's tried again automatically every day.`);
+    return a?.registration_status === "approved" ? "Approved: you can text clients now." : a?.registration_status === "rejected" ? `Carriers rejected the registration: ${a.registration_error ?? ""}` : "Checked. Carriers are still reviewing your registration.";
   });
 }

@@ -24,10 +24,12 @@ export function resolveSmsRoute(tenantId: string, account: SmsAccount | null, pl
   }
   const billing = tenantId === MONARCH_TENANT_ID ? "direct" : "credits";
   if (!account || !account.subaccount_sid) return { ok: false, billing, problem: "Text messaging isn't set up for this office yet. Set it up in Settings → Text messaging." };
-  if (account.status === "suspended") return { ok: false, billing, problem: "Text messaging is paused for this office. Contact support." };
+  if (account.status === "suspended") return { ok: false, billing, problem: "Text messaging is suspended for this office. Contact support." };
+  if (account.status === "paused") return { ok: false, billing, problem: "Texting is paused: this month's number renewal couldn't be taken from your credits. Buy credits in Settings → Text messaging to resume." };
+  if (account.status === "released") return { ok: false, billing, problem: "This office's texting number was released after renewals failed. Set up a number again in Settings → Text messaging." };
   if (!account.api_key_sid || !account.api_key_secret_encrypted) return { ok: false, billing, problem: "Text messaging setup didn't finish. Open Settings → Text messaging to finish it." };
   if (!account.from_number && !account.messaging_service_sid) return { ok: false, billing, problem: "This office has no texting number yet. Choose one in Settings → Text messaging." };
-  if (account.registration_status !== "approved") return { ok: false, billing, problem: "Carriers haven't approved this office's texting registration yet (A2P 10DLC). Texts can be sent once it's approved." };
+  if (account.registration_status !== "approved") return { ok: false, billing, problem: "Carriers haven't approved this office's texting registration yet. Texts can be sent once it's approved; see Settings → Text messaging." };
   if (account.status !== "active") return { ok: false, billing, problem: "Text messaging setup didn't finish. Open Settings → Text messaging to finish it." };
   if (!secrets) return { ok: false, billing, problem: "Text messaging can't be used: MONARCH_ENCRYPTION_KEY is not configured." };
   let password: string;

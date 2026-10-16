@@ -9,12 +9,11 @@ import { deleteLibraryImage, emailMarkdown, uploadLibraryImage, type ImagesRepo,
 import type { ImageStore, ImageType } from "../lib/commerce/types.ts";
 import { deleteClientDoc, sweepPendingClientDocs } from "../lib/workspace/docs.ts";
 import { plainEmailHtml, sendClientMessage, type SendDeps } from "../lib/workspace/send.ts";
-import { platformLogin, platformSendProblems, platformTwilio, segmentCount, toE164, TwilioAccounts, TwilioSmsSender } from "../lib/automation/twilio.ts";
+import { platformLogin, platformSendProblems, platformTwilio, segmentCount, toE164, TwilioSmsSender } from "../lib/automation/twilio.ts";
 import { CrmSecrets } from "../lib/crm/crypto.ts";
 import { MONARCH_TENANT_ID } from "../lib/tenants.ts";
 import { resolveSmsRoute, secretAad } from "../lib/sms/route.ts";
-import { buyNumber, findNumbers, setupSmsAccount, smsSetupStep } from "../lib/sms/service.ts";
-import type { SmsAccount, SmsAccountsRepo } from "../lib/sms/types.ts";
+import type { SmsAccount } from "../lib/sms/types.ts";
 import type { EmailMessage, SendResult } from "../lib/automation/email.ts";
 import { MemoryWorkspace } from "./workspace-memory.ts";
 import { MemoryDocumentStore } from "./documents-memory.ts";
@@ -268,7 +267,9 @@ describe("texting through Twilio", () => {
 
 const account = (over: Partial<SmsAccount> = {}): SmsAccount => ({
   id: "acc", tenant_id: B, subaccount_sid: SUB, api_key_sid: KEY, api_key_secret_encrypted: null, from_number: "+13375550111", phone_number_sid: null,
-  messaging_service_sid: null, registration_status: "approved", status: "active", created_by: null, created_at: "2026-10-16T00:00:00Z", updated_at: "2026-10-16T00:00:00Z", ...over,
+  messaging_service_sid: null, registration_status: "approved", status: "active", created_by: null, created_at: "2026-10-16T00:00:00Z", updated_at: "2026-10-16T00:00:00Z",
+  number_type: "toll_free", registration: {}, registration_sids: {}, registration_error: null, chosen_number: null, setup_paid_at: "2026-10-16T00:00:00Z", provision_status: "done", provision_error: null,
+  renews_on: null, renewal_failed_at: null, renewal_attempts: 0, released_at: null, forfeited_at: null, ...over,
 });
 const secrets = new CrmSecrets(Buffer.alloc(32, 7));
 const OWNER_ENV = platformTwilio({ TWILIO_ACCOUNT_SID: SID, TWILIO_AUTH_TOKEN: "owner-token", TWILIO_FROM_NUMBER: "+13375550199" });
@@ -301,87 +302,11 @@ describe("each office texts from its own Twilio account", () => {
     const enc = secrets.encrypt("s", secretAad(B));
     const problem = (a: SmsAccount) => (resolveSmsRoute(B, a, OWNER_ENV, secrets) as { problem: string }).problem;
     assert.match(problem(account({ api_key_secret_encrypted: enc, from_number: null })), /no texting number/);
-    assert.match(problem(account({ api_key_secret_encrypted: enc, registration_status: "submitted" })), /A2P 10DLC/);
-    assert.match(problem(account({ api_key_secret_encrypted: enc, status: "suspended" })), /paused/);
+    assert.match(problem(account({ api_key_secret_encrypted: enc, registration_status: "submitted" })), /haven't approved/);
+    assert.match(problem(account({ api_key_secret_encrypted: enc, status: "suspended" })), /suspended/);
+    assert.match(problem(account({ api_key_secret_encrypted: enc, status: "paused" })), /paused.*Buy credits/);
+    assert.match(problem(account({ api_key_secret_encrypted: enc, status: "released" })), /released/);
     assert.match(problem(account({ api_key_secret_encrypted: null })), /didn't finish/);
-  });
-});
-
-class MemorySmsAccounts implements SmsAccountsRepo {
-  row: SmsAccount | null = null;
-  entries: { delta: number; kind: string; reference: string | null }[] = [];
-  async get() { return this.row; }
-  async insert(input: Partial<SmsAccount>) { this.row = account({ subaccount_sid: null, api_key_sid: null, from_number: null, registration_status: "not_started", status: "setting_up", ...input }); return this.row; }
-  async update(_id: string, patch: Partial<SmsAccount>) { this.row = { ...this.row!, ...patch }; return this.row; }
-  async balance() { return this.entries.reduce((n, e) => n + e.delta, 0); }
-  async ledger() { return []; }
-  async spend(n: number, reference: string) { if ((await this.balance()) < n) return false; this.entries.push({ delta: -n, kind: "send", reference }); return true; }
-  async credit(e: { delta: number; kind: string; reference: string | null }) { this.entries.push(e); }
-}
-
-function fakeTwilio(failKey = false) {
-  const calls: string[] = [];
-  const f = (async (url: string, init: RequestInit) => {
-    const path = url.replace("https://api.twilio.com/2010-04-01", "");
-    calls.push(`${init.method} ${path}`);
-    if (path === "/Accounts.json") return new Response(JSON.stringify({ sid: SUB }), { status: 201 });
-    if (path.endsWith("/Keys.json")) return failKey ? new Response(JSON.stringify({ message: "down" }), { status: 500 }) : new Response(JSON.stringify({ sid: KEY, secret: "new-key-secret" }), { status: 201 });
-    if (path.includes("/AvailablePhoneNumbers/")) return new Response(JSON.stringify({ available_phone_numbers: [{ phone_number: "+13375550123", friendly_name: "(337) 555-0123", locality: "Lafayette", region: "LA" }] }));
-    if (path.endsWith("/IncomingPhoneNumbers.json")) return new Response(JSON.stringify({ sid: `PN${"d".repeat(32)}`, phone_number: "+13375550123" }), { status: 201 });
-    return new Response("{}", { status: 404 });
-  }) as unknown as typeof fetch;
-  return { twilio: new TwilioAccounts({ username: SID, password: "owner-token" }, f), calls };
-}
-
-describe("setting up an office's texting account", () => {
-  test("makes a subaccount and a key inside it (secret encrypted), then buys a number into it once credits are there", async () => {
-    const repo = new MemorySmsAccounts();
-    const { twilio, calls } = fakeTwilio();
-    const d = { tenantId: B, repo, twilio, secrets };
-    const acc = await setupSmsAccount(d, "Test Tax Office", "u");
-    assert.equal(acc.subaccount_sid, SUB);
-    assert.equal(acc.api_key_sid, KEY);
-    assert.notEqual(acc.api_key_secret_encrypted, "new-key-secret");
-    assert.equal(secrets.decrypt(acc.api_key_secret_encrypted!, secretAad(B)), "new-key-secret");
-    assert.deepEqual(calls, ["POST /Accounts.json", `POST /Accounts/${SUB}/Keys.json`]);
-    assert.equal(smsSetupStep(acc), "number");
-
-    await setupSmsAccount(d, "Test Tax Office", "u");
-    assert.equal(calls.length, 2, "repeating setup makes nothing new");
-
-    await assert.rejects(findNumbers(d, "12"), /area code/);
-    const found = await findNumbers(d, "337");
-    assert.equal(found[0].phoneNumber, "+13375550123");
-    assert.ok(calls.at(-1)!.startsWith(`GET /Accounts/${SUB}/AvailablePhoneNumbers/US/Local.json?AreaCode=337`));
-    await assert.rejects(buyNumber(d, "+13375550123"), /Buy text credits/);
-    repo.entries.push({ delta: 100, kind: "grant", reference: null });
-    const bought = await buyNumber(d, "+13375550123");
-    assert.equal(calls.at(-1), `POST /Accounts/${SUB}/IncomingPhoneNumbers.json`);
-    assert.deepEqual([bought.from_number, bought.status], ["+13375550123", "active"]);
-    assert.equal(smsSetupStep(bought), "registration", "still waiting for carrier approval");
-    await assert.rejects(buyNumber(d, "+13375550124"), /already texts from/);
-  });
-
-  test("a setup that stopped half-way carries on with the same subaccount", async () => {
-    const repo = new MemorySmsAccounts();
-    const first = fakeTwilio(true);
-    await assert.rejects(setupSmsAccount({ tenantId: B, repo, twilio: first.twilio, secrets }, "Office", "u"), /Twilio refused/);
-    assert.equal(repo.row?.subaccount_sid, SUB, "the subaccount was recorded before the key failed");
-    const second = fakeTwilio();
-    await setupSmsAccount({ tenantId: B, repo, twilio: second.twilio, secrets }, "Office", "u");
-    assert.deepEqual(second.calls, [`POST /Accounts/${SUB}/Keys.json`], "no second subaccount");
-  });
-
-  test("tenant #1 isn't set up this way: it uses the owner's account", async () => {
-    await assert.rejects(setupSmsAccount({ tenantId: MONARCH_TENANT_ID, repo: new MemorySmsAccounts(), twilio: fakeTwilio().twilio, secrets }, "Monarch", "u"), /owner's own Twilio account/);
-  });
-
-  test("the migration keeps both tables per tenant and spends credits only when the balance covers them", () => {
-    const sql = readFileSync(new URL("../supabase/migrations/20261101090000_tenant_sms.sql", import.meta.url), "utf8");
-    assert.match(sql, /create unique index if not exists tenant_sms_accounts_one_per_tenant on public\.tenant_sms_accounts \(tenant_id\)/);
-    assert.match(sql, /security invoker/);
-    assert.match(sql, /pg_advisory_xact_lock/);
-    assert.match(sql, /if have < p_segments then\s+return false;/);
   });
 });
 
