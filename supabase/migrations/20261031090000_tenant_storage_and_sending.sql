@@ -17,7 +17,7 @@
 -- ---------------------------------------------------------------- 1. one private bucket per tenant
 
 create or replace function public.tenant_bucket_id(p_tenant uuid) returns text
-language sql immutable as $$ select 'tenant-' || p_tenant::text $$;
+language sql immutable set search_path = public as $$ select 'tenant-' || p_tenant::text $$;
 
 create or replace function public.ensure_tenant_bucket(p_tenant uuid) returns text
 language plpgsql security definer set search_path = public, storage as $$
@@ -46,6 +46,7 @@ begin
   perform public.ensure_tenant_bucket(new.id);
   return new;
 end $$;
+revoke all on function public.tenants_make_bucket() from public, anon, authenticated;
 create or replace trigger tenants_make_bucket after insert on public.tenants for each row execute function public.tenants_make_bucket();
 
 -- New product images go to the tenant's bucket under images/products/...; older ones stay readable at their old path

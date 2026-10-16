@@ -109,12 +109,44 @@ Migration: `supabase/migrations/20261101090000_tenant_sms.sql`. Code: `lib/sms/`
 
 Bank CSV import still needs a manual review for each match. Product reviews still check the email and order number. Workflows don't send texts.
 
+## Test project gate (2026-10-16)
+
+Applied to the **test project only** (`monarch-test-throwaway`, `riuylqgpebchhinybxxz`):
+- `20261031090000_tenant_storage_and_sending.sql`
+- `20261101090000_tenant_sms.sql`
+- a small follow-up that locks down two functions (now folded into the first file).
+
+Production was not touched.
+
+The gate is `supabase/tests/round2_gate.sql`. It uses two throwaway tenants and example.com data, simulates server requests the way PostgREST runs them, and rolls everything back. **20 of 20 passed:**
+
+| Check | Result |
+|---|---|
+| New tenants each get a private bucket; every tenant has one; no storage policy opens them | Pass |
+| Server request runs as `tenant_app` | Pass |
+| `tenant_images`: own rows only; new rows filed under the request's tenant; writing into another tenant refused; a path outside `images/` refused | Pass |
+| `storage_cleanup`: the sweep sees only this tenant's *due* files (not one deleted just now, not another tenant's) | Pass |
+| `tenant_sms_accounts`: another tenant's account invisible; one account per tenant | Pass |
+| `spend_sms_credits`: nothing spent with no credits; 2 of 3 spent; 2 more with 1 left refused | Pass |
+| `sms_credit_ledger`: another tenant's credits invisible; adding credits to another tenant refused | Pass |
+| `client_messages`: sent (with segments) and logged messages recorded | Pass |
+| `product_images`: new `images/products/...` path accepted; a path outside `products/` refused | Pass |
+
+Afterwards:
+- No gate rows or buckets were left behind.
+- Tenant #1's bucket `tenant-00000000-0000-4000-8000-000000000001` exists and is private.
+- Security advisor: the two findings from the new migration (a trigger function executable by anon and signed-in users, and a function with a mutable search_path) are fixed. Anon and signed-in users can't run `tenants_make_bucket`, `ensure_tenant_bucket` or `spend_sms_credits`. The remaining advisor warnings were there before this work.
+
+Not covered by the gate (it checks the database only):
+- the app against Storage itself (upload → /media → delete → purge after 24 hours);
+- live Twilio calls.
+
+These need the Preview deployment pointed at the test project, and a Twilio test account or the owner's credentials.
+
 ## Rollout
 
-1. Apply the migration on the test project and check with fake data:
-   - upload an email image and a form logo;
-   - delete them, and confirm the files are gone from the `tenant-…` bucket;
-   - restore and delete a pipeline;
-   - send to a test address on the allow-list.
-2. **Apply the migration on production first, then deploy.** The migration only adds things (buckets, two tables, columns with defaults, a wider product image path check), so the code running today keeps working once it's on. The new code needs it: without it, sent client messages can't be recorded and product image uploads are refused.
-3. Run the image move script on production (dry run first).
+1. ~~Apply both migrations on the test project and run the gate~~ (done, above).
+2. **Owner review.** Production is approved separately.
+3. On approval: apply `20261031090000` then `20261101090000` on production, *then* deploy. The migrations only add things, so the code running today keeps working once they're on.
+4. Run the image move script on production (dry run first).
+5. In Vercel, add `TWILIO_FROM_NUMBER` (or `TWILIO_MESSAGING_SERVICE_SID`), if not already there, for Monarch's own texts.
