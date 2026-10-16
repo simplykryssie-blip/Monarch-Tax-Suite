@@ -1,14 +1,18 @@
 import Link from "next/link";
 import { AuthFrame } from "@/components/auth-frame";
 import { signIn } from "@/lib/auth-actions";
+import { brandForRequestHost } from "@/lib/branding/server";
+import { PLATFORM } from "@/lib/platform-brand";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; notice?: string; next?: string }> }) {
   const { error, notice, next } = await searchParams;
+  const brand = await brandForRequestHost().catch(() => null);
+  const white = brand?.whiteLabelAdmin ? brand : null;
   return (
-    <AuthFrame>
+    <AuthFrame brand={white}>
       <form action={signIn}>
         <h1>Welcome back</h1>
-        <p className="mt-login-sub">Sign in to your Verexa HQ workspace.</p>
+        <p className="mt-login-sub">Sign in to your {white ? white.name : PLATFORM.name} workspace.</p>
         {notice && <p className="mt-login-notice" role="status">{notice}</p>}
         <input type="hidden" name="next" value={next ?? "/"} />
         <label htmlFor="email">Email</label>
