@@ -154,7 +154,8 @@ export class ResendDomains {
       throw new Error(`Could not reach the email provider: ${sanitizeError(e, 120)}`);
     }
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    if (res.status === 401 || res.status === 403) throw new ValidationError(`Resend refused the key in ${this.source} (${res.status}): it can send email but cannot manage domains. In Resend create an API key with "Full access", save it as ${this.source} in Vercel for Production (replace the old value), then redeploy. A changed variable only takes effect on a new deployment.`);
+    if (res.status === 403) throw new ValidationError(`Resend says the key in ${this.source} is not valid (403). It was probably copied incompletely (it should start with "re_"), pasted with quotes or spaces, deleted in Resend, or created in a different Resend workspace than your domains. In Resend create a new API key with "Full access", copy it straight away (Resend shows it once), save it as ${this.source} in Vercel for Production, then redeploy.`);
+    if (res.status === 401) throw new ValidationError(`Resend refused the key in ${this.source} (401): it can send email but cannot manage domains. In Resend create an API key with "Full access", save it as ${this.source} in Vercel for Production (replace the old value), then redeploy. A changed variable only takes effect on a new deployment.`);
     if (res.status === 409 || (res.status === 422 && /already/i.test(String(body.message ?? "")))) throw new AlreadyRegisteredError();
     if (!res.ok) throw new ValidationError(`The email provider refused the request: ${sanitizeError(String(body.message ?? res.status), 160)}`);
     return body;

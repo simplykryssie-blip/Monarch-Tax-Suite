@@ -24,6 +24,8 @@ test("adding a domain returns its DNS records; status and records are mapped", a
 test("a sending-only key, and a domain registered elsewhere, give clear answers", async () => {
   const restricted = fakeFetch({ "POST /domains": { status: 401, body: { message: "restricted" } } });
   await assert.rejects(new ResendDomains("re_test", restricted.impl, "RESEND_SECRET_KEY").create("acmetax.test"), /RESEND_SECRET_KEY.*Full access/);
+  const invalid = fakeFetch({ "POST /domains": { status: 403, body: { message: "API key is invalid" } } });
+  await assert.rejects(new ResendDomains("re_test", invalid.impl, "RESEND_API_KEY").create("acmetax.test"), /RESEND_API_KEY is not valid \(403\).*re_/);
   const taken = fakeFetch({ "POST /domains": { status: 409, body: { message: "already exists" } } });
   await assert.rejects(new ResendDomains("re_test", taken.impl).create("acmetax.test"), (e) => e instanceof AlreadyRegisteredError);
   await assert.rejects(new ResendDomains(null).create("acmetax.test"), /not configured/);
