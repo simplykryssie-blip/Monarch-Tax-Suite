@@ -2,13 +2,19 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { isMediaPath, legacyPathFromUrl, mediaPathFromUrl, mediaType, mediaUrl, tenantBucket } from "../lib/storage/paths.ts";
-import { removeObjects, sweepStorageCleanup } from "../lib/storage/objects.ts";
+import { discardObjects, removeObjects, scheduleRemoval, sweepStorageCleanup } from "../lib/storage/objects.ts";
+import { DELETE_WINDOW_HOURS, deletedNotice } from "../lib/storage/window.ts";
 import { staleThemeImages } from "../lib/forms/theme-images.ts";
 import { deleteLibraryImage, emailMarkdown, uploadLibraryImage, type ImagesRepo, type NewTenantImage, type TenantImage } from "../lib/images/service.ts";
 import type { ImageStore, ImageType } from "../lib/commerce/types.ts";
 import { deleteClientDoc, sweepPendingClientDocs } from "../lib/workspace/docs.ts";
 import { plainEmailHtml, sendClientMessage, type SendDeps } from "../lib/workspace/send.ts";
-import { smsConfig, smsConfigProblems, toE164, TwilioSmsSender } from "../lib/automation/twilio.ts";
+import { platformLogin, platformSendProblems, platformTwilio, segmentCount, toE164, TwilioAccounts, TwilioSmsSender } from "../lib/automation/twilio.ts";
+import { CrmSecrets } from "../lib/crm/crypto.ts";
+import { MONARCH_TENANT_ID } from "../lib/tenants.ts";
+import { resolveSmsRoute, secretAad } from "../lib/sms/route.ts";
+import { buyNumber, findNumbers, setupSmsAccount, smsSetupStep } from "../lib/sms/service.ts";
+import type { SmsAccount, SmsAccountsRepo } from "../lib/sms/types.ts";
 import type { EmailMessage, SendResult } from "../lib/automation/email.ts";
 import { MemoryWorkspace } from "./workspace-memory.ts";
 import { MemoryDocumentStore } from "./documents-memory.ts";
@@ -62,9 +68,9 @@ describe("each tenant has its own private image bucket", () => {
 });
 
 // A stand-in for the Supabase client: storage.remove and the storage_cleanup table.
-function fakeDb(opts: { failRemove?: boolean } = {}) {
+function fakeDb(opts: { failRemove?: boolean; failQueue?: boolean } = {}) {
   const removed: { bucket: string; paths: string[] }[] = [];
-  let queue: { id: string; bucket: string; path: string; attempts: number; last_error?: string }[] = [];
+  let queue: { id: string; bucket: string; path: string; purge_after: string; attempts: number; last_error?: string | null }[] = [];
   const db = {
     storage: { from: (bucket: string) => ({ remove: async (paths: string[]) => {
       if (opts.failRemove) return { data: null, error: { message: "storage unavailable" } };
@@ -74,11 +80,12 @@ function fakeDb(opts: { failRemove?: boolean } = {}) {
     from: (table: string) => {
       assert.equal(table, "storage_cleanup");
       return {
-        upsert: async (rows: { bucket: string; path: string; last_error: string }[]) => {
+        upsert: async (rows: { bucket: string; path: string; purge_after: string; last_error: string | null }[]) => {
+          if (opts.failQueue) return { error: { message: "database unavailable" } };
           for (const r of rows) if (!queue.some((q) => q.bucket === r.bucket && q.path === r.path)) queue.push({ id: `q${queue.length}`, attempts: 0, ...r });
           return { error: null };
         },
-        select: () => ({ order: () => ({ limit: async () => ({ data: queue, error: null }) }) }),
+        select: () => ({ lte: (_c: string, at: string) => ({ order: () => ({ limit: async () => ({ data: queue.filter((q) => q.purge_after <= at), error: null }) }) }) }),
         delete: () => ({ in: async (_c: string, ids: string[]) => { queue = queue.filter((q) => !ids.includes(q.id)); return { error: null }; } }),
         update: (patch: { attempts: number }) => ({ eq: async (_c: string, id: string) => { Object.assign(queue.find((q) => q.id === id)!, patch); return { error: null }; } }),
       };
@@ -86,6 +93,31 @@ function fakeDb(opts: { failRemove?: boolean } = {}) {
   };
   return { db: db as never, removed, queue: () => queue, heal: () => { opts.failRemove = false; } };
 }
+
+describe("the 24-hour delete window", () => {
+  test("a file a person deleted stays for 24 hours, then the scheduler purges it", async () => {
+    const f = fakeDb();
+    const at = new Date("2026-10-16T12:00:00Z");
+    await scheduleRemoval(f.db, `tenant-${A}`, [`images/library/${ID}.png`], at);
+    assert.equal(f.queue()[0].purge_after, "2026-10-17T12:00:00.000Z");
+    assert.deepEqual(await sweepStorageCleanup(f.db, 100, new Date("2026-10-17T11:59:00Z")), { removed: 0, failed: 0 }, "not yet");
+    assert.deepEqual(f.removed, []);
+    assert.deepEqual(await sweepStorageCleanup(f.db, 100, new Date("2026-10-17T12:00:00Z")), { removed: 1, failed: 0 });
+    assert.deepEqual(f.removed, [{ bucket: `tenant-${A}`, paths: [`images/library/${ID}.png`] }]);
+    assert.deepEqual(f.queue(), []);
+  });
+
+  test("if the file can't be queued, it is deleted at once rather than left behind", async () => {
+    const f = fakeDb({ failQueue: true });
+    await discardObjects(f.db, "tenant-documents", ["a.pdf"]);
+    assert.deepEqual(f.removed, [{ bucket: "tenant-documents", paths: ["a.pdf"] }]);
+  });
+
+  test("the notice says when the file goes and that it can't be recovered after", () => {
+    assert.equal(DELETE_WINDOW_HOURS, 24);
+    assert.match(deletedNotice("Document"), /^Document deleted\. .*permanently deleted in 24 hours and can't be recovered after that\.$/);
+  });
+});
 
 describe("files are deleted with their records", () => {
   test("a removal that fails is queued, and the scheduler deletes the file later", async () => {
@@ -115,7 +147,7 @@ describe("files are deleted with their records", () => {
     store.put(path, new Uint8Array([1]));
     const doc = await repo.insertDoc({ client_id: client.id, return_id: null, title: "W-2", file_path: path, file_type: "pdf", size_bytes: 1, status: "stored", uploaded_by: null });
     await deleteClientDoc({ tenantId: A, repo, store }, doc.id);
-    assert.equal(store.objects.has(path), false);
+    assert.deepEqual(store.discarded, [path], "kept for the 24-hour window, then purged by the scheduler");
     assert.equal(await repo.getDoc(doc.id), null);
 
     const pendingPath = `${A}/clients/${client.id}/${B}.pdf`;
@@ -155,6 +187,8 @@ class MemoryImageStore implements ImageStore {
   objects = new Map<string, ImageType>();
   async put(path: string, _bytes: Uint8Array, type: ImageType) { this.objects.set(path, type); }
   async remove(paths: string[]) { for (const p of paths) this.objects.delete(p); }
+  discarded: string[] = [];
+  async discard(paths: string[]) { this.discarded.push(...paths); }
   async copy(from: string, to: string) { this.objects.set(to, this.objects.get(from)!); }
   publicUrl(path: string) { return mediaUrl("https://app.example.com", A, path); }
 }
@@ -172,7 +206,7 @@ describe("email images", () => {
     assert.ok(store.objects.has(img.storage_path));
     assert.equal(emailMarkdown(store.publicUrl(img.storage_path), img.alt_text), `![Our logo](https://app.example.com/media/${A}/${img.storage_path})`);
     await deleteLibraryImage(repo, store, img.id);
-    assert.equal(store.objects.size, 0);
+    assert.deepEqual(store.discarded, [img.storage_path]);
     assert.equal(repo.rows.length, 0);
   });
 
@@ -185,6 +219,10 @@ describe("email images", () => {
   });
 });
 
+const SID = `AC${"a".repeat(32)}`;
+const SUB = `AC${"b".repeat(32)}`;
+const KEY = `SK${"c".repeat(32)}`;
+
 describe("texting through Twilio", () => {
   test("phone numbers become +1… form; unusable ones are refused", () => {
     assert.equal(toE164("(337) 555-0100"), "+13375550100");
@@ -194,26 +232,156 @@ describe("texting through Twilio", () => {
     assert.equal(toE164(""), null);
   });
 
-  test("missing settings are named, never their values", () => {
-    assert.equal(smsConfigProblems(smsConfig({})).length, 3);
-    assert.deepEqual(smsConfigProblems(smsConfig({ TWILIO_ACCOUNT_SID: `AC${"a".repeat(32)}`, TWILIO_AUTH_TOKEN: "secret-token", TWILIO_FROM_NUMBER: "+13375550199" })), []);
-    assert.ok(smsConfigProblems(smsConfig({ TWILIO_ACCOUNT_SID: "nope", TWILIO_AUTH_TOKEN: "t", TWILIO_FROM_NUMBER: "+1" })).every((p) => !p.includes("secret")));
+  test("segments: 160 plain characters is one; longer splits at 153; other alphabets at 70/67", () => {
+    assert.equal(segmentCount("x".repeat(160)), 1);
+    assert.equal(segmentCount("x".repeat(161)), 2);
+    assert.equal(segmentCount("x".repeat(306)), 2);
+    assert.equal(segmentCount("x".repeat(307)), 3);
+    assert.equal(segmentCount("✓".repeat(70)), 1);
+    assert.equal(segmentCount("✓".repeat(71)), 2);
   });
 
-  test("the request goes to the account's Messages endpoint with basic auth; the token never appears in an error", async () => {
+  test("the owner's settings: missing ones are named, never their values; an API key is preferred to the auth token", () => {
+    assert.equal(platformSendProblems(platformTwilio({})).length, 3);
+    const env = { TWILIO_ACCOUNT_SID: SID, TWILIO_AUTH_TOKEN: "secret-token", TWILIO_FROM_NUMBER: "+13375550199" };
+    assert.deepEqual(platformSendProblems(platformTwilio(env)), []);
+    assert.deepEqual(platformLogin(platformTwilio(env)), { username: SID, password: "secret-token" });
+    assert.deepEqual(platformLogin(platformTwilio({ ...env, TWILIO_API_KEY: KEY, TWILIO_API_SECRET: "key-secret" })), { username: KEY, password: "key-secret" });
+    assert.ok(platformSendProblems(platformTwilio({ TWILIO_ACCOUNT_SID: SID, TWILIO_API_KEY: KEY })).some((p: string) => /TWILIO_API_SECRET/.test(p)));
+    assert.ok(platformSendProblems(platformTwilio({ ...env, TWILIO_ACCOUNT_SID: "nope" })).every((p: string) => !p.includes("secret-token")));
+  });
+
+  test("the request goes to the sending account's Messages endpoint with its own login; the secret never appears in an error", async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     const ok = (async (url: string, init: RequestInit) => { calls.push({ url, init }); return new Response(JSON.stringify({ sid: "SM123" }), { status: 201 }); }) as unknown as typeof fetch;
-    const cfg = smsConfig({ TWILIO_ACCOUNT_SID: `AC${"a".repeat(32)}`, TWILIO_AUTH_TOKEN: "secret-token", TWILIO_FROM_NUMBER: "+13375550199" });
-    assert.deepEqual(await new TwilioSmsSender(cfg, ok).send("+13375550100", "Hi"), { ok: true, id: "SM123" });
-    assert.equal(calls[0].url, `https://api.twilio.com/2010-04-01/Accounts/AC${"a".repeat(32)}/Messages.json`);
+    const route = { accountSid: SUB, username: KEY, password: "key-secret", from: "+13375550199", messagingServiceSid: null };
+    assert.deepEqual(await new TwilioSmsSender(route, ok).send("+13375550100", "Hi"), { ok: true, id: "SM123" });
+    assert.equal(calls[0].url, `https://api.twilio.com/2010-04-01/Accounts/${SUB}/Messages.json`);
     assert.equal(String(calls[0].init.body), "To=%2B13375550100&Body=Hi&From=%2B13375550199");
+    assert.equal((calls[0].init.headers as Record<string, string>).Authorization, `Basic ${Buffer.from(`${KEY}:key-secret`).toString("base64")}`);
     const denied = (async () => new Response(JSON.stringify({ message: "Authenticate" }), { status: 401 })) as unknown as typeof fetch;
-    const r = await new TwilioSmsSender(cfg, denied).send("+13375550100", "Hi");
-    assert.equal(r.ok, false);
+    const r = await new TwilioSmsSender(route, denied).send("+13375550100", "Hi");
     assert.equal(!r.ok && r.kind, "config");
-    assert.ok(!JSON.stringify(r).includes("secret-token"));
-    const none = await new TwilioSmsSender(smsConfig({}), ok).send("+13375550100", "Hi");
-    assert.equal(!none.ok && none.kind, "config");
+    assert.ok(!JSON.stringify(r).includes("key-secret"));
+  });
+});
+
+const account = (over: Partial<SmsAccount> = {}): SmsAccount => ({
+  id: "acc", tenant_id: B, subaccount_sid: SUB, api_key_sid: KEY, api_key_secret_encrypted: null, from_number: "+13375550111", phone_number_sid: null,
+  messaging_service_sid: null, registration_status: "approved", status: "active", created_by: null, created_at: "2026-10-16T00:00:00Z", updated_at: "2026-10-16T00:00:00Z", ...over,
+});
+const secrets = new CrmSecrets(Buffer.alloc(32, 7));
+const OWNER_ENV = platformTwilio({ TWILIO_ACCOUNT_SID: SID, TWILIO_AUTH_TOKEN: "owner-token", TWILIO_FROM_NUMBER: "+13375550199" });
+
+describe("each office texts from its own Twilio account", () => {
+  test("tenant #1 sends from the owner's account in Vercel and pays Twilio directly", () => {
+    const r = resolveSmsRoute(MONARCH_TENANT_ID, null, OWNER_ENV, secrets);
+    assert.ok(r.ok);
+    assert.equal(r.billing, "direct");
+    assert.deepEqual(r.ok && r.route, { accountSid: SID, username: SID, password: "owner-token", from: "+13375550199", messagingServiceSid: null });
+  });
+
+  test("another office sends only from its own subaccount, with its own key, on credits; never from the owner's number", () => {
+    assert.match((resolveSmsRoute(B, null, OWNER_ENV, secrets) as { problem: string }).problem, /isn't set up/);
+    const enc = secrets.encrypt("office-key-secret", secretAad(B));
+    const r = resolveSmsRoute(B, account({ api_key_secret_encrypted: enc }), OWNER_ENV, secrets);
+    assert.ok(r.ok);
+    assert.equal(r.billing, "credits");
+    assert.deepEqual(r.ok && r.route, { accountSid: SUB, username: KEY, password: "office-key-secret", from: "+13375550111", messagingServiceSid: null });
+  });
+
+  test("an office's key can't be used by another office (the secret is bound to its tenant)", () => {
+    const enc = secrets.encrypt("office-key-secret", secretAad(B));
+    const r = resolveSmsRoute(A, account({ tenant_id: A, api_key_secret_encrypted: enc }), OWNER_ENV, secrets);
+    assert.equal(r.ok, false);
+    assert.match((r as { problem: string }).problem, /can't be read/);
+  });
+
+  test("no texts until there's a number, the registration is approved and the account is active", () => {
+    const enc = secrets.encrypt("s", secretAad(B));
+    const problem = (a: SmsAccount) => (resolveSmsRoute(B, a, OWNER_ENV, secrets) as { problem: string }).problem;
+    assert.match(problem(account({ api_key_secret_encrypted: enc, from_number: null })), /no texting number/);
+    assert.match(problem(account({ api_key_secret_encrypted: enc, registration_status: "submitted" })), /A2P 10DLC/);
+    assert.match(problem(account({ api_key_secret_encrypted: enc, status: "suspended" })), /paused/);
+    assert.match(problem(account({ api_key_secret_encrypted: null })), /didn't finish/);
+  });
+});
+
+class MemorySmsAccounts implements SmsAccountsRepo {
+  row: SmsAccount | null = null;
+  entries: { delta: number; kind: string; reference: string | null }[] = [];
+  async get() { return this.row; }
+  async insert(input: Partial<SmsAccount>) { this.row = account({ subaccount_sid: null, api_key_sid: null, from_number: null, registration_status: "not_started", status: "setting_up", ...input }); return this.row; }
+  async update(_id: string, patch: Partial<SmsAccount>) { this.row = { ...this.row!, ...patch }; return this.row; }
+  async balance() { return this.entries.reduce((n, e) => n + e.delta, 0); }
+  async ledger() { return []; }
+  async spend(n: number, reference: string) { if ((await this.balance()) < n) return false; this.entries.push({ delta: -n, kind: "send", reference }); return true; }
+  async credit(e: { delta: number; kind: string; reference: string | null }) { this.entries.push(e); }
+}
+
+function fakeTwilio(failKey = false) {
+  const calls: string[] = [];
+  const f = (async (url: string, init: RequestInit) => {
+    const path = url.replace("https://api.twilio.com/2010-04-01", "");
+    calls.push(`${init.method} ${path}`);
+    if (path === "/Accounts.json") return new Response(JSON.stringify({ sid: SUB }), { status: 201 });
+    if (path.endsWith("/Keys.json")) return failKey ? new Response(JSON.stringify({ message: "down" }), { status: 500 }) : new Response(JSON.stringify({ sid: KEY, secret: "new-key-secret" }), { status: 201 });
+    if (path.includes("/AvailablePhoneNumbers/")) return new Response(JSON.stringify({ available_phone_numbers: [{ phone_number: "+13375550123", friendly_name: "(337) 555-0123", locality: "Lafayette", region: "LA" }] }));
+    if (path.endsWith("/IncomingPhoneNumbers.json")) return new Response(JSON.stringify({ sid: `PN${"d".repeat(32)}`, phone_number: "+13375550123" }), { status: 201 });
+    return new Response("{}", { status: 404 });
+  }) as unknown as typeof fetch;
+  return { twilio: new TwilioAccounts({ username: SID, password: "owner-token" }, f), calls };
+}
+
+describe("setting up an office's texting account", () => {
+  test("makes a subaccount and a key inside it (secret encrypted), then buys a number into it once credits are there", async () => {
+    const repo = new MemorySmsAccounts();
+    const { twilio, calls } = fakeTwilio();
+    const d = { tenantId: B, repo, twilio, secrets };
+    const acc = await setupSmsAccount(d, "Test Tax Office", "u");
+    assert.equal(acc.subaccount_sid, SUB);
+    assert.equal(acc.api_key_sid, KEY);
+    assert.notEqual(acc.api_key_secret_encrypted, "new-key-secret");
+    assert.equal(secrets.decrypt(acc.api_key_secret_encrypted!, secretAad(B)), "new-key-secret");
+    assert.deepEqual(calls, ["POST /Accounts.json", `POST /Accounts/${SUB}/Keys.json`]);
+    assert.equal(smsSetupStep(acc), "number");
+
+    await setupSmsAccount(d, "Test Tax Office", "u");
+    assert.equal(calls.length, 2, "repeating setup makes nothing new");
+
+    await assert.rejects(findNumbers(d, "12"), /area code/);
+    const found = await findNumbers(d, "337");
+    assert.equal(found[0].phoneNumber, "+13375550123");
+    assert.ok(calls.at(-1)!.startsWith(`GET /Accounts/${SUB}/AvailablePhoneNumbers/US/Local.json?AreaCode=337`));
+    await assert.rejects(buyNumber(d, "+13375550123"), /Buy text credits/);
+    repo.entries.push({ delta: 100, kind: "grant", reference: null });
+    const bought = await buyNumber(d, "+13375550123");
+    assert.equal(calls.at(-1), `POST /Accounts/${SUB}/IncomingPhoneNumbers.json`);
+    assert.deepEqual([bought.from_number, bought.status], ["+13375550123", "active"]);
+    assert.equal(smsSetupStep(bought), "registration", "still waiting for carrier approval");
+    await assert.rejects(buyNumber(d, "+13375550124"), /already texts from/);
+  });
+
+  test("a setup that stopped half-way carries on with the same subaccount", async () => {
+    const repo = new MemorySmsAccounts();
+    const first = fakeTwilio(true);
+    await assert.rejects(setupSmsAccount({ tenantId: B, repo, twilio: first.twilio, secrets }, "Office", "u"), /Twilio refused/);
+    assert.equal(repo.row?.subaccount_sid, SUB, "the subaccount was recorded before the key failed");
+    const second = fakeTwilio();
+    await setupSmsAccount({ tenantId: B, repo, twilio: second.twilio, secrets }, "Office", "u");
+    assert.deepEqual(second.calls, [`POST /Accounts/${SUB}/Keys.json`], "no second subaccount");
+  });
+
+  test("tenant #1 isn't set up this way: it uses the owner's account", async () => {
+    await assert.rejects(setupSmsAccount({ tenantId: MONARCH_TENANT_ID, repo: new MemorySmsAccounts(), twilio: fakeTwilio().twilio, secrets }, "Monarch", "u"), /owner's own Twilio account/);
+  });
+
+  test("the migration keeps both tables per tenant and spends credits only when the balance covers them", () => {
+    const sql = readFileSync(new URL("../supabase/migrations/20261101090000_tenant_sms.sql", import.meta.url), "utf8");
+    assert.match(sql, /create unique index if not exists tenant_sms_accounts_one_per_tenant on public\.tenant_sms_accounts \(tenant_id\)/);
+    assert.match(sql, /security invoker/);
+    assert.match(sql, /pg_advisory_xact_lock/);
+    assert.match(sql, /if have < p_segments then\s+return false;/);
   });
 });
 
@@ -226,7 +394,7 @@ describe("sending from a client's profile", () => {
     const deps: SendDeps = {
       repo,
       email: { send: async (m) => { emails.push(m); return results.email ?? { ok: true, id: "em_1" }; } },
-      sms: { send: async (to, body) => { texts.push({ to, body }); return results.sms ?? { ok: true, id: "SM1" }; } },
+      sms: { sender: { send: async (to: string, body: string) => { texts.push({ to, body }); return results.sms ?? { ok: true, id: "SM1" }; } }, problem: null, credits: null },
       sender: async () => ({ from: "Office <office@example.com>", replyTo: "help@example.com", label: "Office" }),
       env: "production",
       testRecipients: [],
@@ -261,9 +429,39 @@ describe("sending from a client's profile", () => {
     assert.equal(m.status, "failed");
     assert.match(m.error ?? "", /422/);
 
-    const unset = await setup({}, { sms: { ok: false, kind: "config", message: "Text messaging is not connected. Set TWILIO_ACCOUNT_SID in Vercel (server-side)." } });
-    await assert.rejects(sendClientMessage(unset.deps, unset.client.id, { channel: "sms", body: "Hi" }, "staff"), /not connected/);
+    const unset = await setup({}, { sms: { ok: false, kind: "config", message: "The text provider refused the request (401). Check the Twilio credentials." } });
+    await assert.rejects(sendClientMessage(unset.deps, unset.client.id, { channel: "sms", body: "Hi" }, "staff"), /refused the request \(401\)/);
     assert.equal((await unset.repo.listMessages(unset.client.id)).length, 0);
+  });
+
+  test("an office that can't text yet is told why, and nothing is sent or recorded", async () => {
+    const { deps, client, texts, repo } = await setup();
+    deps.sms = { sender: null, problem: "This office has no texting number yet. Choose one in Settings → Text messaging.", credits: null };
+    await assert.rejects(sendClientMessage(deps, client.id, { channel: "sms", body: "Hi" }, "staff"), /no texting number/);
+    assert.equal(texts.length, 0);
+    assert.equal((await repo.listMessages(client.id)).length, 0);
+  });
+
+  test("an office on credits spends one per segment; a refused text gives them back; too few credits stops the send", async () => {
+    const ledger: { delta: number; ref: string }[] = [{ delta: 3, ref: "grant" }];
+    const credits = {
+      balance: async () => ledger.reduce((n, e) => n + e.delta, 0),
+      spend: async (n: number, ref: string) => { if (ledger.reduce((t, e) => t + e.delta, 0) < n) return false; ledger.push({ delta: -n, ref }); return true; },
+      refund: async (n: number, ref: string) => { ledger.push({ delta: n, ref }); },
+    };
+    const ok = await setup();
+    ok.deps.sms.credits = credits;
+    const m = await sendClientMessage(ok.deps, ok.client.id, { channel: "sms", body: "x".repeat(200) }, "staff");
+    assert.equal(m.segments, 2);
+    assert.equal(await credits.balance(), 1);
+
+    await assert.rejects(sendClientMessage(ok.deps, ok.client.id, { channel: "sms", body: "x".repeat(200) }, "staff"), /needs 2 and this office has 1/);
+    assert.equal(ok.texts.length, 1, "nothing sent without credits");
+
+    const refused = await setup({}, { sms: { ok: false, kind: "permanent", message: "The text provider rejected the message (400)." } });
+    refused.deps.sms.credits = credits;
+    await assert.rejects(sendClientMessage(refused.deps, refused.client.id, { channel: "sms", body: "Hi" }, "staff"), /Not sent/);
+    assert.equal(await credits.balance(), 1, "the credit came back");
   });
 
   test("outside production only test-list addresses are contacted", async () => {

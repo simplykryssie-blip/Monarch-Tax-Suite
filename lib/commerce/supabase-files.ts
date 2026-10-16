@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unwrap } from "./supabase-repo.ts";
-import { removeObjects } from "../storage/objects.ts";
+import { discardObjects, removeObjects } from "../storage/objects.ts";
 import { STORED_CONTENT_TYPE, type DownloadEvent, type FileStore, type ProductFile, type ProductFilesRepo } from "./product-files.ts";
 
 export const PRODUCT_FILE_BUCKET = "product-files";
@@ -55,6 +55,9 @@ export class SupabaseFileStore implements FileStore {
   /** Deletes the files; if storage can't be reached they are queued and the scheduler removes them later. */
   async remove(paths: string[]) {
     await removeObjects(this.db, PRODUCT_FILE_BUCKET, paths);
+  }
+  async discard(paths: string[]) {
+    await discardObjects(this.db, PRODUCT_FILE_BUCKET, paths);
   }
 }
 

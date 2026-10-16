@@ -36,13 +36,13 @@ export async function uploadLibraryImage(repo: ImagesRepo, store: ImageStore, in
   }
 }
 
-/** Deletes the image and its file. An email already sent that showed it will show a blank space instead. */
+/** Deletes the image now; its file goes after the 24-hour window. Emails already sent that show it lose the picture then. */
 export async function deleteLibraryImage(repo: ImagesRepo, store: ImageStore, id: string): Promise<void> {
   const image = UUID.test(id) ? await repo.get(id) : null;
   if (!image) throw new ValidationError("That image wasn't found.");
   await repo.remove(image.id);
-  // If storage can't be reached now, the file is queued and the scheduler deletes it.
-  await store.remove([image.storage_path]).catch(() => undefined);
+  // Kept for the 24-hour window, then the scheduler deletes it.
+  await store.discard([image.storage_path]);
 }
 
 /** The Markdown that puts this picture in an email template. */

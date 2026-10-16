@@ -184,7 +184,7 @@ export async function saveFormThemeAction(form: FormData) {
     }
     // Replaced or removed images are deleted from storage (unless another form shows the same one).
     const others = (await deps.repo.listForms()).filter((f) => f.id !== id).map((f) => readSettings(f.settings).theme);
-    await imageStore().remove(staleThemeImages(currentTenantId(), id, before, saved.theme, others)).catch(() => undefined);
+    await imageStore().discard(staleThemeImages(currentTenantId(), id, before, saved.theme, others)).catch(() => undefined);
     return { notice: "Look saved. Open the public form to see it." };
   });
 }
@@ -244,7 +244,7 @@ export async function remakePdfAction(form: FormData) {
 export async function emptySpamAction(form: FormData) {
   await act(`/forms/${str(form, "id")}/submissions?status=spam`, async (adminId) => {
     const n = await emptySpam(formDeps(), idOf(form), adminId);
-    return { notice: n ? `Removed ${n} spam submission${n > 1 ? "s" : ""}.` : "There was no spam to remove." };
+    return { notice: n ? `Removed ${n} spam submission${n > 1 ? "s" : ""}. Any files they had are permanently deleted in 24 hours and can't be recovered after that.` : "There was no spam to remove." };
   });
 }
 

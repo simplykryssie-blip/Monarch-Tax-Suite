@@ -60,8 +60,8 @@ export async function deleteClientDoc(d: DocDeps, id: string): Promise<void> {
   const doc = UUID.test(id) ? await d.repo.getDoc(id) : null;
   if (!doc) throw new ValidationError("That document wasn't found.");
   await d.repo.deleteDoc(doc.id);
-  // The file goes with the record. If storage can't be reached now, it is queued and the scheduler deletes it.
-  if (doc.file_path.startsWith(`${d.tenantId}/clients/${doc.client_id}/`)) await d.store.remove([doc.file_path]).catch(() => undefined);
+  // The record leaves the app now; its file is kept for the 24-hour window, then the scheduler deletes it.
+  if (doc.file_path.startsWith(`${d.tenantId}/clients/${doc.client_id}/`)) await d.store.discard([doc.file_path]);
 }
 
 /** Uploads that were started more than a day ago and never finished: their files (if any arrived) and records go. */

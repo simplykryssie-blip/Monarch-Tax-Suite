@@ -153,5 +153,8 @@ export interface DocumentStore {
   upload(path: string, bytes: Uint8Array, contentType: string): Promise<void>;
   /** A signed URL valid for `seconds`. With `downloadName` the browser saves the file; without it, shows it. */
   signedUrl(path: string, seconds: number, downloadName: string | null): Promise<string>;
+  /** Deletes now (system clean-up: failed checks, abandoned uploads, rolled-back saves). */
   remove(paths: string[]): Promise<void>;
+  /** Deleted by a person: kept out of view for the 24-hour window, then deleted by the scheduler. */
+  discard(paths: string[]): Promise<void>;
 }

@@ -200,6 +200,9 @@ export class MemoryImageStore implements ImageStore {
     this.files.set(path, { bytes, type });
   }
   async remove(paths: string[]) { for (const p of paths) this.files.delete(p); }
+  /** Deleted by a person: queued for the 24-hour window. The file stays until the scheduler purges it. */
+  discarded: string[] = [];
+  async discard(paths: string[]) { this.discarded.push(...paths); }
   async copy(from: string, to: string) {
     const f = this.files.get(from);
     if (!f) throw new Error("missing source");

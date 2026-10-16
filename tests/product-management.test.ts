@@ -105,7 +105,7 @@ describe("product images", () => {
     const replaced = await uploadProductImage(repo, store, product.id, upload(webp(), "image/webp"), "admin", first.id);
     assert.equal(replaced.is_primary, true);
     assert.equal(replaced.sort_order, first.sort_order);
-    assert.equal(store.files.has(first.storage_path), false);
+    assert.deepEqual(store.discarded, [first.storage_path], "the old file is queued for the 24-hour window");
     assert.equal(await repo.getProductImage(first.id), null);
     assert.equal((await repo.listProductImages([product.id])).length, 2);
   });
@@ -120,7 +120,7 @@ describe("product images", () => {
     await updateImageAlt(repo, a.id, "Results screen");
     assert.equal((await repo.getProductImage(a.id))?.alt_text, "Results screen");
     await removeProductImage(repo, store, b.id);
-    assert.equal(store.files.has(b.storage_path), false);
+    assert.ok(store.discarded.includes(b.storage_path), "queued for the 24-hour window");
     assert.equal((await repo.getProductImage(a.id))?.is_primary, true);
   });
 

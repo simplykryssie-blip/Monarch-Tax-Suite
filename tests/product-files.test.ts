@@ -36,6 +36,9 @@ class MemoryStore implements FileStore {
   async stat(path: string) { return this.objects.get(path) ?? null; }
   async signedDownloadUrl(path: string, fileName: string, seconds: number) { this.signed.push({ path, fileName, seconds }); return `https://storage.test/sign/${path}?download=${encodeURIComponent(fileName)}`; }
   async remove(paths: string[]) { for (const p of paths) { this.objects.delete(p); this.removed.push(p); } }
+  /** Deleted by a person: queued for the 24-hour window (the file is purged later by the scheduler). */
+  discarded: string[] = [];
+  async discard(paths: string[]) { this.discarded.push(...paths); }
   /** What the browser's PUT to the signed upload URL would store. */
   land(path: string, size: number, contentType = STORED_CONTENT_TYPE) { this.objects.set(path, { size, contentType }); }
 }
@@ -155,7 +158,7 @@ describe("delivering files to license holders", () => {
     await assert.rejects(issueDownload(deps, { rawKey: key, fileId: foreign.id, clientHash: null }), /not available for this license/);
     await assert.rejects(issueDownload(deps, { rawKey: key, fileId: pending.id, clientHash: null }), /not available/);
     await removeFile(deps, mine.id);
-    assert.ok(store.removed.includes(mine.storage_path));
+    assert.ok(store.discarded.includes(mine.storage_path), "the file is queued for the 24-hour window");
     await assert.rejects(issueDownload(deps, { rawKey: key, fileId: mine.id, clientHash: null }), /not available/);
     assert.deepEqual((await filesForLicense(deps, key)).files, []);
   });

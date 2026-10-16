@@ -1,5 +1,6 @@
 "use server";
 
+import { deletedNotice } from "@/lib/storage/window.ts";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
@@ -182,7 +183,7 @@ export const deleteOrganizationAction = async (form: FormData) =>
   mutate(back(form, "/efin/list"), async (a) => {
     confirmed(form, "permanently deleting this ERO and everything under it");
     await deleteOrganization(a, String(form.get("organization_id") ?? ""));
-    return { to: "/efin/list", notice: "ERO deleted permanently, with its EFINs, locations and team." };
+    return { to: "/efin/list", notice: `ERO deleted permanently, with its EFINs, locations and team. Its uploaded documents are permanently deleted in 24 hours and can't be recovered after that.` };
   });
 
 export const bulkAction = async (form: FormData) =>
@@ -231,7 +232,7 @@ export const deleteDocumentAction = async (form: FormData) =>
   mutate(back(form, "/efin/list"), async (a) => {
     confirmed(form, "deleting this document");
     await deleteDocument(a, String(form.get("id") ?? ""));
-    return { notice: "Document deleted." };
+    return { notice: deletedNotice("Document") };
   });
 
 export const addOfficialAction = async (form: FormData) =>

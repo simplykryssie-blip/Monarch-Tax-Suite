@@ -58,6 +58,6 @@ export async function restoreRecordAction(form: FormData) {
 export async function hardDeleteRecordAction(form: FormData) {
   await act(form, async (entity, id, adminId) => {
     await hardDeleteRecord(archiveStore(), entity, id, adminId, str(form, "confirm"));
-    return { notice: `Permanently deleted. The archive history keeps a note of what it was.`, to: `${ENTITY[entity].list}?view=archived` };
+    return { notice: `Permanently deleted. The archive history keeps a note of what it was. Any files it had are permanently deleted from storage in 24 hours and can't be recovered after that.`, to: `${ENTITY[entity].list}?view=archived` };
   });
 }

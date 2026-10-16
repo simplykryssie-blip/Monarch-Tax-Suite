@@ -50,6 +50,8 @@ export interface FileStore {
   /** A signed URL that downloads the object under `fileName` (Content-Disposition: attachment). */
   signedDownloadUrl(path: string, fileName: string, seconds: number): Promise<string>;
   remove(paths: string[]): Promise<void>;
+  /** Deleted by a person: kept for the 24-hour window, then deleted by the scheduler. */
+  discard(paths: string[]): Promise<void>;
 }
 
 // ------------------------------------------------------------------- upload
@@ -109,7 +111,7 @@ export async function removeFile(deps: { files: ProductFilesRepo; store: FileSto
   const file = await deps.files.getFile(fileId);
   if (!file || file.status === "removed") return;
   await deps.files.updateFile(file.id, { status: "removed", removed_at: now.toISOString() });
-  await deps.store.remove([file.storage_path]).catch((e) => console.error(`product-files: could not delete ${file.storage_path}: ${e instanceof Error ? e.message.slice(0, 120) : "unknown"}`));
+  await deps.store.discard([file.storage_path]).catch((e) => console.error(`product-files: could not delete ${file.storage_path}: ${e instanceof Error ? e.message.slice(0, 120) : "unknown"}`));
 }
 
 // ----------------------------------------------------------------- delivery

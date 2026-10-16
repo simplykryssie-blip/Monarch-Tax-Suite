@@ -1,10 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sanitizeError } from "../automation/sanitize.ts";
 import { tenantBucket } from "./paths.ts";
+import { purgeAfter } from "./window.ts";
 
-// Removing stored files. A file is removed together with its record; if storage can't be reached at that moment the
-// file is written to storage_cleanup (on the tenant client, so it is filed under the tenant) and the scheduler removes
-// it later. Nothing is left behind in a bucket.
+// Removing stored files, through one queue: storage_cleanup (on the tenant client, so rows are filed under the tenant).
+// - scheduleRemoval: a person deleted it. The file is queued with purge_after = now + 24 hours (lib/storage/window.ts)
+//   and the scheduler deletes it then.
+// - removeObjects: system clean-up, deleted at once. If storage can't be reached, the file is queued for the next
+//   sweep. Either way nothing is left behind in a bucket.
 
 /** Removes objects from a bucket. On failure the paths are queued for the scheduler, then the error is thrown. */
 export async function removeObjects(db: SupabaseClient, bucket: string, paths: string[]): Promise<void> {
@@ -23,15 +26,28 @@ export async function removeObjects(db: SupabaseClient, bucket: string, paths: s
 }
 
 async function queueRemoval(db: SupabaseClient, bucket: string, paths: string[], error: string) {
-  const { error: e } = await db.from("storage_cleanup").upsert(paths.map((path) => ({ bucket, path, last_error: error.slice(0, 300), updated_at: new Date().toISOString() })), { onConflict: "tenant_id,bucket,path" });
+  const now = new Date().toISOString();
+  const { error: e } = await db.from("storage_cleanup").upsert(paths.map((path) => ({ bucket, path, purge_after: now, last_error: error.slice(0, 300), updated_at: now })), { onConflict: "tenant_id,bucket,path" });
   if (e) console.error(`storage-cleanup: could not queue ${paths.length} file(s) in ${bucket}: ${sanitizeError(e.message, 160)}`);
+}
+
+/**
+ * A person deleted these files: they are permanently deleted from storage after the 24-hour window, by the scheduler.
+ * Throws if they can't be queued, so the caller never reports a delete whose files would be left behind.
+ */
+export async function scheduleRemoval(db: SupabaseClient, bucket: string, paths: string[], now = new Date()): Promise<void> {
+  const list = [...new Set(paths.filter(Boolean))];
+  if (!list.length) return;
+  const at = now.toISOString();
+  const { error } = await db.from("storage_cleanup").upsert(list.map((path) => ({ bucket, path, purge_after: purgeAfter(now).toISOString(), last_error: null, updated_at: at })), { onConflict: "tenant_id,bucket,path" });
+  if (error) throw new Error(`Could not schedule the file for deletion: ${error.message}`);
 }
 
 type Queued = { id: string; bucket: string; path: string; attempts: number };
 
-/** Retries queued removals for this tenant. Returns how many files were removed. */
-export async function sweepStorageCleanup(db: SupabaseClient, limit = 100): Promise<{ removed: number; failed: number }> {
-  const { data, error } = await db.from("storage_cleanup").select("id, bucket, path, attempts").order("created_at").limit(limit);
+/** Deletes this tenant's queued files whose time has come. Returns how many were deleted. */
+export async function sweepStorageCleanup(db: SupabaseClient, limit = 100, now = new Date()): Promise<{ removed: number; failed: number }> {
+  const { data, error } = await db.from("storage_cleanup").select("id, bucket, path, attempts").lte("purge_after", now.toISOString()).order("purge_after").limit(limit);
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as Queued[];
   let removed = 0;
@@ -62,4 +78,17 @@ export async function uploadToTenantBucket(db: SupabaseClient, tenantId: string,
     ({ error } = await put());
   }
   if (error) throw new Error(`Image upload failed: ${error.message}`);
+}
+
+/**
+ * A person deleted these files: queue them for the 24-hour window. If they can't be queued, they are deleted at once
+ * instead (and queued for the next sweep if storage is down too), so a deleted record never leaves its file behind.
+ */
+export async function discardObjects(db: SupabaseClient, bucket: string, paths: string[]): Promise<void> {
+  try {
+    await scheduleRemoval(db, bucket, paths);
+  } catch (e) {
+    console.error(`storage-cleanup: could not schedule ${paths.length} file(s) in ${bucket}, deleting now: ${sanitizeError(e, 160)}`);
+    await removeObjects(db, bucket, paths);
+  }
 }

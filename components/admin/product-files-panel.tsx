@@ -45,7 +45,7 @@ export async function ProductFilesPanel({ product }: { product: Product }) {
                     <form action={removeFileAction}>
                       <input type="hidden" name="product_id" value={product.id} />
                       <input type="hidden" name="file_id" value={f.id} />
-                      <button className="monarch-secondary" type="submit" title="Buyers can no longer download it. Download history is kept.">Remove</button>
+                      <button className="monarch-secondary" type="submit" title="Buyers can no longer download it, starting now. Download history is kept. The stored file is permanently deleted after 24 hours and can&apos;t be recovered after that.">Remove</button>
                     </form>
                   </td>
                 </tr>

@@ -108,7 +108,7 @@ export async function uploadProductImage(
       sort_order: replacing ? replacing.sort_order : Math.max(-1, ...existing.map((i) => i.sort_order)) + 1,
       created_by: actorId,
     });
-    if (replacing) await store.remove([replacing.storage_path]);
+    if (replacing) await store.discard([replacing.storage_path]);
     return image;
   } catch (error) {
     await store.remove([path]).catch(() => undefined);
@@ -120,7 +120,7 @@ export async function removeProductImage(repo: CommerceRepo, store: ImageStore, 
   const image = await repo.getProductImage(imageId);
   if (!image) throw new ValidationError("Image not found.");
   await repo.deleteProductImage(image.id);
-  await store.remove([image.storage_path]);
+  await store.discard([image.storage_path]);
   if (image.is_primary) {
     const [next] = (await repo.listProductImages([image.product_id])).sort((a, b) => a.sort_order - b.sort_order);
     if (next) await repo.updateProductImage(next.id, { is_primary: true });

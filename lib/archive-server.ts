@@ -84,7 +84,7 @@ export class SupabaseArchiveStore implements ArchiveStore {
       const theme = readSettings(forms.find((f) => f.id === row.id)?.settings).theme;
       if ((await removeForm(deps, row.id, "owner")) === "deleted") {
         const others = forms.filter((f) => f.id !== row.id).map((f) => readSettings(f.settings).theme);
-        await this.images().remove(staleThemeImages(this.tenantId, row.id, theme, null, others)).catch(() => undefined);
+        await this.images().discard(staleThemeImages(this.tenantId, row.id, theme, null, others)).catch(() => undefined);
       }
       return;
     }
@@ -99,7 +99,7 @@ export class SupabaseArchiveStore implements ArchiveStore {
       throw new Error(r.error.message);
     }
     if (rows(r).length !== 1) throw new ValidationError(`That ${ENTITY[entity].noun} was not found.`);
-    if (images.length) await this.images().remove(images.map((i) => i.storage_path)).catch(() => undefined);
+    if (images.length) await this.images().discard(images.map((i) => i.storage_path)).catch(() => undefined);
   }
 
   private images() {

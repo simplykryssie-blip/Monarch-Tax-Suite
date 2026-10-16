@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { unwrap } from "../commerce/supabase-repo.ts";
-import { removeObjects } from "../storage/objects.ts";
+import { discardObjects, removeObjects } from "../storage/objects.ts";
 import { tenantDb } from "../admin";
 import { assignmentProblems, EfinRuleError, forField, hasLiveHistory, last4, tracksTeam, normalizeEfin, normalizeEin, normalizePtin, parseDay, planTransition, todayIso } from "./rules.ts";
 import type { AssignmentRole, AssignmentRow, AssignmentState, AuditRow, CredentialRow, DocRow, EfinRow, FilingRow, LocationRow, OptionRow, OrgOptionRow, OrgRow, PersonRow, RenewalTaskRow, RoleRow, Verification } from "./types.ts";
@@ -503,8 +503,8 @@ async function deleteOrgDocuments(orgId: string) {
     throw new Error(error.message);
   }
   const paths = ((data ?? []) as { storage_path: string | null }[]).map((d) => d.storage_path).filter(Boolean) as string[];
-  if (paths.length) await removeObjects(c, DOC_BUCKET, paths);
   if ((data ?? []).length) must(await c.from("compliance_documents").delete().eq("subject_type", "organization").eq("subject_id", orgId));
+  if (paths.length) await discardObjects(c, DOC_BUCKET, paths); // kept for the 24-hour window
 }
 
 async function deleteOrganizationDirect(actor: Actor, id: string) {
@@ -769,8 +769,8 @@ export async function deleteDocument(actor: Actor, docId: string) {
   const client = db();
   const doc = unwrap(await client.from("compliance_documents").select("id, subject_id, storage_path, title").eq("id", id).maybeSingle() as never) as { id: string; subject_id: string; storage_path: string | null; title: string } | null;
   if (!doc) throw new EfinNotFound("That document could not be found.");
-  if (doc.storage_path) await removeObjects(client, DOC_BUCKET, [doc.storage_path]);
   unwrap(await client.from("compliance_documents").delete().eq("id", id) as never);
+  if (doc.storage_path) await discardObjects(client, DOC_BUCKET, [doc.storage_path]); // kept for the 24-hour window
   await audit(actor, { type: "document.deleted", targetType: "document", targetId: id, organizationId: doc.subject_id, changes: { title: doc.title } });
 }
 

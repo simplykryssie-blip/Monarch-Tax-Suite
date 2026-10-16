@@ -8,7 +8,8 @@ import { RETURN_KINDS } from "@/lib/workspace/types.ts";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 import { addNoteAction, addReturnAction, addTaskAction, archiveClientAction, createInvoiceAction, deleteClientDocAction, invoiceStatusAction, logMessageAction, openClientDocAction, saveClientAction, sendMessageAction, toggleTaskAction } from "../../actions";
 import { SMS_MAX } from "@/lib/automation/sms.ts";
-import { smsConfig, smsConfigProblems, toE164 } from "@/lib/automation/twilio.ts";
+import { toE164 } from "@/lib/automation/twilio.ts";
+import { tenantSms } from "@/lib/sms/server";
 import { emailConfig, emailConfigProblems } from "@/lib/automation/email.ts";
 import { WorkspaceSetup } from "../../setup";
 
@@ -33,6 +34,9 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   if (result.ok && !result.data) notFound();
   if (!result.ok) return <><PageTitle title="Client" back={{ href: "/workspace/clients", label: "My Clients" }} /><WorkspaceSetup message={result.message} /></>;
   const { client, returns, docs, messages, tasks, notes, invoices, stages } = result.data!;
+  // The office's own texting account, and its prepaid credits when it has them (tenant #1 pays Twilio directly).
+  const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
+  const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
   const stageName = (sid: string) => stages.find((s) => s.id === sid)?.name ?? "Intake";
   const returnLabel = (r: { kind: keyof typeof RETURN_KINDS; tax_year: number }) => `${RETURN_KINDS[r.kind]} ${r.tax_year}`;
   const owes = invoices.filter((i) => i.status === "sent").reduce((n, i) => n + balance(i), 0);
@@ -105,7 +109,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
       {tab === "messages" && (() => {
         const emailProblem = emailConfigProblems(emailConfig(process.env))[0] ?? null;
-        const smsProblem = smsConfigProblems(smsConfig(process.env))[0] ?? null;
+        const smsProblem = !sms ? "Text messaging could not be checked." : sms.route.ok ? null : sms.route.problem;
         const mobile = toE164(client.phone);
         return (
         <>
@@ -129,7 +133,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="channel" value="sms" />
                   {!mobile ? <p className="is-wide monarch-muted">Add a mobile number on the Overview tab to text this client.</p> : smsProblem ? <p className="is-wide monarch-muted">Text messaging isn&apos;t connected yet: {smsProblem}</p> : (
                     <>
-                      <label className="is-wide">Message *<textarea name="body" required rows={4} maxLength={SMS_MAX} /><small className="monarch-muted">Up to {SMS_MAX} characters. Only text clients who agreed to receive texts.</small></label>
+                      <label className="is-wide">Message *<textarea name="body" required rows={4} maxLength={SMS_MAX} /><small className="monarch-muted">Up to {SMS_MAX} characters (longer than 160 characters counts as more than one segment).{credits !== null ? ` Each segment uses one text credit; this office has ${credits}.` : ""} Only text clients who agreed to receive texts.</small></label>
                       <div className="is-wide"><SubmitOnce className="monarch-primary" busy="Sending…">Send text</SubmitOnce></div>
                     </>
                   )}
@@ -145,7 +149,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 {messages.length === 0 ? <EmptyRow colSpan={4}>No messages yet.</EmptyRow> : messages.map((m) => (
                   <tr key={m.id}>
                     <td style={{ whiteSpace: "nowrap" }}>{when(m.occurred_at)}</td>
-                    <td>{m.direction === "in" ? "From client" : "To client"} · {CHANNELS[m.channel]}{m.sent_to && <small className="monarch-subcell">{m.sent_to}</small>}</td>
+                    <td>{m.direction === "in" ? "From client" : "To client"} · {CHANNELS[m.channel]}{m.sent_to && <small className="monarch-subcell">{m.sent_to}{m.segments ? ` · ${m.segments} segment${m.segments > 1 ? "s" : ""}` : ""}</small>}</td>
                     <td style={{ whiteSpace: "pre-wrap" }}>{m.subject && <b>{m.subject}<br /></b>}{m.body}</td>
                     <td>{m.status === "sent" ? <Badge value="sent" /> : m.status === "failed" ? <><Badge value="failed" />{m.error && <small className="monarch-subcell">{m.error}</small>}</> : <span className="monarch-muted">Logged</span>}</td>
                   </tr>

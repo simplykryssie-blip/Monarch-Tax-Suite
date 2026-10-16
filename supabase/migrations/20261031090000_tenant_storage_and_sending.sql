@@ -7,8 +7,10 @@
 --    shop) are streamed by the app at /media/{tenant}/images/..., which only reads image files from that tenant's bucket.
 --    A bucket is made for every existing tenant now, and for each new tenant when it is created.
 -- 2. tenant_images: the account's image library (images uploaded for use in emails).
--- 3. storage_cleanup: a stored object whose record was deleted but whose file could not be removed at that moment. The
---    scheduler retries until the file is gone, so no orphaned file is left in storage.
+-- 3. storage_cleanup: the queue of stored files to delete. When a person deletes a file (or a record with files) it
+--    leaves the app at once and its files are queued with purge_after = now + 24 hours; the scheduler deletes them
+--    then, and they can't be recovered after that. Files the system removes at once but couldn't (storage down) are
+--    queued with purge_after = now. Either way no orphaned file is left in storage.
 -- 4. client_messages: messages sent from a client's profile record how they went (sent / failed) and to whom.
 -- Both new tables belong to one tenant from day one.
 
@@ -77,12 +79,14 @@ create table if not exists public.storage_cleanup (
   tenant_id uuid not null references public.tenants(id),
   bucket text not null check (length(bucket) between 1 and 100),
   path text not null check (length(path) between 1 and 1024),
+  purge_after timestamptz not null default now(),
   attempts integer not null default 0,
   last_error text check (last_error is null or length(last_error) <= 300),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 create unique index if not exists storage_cleanup_object_key on public.storage_cleanup (tenant_id, bucket, path);
+create index if not exists storage_cleanup_due_idx on public.storage_cleanup (tenant_id, purge_after);
 
 do $$
 declare

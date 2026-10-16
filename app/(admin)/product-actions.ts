@@ -1,5 +1,6 @@
 "use server";
 
+import { DELETE_NOTICE } from "@/lib/storage/window.ts";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { appOrigin, commerceRepo, imageStore, requireAdmin, stripeClient } from "@/lib/admin";
@@ -109,7 +110,7 @@ export async function removeProductImageAction(_prev: ImageActionState, form: Fo
   await requireAdmin();
   return imageAction(async () => {
     await removeProductImage(commerceRepo(), imageStore(), uuid(form, "image_id"));
-    return "Image removed.";
+    return `Image removed. ${DELETE_NOTICE}`;
   });
 }
 

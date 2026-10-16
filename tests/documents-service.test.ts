@@ -56,7 +56,8 @@ describe("library and versions", () => {
     const { deps, store } = setup();
     const unsent = await upload(deps, store, "unsent.pdf", await makePdf([]));
     assert.equal(await removeDocument(deps, unsent.document.id, "admin"), "deleted");
-    assert.equal(store.objects.size, 0);
+    assert.deepEqual(store.discarded, [...store.objects.keys()], "every file is queued for the 24-hour window");
+    assert.equal(store.discarded.length, 1);
     const sent = await upload(deps, store, "sent.pdf", await makePdf(["client_name"]));
     await createDelivery(deps, { ...base, documentId: sent.document.id, kind: "send", executionId: null, actionIndex: null, values });
     assert.equal(await removeDocument(deps, sent.document.id, "admin"), "archived");

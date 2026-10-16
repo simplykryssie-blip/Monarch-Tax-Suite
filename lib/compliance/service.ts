@@ -157,10 +157,9 @@ export async function deleteDocument(deps: ComplianceDeps, ctx: Ctx, id: string,
   const doc = await mine(ctx, await deps.repo.getDocument(id), "document");
   const early = earlyDeletion(doc.retention_until, today(deps));
   const reason = early.early ? overrideReason(raw.reason, early.warning!) : text(raw.reason, 1000) || null;
-  await deps.store.remove([doc.file_path]).catch((e: unknown) => {
-    if (!(e instanceof Error) || !/not.?found/i.test(e.message)) throw e;
-  });
   await deps.repo.deleteDocument(doc.id);
+  // The file is kept for the 24-hour window, then the scheduler deletes it.
+  await deps.store.discard([doc.file_path]);
   await event(deps, ctx, { entity: "document", record_id: doc.id, action: early.early ? "deleted_early" : "deleted", reason, detail: { kind: doc.kind, title: doc.title, retention_until: doc.retention_until } });
   return { early: early.early };
 }

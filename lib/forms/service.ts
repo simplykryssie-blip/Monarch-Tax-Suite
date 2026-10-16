@@ -239,7 +239,7 @@ export async function removeForm(deps: FormDeps, formId: string, adminId: string
     return "archived";
   }
   const drafts = await deps.repo.listSubmissions(form.id, { status: "draft", limit: 1000, includeTests: true });
-  await removeSubmissions(deps, drafts.rows);
+  await removeSubmissions(deps, drafts.rows, "discard");
   await deps.repo.updateForm(form.id, { current_version_id: null });
   await deps.repo.deleteForm(form.id);
   return "deleted";
@@ -383,8 +383,8 @@ export async function removeUpload(deps: FormDeps, publicId: string, token: stri
   const draft = await draftFor(deps, pf, token);
   const upload = UUID.test(uploadId) ? await deps.repo.getUpload(uploadId) : null;
   if (!draft || !upload || upload.submission_id !== draft.id || upload.status === "attached") return;
-  await deps.stores.uploads.remove([ownPath(deps, upload.storage_path)]).catch(() => undefined);
   await deps.repo.deleteUploads([upload.id]);
+  await deps.stores.uploads.discard([ownPath(deps, upload.storage_path)]).catch(() => undefined);
 }
 
 /** Save and continue later: keeps the answers for 30 days and returns the resume token for the emailed link. */
@@ -831,20 +831,23 @@ export async function adminPdfLink(deps: FormDeps, submissionId: string, actorId
   return deps.stores.pdfs.signedUrl(ownPath(deps, sub.pdf_path!), DOCUMENT_URL_SECONDS, `${(form?.name ?? "Form").replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 80) || "Form"} - submission ${sub.number}.pdf`);
 }
 
-async function removeSubmissions(deps: FormDeps, subs: Submission[]) {
+/** `how`: "discard" when a person deleted them (files kept for the 24-hour window), "remove" for the expired-draft sweep. */
+async function removeSubmissions(deps: FormDeps, subs: Submission[], how: "remove" | "discard") {
   if (!subs.length) return;
+  const files: { uploads: string[]; pdfs: string[] } = { uploads: [], pdfs: [] };
   for (const s of subs) {
-    const uploads = await deps.repo.listUploads(s.id);
-    if (uploads.length) await deps.stores.uploads.remove(uploads.map((u) => ownPath(deps, u.storage_path))).catch(() => undefined);
-    if (s.pdf_path) await deps.stores.pdfs.remove([ownPath(deps, s.pdf_path)]).catch(() => undefined);
+    files.uploads.push(...(await deps.repo.listUploads(s.id)).map((u) => ownPath(deps, u.storage_path)));
+    if (s.pdf_path) files.pdfs.push(ownPath(deps, s.pdf_path));
   }
   await deps.repo.deleteSubmissions(subs.map((s) => s.id));
+  await deps.stores.uploads[how](files.uploads).catch(() => undefined);
+  await deps.stores.pdfs[how](files.pdfs).catch(() => undefined);
 }
 
 /** Empties a form's spam. Real submissions can't be deleted (the database refuses). */
 export async function emptySpam(deps: FormDeps, formId: string, actorId: string): Promise<number> {
   const spam = await deps.repo.listSpam(formId, 500);
-  await removeSubmissions(deps, spam);
+  await removeSubmissions(deps, spam, "discard");
   if (spam.length) await event(deps, formId, null, "spam_emptied", actorId, { count: spam.length });
   return spam.length;
 }
@@ -892,7 +895,7 @@ export async function exportCsv(deps: FormDeps, formId: string, actorId: string)
 /** Deletes expired drafts (and their files) and retries submission PDFs that failed. Safe to run often. */
 export async function sweepForms(deps: FormDeps): Promise<{ draftsRemoved: number; pdfsMade: number }> {
   const due = await deps.repo.listDueDrafts(iso(deps), 100);
-  await removeSubmissions(deps, due);
+  await removeSubmissions(deps, due, "remove");
   let pdfsMade = 0;
   for (const s of await deps.repo.listPendingPdfs(10)) {
     if (s.pdf_attempts >= 5) continue;

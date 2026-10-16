@@ -20,8 +20,10 @@ export type ClientMessage = {
   id: string; tenant_id: string; client_id: string; direction: "out" | "in"; channel: "email" | "sms" | "call" | "other"; subject: string | null; body: string; occurred_at: string; created_by: string | null; created_at: string;
   /** "logged": written down by staff; "sent" / "failed": sent from the profile. */
   status: "logged" | "sent" | "failed"; sent_to: string | null; provider_id: string | null; error: string | null;
+  /** Message segments a text used (what it cost in credits). */
+  segments: number | null;
 };
-type SendFields = "status" | "sent_to" | "provider_id" | "error";
+type SendFields = "status" | "sent_to" | "provider_id" | "error" | "segments";
 export type NewClientMessage = Omit<ClientMessage, "id" | "tenant_id" | "created_at" | SendFields> & Partial<Pick<ClientMessage, SendFields>>;
 export type ClientTask = { id: string; tenant_id: string; client_id: string; return_id: string | null; title: string; due_on: string | null; done_at: string | null; created_by: string | null; created_at: string };
 export type ClientNote = { id: string; tenant_id: string; client_id: string; body: string; created_by: string | null; created_at: string };

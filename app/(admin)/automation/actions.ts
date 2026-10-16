@@ -1,5 +1,6 @@
 "use server";
 
+import { deletedNotice } from "@/lib/storage/window.ts";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
@@ -262,6 +263,6 @@ export async function uploadEmailImageAction(form: FormData): Promise<{ ok: true
 export async function deleteLibraryImageAction(form: FormData) {
   await mutate("/automation/images", async () => {
     await deleteLibraryImage(imagesRepo(), imageStore(), id(form));
-    return { notice: "Picture deleted, including its stored file." };
+    return { notice: deletedNotice("Picture") };
   });
 }

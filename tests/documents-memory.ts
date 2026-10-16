@@ -91,4 +91,7 @@ export class MemoryDocumentStore implements DocumentStore {
   }
   async signedUrl(path: string, seconds: number, downloadName: string | null) { this.signed.push({ path, seconds, downloadName }); return `https://storage.test/signed/${path}?t=${seconds}`; }
   async remove(paths: string[]) { for (const p of paths) this.objects.delete(p); }
+  /** Deleted by a person: queued for the 24-hour window. The file stays until the scheduler purges it. */
+  discarded: string[] = [];
+  async discard(paths: string[]) { this.discarded.push(...paths); }
 }

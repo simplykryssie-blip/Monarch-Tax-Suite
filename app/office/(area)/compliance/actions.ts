@@ -1,5 +1,6 @@
 "use server";
 
+import { DELETE_NOTICE, deletedNotice } from "@/lib/storage/window.ts";
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
@@ -109,7 +110,7 @@ export async function finishUploadAction(id: string): Promise<{ ok: true; id: st
 export async function deleteDocumentAction(form: FormData): Promise<FormResult> {
   return act("/office/compliance/vault", async ({ ctx, deps }) => {
     const r = await deleteDocument(deps, ctx, idOf(form), { reason: str(form, "reason") });
-    return r.early ? "Deleted before the end of its retention period. Your reason is kept in the history." : "Deleted.";
+    return r.early ? `Deleted before the end of its retention period. Your reason is kept in the history. ${DELETE_NOTICE}` : deletedNotice("Document");
   });
 }
 

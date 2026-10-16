@@ -13,6 +13,8 @@ import { readSettings } from "@/lib/forms/settings.ts";
 import { documentDeps } from "@/lib/documents/server";
 import { cleanLinkHost, defaultLinkHost } from "@/lib/brands.ts";
 import { currentTenantId, MONARCH_TENANT_ID } from "@/lib/tenants.ts";
+import { buyNumber, setupSmsAccount } from "@/lib/sms/service.ts";
+import { smsSetupDeps } from "@/lib/sms/server";
 
 // Firm profile, sending domains and senders, and package attributes for the current tenant. Every action re-checks
 // administrator access; the tenant-scoped client means only this tenant's rows can be read or changed.
@@ -192,5 +194,22 @@ export async function deleteAttributeAction(form: FormData) {
     if (used.length) throw new ValidationError(`Used by ${used.map((w) => `"${w.name}"`).join(", ")}. Remove the condition there first.`);
     await deps.senders!.deletePackageAttribute(id);
     return "Attribute removed.";
+  });
+}
+
+// ---- Text messaging: this office's own Twilio subaccount, number and credits
+
+export async function setupSmsAction() {
+  await act("/settings/sms", async (adminId) => {
+    const profile = await documentDeps().repo.getProfile().catch(() => null);
+    await setupSmsAccount(smsSetupDeps(), profile?.display_name || profile?.legal_name || "Office", adminId);
+    return "Your texting account is set up. Next, choose a number.";
+  });
+}
+
+export async function buySmsNumberAction(form: FormData) {
+  await act("/settings/sms", async () => {
+    const account = await buyNumber(smsSetupDeps(), str(form, "number"));
+    return `${account.from_number} is now your texting number. Texts can be sent once carriers approve your registration.`;
   });
 }

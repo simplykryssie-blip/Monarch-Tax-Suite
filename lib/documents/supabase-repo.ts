@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unwrap } from "../commerce/supabase-repo.ts";
-import { removeObjects } from "../storage/objects.ts";
+import { discardObjects, removeObjects } from "../storage/objects.ts";
 import type { Delivery, DocumentEvent, DocumentStore, DocumentsRepo, DocumentVersion, LibraryDocument, NewDelivery, NewSignatureRequest, ProfilePatch, SignatureRequest, SignatureStatus, TenantProfile } from "./types.ts";
 
 export const DOCUMENT_BUCKET = "tenant-documents";
@@ -127,5 +127,8 @@ export class SupabaseDocumentStore implements DocumentStore {
   /** Deletes the files; if storage can't be reached they are queued and the scheduler removes them later. */
   async remove(paths: string[]) {
     await removeObjects(this.db, this.bucketName, paths);
+  }
+  async discard(paths: string[]) {
+    await discardObjects(this.db, this.bucketName, paths);
   }
 }

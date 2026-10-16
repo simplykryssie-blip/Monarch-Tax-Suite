@@ -1,5 +1,6 @@
 "use server";
 
+import { deletedNotice } from "@/lib/storage/window.ts";
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
@@ -128,8 +129,8 @@ export async function addNoteAction(form: FormData) {
 export async function sendMessageAction(form: FormData) {
   const id = str(form, "client_id");
   await act(clientPage(id, "messages"), async (adminId) => {
-    const m = await sendClientMessage(sendDeps(), id, raw(form), adminId);
-    return { notice: m.channel === "sms" ? `Text sent to ${m.sent_to}.` : `Email sent to ${m.sent_to}.` };
+    const m = await sendClientMessage(await sendDeps(), id, raw(form), adminId);
+    return { notice: m.channel === "sms" ? `Text sent to ${m.sent_to}${m.segments && m.segments > 1 ? ` (${m.segments} message segments)` : ""}.` : `Email sent to ${m.sent_to}.` };
   });
 }
 
@@ -184,7 +185,7 @@ export async function deleteClientDocAction(form: FormData) {
   const client = str(form, "client_id");
   await act(clientPage(client, "documents"), async () => {
     await deleteClientDoc(docDeps(), str(form, "id"));
-    return { notice: "Document deleted." };
+    return { notice: deletedNotice("Document") };
   });
 }
 

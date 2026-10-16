@@ -189,7 +189,7 @@ describe("Form 8879", () => {
 
     await assert.rejects(deleteDocument(s.deps, s.ero, file.id, {}), /Required by IRS/);
     await deleteDocument(s.deps, s.ero, file.id, { reason: "Wrong client's file" });
-    assert.equal(s.store.objects.has(file.file_path), false);
+    assert.deepEqual(s.store.discarded, [file.file_path], "the file is kept for the 24-hour window, then purged");
     assert.ok(s.repo.events.some((e) => e.entity === "document" && e.action === "deleted_early" && e.reason === "Wrong client's file"));
   });
 

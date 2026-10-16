@@ -132,7 +132,8 @@ export async function removeDocument(deps: DocumentDeps, documentId: string, act
   const versions = await deps.repo.listVersions(documentId);
   await deps.repo.updateDocument(documentId, { current_version_id: null });
   await deps.repo.deleteDocument(documentId);
-  await deps.store.remove(versions.map((v) => ownPath(deps, v.storage_path))).catch(() => undefined);
+  // Its files are kept for the 24-hour window, then the scheduler deletes them.
+  await deps.store.discard(versions.map((v) => ownPath(deps, v.storage_path)));
   return "deleted";
 }
 

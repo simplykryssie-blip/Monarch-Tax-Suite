@@ -1,7 +1,7 @@
 import type { ArchiveLogEntry } from "../archive.ts";
 import "server-only";
 import { isMediaPath, LEGACY_IMAGE_BUCKET, mediaType, mediaUrl, tenantBucket } from "../storage/paths.ts";
-import { removeObjects, uploadToTenantBucket } from "../storage/objects.ts";
+import { discardObjects, removeObjects, uploadToTenantBucket } from "../storage/objects.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   ImageStore,
@@ -259,6 +259,10 @@ export class SupabaseImageStore implements ImageStore {
     const old = paths.filter((p) => !isMediaPath(p));
     await removeObjects(this.db, tenantBucket(this.tenantId), own);
     await removeObjects(this.db, LEGACY_IMAGE_BUCKET, old);
+  }
+  async discard(paths: string[]) {
+    await discardObjects(this.db, tenantBucket(this.tenantId), paths.filter(isMediaPath));
+    await discardObjects(this.db, LEGACY_IMAGE_BUCKET, paths.filter((p) => !isMediaPath(p)));
   }
   async copy(from: string, to: string) {
     if (isMediaPath(from)) {

@@ -89,6 +89,8 @@ export type ProductImage = {
 export interface ImageStore {
   put(path: string, bytes: Uint8Array, contentType: ImageType): Promise<void>;
   remove(paths: string[]): Promise<void>;
+  /** Deleted by a person: kept for the 24-hour window, then deleted by the scheduler. */
+  discard(paths: string[]): Promise<void>;
   copy(from: string, to: string): Promise<void>;
   publicUrl(path: string): string;
 }

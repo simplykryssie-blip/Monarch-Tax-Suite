@@ -3,7 +3,7 @@ import type { EmailSender } from "../automation/email.ts";
 import { isEmailAddress } from "../automation/email.ts";
 import type { ResolvedSender } from "../automation/senders.ts";
 import type { SmsSender } from "../automation/twilio.ts";
-import { toE164 } from "../automation/twilio.ts";
+import { segmentCount, toE164 } from "../automation/twilio.ts";
 import { SMS_MAX } from "../automation/sms.ts";
 import { ValidationError } from "../commerce/validation.ts";
 import type { ClientMessage, WorkspaceRepo } from "./types.ts";
@@ -11,11 +11,22 @@ import type { ClientMessage, WorkspaceRepo } from "./types.ts";
 // Sending an email or a text to a client from their profile. Every attempt that reaches the provider is written to the
 // client's message history, sent or failed. Outside production, only addresses and numbers on the test allow-list
 // (AUTOMATION_TEST_RECIPIENTS) are ever contacted, so previews can never reach a real client.
+//
+// Texts go out from the office's own Twilio account (lib/sms/route.ts). An office on prepaid credits spends one
+// credit per message segment before the text is sent, and gets them back if the text is refused.
+
+/** An office's prepaid text credits. Null for an office that pays Twilio directly (tenant #1). */
+export type SmsCredits = {
+  spend(segments: number, reference: string): Promise<boolean>;
+  refund(segments: number, reference: string): Promise<void>;
+  balance(): Promise<number>;
+};
 
 export type SendDeps = {
   repo: WorkspaceRepo;
   email: EmailSender;
-  sms: SmsSender;
+  /** The office's own texting account, or why it can't text yet. */
+  sms: { sender: SmsSender | null; problem: string | null; credits: SmsCredits | null };
   /** The account's sending address (its default verified sender). Throws a ValidationError when there is none. */
   sender: () => Promise<ResolvedSender>;
   env: "production" | "preview" | "development";
@@ -68,17 +79,28 @@ export async function sendClientMessage(deps: SendDeps, clientId: string, raw: R
   if (!allowed(deps, to)) throw new ValidationError(`Not sent: this is a ${deps.env} copy of the app, which only contacts addresses on the test list (AUTOMATION_TEST_RECIPIENTS).`);
 
   let result;
+  let segments: number | null = null;
+  const reference = `client-message:${randomUUID()}`;
   if (channel === "email") {
     const from = await deps.sender();
-    result = await deps.email.send({ to, subject: subject!, html: plainEmailHtml(body), text: body, idempotencyKey: `client-message:${randomUUID()}`, from: from.from, replyTo: from.replyTo });
+    result = await deps.email.send({ to, subject: subject!, html: plainEmailHtml(body), text: body, idempotencyKey: reference, from: from.from, replyTo: from.replyTo });
   } else {
-    result = await deps.sms.send(to, body);
+    const sender = deps.sms.sender;
+    if (!sender) throw new ValidationError(deps.sms.problem ?? "Text messaging is not connected for this office.");
+    segments = segmentCount(body);
+    const credits = deps.sms.credits;
+    if (credits && !(await credits.spend(segments, reference))) {
+      const have = await credits.balance();
+      throw new ValidationError(`Not enough text credits: this text needs ${segments} and this office has ${have}. Buy credits in Settings → Text messaging.`);
+    }
+    result = await sender.send(to, body);
+    if (!result.ok && credits) await credits.refund(segments, reference);
   }
   // Nothing reached the provider (it isn't set up): say so without adding a failed message to the history.
   if (!result.ok && result.kind === "config") throw new ValidationError(result.message);
   const saved = await deps.repo.insertMessage({
     client_id: client.id, direction: "out", channel, subject, body, occurred_at: now.toISOString(), created_by: actorId,
-    status: result.ok ? "sent" : "failed", sent_to: to, provider_id: result.ok ? result.id : null, error: result.ok ? null : result.message.slice(0, 300),
+    status: result.ok ? "sent" : "failed", sent_to: to, segments, provider_id: result.ok ? result.id : null, error: result.ok ? null : result.message.slice(0, 300),
   });
   if (!result.ok) throw new ValidationError(`Not sent. ${result.message}`);
   return saved;
