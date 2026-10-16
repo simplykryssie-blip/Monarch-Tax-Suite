@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AlreadyRegisteredError, cleanAttribute, cleanDomain, removeDomain, ResendDomains, type SendersRepo } from "../lib/automation/senders.ts";
+import { addSender, AlreadyRegisteredError, cleanAttribute, cleanDomain, removeDomain, ResendDomains, type SendersRepo } from "../lib/automation/senders.ts";
 
 // Sending domains with the email provider (Resend), against a fake API. No real requests are made.
 
@@ -73,4 +73,25 @@ test("a domain can be disconnected so it can be added again, unless something st
   assert.equal(m.domains.length, 0);
   assert.equal(m.senders.length, 0, "its archived addresses go with it");
   await assert.rejects(removeDomain(m.repo, "d1", { formNames: [], templateNames: [] }), /Not found/);
+});
+
+test("a removed sending address can be added back; a live one says so", async () => {
+  const rows: { id: string; domain_id: string; local_part: string; from_name: string; reply_to: string | null; archived_at: string | null }[] = [];
+  const repo = {
+    getDomain: async () => ({ id: "d1", domain: "mkbfinancialgroup.com" }),
+    listSenders: async () => rows,
+    insertSender: async (i: { domain_id: string; local_part: string; from_name: string; reply_to: string | null }) => { const r = { id: `s${rows.length + 1}`, archived_at: null, ...i }; rows.push(r); return r; },
+    updateSender: async (id: string, patch: Partial<(typeof rows)[number]>) => Object.assign(rows.find((r) => r.id === id)!, patch),
+  } as unknown as SendersRepo;
+  const input = { domain_id: "d1", local_part: "support", from_name: "MKB Support", reply_to: null, created_by: "u" };
+  const first = await addSender(repo, input);
+  assert.equal(first.restored, false);
+  await assert.rejects(addSender(repo, input), /support@mkbfinancialgroup\.com is already one of your sending addresses/);
+  rows[0].archived_at = "2026-10-16T00:00:00Z";
+  const again = await addSender(repo, { ...input, from_name: "MKB Financial Support" });
+  assert.equal(again.restored, true);
+  assert.equal(again.sender.id, first.sender.id);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].archived_at, null);
+  assert.equal(rows[0].from_name, "MKB Financial Support");
 });
