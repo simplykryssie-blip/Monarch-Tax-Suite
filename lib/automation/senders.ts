@@ -42,6 +42,9 @@ export interface SendersRepo {
   getDomain(id: string): Promise<EmailDomainRow | null>;
   insertDomain(input: Pick<EmailDomainRow, "domain" | "provider_domain_id" | "status" | "dns_records" | "created_by">): Promise<EmailDomainRow>;
   updateDomain(id: string, patch: Partial<Pick<EmailDomainRow, "status" | "dns_records" | "last_checked_at" | "provider_domain_id" | "brand_name" | "link_host">>): Promise<EmailDomainRow>;
+  /** Removes a domain from this account (not from the email provider). Refused by the database while a sender still uses it. */
+  deleteDomain(id: string): Promise<void>;
+  deleteSender(id: string): Promise<void>;
   listSenders(): Promise<SenderRow[]>;
   getSender(id: string): Promise<SenderRow | null>;
   insertSender(input: Pick<SenderRow, "domain_id" | "from_name" | "local_part" | "reply_to" | "created_by">): Promise<SenderRow>;
@@ -86,6 +89,29 @@ export async function resolveSender(repo: SendersRepo | null, senderId: string |
   }
   if (fallback) return fallback;
   throw new ValidationError("There is no verified sending address yet. Connect your domain in Settings → Email sending.");
+}
+
+/**
+ * Disconnects a domain from this account so it can be added again. Nothing is removed at the email provider, so a
+ * domain already verified there comes straight back. Refused while an active sending address, a form or a template
+ * still uses it, with a message saying what to change first.
+ */
+export async function removeDomain(repo: SendersRepo, id: string, usedBy: { formNames: string[]; templateNames: string[] }): Promise<string> {
+  const d = await repo.getDomain(id);
+  if (!d) throw new ValidationError("Not found.");
+  const senders = (await repo.listSenders()).filter((s) => s.domain_id === id);
+  const active = senders.filter((s) => !s.archived_at);
+  if (active.length) throw new ValidationError(`${d.domain} still has sending addresses (${active.map((s) => senderAddress(s, d)).join(", ")}). Remove them first, then disconnect the domain.`);
+  if (usedBy.formNames.length) throw new ValidationError(`${d.domain} is the firm for ${usedBy.formNames.length} form${usedBy.formNames.length === 1 ? "" : "s"} (${usedBy.formNames.slice(0, 3).join(", ")}${usedBy.formNames.length > 3 ? ", …" : ""}). Choose another firm for ${usedBy.formNames.length === 1 ? "it" : "them"} in the form's Settings first.`);
+  if (usedBy.templateNames.length) throw new ValidationError(`${d.domain} is used by ${usedBy.templateNames.length} email template${usedBy.templateNames.length === 1 ? "" : "s"} (${usedBy.templateNames.slice(0, 3).join(", ")}). Choose another sending address there first.`);
+  try {
+    for (const s of senders) await repo.deleteSender(s.id);
+    await repo.deleteDomain(id);
+  } catch (e) {
+    if (/foreign key|violates|restrict/i.test(e instanceof Error ? e.message : "")) throw new ValidationError(`${d.domain} is still referenced by an email template or workflow. Choose another sending address there first.`);
+    throw e;
+  }
+  return d.domain;
 }
 
 // ------------------------------------------------------------- validation

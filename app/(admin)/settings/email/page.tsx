@@ -1,9 +1,10 @@
 import { requireAdmin } from "@/lib/admin";
 import { automationDeps } from "@/lib/automation/server";
+import { SubmitOnce } from "@/components/admin/submit-once";
 import { defaultLinkHost } from "@/lib/brands.ts";
 import { senderAddress } from "@/lib/automation/senders.ts";
 import { Badge, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
-import { addSenderAction, archiveSenderAction, checkDomainAction, connectDomainAction, defaultSenderAction, saveBrandAction } from "../actions";
+import { addSenderAction, archiveSenderAction, checkDomainAction, connectDomainAction, defaultSenderAction, removeDomainAction, saveBrandAction } from "../actions";
 
 export default async function EmailSendingPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
   await requireAdmin();
@@ -71,7 +72,11 @@ export default async function EmailSendingPage({ searchParams }: { searchParams:
                   <button className="monarch-secondary">Save brand</button>
                 </form>
                 <p className="monarch-muted" style={{ margin: "4px 0" }}>Form links: <code>https://{d.link_host ?? defaultLinkHost(d.domain)}/f/…</code>. At your domain host, add a CNAME record named <code>{(d.link_host ?? defaultLinkHost(d.domain)).split(".")[0]}</code> pointing to <code>cname.vercel-dns.com</code>; the same address must also be added to the app&apos;s hosting (Vercel → Domains).</p>
-                <form action={checkDomainAction}><input type="hidden" name="id" value={d.id} /><button className="monarch-secondary">{d.status === "verified" ? "Check again" : "Check verification"}</button></form>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <form action={checkDomainAction}><input type="hidden" name="id" value={d.id} /><button className="monarch-secondary">{d.status === "verified" ? "Check again" : "Check verification"}</button></form>
+                  <form action={removeDomainAction}><input type="hidden" name="id" value={d.id} /><SubmitOnce className="monarch-secondary is-danger" busy="Disconnecting…">Disconnect domain</SubmitOnce></form>
+                </div>
+                <small className="monarch-muted">Disconnecting only removes it from this app (so you can add it again, for example after changing the Resend key). Nothing is deleted in Resend.</small>
               </div>
             ))}
             <form action={connectDomainAction} className="monarch-inline-form" style={{ padding: 20 }}>
