@@ -3,6 +3,7 @@ import type { CrmSecrets } from "../crm/crypto.ts";
 import { MONARCH_TENANT_ID } from "../tenants.ts";
 import { isE164, type AvailableNumber, type TwilioAccounts } from "../automation/twilio.ts";
 import { secretAad } from "./route.ts";
+import { PLATFORM } from "../platform-brand.ts";
 import type { SmsAccount, SmsAccountsRepo } from "./types.ts";
 
 // Setting up a tenant's own texting account: a Twilio subaccount under the owner's account, an API key inside it (the
@@ -25,7 +26,7 @@ export async function setupSmsAccount(d: SetupDeps, officeName: string, actorId:
   const { twilio, secrets } = ready(d);
   let account = await d.repo.get();
   if (account?.status === "suspended") throw new ValidationError("Text messaging is paused for this office. Contact support.");
-  const label = `Monarch tenant ${d.tenantId.slice(0, 8)} ${officeName}`.replace(/[^\w .&'-]/g, "").slice(0, 64);
+  const label = `${PLATFORM.name} tenant ${d.tenantId.slice(0, 8)} ${officeName}`.replace(/[^\w .&'-]/g, "").slice(0, 64);
   if (!account?.subaccount_sid) {
     const sub = await twilio.createSubaccount(label);
     // Recorded straight away, so a later failure resumes with this subaccount rather than making a second one.
