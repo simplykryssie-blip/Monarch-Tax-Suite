@@ -144,14 +144,16 @@ describe("the server's answer checks", () => {
 describe("form settings", () => {
   const def = checkDefinition(sampleDefinition());
   test("firm mapping must point at the right kinds of questions", () => {
+    assert.throws(() => checkSettings({ respondent: { email_key: "email", name_key: "full_name" }, firm: { enabled: true, relationship: "", legal_name_key: "business_name", efin_key: "efin", address_key: "office_address", people: [{ role: "ero", name_key: "full_name", email_key: "email", ptin_key: "ptin" }] } }, def, []), /how the tax office is related/);
+    assert.equal(checkSettings({ respondent: { email_key: "email" }, firm: { enabled: false, relationship: "" } }, def, []).firm.relationship, null, "empty until chosen, and not needed when off");
     const ok = checkSettings({ respondent: { email_key: "email", name_key: "full_name" }, firm: { enabled: true, relationship: "partner", legal_name_key: "business_name", efin_key: "efin", address_key: "office_address", people: [{ role: "ero", name_key: "full_name", email_key: "email", ptin_key: "ptin" }] } }, def, []);
     assert.equal(ok.firm.people[0].role, "ero");
     assert.equal(ok.create_customer, true);
     assert.equal(ok.confirmation_email, true);
     assert.throws(() => checkSettings({ respondent: { email_key: "email" }, firm: { enabled: true, legal_name_key: "business_name", efin_key: "business_name", people: [{ role: "ero", name_key: "full_name" }] } }, def, []), /checked as EFIN/);
-    assert.throws(() => checkSettings({ respondent: { email_key: "email" }, firm: { enabled: true, legal_name_key: "business_name", people: [] } }, def, []), /at least one person/);
+    assert.throws(() => checkSettings({ respondent: { email_key: "email" }, firm: { enabled: true, relationship: "partner", legal_name_key: "business_name", people: [] } }, def, []), /at least one person/);
     // Without a chosen respondent question, the form's email question is used, so firm records still link to the customer.
-    assert.equal(checkSettings({ firm: { enabled: true, legal_name_key: "business_name", people: [{ role: "ero", name_key: "full_name" }] } }, def, []).firm.enabled, true);
+    assert.equal(checkSettings({ firm: { enabled: true, relationship: "client", legal_name_key: "business_name", people: [{ role: "ero", name_key: "full_name" }] } }, def, []).firm.enabled, true);
     assert.throws(() => checkSettings({ respondent: { email_key: "full_name" } }, def, []), /email question/);
     assert.throws(() => checkSettings({ notify: { recipients: "a@x.test b@x.test c@x.test d@x.test e@x.test f@x.test" } }, def, []), /at most 5/);
     assert.throws(() => checkSettings({ notify: { sender_id: "not-mine" } }, def, ["mine"]), /verified sending/);

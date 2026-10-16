@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/admin";
+import { imageStore, requireAdmin, tenantDb } from "@/lib/admin";
+import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
 import { formLink } from "@/lib/forms/link";
 import { workflowCatalog } from "@/lib/automation/server";
 import { formDeps } from "@/lib/forms/server";
@@ -7,7 +8,7 @@ import { checkDefinition, inputFields, type Field, type FormDefinition } from "@
 import { FIRM_RELATIONSHIPS, FIRM_ROLE_LABELS, FIRM_ROLES, readSettings } from "@/lib/forms/settings.ts";
 import { Flash, PageTitle, when } from "@/components/admin/ui";
 import { FormTabs, formsLoad, FormsSetupRequired } from "@/components/forms/admin-bits";
-import { duplicateFormAction, formStatusAction, saveFormDetailsAction, saveFormSettingsAction, saveFormThemeAction } from "../../actions";
+import { deleteFormAction, duplicateFormAction, formStatusAction, saveFormDetailsAction, saveFormSettingsAction, saveFormThemeAction } from "../../actions";
 import { ColorField } from "@/components/forms/color-field";
 import { FORM_FONTS } from "@/lib/forms/theme.ts";
 import { ArchivePanel } from "@/components/admin/archive";
@@ -39,12 +40,18 @@ export default async function FormSettingsPage({ params, searchParams }: { param
     try { def = checkDefinition(form.draft_definition); } catch { def = version?.definition ?? null; }
     const [catalog, versions, submitted] = await Promise.all([workflowCatalog(), deps.repo.listVersions(form.id), deps.repo.countSubmitted(form.id)]);
     const settings = readSettings(form.settings);
-    const [brands, link] = await Promise.all([deps.brandCatalog ? deps.brandCatalog().then((c) => c.brands).catch(() => []) : [], formLink(deps, form.public_id, settings)]);
-    return { form, version, def, senders: catalog.senders, versions, submitted, brands, link };
+    const [brands, link, images] = await Promise.all([
+      deps.brandCatalog ? deps.brandCatalog().then((c) => c.brands).catch(() => []) : [],
+      formLink(deps, form.public_id, settings),
+      new SupabaseImagesRepo(tenantDb()).list(60).catch(() => []),
+    ]);
+    const store = imageStore();
+    const library = images.map((i) => ({ id: i.id, url: store.publicUrl(i.storage_path), alt_text: i.alt_text, file_name: i.file_name }));
+    return { form, version, def, senders: catalog.senders, versions, submitted, brands, link, library };
   });
   if (!result.ok) return <FormsSetupRequired message={result.message} />;
   if (!result.data) notFound();
-  const { form, version, def, senders, versions, submitted, brands, link } = result.data;
+  const { form, version, def, senders, versions, submitted, brands, link, library } = result.data;
   const s = readSettings(form.settings);
   const theme = s.theme;
   const fields = def ? inputFields(def) : [];
@@ -108,30 +115,43 @@ export default async function FormSettingsPage({ params, searchParams }: { param
 
         <h2 className="is-wide">Set up a new tax office from this form (optional)</h2>
         <p className="monarch-muted is-wide" style={{ margin: 0 }}>Use this for onboarding forms, such as an ERO application. When someone submits, we can create their tax office in <b>My Service Bureau</b> automatically, with its EFIN and EIN, and up to <b>6 people</b> (owner, ERO, preparers) each with their own contact details and PTIN. Leave it off for ordinary forms.</p>
-        <label className="monarch-check is-wide"><input type="checkbox" name="firm_enabled" defaultChecked={s.firm.enabled} /> <span><b>Create or link a tax office from each submission.</b> If the customer already has an office, or an office with the same EFIN exists, we link to it. Otherwise a new office is created, marked &ldquo;onboarding in progress&rdquo; for you to review.</span></label>
-        <label>How are they related to you?<select name="firm_relationship" defaultValue={s.firm.relationship}>{FIRM_RELATIONSHIPS.map((r) => <option key={r} value={r}>{RELATIONSHIP_LABELS[r]}</option>)}</select></label>
-        <label>Which question is the legal business name?<QuestionSelect name="firm_legal_name" value={s.firm.legal_name_key} fields={fields} types={["short_text"]} /></label>
-        <label>Which question is the &ldquo;doing business as&rdquo; name?<QuestionSelect name="firm_dba" value={s.firm.dba_name_key} fields={fields} types={["short_text"]} /></label>
-        <label>Which question is the office address?<QuestionSelect name="firm_address" value={s.firm.address_key} fields={fields} types={["address"]} /></label>
-        <label>Which question is the EFIN?<QuestionSelect name="firm_efin" value={s.firm.efin_key} fields={fields} types={["short_text"]} format="efin" />
-          <small className="monarch-muted">The IRS e-file number. Only short answers set to &ldquo;Check as EFIN&rdquo; in the builder are listed.</small>
-        </label>
-        <label>Which question is the EIN?<QuestionSelect name="firm_ein" value={s.firm.ein_key} fields={fields} types={["short_text"]} format="ein" />
-          <small className="monarch-muted">The business&apos;s federal tax ID. Only short answers set to &ldquo;Check as EIN&rdquo; are listed.</small>
-        </label>
-        <fieldset className="is-wide" style={{ display: "grid", gap: 8 }}><legend>People at the office (up to 6; put the ERO first)</legend>
-          <small className="monarch-muted">For each person, choose their role and which question holds their name, email, phone and PTIN. Leave a row on &ldquo;Name: (none)&rdquo; to skip it.</small>
-          {people.map((p, i) => (
-            <span key={i} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <select name={`p_role_${i}`} defaultValue={p?.role ?? (i === 0 ? "ero" : "tax_preparer")} aria-label={`Person ${i + 1} role`}>{FIRM_ROLES.map((r) => <option key={r} value={r}>{FIRM_ROLE_LABELS[r]}</option>)}</select>
-              <QuestionSelect name={`p_name_${i}`} value={p?.name_key ?? null} fields={fields} types={["short_text"]} none="Name: (none)" />
-              <QuestionSelect name={`p_email_${i}`} value={p?.email_key ?? null} fields={fields} types={["email"]} none="Email: (none)" />
-              <QuestionSelect name={`p_phone_${i}`} value={p?.phone_key ?? null} fields={fields} types={["phone"]} none="Phone: (none)" />
-              <QuestionSelect name={`p_ptin_${i}`} value={p?.ptin_key ?? null} fields={fields} types={["short_text"]} format="ptin" none="PTIN: (none)" />
-            </span>
-          ))}
-          <small className="monarch-muted">EFINs, EINs and PTINs are encrypted the same way My Service Bureau stores them. New offices start with the EFIN unconfirmed and a draft ERO assignment.</small>
-        </fieldset>
+        <div className="is-wide mf-firm">
+          <label className="monarch-check"><input type="checkbox" name="firm_enabled" defaultChecked={s.firm.enabled} /> <span><b>Create or link a tax office from each submission.</b> If the customer already has an office, or an office with the same EFIN exists, we link to it. Otherwise a new office is created, marked &ldquo;onboarding in progress&rdquo; for you to review.</span></label>
+          {/* Shown only while the box above is ticked (CSS :has), so ordinary forms don't see office settings. */}
+          <div className="mf-firm-body monarch-form">
+            <label className="is-wide">How are they related to you? *<select name="firm_relationship" defaultValue={s.firm.relationship ?? ""}><option value="">Choose…</option>{FIRM_RELATIONSHIPS.map((r) => <option key={r} value={r}>{RELATIONSHIP_LABELS[r]}</option>)}</select></label>
+            <details className="is-wide mf-collapse" open={!s.firm.legal_name_key}>
+              <summary>Which questions hold the office&apos;s details</summary>
+              <div className="monarch-form">
+                <label>Which question is the legal business name?<QuestionSelect name="firm_legal_name" value={s.firm.legal_name_key} fields={fields} types={["short_text"]} /></label>
+                <label>Which question is the &ldquo;doing business as&rdquo; name?<QuestionSelect name="firm_dba" value={s.firm.dba_name_key} fields={fields} types={["short_text"]} /></label>
+                <label>Which question is the office address?<QuestionSelect name="firm_address" value={s.firm.address_key} fields={fields} types={["address"]} /></label>
+                <label>Which question is the EFIN?<QuestionSelect name="firm_efin" value={s.firm.efin_key} fields={fields} types={["short_text"]} format="efin" />
+                  <small className="monarch-muted">The IRS e-file number. Only short answers set to &ldquo;Check as EFIN&rdquo; in the builder are listed.</small>
+                </label>
+                <label>Which question is the EIN?<QuestionSelect name="firm_ein" value={s.firm.ein_key} fields={fields} types={["short_text"]} format="ein" />
+                  <small className="monarch-muted">The business&apos;s federal tax ID. Only short answers set to &ldquo;Check as EIN&rdquo; are listed.</small>
+                </label>
+              </div>
+            </details>
+            <details className="is-wide mf-collapse" open={!s.firm.people.length}>
+              <summary>People at the office ({s.firm.people.length ? `${s.firm.people.length} mapped` : "up to 6; put the ERO first"})</summary>
+              <div style={{ display: "grid", gap: 8, paddingTop: 8 }}>
+                <small className="monarch-muted">For each person, choose their role and which question holds their name, email, phone and PTIN. Leave a row on &ldquo;Name: (none)&rdquo; to skip it.</small>
+                {people.map((p, i) => (
+                  <span key={i} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <select name={`p_role_${i}`} defaultValue={p?.role ?? (i === 0 ? "ero" : "tax_preparer")} aria-label={`Person ${i + 1} role`}>{FIRM_ROLES.map((r) => <option key={r} value={r}>{FIRM_ROLE_LABELS[r]}</option>)}</select>
+                    <QuestionSelect name={`p_name_${i}`} value={p?.name_key ?? null} fields={fields} types={["short_text"]} none="Name: (none)" />
+                    <QuestionSelect name={`p_email_${i}`} value={p?.email_key ?? null} fields={fields} types={["email"]} none="Email: (none)" />
+                    <QuestionSelect name={`p_phone_${i}`} value={p?.phone_key ?? null} fields={fields} types={["phone"]} none="Phone: (none)" />
+                    <QuestionSelect name={`p_ptin_${i}`} value={p?.ptin_key ?? null} fields={fields} types={["short_text"]} format="ptin" none="PTIN: (none)" />
+                  </span>
+                ))}
+                <small className="monarch-muted">EFINs, EINs and PTINs are encrypted the same way My Service Bureau stores them. New offices start with the EFIN unconfirmed and a draft ERO assignment.</small>
+              </div>
+            </details>
+          </div>
+        </div>
 
         <h2 className="is-wide">Notifications</h2>
         <label>Tell these addresses about each submission (up to 5)<input name="recipients" defaultValue={s.notify.recipients.join(", ")} placeholder="Blank: your firm profile's email" /></label>
@@ -176,14 +196,28 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         <ColorField name="text" label="Text colour" value={theme.text} />
         <ColorField name="button" label="Button colour" value={theme.button} />
         <label>Font<select name="font" defaultValue={theme.font}>{Object.entries(FORM_FONTS).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}</select></label>
-        <label>Logo (PNG, JPG or WebP, up to 4 MB)
-          <input type="file" name="logo_file" accept="image/png,image/jpeg,image/webp" />
-          {theme.logo_url && <span className="monarch-muted">Current logo: <a href={theme.logo_url} target="_blank" rel="noreferrer">view</a> <label className="monarch-check" style={{ display: "inline-flex" }}><input type="checkbox" name="logo_remove" /> Remove it</label></span>}
-        </label>
-        <label>Header image (shown behind the logo across the top)
-          <input type="file" name="header_file" accept="image/png,image/jpeg,image/webp" />
-          {theme.header_image_url && <span className="monarch-muted">Current image: <a href={theme.header_image_url} target="_blank" rel="noreferrer">view</a> <label className="monarch-check" style={{ display: "inline-flex" }}><input type="checkbox" name="header_remove" /> Remove it</label></span>}
-        </label>
+        {(["logo", "header"] as const).map((field) => {
+          const current = field === "logo" ? theme.logo_url : theme.header_image_url;
+          return (
+            <div key={field} className="is-wide" style={{ display: "grid", gap: 6 }}>
+              <span className="field-label">{field === "logo" ? "Logo" : "Header image (shown behind the logo across the top)"}</span>
+              {current && <span className="monarch-muted">Current: <a href={current} target="_blank" rel="noreferrer">view</a> <label className="monarch-check" style={{ display: "inline-flex" }}><input type="checkbox" name={`${field}_remove`} /> Remove it</label></span>}
+              <label>Upload a new one (PNG, JPG or WebP, up to 4 MB)<input type="file" name={`${field}_file`} accept="image/png,image/jpeg,image/webp" /></label>
+              {library.length > 0 && (
+                <details className="mf-collapse">
+                  <summary>Or choose from your Images ({library.length})</summary>
+                  <div className="img-pick" role="radiogroup" aria-label={`Choose a ${field} from your Images`}>
+                    <label><input type="radio" name={`${field}_pick`} value="" defaultChecked /> No change</label>
+                    {library.map((img) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <label key={img.id} title={img.file_name}><img src={img.url} alt={img.alt_text ?? ""} /><span><input type="radio" name={`${field}_pick`} value={img.id} defaultChecked={false} /> {img.file_name.slice(0, 18)}</span></label>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          );
+        })}
         <label className="is-wide">Custom CSS (optional, for designers)
           <textarea name="custom_css" rows={8} maxLength={10000} spellCheck={false} defaultValue={theme.custom_css} style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }} placeholder={"body { background: #faf7f0; }\nh1 { font-family: Georgia, serif; color: #12324f; }\n.monarch-primary { border-radius: 999px; }"} />
           <small className="monarch-muted">Change the page background, text colours, fonts and overall look. Your CSS only affects this form: <code>body</code> means the form&apos;s page. Imports, scripts, fixed-position overlays and unsafe values are removed automatically. Images must be https:// addresses.</small>
@@ -191,7 +225,21 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         <div className="is-wide"><button className="monarch-primary">Save the look</button></div>
       </form>
 
-      <ArchivePanel entity="form" id={form.id} />
+      {/* Archive hides the form and keeps everything; Delete (below) removes it for good. */}
+      <ArchivePanel entity="form" id={form.id} askReason={false} permanentDelete={false} />
+
+      <form action={deleteFormAction} className="monarch-panel" style={{ padding: 20, display: "grid", gap: 10 }}>
+        <input type="hidden" name="id" value={form.id} />
+        <h2>Delete this form</h2>
+        <p className="monarch-muted" style={{ margin: 0 }}>Deleting removes the form for good: it leaves the app now, and its stored files (uploads and PDFs) are permanently deleted after 24 hours. They can&apos;t be recovered after that. To keep everything, archive it instead.</p>
+        {submitted > 0 && (
+          <label className="monarch-check"><input type="checkbox" name="with_submissions" required /> <span><b>Delete with submissions</b>: also delete its {submitted} submission{submitted === 1 ? "" : "s"} (answers, uploads and PDFs). Leads, contacts, customers and tax offices made from them are separate records and are kept.</span></label>
+        )}
+        <label style={{ display: "grid", gap: 4, maxWidth: 420 }} className="monarch-muted">To confirm, type the form&apos;s name: <b style={{ color: "inherit" }}>{form.name}</b>
+          <input name="confirm" required autoComplete="off" placeholder={form.name} style={{ padding: "10px 12px", border: "1px solid #d4d4d4", borderRadius: 8 }} />
+        </label>
+        <div><button className="monarch-secondary is-danger">{submitted > 0 ? "Delete form and submissions" : "Delete form"}</button></div>
+      </form>
     </>
   );
 }

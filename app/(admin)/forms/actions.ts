@@ -7,13 +7,18 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { formDeps } from "@/lib/forms/server";
-import { linkFirm, makePdf, relinkRespondent, createForm, duplicateForm, emptySpam, publishForm, revealAnswer, saveDraft, saveFormDetails, saveSettings, setFormStatus, saveInternalValues, saveTheme, setSubmissionStatus, submitForm, SubmissionInvalid } from "@/lib/forms/service.ts";
+import { deleteFormForGood, linkFirm, makePdf, relinkRespondent, createForm, duplicateForm, emptySpam, publishForm, revealAnswer, saveDraft, saveFormDetails, saveSettings, setFormStatus, saveInternalValues, saveTheme, setSubmissionStatus, submitForm, SubmissionInvalid } from "@/lib/forms/service.ts";
 import { readSettings } from "@/lib/forms/settings.ts";
 import { randomUUID } from "node:crypto";
-import { appOrigin, imageStore } from "@/lib/admin";
+import { appOrigin, imageStore, tenantDb } from "@/lib/admin";
+import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { currentTenantId } from "@/lib/tenants.ts";
 import { mediaPathFromUrl } from "@/lib/storage/paths.ts";
 import { staleThemeImages } from "@/lib/forms/theme-images.ts";
+import { archiveStore } from "@/lib/archive-server";
+import { DELETE_NOTICE } from "@/lib/storage/window.ts";
 import { validateImage } from "@/lib/commerce/images.ts";
 import { REVIEW_STATUSES, type SubmissionStatus } from "@/lib/forms/types.ts";
 import { signatureFrom, type SignaturePayload } from "@/lib/forms/signature-input.ts";
@@ -164,6 +169,13 @@ export async function saveFormThemeAction(form: FormData) {
         uploaded.push(u);
         return u;
       }
+      // A picture from the account's Images: only one of this account's own, by its id.
+      const pick = str(form, `${field}_pick`);
+      if (pick) {
+        const img = UUID_RE.test(pick) ? await new SupabaseImagesRepo(tenantDb()).get(pick) : null;
+        if (!img) throw new ValidationError("That picture isn't in your Images any more. Choose another one.");
+        return imageStore(origin).publicUrl(img.storage_path);
+      }
       // Only the image already saved can be kept; anything else would point the form at a file it doesn't own.
       const kept = field === "logo" ? before.logo_url : before.header_image_url;
       return form.get(`${field}_remove`) === "on" ? "" : kept ?? "";
@@ -275,4 +287,23 @@ export async function testSubmitAction(formId: string, input: { token: string | 
     if (e instanceof SubmissionInvalid) return { ok: false, error: "Some answers need attention.", errors: e.errors };
     return { ok: false, error: failure(e) };
   }
+}
+
+/** Deletes a form for good (with its submission rows only when chosen). Leads, contacts and customers are kept. */
+export async function deleteFormAction(form: FormData) {
+  await act(`/forms/${str(form, "id")}/settings`, async (adminId) => {
+    const id = idOf(form);
+    const deps = formDeps();
+    const forms = await deps.repo.listForms();
+    const theme = readSettings(forms.find((f) => f.id === id)?.settings).theme;
+    const r = await deleteFormForGood(deps, id, { confirmName: str(form, "confirm"), withSubmissions: form.get("with_submissions") === "on" });
+    // The form's own logo and header files go too (unless another form shows them); 24-hour window.
+    const others = forms.filter((f) => f.id !== id).map((f) => readSettings(f.settings).theme);
+    await imageStore().discard(staleThemeImages(currentTenantId(), id, theme, null, others)).catch(() => undefined);
+    await archiveStore().log({ entity: "form", record_id: id, action: "deleted", actor_id: adminId, label: r.name, reason: r.submissions ? `Deleted with ${r.submissions} submission${r.submissions === 1 ? "" : "s"}` : null }).catch(() => undefined);
+    return {
+      to: "/forms",
+      notice: `Form "${r.name}" deleted${r.submissions ? ` with ${r.submissions} submission${r.submissions === 1 ? "" : "s"}` : ""}. Leads, contacts and customers made from it are kept. ${DELETE_NOTICE.replace("Its file", "Its files").replace("can't", "they can't")}`,
+    };
+  });
 }

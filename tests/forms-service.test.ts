@@ -16,7 +16,7 @@ import { validateWorkflowInput } from "../lib/automation/validate.ts";
 import { finishVersionUpload, startVersionUpload, type DocumentDeps } from "../lib/documents/service.ts";
 import { afterSubmit } from "../lib/forms/after.ts";
 import {
-  answerStrings, createForm, displayAnswer, emptySpam, exportCsv, makePdf, openAnswers, publicForm, publishForm, receiptLink, removeForm, resumeDraft,
+  answerStrings, createForm, deleteFormForGood, displayAnswer, emptySpam, exportCsv, makePdf, openAnswers, publicForm, publishForm, receiptLink, removeForm, resumeDraft,
   saveDraft, saveForLater, saveSettings, saveFormDetails, setFormStatus, startStamp, startUpload, submitForm, SubmissionInvalid, sweepForms, uploadLink, type FormDeps,
 } from "../lib/forms/service.ts";
 import { inputFields } from "../lib/forms/definition.ts";
@@ -396,6 +396,29 @@ describe("admin records", () => {
     assert.equal(await removeForm(s.deps, s.form.id, "admin"), "archived");
     const other = await createForm(s.deps, { name: "Never used", adminId: "admin" });
     assert.equal(await removeForm(s.deps, other.id, "admin"), "deleted");
+  });
+
+  test("Delete: needs the name typed; with submissions only when chosen; customers and offices are kept; files wait 24 hours", async () => {
+    const s = await setup();
+    const { submission } = await submitEro(s);
+    const sub = (await s.repo.getSubmission(submission.id))!;
+    const customersBefore = (await s.commerce.listCustomers()).length;
+    const officesBefore = s.firms.orgs.length;
+    await assert.rejects(deleteFormForGood(s.deps, s.form.id, { confirmName: "wrong", withSubmissions: true }), /Type the form's name/);
+    await assert.rejects(deleteFormForGood(s.deps, s.form.id, { confirmName: "ERO application", withSubmissions: false }), /has 1 submission\. Tick "Delete with submissions"/);
+    assert.ok(await s.repo.getForm(s.form.id), "nothing deleted yet");
+
+    const r = await deleteFormForGood(s.deps, s.form.id, { confirmName: "  ero   APPLICATION ", withSubmissions: true });
+    assert.deepEqual(r, { name: "ERO application", submissions: 1 });
+    assert.equal(await s.repo.getForm(s.form.id), null);
+    assert.equal(await s.repo.getSubmission(submission.id), null);
+    assert.equal(s.firms.orgs.length, officesBefore, "tax offices made from the submission are kept");
+    assert.equal((await s.commerce.listCustomers()).length, customersBefore, "customers are kept");
+    if (sub.pdf_path) assert.ok(s.pdfs.discarded.includes(sub.pdf_path), "the PDF waits out the 24-hour window");
+    assert.ok(s.uploads.discarded.length >= 1, "uploads wait out the 24-hour window");
+
+    const empty = await createForm(s.deps, { name: "Never used", adminId: "admin" });
+    assert.deepEqual(await deleteFormForGood(s.deps, empty.id, { confirmName: "Never used", withSubmissions: false }), { name: "Never used", submissions: 0 });
   });
 
   test("file links are made only for this tenant's folder", async () => {

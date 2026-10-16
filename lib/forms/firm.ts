@@ -62,6 +62,7 @@ export function buildFirmPayload(input: { map: FirmMap; answers: Answers; secret
     // The ERO first, so the database makes them the firm's administrator.
     .sort((a, b) => Number(b.role === "ero") - Number(a.role === "ero"));
   if (!people.length) throw new Error("None of the firm's people were answered, so no firm record was created.");
+  if (!map.relationship) throw new Error("The form's settings don't say how the tax office is related to you, so no firm record was created.");
   const efinId = efin ? randomUUID() : null;
   const dba = str(answers, map.dba_name_key).slice(0, 200);
   return {

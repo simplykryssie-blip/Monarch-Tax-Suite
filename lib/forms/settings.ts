@@ -15,7 +15,8 @@ export type FirmRelationship = (typeof FIRM_RELATIONSHIPS)[number];
 export type FirmPersonMap = { role: FirmRole; name_key: string; email_key: string | null; phone_key: string | null; ptin_key: string | null };
 export type FirmMap = {
   enabled: boolean;
-  relationship: FirmRelationship;
+  /** How the office is related to the account. Empty until chosen; required when firm records are made. */
+  relationship: FirmRelationship | null;
   legal_name_key: string | null;
   dba_name_key: string | null;
   ein_key: string | null;
@@ -54,7 +55,7 @@ export const DEFAULT_SETTINGS: FormSettings = {
   respondent: { email_key: null, name_key: null },
   create_customer: true,
   add_to_leads: false,
-  firm: { enabled: false, relationship: "partner", legal_name_key: null, dba_name_key: null, ein_key: null, efin_key: null, address_key: null, people: [] },
+  firm: { enabled: false, relationship: null, legal_name_key: null, dba_name_key: null, ein_key: null, efin_key: null, address_key: null, people: [] },
   notify: { recipients: [], sender_id: null },
   brand_domain_id: null,
   confirmation_email: true,
@@ -81,7 +82,7 @@ export function readSettings(raw: unknown): FormSettings {
     ...DEFAULT_SETTINGS,
     ...r,
     respondent: { ...DEFAULT_SETTINGS.respondent, ...(r.respondent ?? {}) },
-    firm: { ...DEFAULT_SETTINGS.firm, ...(r.firm ?? {}), people: Array.isArray(r.firm?.people) ? r.firm.people : [] },
+    firm: { ...DEFAULT_SETTINGS.firm, ...(r.firm ?? {}), relationship: (FIRM_RELATIONSHIPS as readonly string[]).includes(String(r.firm?.relationship)) ? (r.firm!.relationship as FirmRelationship) : null, people: Array.isArray(r.firm?.people) ? r.firm.people : [] },
     notify: { ...DEFAULT_SETTINGS.notify, ...(r.notify ?? {}), recipients: Array.isArray(r.notify?.recipients) ? r.notify.recipients : [] },
     theme: readTheme(r.theme),
   };
@@ -125,7 +126,7 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
   const enabled = fr.enabled === true || fr.enabled === "on";
   const firm: FirmMap = {
     enabled,
-    relationship: (FIRM_RELATIONSHIPS as readonly string[]).includes(fr.relationship) ? (fr.relationship as FirmRelationship) : "partner",
+    relationship: (FIRM_RELATIONSHIPS as readonly string[]).includes(fr.relationship) ? (fr.relationship as FirmRelationship) : null,
     legal_name_key: pick(fields, fr.legal_name_key, text, "firm's legal name", enabled),
     dba_name_key: pick(fields, fr.dba_name_key, text, "firm's DBA name"),
     ein_key: pick(fields, fr.ein_key, { ...text, format: "ein", what: "a short answer" }, "EIN"),
@@ -148,6 +149,7 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
       ptin_key: pick(fields, p?.ptin_key, { ...text, format: "ptin", what: "a short answer" }, `${n}'s PTIN`),
     });
   }
+  if (enabled && !firm.relationship) throw new SettingsError("Choose how the tax office is related to you.");
   if (enabled && !firm.people.length) throw new SettingsError("Map at least one person for the firm (usually the ERO or owner).");
   if (enabled && !respondent.email_key && !inputFields(def).some((f) => f.type === "email")) throw new SettingsError("To create firm records, the form needs an email question, so the firm is linked to the customer.");
 

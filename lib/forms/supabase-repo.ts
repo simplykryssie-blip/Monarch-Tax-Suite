@@ -24,6 +24,16 @@ export class SupabaseFormsRepo implements FormsRepo {
   async updateForm(id: string, patch: Partial<FormRow>) {
     return unwrap(await this.db.from("forms").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).select("*").single()) as FormRow;
   }
+  async deleteFormWithSubmissions(id: string) {
+    const { data, error } = await this.db.rpc("delete_form_with_submissions", { p_form_id: id });
+    if (error) throw new Error(error.message);
+    return Number(data ?? 0);
+  }
+  async formFiles(formId: string) {
+    const uploads = unwrap(await this.db.from("form_uploads").select("storage_path").eq("form_id", formId).limit(100000)) as { storage_path: string }[];
+    const pdfs = unwrap(await this.db.from("form_submissions").select("pdf_path").eq("form_id", formId).not("pdf_path", "is", null).limit(100000)) as { pdf_path: string }[];
+    return { uploads: uploads.map((u) => u.storage_path), pdfs: pdfs.map((p) => p.pdf_path) };
+  }
   async deleteForm(id: string) {
     unwrap(await this.db.from("forms").delete().eq("id", id));
   }

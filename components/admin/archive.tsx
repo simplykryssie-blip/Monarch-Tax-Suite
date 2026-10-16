@@ -45,7 +45,7 @@ export function ArchiveRowButton({ entity, id, archived, back }: { entity: Archi
  * The archive section of a detail page: Remove (archive) with an optional reason; once archived, Restore, and for the
  * account owner a permanent delete that needs the record's email or number typed. Also lists the record's history.
  */
-export async function ArchivePanel({ entity, id, back }: { entity: ArchiveEntity; id: string; back?: string }) {
+export async function ArchivePanel({ entity, id, back, askReason = true, permanentDelete = true }: { entity: ArchiveEntity; id: string; back?: string; askReason?: boolean; permanentDelete?: boolean }) {
   const admin = await requireAdmin();
   const store = archiveStore();
   const data = await (async () => {
@@ -73,7 +73,7 @@ export async function ArchivePanel({ entity, id, back }: { entity: ArchiveEntity
           <p>This {noun} was archived {when(row.archived_at)}{row.archive_reason ? `: ${row.archive_reason}` : "."} It&apos;s hidden from the list but nothing about it has changed.</p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
             <form action={restoreRecordAction}><Hidden entity={entity} id={id} back={here} /><button className="monarch-primary">Restore</button></form>
-            {isOwner && !kept && (
+            {permanentDelete && isOwner && !kept && (
               <form action={hardDeleteRecordAction} className="monarch-inline-form">
                 <Hidden entity={entity} id={id} back={here} />
                 <label className="monarch-muted" style={{ display: "grid", gap: 4 }}>To delete it permanently, type {ENTITY[entity].confirmWhat}:
@@ -84,7 +84,7 @@ export async function ArchivePanel({ entity, id, back }: { entity: ArchiveEntity
             )}
           </div>
           {kept && <p className="monarch-muted">This is a financial record (an order that took money), so it can&apos;t be permanently deleted. It stays archived.</p>}
-          {!isOwner && <p className="monarch-muted">Only the account owner can delete archived records permanently.</p>}
+          {permanentDelete && !isOwner && <p className="monarch-muted">Only the account owner can delete archived records permanently.</p>}
         </>
       ) : (
         <>
@@ -95,7 +95,7 @@ export async function ArchivePanel({ entity, id, back }: { entity: ArchiveEntity
           ) : (
             <form action={archiveRecordAction} className="monarch-inline-form">
               <Hidden entity={entity} id={id} back={here} />
-              <input name="reason" maxLength={500} placeholder="Why (optional), for example: test record" aria-label="Reason for archiving" />
+              {askReason && <input name="reason" maxLength={500} placeholder="Why (optional), for example: test record" aria-label="Reason for archiving" />}
               <button className="monarch-secondary">Remove (archive)</button>
             </form>
           )}

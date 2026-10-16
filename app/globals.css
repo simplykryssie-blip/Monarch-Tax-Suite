@@ -79,7 +79,7 @@ a{color:inherit}
 .monarch-notice code,.monarch-content code{font-size:11px;background:#f3f1ea;padding:2px 5px;border-radius:3px}
 .monarch-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .monarch-form label{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:700;color:#3a3830;min-width:0}
-.monarch-form input:not([type=checkbox]),.monarch-form select,.monarch-form textarea,.monarch-inline-form input,.monarch-revoke input{width:100%;padding:11px 12px;border:1px solid #dcd9d0;border-radius:4px;background:#fff;color:#222;font-size:13px;font-weight:400;font-family:inherit}
+.monarch-form input:not([type=checkbox]):not([type=radio]),.monarch-form select,.monarch-form textarea,.monarch-inline-form input,.monarch-revoke input{width:100%;padding:11px 12px;border:1px solid #dcd9d0;border-radius:4px;background:#fff;color:#222;font-size:13px;font-weight:400;font-family:inherit}
 .monarch-form .is-wide{grid-column:1/-1}
 .monarch-form fieldset{border:1px solid #e7e5de;border-radius:4px;padding:10px 14px;display:flex;gap:22px;flex-wrap:wrap}
 .monarch-form legend{font-size:12px;font-weight:700;padding:0 4px}
@@ -342,3 +342,19 @@ a{color:inherit}
 .mf-choice{border:1px solid #dcd9d0;border-radius:6px;padding:14px;display:grid;gap:8px;background:#fdfcfa}
 .mf-choice:has(input[type=radio]:checked){border-color:#b8902f;box-shadow:0 0 0 2px rgba(200,162,74,.2)}
 .mf-powered{margin:22px 0 0;text-align:center;font-size:11px;color:#9a958a;letter-spacing:.04em}
+/* Form settings: the tax-office section appears only while "Create or link a tax office" is ticked. */
+.mf-firm{display:grid;gap:12px}
+.mf-firm:not(:has(input[name=firm_enabled]:checked)) .mf-firm-body{display:none}
+.mf-firm-body{padding:0}
+.mf-collapse{border:1px solid #e7e5de;border-radius:6px;padding:10px 14px;background:#fdfcfa}
+.mf-collapse>summary{cursor:pointer;font-weight:600;font-size:13.5px}
+.mf-collapse>.monarch-form{padding-top:12px}
+/* Radios in a choice card sit right next to their label. */
+.mf-choice label.monarch-check{justify-content:flex-start}
+.mf-choice input[type=radio]{width:auto;margin:0;flex:none}
+/* Image picker: the account's Images as small cards. */
+.img-pick{display:flex;flex-wrap:wrap;gap:8px;padding-top:8px}
+.img-pick label{display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid #dcd9d0;border-radius:6px;padding:6px;cursor:pointer;font-weight:400;font-size:11px;max-width:110px}
+.img-pick label:has(input:checked){border-color:#b8902f;box-shadow:0 0 0 2px rgba(200,162,74,.25)}
+.img-pick img{max-width:96px;max-height:60px;object-fit:contain}
+.img-pick input{width:auto!important}

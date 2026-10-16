@@ -15,6 +15,9 @@ import { currentTenantId } from "@/lib/tenants.ts";
 import { mediaUrl } from "@/lib/storage/paths.ts";
 import { deleteLibraryImage, uploadLibraryImage } from "@/lib/images/service.ts";
 import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
+import { formDeps } from "@/lib/forms/server";
+import { readSettings } from "@/lib/forms/settings.ts";
+import { brandRepo } from "@/lib/branding/server";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { installDefaults } from "@/lib/automation/defaults.ts";
@@ -260,8 +263,21 @@ export async function uploadEmailImageAction(form: FormData): Promise<{ ok: true
   }
 }
 
+/** Where a library picture is still shown (forms' look, the account's brand), so it isn't deleted out from under them. */
+async function libraryImageUses(imageId: string): Promise<string[]> {
+  const img = await imagesRepo().get(imageId);
+  if (!img) return [];
+  const shows = (u: string | null | undefined) => !!u && u.includes(`/media/${currentTenantId()}/${img.storage_path}`);
+  const [forms, brand] = await Promise.all([formDeps().repo.listForms().catch(() => []), brandRepo().get().catch(() => null)]);
+  const uses = forms.filter((f) => { const t = readSettings(f.settings).theme; return shows(t.logo_url) || shows(t.header_image_url); }).map((f) => `the form "${f.name}"`);
+  if (brand && (shows(brand.logo_url) || shows(brand.mark_url))) uses.push("your branding");
+  return uses;
+}
+
 export async function deleteLibraryImageAction(form: FormData) {
   await mutate("/automation/images", async () => {
+    const uses = await libraryImageUses(id(form));
+    if (uses.length) throw new ValidationError(`This picture is still shown by ${uses.join(", ")}. Choose a different picture there first, then delete it.`);
     await deleteLibraryImage(imagesRepo(), imageStore(), id(form));
     return { notice: deletedNotice("Picture") };
   });

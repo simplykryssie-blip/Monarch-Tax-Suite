@@ -106,6 +106,10 @@ export interface FormsRepo {
   insertForm(input: Pick<FormRow, "name" | "description" | "public_id" | "draft_definition" | "settings" | "created_by"> & Partial<Pick<FormRow, "signature_consent">>): Promise<FormRow>;
   updateForm(id: string, patch: Partial<Pick<FormRow, "name" | "description" | "status" | "draft_definition" | "draft_updated_at" | "current_version_id" | "settings" | "signature_consent" | "public_id">>): Promise<FormRow>;
   deleteForm(id: string): Promise<void>;
+  /** Deletes the form and all its submission rows (never leads, contacts or customers). Returns how many submissions went. */
+  deleteFormWithSubmissions(id: string): Promise<number>;
+  /** Every stored file of a form's submissions: uploads and PDFs. */
+  formFiles(formId: string): Promise<{ uploads: string[]; pdfs: string[] }>;
   /** Atomically takes the form's next submission number. */
   takeNumber(formId: string): Promise<number>;
 

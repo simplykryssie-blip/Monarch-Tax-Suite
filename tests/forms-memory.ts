@@ -29,6 +29,19 @@ export class MemoryFormsRepo implements FormsRepo {
     return this.c(f);
   }
   async updateForm(id: string, patch: Partial<FormRow>) { const f = this.forms.find((x) => x.id === id)!; Object.assign(f, this.c(patch), { updated_at: this.now() }); return this.c(f); }
+  async deleteFormWithSubmissions(id: string) {
+    if (!this.forms.some((f) => f.id === id)) throw new Error("FORM_NOT_FOUND");
+    const gone = this.submissions.filter((s) => s.form_id === id).map((s) => s.id);
+    this.submissions = this.submissions.filter((s) => s.form_id !== id);
+    this.uploads = this.uploads.filter((u) => !gone.includes(u.submission_id));
+    this.forms = this.forms.filter((f) => f.id !== id);
+    this.versions = this.versions.filter((v) => v.form_id !== id);
+    return gone.length;
+  }
+  async formFiles(formId: string) {
+    const subs = this.submissions.filter((s) => s.form_id === formId);
+    return { uploads: this.uploads.filter((u) => subs.some((s) => s.id === u.submission_id)).map((u) => u.storage_path), pdfs: subs.map((s) => s.pdf_path).filter((p): p is string => !!p) };
+  }
   async deleteForm(id: string) {
     if (this.submissions.some((s) => s.form_id === id)) throw new Error("violates foreign key constraint");
     this.forms = this.forms.filter((f) => f.id !== id);

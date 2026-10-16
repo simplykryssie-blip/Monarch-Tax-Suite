@@ -245,6 +245,28 @@ export async function removeForm(deps: FormDeps, formId: string, adminId: string
   return "deleted";
 }
 
+/**
+ * Deletes a form for good. A form with real submissions is deleted only when `withSubmissions` is chosen, and then
+ * only its submission rows go: leads, contacts, customers and tax offices made from them are separate records and are
+ * kept. The form leaves the app at once; its stored files (uploads, PDFs) are purged after the 24-hour window.
+ * The person confirms by typing the form's name.
+ */
+export async function deleteFormForGood(deps: FormDeps, formId: string, input: { confirmName: unknown; withSubmissions: boolean }): Promise<{ name: string; submissions: number }> {
+  const form = await mustForm(deps, formId);
+  const typed = typeof input.confirmName === "string" ? input.confirmName.replace(/\s+/g, " ").trim().toLowerCase() : "";
+  if (typed !== form.name.replace(/\s+/g, " ").trim().toLowerCase()) throw new ValidationError("Type the form's name exactly to confirm.");
+  const submitted = await deps.repo.countSubmitted(form.id);
+  if (submitted > 0 && !input.withSubmissions) {
+    throw new ValidationError(`This form has ${submitted} submission${submitted === 1 ? "" : "s"}. Tick "Delete with submissions" to delete them too, or archive the form instead.`);
+  }
+  const files = await deps.repo.formFiles(form.id);
+  const submissions = await deps.repo.deleteFormWithSubmissions(form.id);
+  // Kept for the 24-hour window, then purged by the scheduler.
+  await deps.stores.uploads.discard(files.uploads.map((p) => ownPath(deps, p))).catch(() => undefined);
+  await deps.stores.pdfs.discard(files.pdfs.map((p) => ownPath(deps, p))).catch(() => undefined);
+  return { name: form.name, submissions };
+}
+
 /** The definition the settings page checks against: the draft when it is readable, else the published one. */
 async function settingsDefinition(deps: FormDeps, form: FormRow): Promise<FormDefinition> {
   try {
