@@ -7,7 +7,9 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps } from "@/lib/automation/server";
 import { emailConfig } from "@/lib/automation/email.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
-import { AlreadyRegisteredError, cleanAttribute, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
+import { AlreadyRegisteredError, cleanAttribute, removeDomain, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
+import { formDeps } from "@/lib/forms/server";
+import { readSettings } from "@/lib/forms/settings.ts";
 import { documentDeps } from "@/lib/documents/server";
 import { cleanLinkHost, defaultLinkHost } from "@/lib/brands.ts";
 import { currentTenantId, MONARCH_TENANT_ID } from "@/lib/tenants.ts";
@@ -91,6 +93,22 @@ export async function checkDomainAction(form: FormData) {
     const now = await api.get(row.provider_domain_id);
     await repo.updateDomain(id, { status: now.status, dns_records: now.records, last_checked_at: new Date().toISOString() });
     return now.status === "verified" ? `${row.domain} is verified. You can send from it.` : `${row.domain} is not verified yet. DNS changes can take a few hours; check again later.`;
+  });
+}
+
+export async function removeDomainAction(form: FormData) {
+  await act("/settings/email", async () => {
+    const id = str(form, "id");
+    if (!UUID.test(id)) throw new ValidationError("Not found.");
+    const deps = automationDeps();
+    const forms = await formDeps().repo.listForms().catch(() => []);
+    const templates = await deps.repo.listTemplates();
+    const senderIds = new Set((await deps.senders!.listSenders()).filter((s) => s.domain_id === id).map((s) => s.id));
+    const domain = await removeDomain(deps.senders!, id, {
+      formNames: forms.filter((f) => f.status !== "archived" && readSettings(f.settings).brand_domain_id === id).map((f) => f.name),
+      templateNames: templates.filter((t) => t.sender_id && senderIds.has(t.sender_id) && t.active).map((t) => t.name),
+    });
+    return `${domain} disconnected. It is still set up in Resend, so you can add it again straight away.`;
   });
 }
 

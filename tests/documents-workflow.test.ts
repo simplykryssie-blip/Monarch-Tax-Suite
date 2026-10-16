@@ -35,6 +35,8 @@ class MemorySenders implements SendersRepo {
   senders: SenderRow[] = [];
   attributes: PackageAttribute[] = [];
   async listDomains() { return this.domains; }
+  async deleteDomain(id: string) { this.domains = this.domains.filter((d) => d.id !== id); }
+  async deleteSender(id: string) { this.senders = this.senders.filter((s) => s.id !== id); }
   async getDomain(id: string) { return this.domains.find((d) => d.id === id) ?? null; }
   async insertDomain(input: Pick<EmailDomainRow, "domain" | "provider_domain_id" | "status" | "dns_records" | "created_by">) { const d = { ...input, id: randomUUID(), tenant_id: TENANT, last_checked_at: null, created_at: "", updated_at: "" }; this.domains.push(d); return d; }
   async updateDomain(id: string, patch: Partial<EmailDomainRow>) { const d = this.domains.find((x) => x.id === id)!; Object.assign(d, patch); return d; }

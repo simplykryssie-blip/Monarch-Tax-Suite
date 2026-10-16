@@ -17,6 +17,8 @@ export class SupabaseSendersRepo implements SendersRepo {
   async updateDomain(id: string, patch: Partial<EmailDomainRow>) {
     return unwrap(await this.db.from("email_domains").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).select("*").single()) as EmailDomainRow;
   }
+  async deleteDomain(id: string) { unwrap(await this.db.from("email_domains").delete().eq("id", id)); }
+  async deleteSender(id: string) { unwrap(await this.db.from("email_senders").delete().eq("id", id)); }
   async listSenders() { return unwrap(await this.db.from("email_senders").select("*").order("created_at")) as SenderRow[]; }
   async getSender(id: string) { return unwrap(await this.db.from("email_senders").select("*").eq("id", id).maybeSingle()) as SenderRow | null; }
   async insertSender(input: Pick<SenderRow, "domain_id" | "from_name" | "local_part" | "reply_to" | "created_by">) {

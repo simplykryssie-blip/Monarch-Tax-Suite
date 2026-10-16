@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AlreadyRegisteredError, cleanAttribute, cleanDomain, ResendDomains } from "../lib/automation/senders.ts";
+import { AlreadyRegisteredError, cleanAttribute, cleanDomain, removeDomain, ResendDomains, type SendersRepo } from "../lib/automation/senders.ts";
 
 // Sending domains with the email provider (Resend), against a fake API. No real requests are made.
 
@@ -45,4 +45,30 @@ test("domain and attribute input is cleaned", () => {
   assert.deepEqual(cleanAttribute({ key: "Flow_Type", label: "Flow type", kind: "choice", options: "ptin_holder, standard_ero, ptin_holder" }), { key: "flow_type", label: "Flow type", kind: "choice", options: ["ptin_holder", "standard_ero"] });
   assert.throws(() => cleanAttribute({ key: "1bad", label: "Bad", kind: "choice", options: "a,b" }), /lowercase letters/);
   assert.throws(() => cleanAttribute({ key: "tier", label: "Tier", kind: "choice", options: "only" }), /at least two options/);
+});
+
+function memoryRepo() {
+  const domains = [{ id: "d1", domain: "mkbfinancialgroup.com" }];
+  const senders: { id: string; domain_id: string; local_part: string; archived_at: string | null }[] = [];
+  const repo = {
+    getDomain: async (id: string) => domains.find((d) => d.id === id) ?? null,
+    listSenders: async () => senders,
+    deleteSender: async (id: string) => { senders.splice(senders.findIndex((s) => s.id === id), 1); },
+    deleteDomain: async (id: string) => { domains.splice(domains.findIndex((d) => d.id === id), 1); },
+  } as unknown as SendersRepo;
+  return { repo, domains, senders };
+}
+
+test("a domain can be disconnected so it can be added again, unless something still uses it", async () => {
+  const m = memoryRepo();
+  m.senders.push({ id: "s1", domain_id: "d1", local_part: "support", archived_at: null });
+  await assert.rejects(removeDomain(m.repo, "d1", { formNames: [], templateNames: [] }), /support@mkbfinancialgroup\.com.*Remove them first/);
+  m.senders[0].archived_at = "2026-10-16T00:00:00Z";
+  await assert.rejects(removeDomain(m.repo, "d1", { formNames: ["ERO application"], templateNames: [] }), /is the firm for 1 form \(ERO application\)/);
+  await assert.rejects(removeDomain(m.repo, "d1", { formNames: [], templateNames: ["Welcome"] }), /used by 1 email template/);
+  assert.equal(m.domains.length, 1, "nothing was removed while refused");
+  assert.equal(await removeDomain(m.repo, "d1", { formNames: [], templateNames: [] }), "mkbfinancialgroup.com");
+  assert.equal(m.domains.length, 0);
+  assert.equal(m.senders.length, 0, "its archived addresses go with it");
+  await assert.rejects(removeDomain(m.repo, "d1", { formNames: [], templateNames: [] }), /Not found/);
 });
