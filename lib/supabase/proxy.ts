@@ -9,7 +9,7 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabaseConfigProblems } from "
 // lead endpoint authorizes with a signed embed token.
 const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
   // Customer setup links (the token is the credential) and the retry runner (authorized by CRON_SECRET).
-  "/setup", "/api/automation/run",
+  "/setup", "/api/automation/run", "/api/automation/tick",
   // Buyer downloads: every file request is authorized by the buyer's license key and checked again on each click.
   "/downloads",
   // Secure document links sent by a firm: the link token is the credential, checked again on every request.
