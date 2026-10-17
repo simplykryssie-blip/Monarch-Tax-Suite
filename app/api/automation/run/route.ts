@@ -11,7 +11,6 @@ import { complianceDeps } from "@/lib/compliance/server";
 import { runComplianceSweep, sweepPendingUploads } from "@/lib/compliance/service.ts";
 import { sweepStorageCleanup } from "@/lib/storage/objects.ts";
 import { runSmsSweep } from "@/lib/sms/server";
-import { runPracticeWispSweep } from "@/lib/practice/wisp-server";
 import { sweepPendingClientDocs } from "@/lib/workspace/docs.ts";
 import { docDeps } from "@/lib/workspace/server";
 import { tenantClient } from "@/lib/supabase/service";
@@ -83,15 +82,7 @@ async function handle(request: Request) {
       console.error(`sms-sweep: ${sanitizeError(e, 160)}`);
       sms = { error: "Texting sweep failed or is not set up yet" };
     }
-    // Independent PTIN holders' WISPs: archive those who linked to an ERO, send the 30- and 7-day review reminders.
-    let practiceWisps: unknown = null;
-    try {
-      practiceWisps = await runPracticeWispSweep();
-    } catch (e) {
-      console.error(`practice-wisp-sweep: ${sanitizeError(e, 160)}`);
-      practiceWisps = { error: "PTIN WISP sweep failed or is not set up yet" };
-    }
-    return Response.json({ processed, efin, signatures, forms, compliance, storage, sms, practiceWisps });
+    return Response.json({ processed, efin, signatures, forms, compliance, storage, sms });
   } catch (e) {
     console.error(`automation-run: ${sanitizeError(e, 160)}`);
     return new Response("Run failed", { status: 500 });

@@ -69,13 +69,15 @@ An active `office_members` row. Nothing else counts as linked.
 - The tenant's onboarding flow, agreements, training, or credential issuance (tenant-configured)
 
 ### Permissions
-- PTIN-holder tier sees: My Clients, Prep work, Assigned returns, WISP (Piece 2), and their own profile/settings
+- PTIN-holder tier sees: My Clients, Prep work, Assigned returns, Security, and their own profile/settings
 - PTIN-holder tier does NOT see: ERO Dashboard, Bureau Dashboard, Fees & statements, EROs & EFINs, Compliance Center (office-level), Store/bureau admin areas
 - Uses the existing tier-based navigation (`tenants.tier = 'ptin'`); tier gates menus, and server-side checks enforce it (tier is not a security boundary on its own)
 
 ---
 
-## Piece 2: Independent WISP (sold as the $25 product — owner decision)
+## Piece 2: Independent WISP (REMOVED — owner decision 2026-10-17: the WISP is a Monarch marketing tool, not a workspace feature; the $25 storefront product is unchanged and Piece 2 is not built)
+
+_The text below is kept as the original spec._
 
 **Type:** System (shared engine) + Workflow (the holder's own attestation).
 
