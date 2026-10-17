@@ -24,8 +24,9 @@ export class SupabasePracticeWispRepo implements PracticeWispRepo {
 
 /** True while this account has an active seat in an ERO's office (the definition of "linked to an ERO"). */
 export async function isLinkedToEro(userId: string): Promise<boolean> {
-  const { data } = await platformClient("office_member").from("office_members").select("id").eq("user_id", userId).eq("status", "active").limit(1).maybeSingle();
-  return !!data;
+  const { data, error } = await platformClient("office_member").rpc("is_linked_to_ero", { p_user: userId });
+  if (error) throw new Error(error.message);
+  return data === true;
 }
 
 export function practiceWispDeps(tenantId: string, userId: string): PracticeWispDeps {

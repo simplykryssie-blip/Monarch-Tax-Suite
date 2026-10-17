@@ -19,7 +19,7 @@ export class SupabasePracticeRepo implements PracticeRepo {
     return unwrap(await this.db.from("practice_members").update(patch).eq("id", id).select("*").single()) as PracticeMember;
   }
   async addAudit(input: AuditInput) {
-    unwrap(await this.db.from("audit_events").insert({ actor_id: input.actor_id, action: input.action, subject_type: input.subject_type ?? null, subject_id: input.subject_id ?? null, detail: input.detail ?? {} }));
+    unwrap(await this.db.from("workspace_audit_events").insert({ actor_id: input.actor_id, action: input.action, subject_type: input.subject_type ?? null, subject_id: input.subject_id ?? null, detail: input.detail ?? {} }));
   }
 }
 

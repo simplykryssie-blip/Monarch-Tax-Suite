@@ -79,3 +79,12 @@ begin
     end if;
   end loop;
 end $$;
+
+-- "Linked to an ERO" means exactly one thing: an active office_members row for the account. The app asks this one
+-- function, so the rule lives in one place and the gate tests it with fake rows.
+create or replace function public.is_linked_to_ero(p_user uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.office_members where user_id = p_user and status = 'active')
+$$;
+revoke execute on function public.is_linked_to_ero(uuid) from public, anon, authenticated;
+grant execute on function public.is_linked_to_ero(uuid) to service_role;

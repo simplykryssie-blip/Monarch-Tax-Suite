@@ -4,7 +4,7 @@
 --                   platform administrator creates the tenant and invites its owner; the owner becomes active when they
 --                   set a password and turn on two-step sign-in. One sign-in belongs to one workspace. (An ERO's
 --                   preparers are office_members, a different path.)
--- audit_events      a generic, append-only history of workspace actions, keyed by tenant. Phase 4 writes to it first;
+-- workspace_audit_events      a generic, append-only history of workspace actions, keyed by tenant. Phase 4 writes to it first;
 --                   later phases use it too. Nothing can change or delete a row.
 --
 -- Same tenant rules as every table since Step 0: tenant_id with the required default, the two policies, and
@@ -31,7 +31,7 @@ create unique index if not exists practice_members_email_key on public.practice_
 create unique index if not exists practice_members_user_key on public.practice_members (user_id) where user_id is not null;
 create unique index if not exists practice_members_invite_key on public.practice_members (invite_token_hash) where invite_token_hash is not null;
 
-create table if not exists public.audit_events (
+create table if not exists public.workspace_audit_events (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id),
   actor_id uuid references auth.users(id) on delete set null,
@@ -41,15 +41,15 @@ create table if not exists public.audit_events (
   detail jsonb not null default '{}'::jsonb check (jsonb_typeof(detail) = 'object'),
   created_at timestamptz not null default now()
 );
-create index if not exists audit_events_recent_idx on public.audit_events (tenant_id, created_at desc);
-create index if not exists audit_events_subject_idx on public.audit_events (tenant_id, subject_type, subject_id);
+create index if not exists workspace_audit_events_recent_idx on public.workspace_audit_events (tenant_id, created_at desc);
+create index if not exists workspace_audit_events_subject_idx on public.workspace_audit_events (tenant_id, subject_type, subject_id);
 
-create or replace function public.audit_events_append_only() returns trigger
+create or replace function public.workspace_audit_events_append_only() returns trigger
 language plpgsql set search_path = public as $$
 begin
   raise exception 'AUDIT_HISTORY_KEPT: the audit history cannot be changed or deleted';
 end $$;
-create or replace trigger audit_events_append_only before update or delete on public.audit_events for each row execute function public.audit_events_append_only();
+create or replace trigger workspace_audit_events_append_only before update or delete on public.workspace_audit_events for each row execute function public.workspace_audit_events_append_only();
 
 create or replace function public.practice_members_touch() returns trigger
 language plpgsql set search_path = public as $$
@@ -63,7 +63,7 @@ create or replace trigger practice_members_touch before update on public.practic
 do $$
 declare
   t text;
-  tenant_tables text[] := array['practice_members', 'audit_events'];
+  tenant_tables text[] := array['practice_members', 'workspace_audit_events'];
 begin
   foreach t in array tenant_tables loop
     execute format('alter table public.%I alter column tenant_id set default public.require_tenant_id()', t);
