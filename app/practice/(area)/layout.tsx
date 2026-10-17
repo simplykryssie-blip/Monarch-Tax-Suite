@@ -20,6 +20,7 @@ export default async function PracticeArea({ children }: { children: React.React
         <Link href="/practice/prep">Prep work</Link>
         <Link href="/practice/assigned">Assigned returns</Link>
         <Link href="/practice/wisp">My WISP</Link>
+        <Link href="/practice/security">Security</Link>
       </nav>
       <main className="office-main">{children}</main>
     </div>

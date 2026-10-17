@@ -4,6 +4,7 @@ import { appOrigin } from "../admin";
 import { createClient } from "../supabase/server";
 import { platformClient, tenantClient } from "../supabase/service";
 import { mfaState, sendOfficeEmail } from "../office/server";
+import { practiceMfaGate } from "./mfa.ts";
 import type { PracticeMember, PracticeRepo } from "./service.ts";
 import { SupabasePracticePlatform, SupabasePracticeRepo } from "./supabase-repo.ts";
 
@@ -36,8 +37,8 @@ export async function requirePractice(): Promise<PracticeContext> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/practice");
-  const mfa = await mfaState();
-  if (mfa.level !== "aal2") redirect("/practice/mfa");
+  // Two-step sign-in is the holder's choice: it is enforced only for a holder who turned it on.
+  if (practiceMfaGate(await mfaState()) === "verify") redirect("/practice/mfa");
   const member = await practiceMemberForUser(user.id);
   if (!member) redirect("/login?error=" + encodeURIComponent("This account doesn't have a PTIN workspace."));
   if (member.status !== "active") redirect("/login?error=" + encodeURIComponent("This workspace is suspended. Contact the platform administrator."));

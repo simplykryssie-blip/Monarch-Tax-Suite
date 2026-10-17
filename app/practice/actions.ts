@@ -80,3 +80,13 @@ export async function verifyPracticeMfaAction(input: { factorId?: string; code: 
   if (member) await practiceRepo(member.tenant_id).addAudit({ actor_id: user!.id, action: input.factorId ? "mfa_enrolled" : "mfa_verified", subject_type: "practice_member", subject_id: member.id }).catch(() => undefined);
   redirect("/practice");
 }
+
+/** "Skip for now": two-step sign-in is optional for a holder. Recorded, then straight into the workspace. */
+export async function skipPracticeMfaAction(): Promise<void> {
+  const { supabase } = await mfaState();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login?next=/practice");
+  const member = await practiceMemberForUser(user.id);
+  if (member) await practiceRepo(member.tenant_id).addAudit({ actor_id: user.id, action: "mfa_skipped", subject_type: "practice_member", subject_id: member.id }).catch(() => undefined);
+  redirect("/practice");
+}

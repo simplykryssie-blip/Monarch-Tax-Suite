@@ -28,7 +28,9 @@ Phase 4 builds that base layer as a standalone experience for the `ptin` tier. P
 
 A `ptin`-tier tenant has no way to sign in today: `currentTenantId()` still returns the Monarch tenant and workspace pages use `requireAdmin` (platform admin users).
 
-**Build:** tenant provisioning and session-to-tenant resolution for the `ptin` tier, with MFA like the Phase 3 office area. Without this, the isolation gate can only be tested with simulated requests, not a real sign-in — so this ships as part of Phase 4, not as a follow-up.
+**Build:** tenant provisioning and session-to-tenant resolution for the `ptin` tier, with two-step sign-in available as in the Phase 3 office area (**optional for holders, see the amendment below**). Without this, the isolation gate can only be tested with simulated requests, not a real sign-in — so this ships as part of Phase 4, not as a follow-up.
+
+**Amendment, owner decision 2026-10-17:** two-step sign-in is OPTIONAL for PTIN-holder workspaces. The platform provides the compliance tools; it does not enforce compliance on tenants. The holder is offered it right after accepting the invite (strongly recommended, with a Skip for now), can turn it on later from Security, and once it is on it is enforced at every sign-in. The office area still requires it.
 
 ---
 
