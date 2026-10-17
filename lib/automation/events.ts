@@ -108,6 +108,31 @@ export const EVENTS: Record<string, EventDef> = {
     description: "Someone submitted one of your forms. Conditions can test form_id and answer.<key> for dropdown and radio questions; documents can use {{form.<key>}} merge fields.",
     fields: { form_id: [] },
   },
+  "appointment.booked": {
+    label: "Appointment booked",
+    description: "Someone booked an appointment on the booking page, or staff booked one. Conditions can test source (public or staff).",
+    fields: { source: ["public", "staff"] },
+  },
+  "appointment.rescheduled": {
+    label: "Appointment rescheduled",
+    description: "An appointment was moved to another time by the client or by staff.",
+    fields: { source: ["public", "staff"] },
+  },
+  "appointment.cancelled": {
+    label: "Appointment cancelled",
+    description: "An appointment was cancelled by the client or by staff.",
+    fields: { source: ["public", "staff"] },
+  },
+  "appointment.done": {
+    label: "Appointment attended",
+    description: "Staff marked an appointment as attended.",
+    fields: { source: ["public", "staff"] },
+  },
+  "appointment.no_show": {
+    label: "Appointment no-show",
+    description: "Staff marked an appointment as a no-show.",
+    fields: { source: ["public", "staff"] },
+  },
 };
 
 /** Condition fields whose values are a tenant's own records (checked against them when a workflow is saved). */
