@@ -82,14 +82,18 @@ export function addDays(v: YMD, n: number): YMD {
   return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() };
 }
 export const weekdayOf = (v: YMD): Weekday => new Date(Date.UTC(v.y, v.m - 1, v.d)).getUTCDay() as Weekday;
-const toMinutes = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
-const atLocal = (v: YMD, minutes: number, tz: string) => zonedToUtc(v.y, v.m, v.d, Math.floor(minutes / 60), minutes % 60, tz);
+export const toMinutes = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
+export const atLocal = (v: YMD, minutes: number, tz: string) => zonedToUtc(v.y, v.m, v.d, Math.floor(minutes / 60), minutes % 60, tz);
 
+/** Whether a date falls inside a switched-on closure (a holiday, a vacation), whatever the weekday. */
+export function inClosure(cal: BusinessCalendar, v: YMD): boolean {
+  const s = ymdString(v);
+  return cal.closures.some((c) => c.enabled && c.start <= s && s <= c.end);
+}
 /** Whether the office is closed all day on a date: a closed weekday, or inside a switched-on closure. */
 export function isClosedDay(cal: BusinessCalendar, v: YMD): boolean {
   if (!cal.week[weekdayOf(v)]) return true;
-  const s = ymdString(v);
-  return cal.closures.some((c) => c.enabled && c.start <= s && s <= c.end);
+  return inClosure(cal, v);
 }
 /** The open window of a date, as minutes since local midnight, or null when closed. */
 function windowOf(cal: BusinessCalendar, v: YMD): [number, number] | null {
