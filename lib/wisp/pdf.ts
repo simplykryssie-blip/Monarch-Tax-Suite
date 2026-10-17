@@ -2,12 +2,12 @@ import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { fontBytes, wrap } from "../forms/pdf.ts";
 import { DISCLAIMER, type WispAnswers } from "./content.ts";
-import { buildPlan, type PlanBlock } from "./plan.ts";
+import { buildPlan, type PlanBlock, type PlanVoice } from "./plan.ts";
 
 // The finished WISP, made on the server: a cover, a contents page, then the plan from ./plan.ts with each section on
 // its own page under a gold header, and the attorney-ready disclaimer. Noto Sans so names in most languages print.
 
-export type WispPdfInput = { answers: WispAnswers; brandName: string; generatedAt: Date; planId: string };
+export type WispPdfInput = { answers: WispAnswers; brandName: string; generatedAt: Date; planId: string; /** "sole" for a single practitioner; the default is a firm with staff. */ voice?: PlanVoice };
 
 const PAGE: [number, number] = [612, 792];
 const MARGIN = 64;
@@ -79,7 +79,7 @@ export async function buildWispPdf(input: WispPdfInput): Promise<Uint8Array> {
   // ---- Contents (filled in once the section pages are known)
   newPage();
   const contentsPage = page;
-  const sections = buildPlan(d);
+  const sections = buildPlan(d, input.voice);
   const starts: number[] = [];
 
   // ---- The plan

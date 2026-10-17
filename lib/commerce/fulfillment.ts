@@ -63,6 +63,8 @@ export type FulfillmentDeps = {
    * thrown: the payment is recorded either way, and the buyer's confirmation page (or an administrator) retries.
    */
   wisp?: (input: { sessionId: string; planId: string | null; customerId: string; orderId: string }) => Promise<unknown>;
+  /** An independent PTIN holder's WISP purchase: marks the holder's own WISP paid (in their tenant, matched by this checkout). */
+  practiceWisp?: (input: { sessionId: string; tenantId: string }) => Promise<unknown>;
   /** Text messaging checkouts (credit packs, number setup): paid by a tax office to the platform. */
   sms?: (session: CheckoutSession) => Promise<string>;
   now?: () => string;
@@ -287,6 +289,10 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
     if (deps.wisp && isWispProduct(product)) {
       await deps.wisp({ sessionId: session.id, planId: session.metadata?.wisp_plan_id ?? null, customerId: customer.id, orderId: current.id })
         .catch((e) => console.error(`stripe-webhook: WISP delivery for order ${current.id} failed, the buyer's page will retry: ${e instanceof Error ? e.message.slice(0, 160) : "unknown"}`));
+    }
+    if (deps.practiceWisp && isWispProduct(product) && session.metadata?.practice_tenant_id) {
+      await deps.practiceWisp({ sessionId: session.id, tenantId: session.metadata.practice_tenant_id })
+        .catch((e) => console.error(`stripe-webhook: marking the PTIN holder's WISP paid for order ${current.id} failed, their page will retry: ${e instanceof Error ? e.message.slice(0, 160) : "unknown"}`));
     }
     // Only reached for a signature-verified, paid order. The event key is per order, so Stripe retries or a second
     // event for the same payment cannot start the onboarding workflow twice.

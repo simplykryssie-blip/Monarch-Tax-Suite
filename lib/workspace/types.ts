@@ -4,14 +4,20 @@
 export type Client = {
   id: string; tenant_id: string; full_name: string; email: string | null; phone: string | null; ssn_last4: string | null; address: string | null;
   archived_at: string | null; created_by: string | null; created_at: string; updated_at: string;
+  /** The preparer who owns the client (people see their own clients), and the office whose team entered them (null = the account's own). */
+  owner_id: string | null; organization_id: string | null;
 };
 export type ClientInput = Pick<Client, "full_name" | "email" | "phone" | "ssn_last4" | "address">;
 
 export const RETURN_KINDS = { original: "Original", extension: "Extension", amendment: "Amendment" } as const;
 export type ReturnKind = keyof typeof RETURN_KINDS;
+export const PREP_STATUSES = { not_started: "Not started", in_prep: "In prep", ready_for_review: "Ready for review", handed_off: "Handed to ERO" } as const;
+export type PrepStatus = keyof typeof PREP_STATUSES;
 export type ClientReturn = {
   id: string; tenant_id: string; client_id: string; tax_year: number; kind: ReturnKind; parent_id: string | null; stage_id: string;
   due_on: string | null; filed_on: string | null; notes: string | null; archived_at: string | null; created_at: string; updated_at: string;
+  /** Who works the return, where it stands in preparation, and its office (null = the account's own). */
+  assignee_id: string | null; prep_status: PrepStatus; handed_off_at: string | null; organization_id: string | null;
 };
 export type ReturnInput = Pick<ClientReturn, "client_id" | "tax_year" | "kind" | "parent_id" | "stage_id" | "due_on" | "notes">;
 
@@ -46,15 +52,15 @@ export type PaymentRow = {
 export type PaymentRowInsert = Pick<PaymentRow, "import_id" | "row_no" | "posted_on" | "description" | "amount_cents" | "tax_year" | "ssn_last4" | "name_guess" | "invoice_id" | "match">;
 
 export interface WorkspaceRepo {
-  listClients(f?: { q?: string; includeArchived?: boolean }): Promise<Client[]>;
+  listClients(f?: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string }): Promise<Client[]>;
   getClient(id: string): Promise<Client | null>;
-  insertClient(input: ClientInput & { created_by: string | null }): Promise<Client>;
+  insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null }): Promise<Client>;
   updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null }): Promise<Client>;
 
-  listReturns(f?: { year?: number; clientId?: string; includeArchived?: boolean }): Promise<ClientReturn[]>;
+  listReturns(f?: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string }): Promise<ClientReturn[]>;
   getReturn(id: string): Promise<ClientReturn | null>;
-  insertReturn(input: ReturnInput): Promise<ClientReturn>;
-  updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at">>): Promise<ClientReturn>;
+  insertReturn(input: ReturnInput & { assignee_id?: string | null; organization_id?: string | null }): Promise<ClientReturn>;
+  updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>): Promise<ClientReturn>;
 
   listDocs(clientId: string): Promise<ClientDoc[]>;
   getDoc(id: string): Promise<ClientDoc | null>;

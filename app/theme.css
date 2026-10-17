@@ -686,7 +686,23 @@ html[data-popup] body{background:#fff}
 .office-qr{background:#fff;border:1px solid #e7e5de;border-radius:8px;padding:8px;align-self:flex-start}
 .office-link{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .office-link input{flex:1 1 260px;padding:8px 10px;border:1px solid #d4d4d4;border-radius:8px;font-size:13px}
-@media(max-width:640px){.office-top{padding:12px 16px}.office-nav{padding:8px 12px}.office-main{padding:16px 12px 40px}.office-perms{min-width:0}}
+/* Return preparation (PTIN workspace and office area): the prep board, the intake checklist, status line. */
+.prep-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;align-items:start}
+.prep-col h2 small{font-weight:500;color:var(--ink-3,#69665d)}
+.prep-cards{list-style:none;margin:0;padding:0 12px 12px;display:grid;gap:8px}
+.prep-cards a{display:grid;gap:2px;padding:10px 12px;border:1px solid var(--line,#e7e5de);border-radius:10px;text-decoration:none;color:inherit;background:#fff;min-height:44px}
+.prep-cards a span{font-size:13px;color:var(--ink-3,#69665d)}
+.prep-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.prep-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.prep-checklist{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:4px}
+.prep-checklist li{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;border-bottom:1px solid var(--line,#e7e5de)}
+.prep-check{background:none;border:0;padding:8px 0;font:inherit;text-align:left;cursor:pointer;display:flex;gap:8px;align-items:center;min-height:44px}
+.prep-check:disabled{cursor:default}
+.prep-check .is-done{text-decoration:line-through;color:var(--ink-3,#69665d)}
+.prep-handoffs{margin:12px 0 0;padding-left:18px}
+.wisp-step{min-width:0}.wisp-step>.monarch-form{flex:1 1 100%;margin-top:0}
+.prep-actions button,.prep-check,.prep-cards a{min-height:44px}
+@media(max-width:640px){.office-top{padding:12px 16px}.office-nav{padding:8px 12px}.office-main{padding:16px 12px 40px}.office-perms{min-width:0}.prep-board{grid-template-columns:1fr}}
 
 /* Compliance Center */
 .compliance-lede{margin:0 0 16px;font-size:14px;color:var(--ink-2)}

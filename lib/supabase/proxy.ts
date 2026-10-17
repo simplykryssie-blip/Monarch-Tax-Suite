@@ -21,7 +21,7 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   // The WISP Generator: public audit and builder; downloads need the buying browser's secret or the emailed link token.
   "/wisp",
   // Office invites: the one-time link token is the credential. The rest of /office requires sign-in and two-step sign-in.
-  "/office/invite/",
+  "/office/invite/", "/practice/invite/",
   // Password reset: the email link lands on /auth/callback; /reset-password checks for the session itself.
   "/forgot-password", "/reset-password", "/auth/",
   // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).

@@ -42,7 +42,15 @@ const count = (raw: string | undefined): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-export function buildPlan(d: WispAnswers): PlanSection[] {
+/** Whose plan it is: a firm with staff (the Qualified Individual and everyone covered), or one sole practitioner. */
+export type PlanVoice = "firm" | "sole";
+
+export function buildPlan(d: WispAnswers, voice: PlanVoice = "firm"): PlanSection[] {
+  const sections = buildFirmPlan(d);
+  return voice === "sole" ? soleVoice(sections, d) : sections;
+}
+
+function buildFirmPlan(d: WispAnswers): PlanSection[] {
   const firm = d.firm_name?.trim() || "the Firm";
   const owner = d.owner_name?.trim() || "the Owner / Principal";
   const users = count(d.num_users);
@@ -244,4 +252,74 @@ export function buildPlan(d: WispAnswers): PlanSection[] {
   });
 
   return sections;
+}
+
+// ---------------------------------------------------------------- sole practitioner
+
+const swapNoun = (t: string) => t
+  .replace(/\(the "Firm"\)/g, '(the "Practice")')
+  .replace(/\bthe Firm's\b/g, "the Practice's").replace(/\bThe Firm's\b/g, "The Practice's")
+  .replace(/\bthe Firm\b/g, "the Practice").replace(/\bThe Firm\b/g, "The Practice")
+  .replace(/\bFirm Information\b/g, "Practice Information");
+
+const mapBlock = (b: PlanBlock, f: (t: string) => string): PlanBlock =>
+  b.kind === "list" ? { ...b, items: b.items.map(f) } : b.kind === "table" ? { ...b, head: b.head.map(f), rows: b.rows.map((r) => r.map(f)) } : b.kind === "sign" ? { ...b, lines: b.lines.map(f) } : { ...b, text: f(b.text) };
+
+/**
+ * The same plan for one person who is the owner, the Qualified Individual and the only preparer. The wording says
+ * "the Practice", the Qualified Individual paragraphs and the sign-off are for one person, and the staff
+ * acknowledgment sheet is left out. Where the person later adds staff or a contractor, the plan says to update it first.
+ */
+function soleVoice(sections: PlanSection[], d: WispAnswers): PlanSection[] {
+  const practice = d.firm_name?.trim() || "the Practice";
+  const owner = d.owner_name?.trim() || "the Owner";
+  const out = sections.map((sec) => ({ title: swapNoun(sec.title), blocks: sec.blocks.map((b) => mapBlock(b, swapNoun)) }));
+  const section = (title: string) => out.find((x) => x.title === title);
+
+  const scope = section("Purpose and Scope");
+  if (scope) scope.blocks = scope.blocks.map((b) => (b.kind === "p" && /^The Plan applies to all taxpayer/.test(b.text)
+    ? p(`The Plan applies to all taxpayer and client information the Practice handles in any form, whether paper, electronic or spoken, and to every system, device and location that handles it. That includes ${owner} as the sole practitioner, and any contractor or service provider ${owner} gives access to. ${owner} reads this Plan, follows it and reports to themself, in writing, anything that might put taxpayer information at risk.`)
+    : b));
+
+  const info = section("Practice Information and Responsibility");
+  if (info) {
+    const table = info.blocks.find((b) => b.kind === "table");
+    info.blocks = [
+      ...(table ? [table] : []),
+      h("Qualified Individual"),
+      p(`The FTC Safeguards Rule requires the Practice to designate a Qualified Individual to oversee, implement and enforce its information security program. ${practice} is a sole practice, and ${owner} is both its owner and its Qualified Individual. ${owner} puts this Plan into practice, assesses risks, chooses and maintains safeguards, oversees service providers, completes training, leads the response to any security incident and reviews the Plan on schedule.`),
+      p(`At least once a year ${owner} reviews the overall status of the program and its compliance with the Safeguards Rule, the results of the risk assessment, any security events and the response to them, and any changes needed, and records that review with this Plan. If ${owner} later hires staff, takes on a seasonal preparer or contractor, or joins an ERO's office, this Plan is updated first, before that person is given any access to taxpayer information.`),
+      h("My responsibilities"),
+      p(`${owner} uses only their own individual accounts, protects passwords and devices, locks the screen and secures paper files when stepping away, and treats any suspected incident, lost device or suspicious message as a security incident to be handled under this Plan immediately.`),
+    ];
+  }
+
+  const access = section("Access Controls");
+  if (access) access.blocks = access.blocks.map((b) => (b.kind === "p" && /^Access to taxpayer information is limited/.test(b.text)
+    ? p(`Access to taxpayer information is limited to ${owner}. ${owner} uses individual accounts, never shared logins, so that every action in the Practice's systems can be traced.`)
+    : b.kind === "p" && /^Access is granted only after/.test(b.text)
+      ? p(`No one else has access to taxpayer information. Before anyone else is given access (a seasonal preparer, a contractor, an IT provider), ${owner} updates this Plan, approves the access, and the person reads and acknowledges the Plan. When that person's work ends, all of their access is removed on or before their last day: accounts are disabled and any passwords or codes they knew are changed. ${owner} reviews who has access at the start of each filing season and at each annual review.`)
+      : b));
+
+  const training = section("Employee Training and Awareness");
+  if (training) {
+    training.title = "Security Training and Awareness";
+    training.blocks = training.blocks.map((b) => mapBlock(b, (t) => t
+      .replace(/Everyone with access to taxpayer information will receive/g, `${owner} will complete`).replace(/Everyone with access to taxpayer information receives/g, `${owner} completes`)
+      .replace(/before being given access and at least once a year after that/g, "at least once a year")
+      .replace(/the Practice will keep a record of who attended and when/g, "the Practice will keep a record of when it was completed")
+      .replace(/the Practice keeps a record of who attended and when/g, "the Practice keeps a record of when it was completed")));
+  }
+
+  const review = section("Plan Review and Maintenance");
+  if (review) review.blocks = review.blocks.map((b) => (b.kind === "p" && /^The current version of the Plan/.test(b.text)
+    ? p(`${owner} keeps the current version of the Plan where it can be read when needed, and keeps earlier versions for the Practice's records. ${owner} acknowledges the Plan when adopting it and after any significant change.`)
+    : b));
+
+  const adopt = section("Adoption and Acknowledgment");
+  if (adopt) adopt.blocks = [
+    p(`${practice} adopts this Written Information Security Plan as its information security program and commits to carrying it out.`),
+    { kind: "sign", lines: [`Signature of ${owner}, Owner, Sole Practitioner and Qualified Individual`, "Date"] },
+  ];
+  return out;
 }

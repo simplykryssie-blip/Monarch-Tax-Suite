@@ -9,19 +9,19 @@ export class MemoryWorkspace implements WorkspaceRepo {
   private c = <T>(v: T): T => structuredClone(v);
   private at = () => "2026-10-15T12:00:00.000Z";
 
-  async listClients(f: { q?: string; includeArchived?: boolean } = {}) { return this.c(this.clients.filter((x) => (f.includeArchived || !x.archived_at) && (!f.q || x.full_name.toLowerCase().includes(f.q.toLowerCase())))); }
+  async listClients(f: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string } = {}) { return this.c(this.clients.filter((x) => (f.includeArchived || !x.archived_at) && (!f.ownerId || x.owner_id === f.ownerId) && (!f.organizationId || x.organization_id === f.organizationId) && (!f.q || x.full_name.toLowerCase().includes(f.q.toLowerCase())))); }
   async getClient(id: string) { return this.c(this.clients.find((x) => x.id === id) ?? null); }
-  async insertClient(input: ClientInput & { created_by: string | null }) { const x: Client = { ...this.c(input), id: randomUUID(), tenant_id: "t", archived_at: null, created_at: this.at(), updated_at: this.at() }; this.clients.push(x); return this.c(x); }
+  async insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null }) { const x: Client = { owner_id: null, organization_id: null, ...this.c(input), id: randomUUID(), tenant_id: "t", archived_at: null, created_at: this.at(), updated_at: this.at() }; this.clients.push(x); return this.c(x); }
   async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null }) { const x = this.clients.find((y) => y.id === id)!; Object.assign(x, this.c(patch)); return this.c(x); }
 
-  async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean } = {}) { return this.c(this.returns.filter((r) => (f.includeArchived || !r.archived_at) && (!f.year || r.tax_year === f.year) && (!f.clientId || r.client_id === f.clientId))); }
+  async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) { return this.c(this.returns.filter((r) => (f.includeArchived || !r.archived_at) && (!f.assigneeId || r.assignee_id === f.assigneeId) && (!f.organizationId || r.organization_id === f.organizationId) && (!f.year || r.tax_year === f.year) && (!f.clientId || r.client_id === f.clientId))); }
   async getReturn(id: string) { return this.c(this.returns.find((r) => r.id === id) ?? null); }
-  async insertReturn(input: ReturnInput) {
+  async insertReturn(input: ReturnInput & { assignee_id?: string | null; organization_id?: string | null }) {
     if (input.kind !== "amendment" && this.returns.some((r) => !r.archived_at && r.client_id === input.client_id && r.tax_year === input.tax_year && r.kind === input.kind)) throw new Error('duplicate key value violates unique constraint "client_returns_one_per_year"');
-    const r: ClientReturn = { ...this.c(input), id: randomUUID(), tenant_id: "t", filed_on: null, archived_at: null, created_at: this.at(), updated_at: this.at() };
+    const r: ClientReturn = { assignee_id: null, organization_id: null, prep_status: "not_started", handed_off_at: null, ...this.c(input), id: randomUUID(), tenant_id: "t", filed_on: null, archived_at: null, created_at: this.at(), updated_at: this.at() };
     this.returns.push(r); return this.c(r);
   }
-  async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at">>) { const r = this.returns.find((x) => x.id === id)!; Object.assign(r, this.c(patch)); return this.c(r); }
+  async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>) { const r = this.returns.find((x) => x.id === id)!; Object.assign(r, this.c(patch)); return this.c(r); }
 
   async listDocs(clientId: string) { return this.c(this.docs.filter((d) => d.client_id === clientId && d.status === "stored")); }
   async getDoc(id: string) { return this.c(this.docs.find((d) => d.id === id) ?? null); }
