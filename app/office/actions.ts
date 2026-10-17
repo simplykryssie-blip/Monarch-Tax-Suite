@@ -12,7 +12,7 @@ import { platformClient } from "@/lib/supabase/service";
 import { acceptInvite, cancelInvite, invite, inviteEmail, inviteFor, setPermissions, setSuspended, type Actor } from "@/lib/office/service.ts";
 import { inviteLink, memberForInviteHash, memberForUser, mfaState, OFFICE_COOKIE, officeDeps, requireOffice, sendOfficeEmail } from "@/lib/office/server";
 import { documentDeps } from "@/lib/documents/server";
-import { practiceMemberForUser } from "@/lib/practice/server";
+import { archiveWispForUser } from "@/lib/practice/wisp-server";
 
 // Office area actions. Each one re-checks who is signed in, that two-step sign-in is done, and that they may act on
 // this office; the tenant-scoped client keeps everything inside their tenant.
@@ -165,8 +165,10 @@ export async function acceptSignedInAction(token: string): Promise<InviteResult>
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { ok: false, error: "Sign in first." };
-    if ((await memberForUser(user.id)) || (await practiceMemberForUser(user.id))) return { ok: false, error: "This account already belongs to an office or workspace. Sign in with a different email to accept this invite." };
+    if (await memberForUser(user.id)) return { ok: false, error: "This account already belongs to an office. Sign in with a different email to accept this invite." };
     await acceptInvite(officeDeps(row.tenant_id), row, user.id, user.email ?? "");
+    // Joining an ERO's office: the office's WISP now covers them, so their own is archived as history.
+    await archiveWispForUser(user.id).catch((e: unknown) => console.error(`office accept: archiving the PTIN WISP failed: ${sanitizeError(e, 160)}`));
   } catch (e) {
     unstable_rethrow(e);
     return { ok: false, error: failure(e) };

@@ -7,6 +7,8 @@ import { MONARCH_TENANT_ID } from "./tenants.ts";
 import { fulfilPaidPlan } from "./wisp/service.ts";
 import { wispDeps } from "./wisp/server";
 import { fulfilSmsSession } from "./sms/server";
+import { markPaid } from "./practice/wisp.ts";
+import { practiceWispPaymentDeps } from "./practice/wisp-server";
 
 // What a paid Stripe checkout does in this app, shared by the webhook and by pages that confirm a payment
 // themselves. Everything it runs is idempotent per payment intent, so the two never record or deliver twice.
@@ -18,6 +20,7 @@ export function stripeFulfillmentDeps(stripe: Stripe): FulfillmentDeps {
     services: { repo: serviceOrdersRepo(), tenantId: MONARCH_TENANT_ID },
     wisp: (input) => fulfilPaidPlan(wispDeps(MONARCH_TENANT_ID), input),
     sms: (session) => fulfilSmsSession(session),
+    practiceWisp: ({ sessionId, tenantId }) => markPaid(practiceWispPaymentDeps(tenantId), sessionId),
     async listCheckoutProductIds(sessionId) {
       const items = await stripe.checkout.sessions.listLineItems(sessionId, { limit: 100, expand: ["data.price.product"] });
       return items.data

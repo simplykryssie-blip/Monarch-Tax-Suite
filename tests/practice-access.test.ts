@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { hashToken } from "../lib/office/service.ts";
+import { buildPlan } from "../lib/wisp/plan.ts";
 import {
   acceptInvite, checkInvite, provisionWorkspace, reissueInvite, setSuspended, slugFor, withdrawInvite,
   type AuditInput, type PracticeMember, type PracticePlatform, type PracticeRepo,
@@ -112,5 +113,25 @@ describe("accepting, withdrawing, resending, suspending", () => {
     await setSuspended({ repo: t.repo }, "admin1", t.member.id, false);
     assert.equal(t.repo.members[0].status, "active");
     assert.deepEqual(t.repo.audit.map((a) => a.action).slice(-2), ["suspended", "reactivated"]);
+  });
+});
+
+describe("the sole-practitioner WISP wording", () => {
+  const answers = { firm_name: "Pat's Tax", owner_name: "Pat Example", num_users: "1", mfa_status: "MFA on all systems", encryption: "Encrypted in transit and at rest", training: "Annual training completed", ir_contact: "Pat Example, owner", ir_steps: "Contain, assess, notify", review_date: "October 2027" };
+  const text = (voice: "firm" | "sole") => buildPlan(answers, voice).flatMap((s) => [s.title, ...s.blocks.flatMap((b) => (b.kind === "list" ? b.items : b.kind === "table" ? b.rows.flat() : b.kind === "sign" ? b.lines : [b.text]))]).join("\n");
+  test("speaks of the Practice, makes the owner the Qualified Individual, and has no staff sign-off sheet", () => {
+    const sole = text("sole");
+    assert.doesNotMatch(sole, /\bthe Firm\b|\bFirm\b/);
+    assert.match(sole, /sole practice, and Pat Example is both its owner and its Qualified Individual/);
+    assert.match(sole, /Sole Practitioner and Qualified Individual/);
+    assert.doesNotMatch(sole, /Staff acknowledgment/);
+    assert.match(sole, /this Plan is updated first/);
+    assert.match(sole, /Security Training and Awareness/);
+    assert.equal(buildPlan(answers, "sole").length, buildPlan(answers, "firm").length);
+  });
+  test("the firm version is unchanged", () => {
+    const firm = text("firm");
+    assert.match(firm, /Staff acknowledgment/);
+    assert.match(firm, /designates Pat Example as the Qualified Individual/);
   });
 });
