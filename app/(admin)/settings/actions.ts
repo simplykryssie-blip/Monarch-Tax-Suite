@@ -21,6 +21,8 @@ import { cleanLinkHost, defaultLinkHost } from "@/lib/brands.ts";
 import { currentTenantId, MONARCH_TENANT_ID } from "@/lib/tenants.ts";
 import { advanceRegistration, chooseNumber, provision, saveSetupChoices, startCreditsCheckout, startSetupCheckout } from "@/lib/sms/service.ts";
 import { smsPayments, smsSetupDeps } from "@/lib/sms/server";
+import { businessDeps } from "@/lib/calendar/server";
+import { addClosure, editClosure, removeClosure, saveHours, setClosureEnabled } from "@/lib/calendar/service.ts";
 
 // Firm profile, sending domains and senders, and package attributes for the current tenant. Every action re-checks
 // administrator access; the tenant-scoped client means only this tenant's rows can be read or changed.
@@ -306,5 +308,49 @@ export async function checkSmsStatusAction() {
     const a = before?.provision_status === "error" || before?.provision_status === "provisioning" ? await provision(d) : await advanceRegistration(d);
     if (a?.provision_status === "error") throw new ValidationError(`Setup hasn't finished: ${a.provision_error ?? "unknown problem"}. It's tried again automatically every day.`);
     return a?.registration_status === "approved" ? "Approved: you can text clients now." : a?.registration_status === "rejected" ? `Carriers rejected the registration: ${a.registration_error ?? ""}` : "Checked. Carriers are still reviewing your registration.";
+  });
+}
+
+// ---------------------------------------------------------------- business hours and closures
+
+const HOURS_PAGE = "/settings/business-hours";
+
+export async function saveBusinessHoursAction(form: FormData) {
+  await act(HOURS_PAGE, async () => {
+    const week: Record<number, { open: string; close: string } | null> = {};
+    for (let d = 0; d < 7; d++) {
+      week[d] = form.get(`open_${d}`) === "on" ? { open: str(form, `from_${d}`), close: str(form, `to_${d}`) } : null;
+    }
+    await saveHours(businessDeps(), week);
+    return "Business hours saved.";
+  });
+}
+
+export async function addClosureAction(form: FormData) {
+  await act(HOURS_PAGE, async () => {
+    await addClosure(businessDeps(), { name: str(form, "name"), start: str(form, "start"), end: str(form, "end") || str(form, "start") });
+    return "Closure added.";
+  });
+}
+
+export async function editClosureAction(form: FormData) {
+  await act(HOURS_PAGE, async () => {
+    await editClosure(businessDeps(), str(form, "id"), { name: str(form, "name"), start: str(form, "start"), end: str(form, "end") || str(form, "start") });
+    return "Closure changed.";
+  });
+}
+
+export async function toggleClosureAction(form: FormData) {
+  await act(HOURS_PAGE, async () => {
+    const on = form.get("enabled") === "on";
+    await setClosureEnabled(businessDeps(), str(form, "id"), on);
+    return on ? "Closure switched on." : "Closure switched off.";
+  });
+}
+
+export async function removeClosureAction(form: FormData) {
+  await act(HOURS_PAGE, async () => {
+    await removeClosure(businessDeps(), str(form, "id"));
+    return "Closure removed.";
   });
 }
