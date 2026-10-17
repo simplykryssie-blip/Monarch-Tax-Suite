@@ -7,8 +7,8 @@ import type { Client, ClientReturn, Invoice } from "../lib/workspace/types.ts";
 // My Workspace: clients, the My Work board, invoices and the bank-statement matcher. Fake people only.
 
 const NOW = new Date("2026-10-15T12:00:00Z");
-const client = (id: string, name: string, last4: string | null = null): Client => ({ id, tenant_id: "t", full_name: name, email: null, phone: null, ssn_last4: last4, address: null, archived_at: null, created_by: null, created_at: "", updated_at: "" });
-const ret = (over: Partial<ClientReturn>): ClientReturn => ({ id: "r1", tenant_id: "t", client_id: "c1", tax_year: 2025, kind: "original", parent_id: null, stage_id: "intake", due_on: "2026-04-15", filed_on: null, notes: null, archived_at: null, created_at: "", updated_at: "", ...over });
+const client = (id: string, name: string, last4: string | null = null): Client => ({ id, tenant_id: "t", full_name: name, email: null, phone: null, ssn_last4: last4, address: null, archived_at: null, created_by: null, created_at: "", updated_at: "", owner_id: null, organization_id: null });
+const ret = (over: Partial<ClientReturn>): ClientReturn => ({ id: "r1", tenant_id: "t", client_id: "c1", tax_year: 2025, kind: "original", parent_id: null, stage_id: "intake", due_on: "2026-04-15", filed_on: null, notes: null, archived_at: null, created_at: "", updated_at: "", assignee_id: null, prep_status: "not_started", handed_off_at: null, organization_id: null, ...over });
 const inv = (over: Partial<Invoice>): Invoice => ({ id: "i1", tenant_id: "t", client_id: "c1", return_id: null, number: "INV-0001", tax_year: 2025, status: "sent", lines: defaultInvoiceLines(), total_cents: 22300, paid_cents: 0, issued_on: "2026-02-01", due_on: "2026-03-01", paid_on: null, notes: null, created_by: null, created_at: "", updated_at: "", ...over });
 
 describe("clients and returns", () => {

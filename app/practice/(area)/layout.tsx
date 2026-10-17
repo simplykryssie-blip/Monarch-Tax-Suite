@@ -16,6 +16,9 @@ export default async function PracticeArea({ children }: { children: React.React
       </header>
       <nav className="office-nav" aria-label="Workspace menu">
         <Link href="/practice">Home</Link>
+        <Link href="/practice/clients">My Clients</Link>
+        <Link href="/practice/prep">Prep work</Link>
+        <Link href="/practice/assigned">Assigned returns</Link>
       </nav>
       <main className="office-main">{children}</main>
     </div>

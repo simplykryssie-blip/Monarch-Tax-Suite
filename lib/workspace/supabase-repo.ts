@@ -12,27 +12,31 @@ const like = (v: string) => v.replace(/[\\%_,()*"':]/g, " ").trim();
 export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   constructor(private db: SupabaseClient) {}
 
-  async listClients(f: { q?: string; includeArchived?: boolean } = {}) {
+  async listClients(f: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string } = {}) {
     let q = this.db.from("clients").select("*").order("full_name").limit(2000);
     if (!f.includeArchived) q = q.is("archived_at", null);
+    if (f.ownerId) q = q.eq("owner_id", f.ownerId);
+    if (f.organizationId) q = q.eq("organization_id", f.organizationId);
     const term = f.q ? like(f.q) : "";
     if (term) q = q.or(["full_name", "email", "phone"].map((c) => `${c}.ilike.*${term}*`).join(","));
     return unwrap(await q) as Client[];
   }
   async getClient(id: string) { return unwrap(await this.db.from("clients").select("*").eq("id", id).maybeSingle()) as Client | null; }
-  async insertClient(input: ClientInput & { created_by: string | null }) { return unwrap(await this.db.from("clients").insert(input).select("*").single()) as Client; }
+  async insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null }) { return unwrap(await this.db.from("clients").insert(input).select("*").single()) as Client; }
   async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null }) { return unwrap(await this.db.from("clients").update(patch).eq("id", id).select("*").single()) as Client; }
 
-  async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean } = {}) {
+  async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) {
     let q = this.db.from("client_returns").select("*").order("created_at").limit(5000);
     if (!f.includeArchived) q = q.is("archived_at", null);
     if (f.year) q = q.eq("tax_year", f.year);
     if (f.clientId) q = q.eq("client_id", f.clientId);
+    if (f.assigneeId) q = q.eq("assignee_id", f.assigneeId);
+    if (f.organizationId) q = q.eq("organization_id", f.organizationId);
     return unwrap(await q) as ClientReturn[];
   }
   async getReturn(id: string) { return unwrap(await this.db.from("client_returns").select("*").eq("id", id).maybeSingle()) as ClientReturn | null; }
-  async insertReturn(input: ReturnInput) { return unwrap(await this.db.from("client_returns").insert(input).select("*").single()) as ClientReturn; }
-  async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at">>) { return unwrap(await this.db.from("client_returns").update(patch).eq("id", id).select("*").single()) as ClientReturn; }
+  async insertReturn(input: ReturnInput & { assignee_id?: string | null; organization_id?: string | null }) { return unwrap(await this.db.from("client_returns").insert(input).select("*").single()) as ClientReturn; }
+  async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>) { return unwrap(await this.db.from("client_returns").update(patch).eq("id", id).select("*").single()) as ClientReturn; }
 
   async listDocs(clientId: string) { return unwrap(await this.db.from("client_docs").select("*").eq("client_id", clientId).eq("status", "stored").order("created_at", { ascending: false })) as ClientDoc[]; }
   async getDoc(id: string) { return unwrap(await this.db.from("client_docs").select("*").eq("id", id).maybeSingle()) as ClientDoc | null; }

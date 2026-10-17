@@ -24,9 +24,9 @@ export type Feature = {
 
 export const FEATURES: Feature[] = [
   { key: "office.home", label: "Home", level: "preparer", status: "live", href: "/office" },
-  { key: "clients.intake", label: "Client intake", level: "preparer", status: "soon", note: "Arrives with the Return Pipeline." },
-  { key: "returns.prep", label: "Return preparation", level: "preparer", status: "soon", note: "Arrives with the Return Pipeline." },
-  { key: "returns.assigned", label: "My assigned returns", level: "preparer", status: "soon", note: "Arrives with the Return Pipeline." },
+  { key: "clients.intake", label: "Client intake", level: "preparer", status: "live", href: "/office/clients" },
+  { key: "returns.prep", label: "Return preparation", level: "preparer", status: "live", href: "/office/prep" },
+  { key: "returns.assigned", label: "My assigned returns", level: "preparer", status: "live", href: "/office/assigned" },
   { key: "compliance.home", label: "Compliance", level: "preparer", status: "live", href: "/office/compliance", note: "WISP acknowledgment, PTIN renewal, reporting an incident." },
   { key: "office.dashboard", label: "Office dashboard", level: "ero", status: "live", href: "/office" },
   { key: "fees.view", label: "Fees & statement", level: "ero", status: "live", href: "/office/statement" },

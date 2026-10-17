@@ -16,8 +16,9 @@ const clean = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\
 
 // ---------------------------------------------------------------- clients, returns, tasks, notes, messages
 
-export async function addClient(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string): Promise<Client> {
-  return repo.insertClient({ ...checkClient(raw), created_by: actorId });
+/** The preparer who adds a client owns them; `organizationId` is the office whose team entered them (none for the account's own). */
+export async function addClient(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string, organizationId: string | null = null): Promise<Client> {
+  return repo.insertClient({ ...checkClient(raw), created_by: actorId, owner_id: actorId, organization_id: organizationId });
 }
 
 export async function saveClient(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>): Promise<Client> {
@@ -25,13 +26,15 @@ export async function saveClient(repo: WorkspaceRepo, id: string, raw: Record<st
   return repo.updateClient(id, checkClient(raw));
 }
 
-export async function addReturn(repo: WorkspaceRepo, raw: Record<string, unknown>, firstStage: string, now = new Date()): Promise<ClientReturn> {
+/** A new return is worked by `assigneeId` (when given) and belongs to the client's office. */
+export async function addReturn(repo: WorkspaceRepo, raw: Record<string, unknown>, firstStage: string, now = new Date(), assigneeId: string | null = null): Promise<ClientReturn> {
   const clientId = uuid(raw.client_id, "That client");
-  if (!(await repo.getClient(clientId))) throw new ValidationError("That client wasn't found.");
+  const client = await repo.getClient(clientId);
+  if (!client) throw new ValidationError("That client wasn't found.");
   const existing = await repo.listReturns({ clientId, includeArchived: false });
   const r = checkReturn({ ...raw, client_id: clientId }, existing, now);
   try {
-    return await repo.insertReturn({ ...r, stage_id: firstStage });
+    return await repo.insertReturn({ ...r, stage_id: firstStage, assignee_id: assigneeId ?? client.owner_id, organization_id: client.organization_id });
   } catch (e) {
     if (/client_returns_one_per_year|duplicate key/i.test(e instanceof Error ? e.message : "")) throw new ValidationError("This client already has that return for that year.");
     throw e;
