@@ -3,6 +3,7 @@ import { automationDeps } from "@/lib/automation/server";
 import { runDue } from "@/lib/automation/engine.ts";
 import { appointmentDeps } from "@/lib/appointments/server";
 import { sendDueReminders } from "@/lib/appointments/service.ts";
+import { runTriggerSweeps } from "@/lib/automation/emit";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { rotate, runTick, type TickJob } from "@/lib/scheduler/tick.ts";
 import { platformClient } from "@/lib/supabase/service";
@@ -16,6 +17,7 @@ const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(
 /** The jobs every tenant gets each tick. Resumed workflow steps join these in Phase 5b. */
 const JOBS: TickJob[] = [
   { name: "workflowsDue", run: async (tenantId) => (await runDue(automationDeps(tenantId), 25)).processed },
+  { name: "triggerSweeps", run: (tenantId) => runTriggerSweeps(tenantId) },
   { name: "appointmentReminders", run: async (tenantId) => { const r = await sendDueReminders(appointmentDeps(tenantId)); return r.sent + r.failed + r.skipped; } },
 ];
 

@@ -3,11 +3,12 @@ import { Badge, Flash, PageTitle, when } from "@/components/admin/ui";
 import { ArchivePanel } from "@/components/admin/archive";
 import { EVENTS } from "@/lib/automation/events.ts";
 import { automationDeps, workflowCatalog } from "@/lib/automation/server";
-import type { Action, Condition } from "@/lib/automation/types.ts";
+import { stepsOf } from "@/lib/automation/steps.ts";
+import type { Condition, Step } from "@/lib/automation/types.ts";
+import { OffsetField, StepBuilder } from "@/components/automation/step-builder";
 import { commerceRepo } from "@/lib/admin";
 import { saveWorkflowAction, testWorkflowAction, testWorkflowWithClientAction, workflowStatusAction } from "../../actions";
 
-const SLOTS = [0, 1, 2, 3, 4];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function WorkflowEditor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -20,7 +21,7 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
   const activeDocs = catalog.documents.filter((d) => d.status === "active");
   if (!isNew && !wf) notFound();
   const conditions: Partial<Condition>[] = wf?.conditions ?? [];
-  const actions: Partial<Action>[] = wf?.actions ?? [{ type: "send_email" }];
+  const initialSteps: Step[] = wf ? stepsOf(wf) : [{ type: "send_email", template_id: "", to: "customer", include_setup_link: false }];
   const history = wf ? await deps.repo.listExecutions({ workflow_id: wf.id, limit: 10 }) : [];
   const clients = wf ? (await commerceRepo().listCustomers().catch(() => [])).slice().sort((a, b) => (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email)).slice(0, 500) : [];
   return (
@@ -59,26 +60,16 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
           )}
           {catalog.attributes.length > 0 && <small className="monarch-muted">Package attributes, for any trigger with an order: {catalog.attributes.map((a) => <span key={a.key}><code>product.{a.key}</code>{a.kind === "choice" ? ` (${a.options.join(", ")})` : ""} </span>)}</small>}
         </fieldset>
-        <fieldset className="is-wide"><legend>Steps, in order</legend>
-          {SLOTS.map((i) => {
-            const a = actions[i] as (Partial<Action> & { template_id?: string; to?: string; include_setup_link?: boolean; note?: string; document_id?: string; sender_id?: string | null; message?: string; link_days?: number; reminder_days?: number | null }) | undefined;
-            return (
-              <span key={i} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <b>{i + 1}.</b>
-                <select name={`act_type_${i}`} defaultValue={a?.type ?? ""}><option value="">(none)</option><option value="send_email">Send email</option><option value="send_document">Send a document</option><option value="request_signature">Request a signature</option><option value="record_note">Record a note</option></select>
-                <select name={`act_template_${i}`} defaultValue={a?.template_id ?? ""}><option value="">Template…</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.active ? "" : " (off)"}</option>)}</select>
-                <select name={`act_to_${i}`} defaultValue={a?.to ?? "customer"}><option value="customer">to the customer</option><option value="support">to Monarch support</option></select>
-                <label className="monarch-check"><input type="checkbox" name={`act_setup_${i}`} defaultChecked={a?.include_setup_link} /> include setup link</label>
-                <input name={`act_note_${i}`} placeholder="note (for Record a note)" defaultValue={a?.note} maxLength={300} />
-                <select name={`act_document_${i}`} defaultValue={a?.document_id ?? ""} aria-label="Document"><option value="">Document…</option>{activeDocs.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.file_type.toUpperCase()})</option>)}</select>
-                <select name={`act_sender_${i}`} defaultValue={a?.sender_id ?? ""} aria-label="Send from"><option value="">from: default address</option>{catalog.senders.map((s) => <option key={s.id} value={s.id}>from: {s.from_name} &lt;{s.address}&gt;</option>)}</select>
-                <input name={`act_message_${i}`} placeholder="message to include (documents)" defaultValue={a?.message} maxLength={1000} />
-                <label>link days <input name={`act_link_days_${i}`} type="number" min={1} max={60} defaultValue={a?.link_days ?? 14} style={{ width: 70 }} /></label>
-                <label>remind every <input name={`act_reminder_${i}`} type="number" min={1} max={30} defaultValue={a?.reminder_days ?? ""} style={{ width: 60 }} /> days (signatures)</label>
-              </span>
-            );
-          })}
-        </fieldset>
+        <OffsetField initialTrigger={wf?.trigger_event ?? ""} initial={typeof wf?.trigger_config?.offset_days === "number" ? wf.trigger_config.offset_days : null} />
+        <StepBuilder
+          initial={initialSteps}
+          initialTrigger={wf?.trigger_event ?? ""}
+          catalog={{
+            templates: templates.map((t) => ({ id: t.id, name: t.name, active: t.active })),
+            documents: activeDocs.map((d) => ({ id: d.id, name: d.name, file_type: d.file_type })),
+            senders: catalog.senders.map((x) => ({ id: x.id, label: `${x.from_name} <${x.address}>` })),
+          }}
+        />
         <label>Attempts before giving up (1–8)<input name="max_attempts" type="number" min={1} max={8} defaultValue={wf?.max_attempts ?? 4} /></label>
         <label>Don&apos;t repeat for the same license within (hours)<input name="cooldown_hours" type="number" min={0} max={720} defaultValue={wf?.cooldown_hours ?? 0} /></label>
         <div className="is-wide"><button className="monarch-primary">{wf ? "Save changes" : "Create workflow"}</button></div>

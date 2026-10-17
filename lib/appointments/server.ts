@@ -76,6 +76,6 @@ export function appointmentDeps(tenantId: string = currentTenantId()): Appointme
     firmName: async () => (await docs.getProfile().catch(() => null))?.display_name ?? "Our office",
     tokenFor: (id) => secrets().hashIdentifier("appointment-link", `${tenantId}:${id}`),
     manageUrl: async (token) => `${await origin()}/book/manage/${token}`,
-    emit: (type, a) => safeEmit({ type, key: `${type}:${a.id}:${a.updated_at}`, data: { appointment_id: a.id, source: a.source } }),
+    emit: (type, a) => safeEmit({ type, key: `${type}:${a.id}:${a.updated_at}`, subject: { type: "appointment", id: a.id }, data: { source: a.source } }),
   };
 }

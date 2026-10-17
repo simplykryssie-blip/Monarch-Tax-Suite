@@ -18,7 +18,7 @@ export type HistoryRow = {
   isTest: boolean;
 };
 
-const STEP_NAME: Record<string, string> = { send_email: "Send email", send_document: "Send a document", request_signature: "Request a signature", record_note: "Record a note" };
+const STEP_NAME: Record<string, string> = { send_email: "Send email", send_document: "Send a document", request_signature: "Request a signature", record_note: "Record a note", wait: "Wait", branch: "If / else", create_task: "Create a task", add_tag: "Add a tag", remove_tag: "Remove a tag", update_contact: "Update the lead", send_text: "Send a text" };
 export const stepName = (type: string) => STEP_NAME[type] ?? type.replace(/_/g, " ");
 
 export function historyRows(input: {
@@ -35,12 +35,12 @@ export function historyRows(input: {
     const person = ev?.customer_id ? input.people.get(ev.customer_id) : undefined;
     const who = ev?.data.test_client === true ? `${person ?? "A client"} (test)` : e.is_test ? "Test run (sample data)" : person ?? (ev ? "System" : "—");
     const workflow = input.workflows.get(e.workflow_id) ?? "Removed workflow";
-    const waiting = e.status === "queued" || e.status === "retrying" || e.status === "running";
+    const waiting = e.status === "queued" || e.status === "retrying" || e.status === "running" || e.status === "waiting";
     const failedHere = e.status === "failed";
     const log: ActionResult[] = [...e.action_log].sort((a, b) => a.index - b.index);
     const lines: { step: string; result: HistoryRow["result"]; detail: string }[] = log.map((l) => ({
-      step: `${l.index + 1}. ${stepName(l.type)}`,
-      result: l.status === "ok" ? "completed" : l.status === "failed" ? "error" : "skipped",
+      step: `${l.path ?? l.index + 1}. ${stepName(l.type)}`,
+      result: l.type === "wait" && l.status === "ok" && e.status === "waiting" && l.index === (e.pc ?? 0) - 1 ? "waiting" : l.status === "ok" ? "completed" : l.status === "failed" ? "error" : "skipped",
       detail: l.detail,
     }));
     if (!lines.length) {

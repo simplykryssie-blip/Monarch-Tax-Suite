@@ -1,6 +1,7 @@
 "use server";
 
 import { deletedNotice } from "@/lib/storage/window.ts";
+import { tenantClient } from "@/lib/supabase/service";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
@@ -54,19 +55,14 @@ async function mutate(back: string, fn: (admin: { id: string; email: string }) =
 
 function workflowFromForm(form: FormData): WorkflowFormInput {
   const conditions = [0, 1, 2].map((i) => ({ field: str(form, `cond_field_${i}`), op: str(form, `cond_op_${i}`), value: str(form, `cond_value_${i}`) }));
-  const actions = [0, 1, 2, 3, 4].map((i) => ({
-    type: str(form, `act_type_${i}`),
-    template_id: str(form, `act_template_${i}`),
-    to: str(form, `act_to_${i}`),
-    include_setup_link: form.get(`act_setup_${i}`) === "on",
-    note: str(form, `act_note_${i}`),
-    document_id: str(form, `act_document_${i}`),
-    sender_id: str(form, `act_sender_${i}`),
-    message: str(form, `act_message_${i}`),
-    link_days: str(form, `act_link_days_${i}`),
-    reminder_days: str(form, `act_reminder_${i}`),
-  })).filter((a) => ["send_email", "record_note", "send_document", "request_signature"].includes(a.type));
-  return { name: str(form, "name"), description: str(form, "description"), trigger_event: str(form, "trigger_event"), conditions, actions, max_attempts: str(form, "max_attempts") || 4, cooldown_hours: str(form, "cooldown_hours") || 0 };
+  // The builder sends the whole step tree as one piece of JSON; it is checked again by the validator.
+  let steps: unknown = undefined;
+  const raw = str(form, "steps_json");
+  if (raw) {
+    if (raw.length > 200_000) throw new ValidationError("This workflow is too large to save.");
+    try { steps = JSON.parse(raw); } catch { throw new ValidationError("The steps could not be read. Reload the page and try again."); }
+  }
+  return { name: str(form, "name"), description: str(form, "description"), trigger_event: str(form, "trigger_event"), offset_days: str(form, "offset_days"), conditions, steps, max_attempts: str(form, "max_attempts") || 4, cooldown_hours: str(form, "cooldown_hours") || 0 };
 }
 
 export async function saveWorkflowAction(form: FormData) {
@@ -280,5 +276,21 @@ export async function deleteLibraryImageAction(form: FormData) {
     if (uses.length) throw new ValidationError(`This picture is still shown by ${uses.join(", ")}. Choose a different picture there first, then delete it.`);
     await deleteLibraryImage(imagesRepo(), imageStore(), id(form));
     return { notice: deletedNotice("Picture") };
+  });
+}
+
+export async function completeTaskAction(form: FormData) {
+  await mutate("/automation/tasks", async () => {
+    const { error } = await tenantClient(currentTenantId()).from("automation_tasks").update({ done_at: new Date().toISOString() }).eq("id", str(form, "id")).is("done_at", null);
+    if (error) throw new Error(error.message);
+    return { notice: "Task marked done." };
+  });
+}
+
+export async function reopenTaskAction(form: FormData) {
+  await mutate("/automation/tasks?show=all", async () => {
+    const { error } = await tenantClient(currentTenantId()).from("automation_tasks").update({ done_at: null }).eq("id", str(form, "id"));
+    if (error) throw new Error(error.message);
+    return { notice: "Task reopened." };
   });
 }
