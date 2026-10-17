@@ -6,20 +6,24 @@ import { startMfaEnrollAction, verifyMfaAction } from "@/app/office/actions";
 // Two-step sign-in with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…). Required
 // for every account in the office area, as the FTC Safeguards Rule requires for systems that reach client data.
 
-export function MfaSetup({ hasFactor }: { hasFactor: boolean }) {
+type MfaActions = { start: typeof startMfaEnrollAction; verify: typeof verifyMfaAction };
+
+/** `actions` lets another area use the same screen; its verify step decides where the person goes next. */
+export function MfaSetup({ hasFactor, actions }: { hasFactor: boolean; actions?: MfaActions }) {
+  const act = actions ?? { start: startMfaEnrollAction, verify: verifyMfaAction };
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [enroll, setEnroll] = useState<{ factorId: string; qr: string; secret: string } | null>(null);
 
   const begin = () => start(async () => {
     setError(null);
-    const r = await startMfaEnrollAction();
+    const r = await act.start();
     if (!r.ok) setError(r.error);
     else setEnroll({ factorId: r.factorId, qr: r.qr, secret: r.secret });
   });
   const verify = (form: FormData) => start(async () => {
     setError(null);
-    const r = await verifyMfaAction({ factorId: enroll?.factorId, code: String(form.get("code") ?? "") });
+    const r = await act.verify({ factorId: enroll?.factorId, code: String(form.get("code") ?? "") });
     if (r && !r.ok) setError(r.error);
   });
 

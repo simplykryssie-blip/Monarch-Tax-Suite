@@ -5,7 +5,11 @@ import { acceptNewAccountAction, acceptSignedInAction } from "@/app/office/actio
 
 // Accepting an office invite: choose a password (a new account), or accept with the account already signed in.
 
-export function AcceptInvite({ token, email, signedInAs }: { token: string; email: string; signedInAs: string | null }) {
+type InviteActions = { newAccount: typeof acceptNewAccountAction; signedIn: typeof acceptSignedInAction };
+
+/** `actions` lets another area (the PTIN holder's workspace) use the same screen with its own accept steps. */
+export function AcceptInvite({ token, email, signedInAs, actions }: { token: string; email: string; signedInAs: string | null; actions?: InviteActions }) {
+  const accept = actions ?? { newAccount: acceptNewAccountAction, signedIn: acceptSignedInAction };
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -14,7 +18,7 @@ export function AcceptInvite({ token, email, signedInAs }: { token: string; emai
     return (
       <div className="office-mfa">
         {matches ? (
-          <button type="button" className="monarch-primary" disabled={pending} onClick={() => start(async () => { const r = await acceptSignedInAction(token); if (r && !r.ok) setError(r.error); })}>{pending ? "Accepting…" : `Accept as ${signedInAs}`}</button>
+          <button type="button" className="monarch-primary" disabled={pending} onClick={() => start(async () => { const r = await accept.signedIn(token); if (r && !r.ok) setError(r.error); })}>{pending ? "Accepting…" : `Accept as ${signedInAs}`}</button>
         ) : (
           <p>You&apos;re signed in as <b>{signedInAs}</b>, but this invite is for <b>{email}</b>. Sign out, then open this link again.</p>
         )}
@@ -26,7 +30,7 @@ export function AcceptInvite({ token, email, signedInAs }: { token: string; emai
     setError(null);
     const p = String(form.get("password") ?? "");
     if (p !== String(form.get("confirm") ?? "")) { setError("The two passwords don't match."); return; }
-    const r = await acceptNewAccountAction(token, p);
+    const r = await accept.newAccount(token, p);
     if (r && !r.ok) setError(r.error);
   });
   return (

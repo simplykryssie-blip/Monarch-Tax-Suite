@@ -28,6 +28,7 @@ export const NAV: Entry[] = [
           { label: "Renewals", icon: "bell", href: "/efin/renewals" },
           { label: "Fees & statements", icon: "reports", href: "/fees" },
           { label: "Office access", icon: "customers", href: "/offices" },
+          { label: "PTIN workspaces", icon: "customers", href: "/offices/holders" },
           { label: "Compliance", icon: "shield", href: "/compliance" },
         ],
       },

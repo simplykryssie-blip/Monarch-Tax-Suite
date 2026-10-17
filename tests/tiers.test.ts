@@ -31,7 +31,7 @@ describe("tiers", () => {
     const sb = NAV[0] && isBranch(NAV[0]) ? NAV[0].items.find((e) => e.label === "My Service Bureau") : undefined;
     assert.ok(sb && isBranch(sb));
     assert.equal(sb.href, undefined);
-    assert.deepEqual(sb.items.map((i) => i.label), ["Dashboard", "EROs & EFINs", "Renewals", "Fees & statements", "Office access", "Compliance"]);
+    assert.deepEqual(sb.items.map((i) => i.label), ["Dashboard", "EROs & EFINs", "Renewals", "Fees & statements", "Office access", "PTIN workspaces", "Compliance"]);
     assert.equal(sb.items[0].href, "/efin");
   });
 

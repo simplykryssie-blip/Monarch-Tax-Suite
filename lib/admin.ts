@@ -81,6 +81,9 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
     if (user && !setupMissing) {
       const { data } = await platformClient("office_member").from("office_members").select("id").eq("user_id", user.id).maybeSingle();
       if (data) redirect("/office");
+      // An independent PTIN holder works in their own workspace.
+      const { data: holder } = await platformClient("practice_member").from("practice_members").select("id").eq("user_id", user.id).maybeSingle();
+      if (holder) redirect("/practice");
     }
     const message = setupMissing
       ? "Administrator access is not set up yet. Apply the Monarch commerce database migration."
