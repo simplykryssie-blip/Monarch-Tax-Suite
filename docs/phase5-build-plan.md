@@ -8,7 +8,7 @@ Reads `docs/phase5-spec.md` against the code as it is on `claude/tax-crm-saas-pl
 |---|---|---|
 | 1 | Vercel plan is Pro. | A 5-minute cron is fine (5.0). |
 | 2 | Waits in minutes, hours **and days**; every wait/schedule has a **business vs calendar** toggle. | New office **business calendar** (5.0, see below). Wait steps, appointment reminder offsets and date triggers all take `{amount, unit, mode}`. |
-| 3 | Staff generate an invoice from Billing and **push it to the client's portal**. | Portal v1 = invoice display + push. Online payment still waits for the Stripe Connect phase **unless the owner says otherwise** (open question A). |
+| 3 | Staff generate an invoice from Billing and **push it to the client's portal**, with a payment link to Stripe Checkout. | Online payment is in this phase, through Stripe Connect (section 0b, A). |
 | 4 | Booking matches by email across customers, leads and clients; updates whichever exist; creates a lead if none. No choice on the form. | One `matchPerson(email)` used by booking, forms and workflows (5.0). Updates every match, not just the first. |
 | 5 | Site addresses are `<office>.monarchtaxsuite.com`; the main office uses `www.monarchtaxsuite.com`. | Each office subdomain is added to the Vercel project by API (needs a Vercel API token and project id as settings) with one wildcard CNAME at the DNS host. Details and one decision below (open question B). |
 | 6 | 8879 signing reuses the signing engine; no counsel review. | As planned. |
@@ -35,6 +35,34 @@ B. **Wildcard DNS.** To serve `<office>.monarchtaxsuite.com` we need one wildcar
 C. **8821 and the full SSN.** An 8821 needs the taxpayer's full SSN/ITIN. Options: **(1)** the client types it into the form in the portal when signing (not stored by us anywhere except inside the signed PDF in the office's private storage); **(2)** we start storing full SSNs, encrypted (a bigger data-protection change). *Recommend (1).* Also: does the office's CAF number need to appear (it isn't stored today)? I'd add it as an office setting.
 
 D. **Business calendar defaults.** Mon to Fri, 9 to 17, no holidays preloaded, editable per office: OK?
+
+## 0b. Owner answers to A to D (2026-10-17) and what they change
+
+**A. Online invoice payment is in Phase 5, through Stripe Checkout.** The money routing changes my assessment. The store sells the platform's *own* products, so its payments belong to the platform and go to the platform's Stripe account. An invoice is the *office's* money. If invoice payments went through the platform's Stripe account, the platform would be collecting and holding other businesses' funds and paying them out: that is what Stripe Connect exists to avoid (Stripe's terms require it for platforms that take payments on behalf of others), and it would make the platform responsible for payouts, refunds and chargebacks that aren't its own. So the plan is **Stripe Connect, Standard accounts, direct charges**: each office connects its own Stripe account (Settings → Payments); the invoice's payment link opens a Checkout Session created *on the office's account*; the money lands in the office's Stripe account and never touches the platform's. The platform takes no fee unless the owner decides to (open question E). Pieces:
+- Settings → Payments: connect, status (onboarding incomplete, charges enabled), disconnect.
+- "Send to portal" creates the payment link only if the office's account can take charges; otherwise the invoice is pushed without a pay button and says so to staff.
+- A Connect webhook endpoint with its own signing secret; a paid Checkout marks the invoice paid (amount checked against the invoice, once only, the existing `recordPayment`); failed or expired sessions leave it unpaid.
+- Refunds and disputes are handled by the office in its own Stripe dashboard; the invoice shows the status the webhook reports.
+- Test mode on the Preview with a test connected account. The owner has to **enable Connect on the platform's Stripe account** (Stripe dashboard → Connect → Get started, platform profile) before any of this can be tested; production use needs Stripe's review of that profile.
+- Bank-CSV reconciliation stays (manual review) for offices that are paid some other way.
+- This is its own sub-piece, **5c-pay**, built last in 5c, so the rest of the portal can ship and be checked without waiting on Stripe's review.
+
+**B. Wildcard domain: approved.** Default `<office>.monarchtaxsuite.com`; `www.<office>.monarchtaxsuite.com` redirects to it. The owner adds the GoDaddy wildcard CNAME (or signs in so I can see what is needed); the Vercel API token and project id are added as settings.
+
+**C. Full SSN stored, encrypted, reveal on demand.** Design:
+- **Storage:** `clients.ssn_encrypted` (AES-256-GCM, authenticated with the tenant and client ids so a copied value can't be moved to another client). `ssn_last4` stays as it is for matching bank deposits. Nothing returns the full number to a page by default.
+- **Keys:** the current master key (`MONARCH_ENCRYPTION_KEY`) is documented as one that must not be rotated once data is saved under it. SSNs raise the stakes, so 5.0 adds **key versions**: each ciphertext records which key sealed it, a new key can be added and old values re-sealed in the background, and each tenant gets its own data key wrapped by the master key (so one tenant's key can be rotated or destroyed alone). The key stays in the host's secrets, never in the database.
+- **Reveal on demand:** a button on the client's page, for staff whose role allows it (the account owner; in an office, the ERO, and a preparer only if the ERO grants a new "view full SSN" permission). It asks for the person's password again (step-up), shows the number for 30 seconds, and writes who/when/which client to the audit history (never the number). Rate-limited. The number is never put in a URL, a log, an email, an automation event or a CSV; the Phase 4 handoff file still carries only the last four.
+- **Entry and use:** entered on the client form (masked field, format-checked: 9 digits, ITIN range allowed); used server-side only to fill documents such as the 8821.
+- **Deletion:** removed with the client record (the 24-hour window applies).
+- **Known limit:** a filled, signed 8821 is a PDF that contains the SSN in the clear, in the office's private storage. That is inherent to the form. I'd treat private storage plus the audit trail as the control and flag it in the product's documentation; app-level encryption of stored PDFs is a possible later step.
+- **Review:** this is the first place the platform holds full SSNs, so a security review of the change is part of its exit gate, in addition to the isolation script.
+- **CAF number:** a field in the office's settings, used by the 8821.
+
+**D. Business calendar: approved, with federal holidays preloaded.** Each office gets its own rows in a `business_closures` table (`tenant_id`, name, start date, end date, `source` federal or custom, `enabled`). The eleven US federal holidays are generated for the current year and the next two when the office first opens the setting, and a yearly sweep adds the next; a weekend holiday is observed on the Friday before (Saturday) or the Monday after (Sunday). Each can be switched off, and the **dates are editable as a range**, so Christmas can be made December 23 to 26. Offices add their own closures on top. Because the rows are the office's own, editing one never affects another office.
+
+### New open question
+E. **Platform fee on invoice payments.** With Connect the platform can take a percentage or flat fee on each payment, or none. Default in this plan: none. Is that right?
 
 ## 1. What the code says
 
@@ -75,7 +103,7 @@ Each has my recommendation. The first four change the plan; the rest are details
 
 **5b Automations.** Step tree with branches and waits, suspended executions with a resume time, cap 25, depth 3; new triggers whose sources exist after 5a (appointments), plus invoice paid/overdue, tag changes, pipeline stage changed, date-based; new actions create task, add/remove tag, update contact, send text (tenant credits). Test mode extended to branches and waits (waits skipped, sends not made). Per-tenant "already installed" guard.
 
-**5c Client portal.** `portal_members` (tenant, client, auth user; many-to-many so one person can be a client of several offices), invite by email, branded sign-in on the office's host, a portal-only area that staff pages and portal pages can never reach each other from. Features in order: upload documents (private per-client storage, limits and type checks), return status (from `client_returns`), messages (the existing `client_messages`), invoices (staff push an invoice from Billing; the client sees it and its status; online payment per open question A), signing (existing engine; 8879 and Form 8821 as library documents, the 8821 with a send-time prompt for the reason).
+**5c Client portal.** `portal_members` (tenant, client, auth user; many-to-many so one person can be a client of several offices), invite by email, branded sign-in on the office's host, a portal-only area that staff pages and portal pages can never reach each other from. Features in order: upload documents (private per-client storage, limits and type checks), return status (from `client_returns`), messages (the existing `client_messages`), invoices (staff push an invoice from Billing; the client sees it and its status; the pay button is 5c-pay, Stripe Connect), signing (existing engine; 8879 and Form 8821 as library documents, the 8821 with a send-time prompt for the reason).
 
 **5d Website builder.** `sites`, `site_pages`, `site_page_versions` (draft/published), `funnels`, `funnel_steps`, `site_assets`, `site_domains`, `site_events`. Editor, publish, funnel step views and conversions, forms and booking embeds, domain flow per Q5.
 
