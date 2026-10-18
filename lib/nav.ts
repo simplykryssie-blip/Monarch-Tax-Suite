@@ -53,6 +53,7 @@ export const NAV: Entry[] = [
     icon: "automation",
     section: "operations",
     items: [
+      { label: "Calendar", icon: "calendar", href: "/calendar" },
       { label: "Automation", icon: "automation", href: "/automation/workflows" },
       { label: "Forms", icon: "checklist", href: "/forms" },
     ],
