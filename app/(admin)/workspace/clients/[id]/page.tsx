@@ -217,7 +217,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                         <form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value={back} />
                           {i.status !== "paid" && i.status !== "void" && <><input name="amount" placeholder="Amount received" aria-label="Amount received" size={10} defaultValue={(balance(i) / 100).toFixed(2)} /><button name="do" value="pay" className="monarch-link">Record payment</button></>}
-                          {i.status === "draft" && <button name="do" value="send" className="monarch-link">Mark sent</button>}
+                          {i.status === "draft" && <button name="do" value="send" className="monarch-link">Send to client</button>}
                           {i.status !== "void" && i.paid_cents === 0 && <button name="do" value="void" className="monarch-link is-danger">Void</button>}
                         </form>
                       </td>

@@ -13,6 +13,11 @@ import { emitInvoicePaid, emitReturnStage } from "@/lib/automation/emit";
 import { addClient, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveClient, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
+import { loadBrand } from "@/lib/branding/server";
+import { invoiceNoticeEmail } from "@/lib/portal/invoices.ts";
+import { portalLink, portalMemberRepo, sendPortalEmail } from "@/lib/portal/server";
+import { currentTenantId } from "@/lib/tenants.ts";
+import type { Invoice } from "@/lib/workspace/types";
 
 // My Workspace actions. Each re-checks administrator access and acts only on the current tenant's rows.
 
@@ -39,6 +44,17 @@ async function act(back: string, fn: (adminId: string) => Promise<{ to?: string;
   }
   revalidatePath("/workspace", "layout");
   redirect(target);
+}
+
+/** Emails the client that an invoice is in their portal, when they have portal access. Returns whether an email went out. */
+async function tellPortalClient(invoice: Invoice): Promise<boolean> {
+  const tenantId = currentTenantId();
+  const member = await portalMemberRepo(tenantId).getForClient(invoice.client_id);
+  if (!member || member.status !== "active") return false;
+  const office = (await loadBrand(tenantId)).name;
+  const link = await portalLink("/invoices");
+  const problem = await sendPortalEmail(tenantId, member.email, invoiceNoticeEmail({ office, name: member.full_name, number: invoice.number, totalCents: invoice.total_cents, link }));
+  return problem === null;
 }
 
 const clientPage = (id: string, tab = "overview") => `/workspace/clients/${id}?tab=${tab}`;
@@ -205,7 +221,12 @@ export async function invoiceStatusAction(form: FormData) {
   const back = str(form, "back").startsWith("/workspace") ? str(form, "back") : "/workspace/billing";
   await act(back, async () => {
     const repo = workspaceRepo();
-    if (str(form, "do") === "send") { const i = await sendInvoice(repo, str(form, "id")); return { notice: `${i.number} marked sent.` }; }
+    if (str(form, "do") === "send") {
+      const i = await sendInvoice(repo, str(form, "id"));
+      // Sending shows the invoice in the client's portal. If they have portal access, tell them by email.
+      const told = await tellPortalClient(i).catch(() => false);
+      return { notice: `${i.number} sent to the client's portal${told ? " and they were emailed" : ""}.` };
+    }
     if (str(form, "do") === "void") { const i = await voidInvoice(repo, str(form, "id")); return { notice: `${i.number} voided.` }; }
     const i = await recordPayment(repo, str(form, "id"), str(form, "amount"), str(form, "paid_on"));
     await emitInvoicePaid(i.id);

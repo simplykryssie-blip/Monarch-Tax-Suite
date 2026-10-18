@@ -24,6 +24,7 @@ export default async function PortalArea({ children }: { children: React.ReactNo
       <nav className="office-nav" aria-label="Portal menu">
         <Link href="/portal">Home</Link>
         <Link href="/portal/documents">Documents</Link>
+        <Link href="/portal/invoices">Invoices</Link>
         <Link href="/portal/sign">Sign</Link>
         <Link href="/portal/messages">Messages</Link>
         <Link href="/portal/security">Security</Link>

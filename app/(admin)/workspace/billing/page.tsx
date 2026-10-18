@@ -57,7 +57,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                       <td>
                         <form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={i.id} />
-                          {i.status === "draft" && <button name="do" value="send" className="monarch-link">Mark sent</button>}
+                          {i.status === "draft" && <button name="do" value="send" className="monarch-link">Send to client</button>}
                           {i.status !== "paid" && i.status !== "void" && <><input name="amount" aria-label="Amount received" size={9} defaultValue={(balance(i) / 100).toFixed(2)} /><button name="do" value="pay" className="monarch-link">Record payment</button></>}
                         </form>
                       </td>

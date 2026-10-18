@@ -71,7 +71,9 @@ export async function requirePortal(): Promise<PortalContext> {
 
 export const isOfficeChoice = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
 
-export async function portalInviteLink(token: string) {
-  return `${(await appOrigin()).replace(/\/$/, "")}/portal/invite/${token}`;
+/** A full address inside the portal, on the deployment's public origin. */
+export async function portalLink(path: string) {
+  return `${(await appOrigin()).replace(/\/$/, "")}/portal${path}`;
 }
+export const portalInviteLink = (token: string) => portalLink(`/invite/${token}`);
 export { mfaState, sendOfficeEmail as sendPortalEmail };

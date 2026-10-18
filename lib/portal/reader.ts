@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unwrap } from "../commerce/supabase-repo.ts";
 import type { ClientMessage, ClientReturn } from "../workspace/types.ts";
+import { PORTAL_INVOICE_STATUSES, type PortalInvoice } from "./invoices.ts";
 import { portalMessageVisible } from "./visibility.ts";
 
 // What the portal may read, for ONE client of ONE office. The database client is already limited to the office (row-level
@@ -47,5 +48,10 @@ export class PortalReader {
       if (!sig) return [];
       return [{ deliveryId: d.id, name: docs.find((x) => x.id === d.document_id)?.name ?? "Document", status: sig.status, expiresAt: sig.expires_at, signedAt: sig.signed_at, createdAt: d.created_at }];
     });
+  }
+
+  /** Invoices the office sent, and paid ones. Never drafts, voided invoices or internal notes. */
+  async invoices() {
+    return unwrap(await this.db.from("invoices").select("id, number, tax_year, status, lines, total_cents, paid_cents, issued_on, due_on, paid_on").eq("client_id", this.clientId).in("status", [...PORTAL_INVOICE_STATUSES]).order("issued_on", { ascending: false }).limit(100)) as PortalInvoice[];
   }
 }
