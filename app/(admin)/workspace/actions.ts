@@ -14,6 +14,8 @@ import { addClient, addNote, addReturn, addTask, applyImport, createInvoice, dis
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
 import { loadBrand } from "@/lib/branding/server";
+import { canTakePayments } from "@/lib/connect/service.ts";
+import { connectDeps } from "@/lib/connect/server";
 import { invoiceNoticeEmail } from "@/lib/portal/invoices.ts";
 import { portalLink, portalMemberRepo, sendPortalEmail } from "@/lib/portal/server";
 import { currentTenantId } from "@/lib/tenants.ts";
@@ -55,6 +57,11 @@ async function tellPortalClient(invoice: Invoice): Promise<boolean> {
   const link = await portalLink("/invoices");
   const problem = await sendPortalEmail(tenantId, member.email, invoiceNoticeEmail({ office, name: member.full_name, number: invoice.number, totalCents: invoice.total_cents, link }));
   return problem === null;
+}
+
+async function onlinePaymentsOn(): Promise<boolean> {
+  const deps = connectDeps(currentTenantId());
+  return deps ? canTakePayments(await deps.repo.getConnection(), deps.stripe.livemode) : false;
 }
 
 const clientPage = (id: string, tab = "overview") => `/workspace/clients/${id}?tab=${tab}`;
@@ -225,7 +232,8 @@ export async function invoiceStatusAction(form: FormData) {
       const i = await sendInvoice(repo, str(form, "id"));
       // Sending shows the invoice in the client's portal. If they have portal access, tell them by email.
       const told = await tellPortalClient(i).catch(() => false);
-      return { notice: `${i.number} sent to the client's portal${told ? " and they were emailed" : ""}.` };
+      const online = await onlinePaymentsOn().catch(() => false);
+      return { notice: `${i.number} sent to the client's portal${told ? " and they were emailed" : ""}.${online ? "" : " Online payment is off, so there's no pay button yet (Settings → Payments)."}` };
     }
     if (str(form, "do") === "void") { const i = await voidInvoice(repo, str(form, "id")); return { notice: `${i.number} voided.` }; }
     const i = await recordPayment(repo, str(form, "id"), str(form, "amount"), str(form, "paid_on"));

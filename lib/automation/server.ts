@@ -119,9 +119,9 @@ export function setupSecrets(): CrmSecrets | null {
  * Raises an event without ever failing the caller. A payment, license change or lead must go through
  * even if the Automation Center tables are not installed yet or the email provider is down.
  */
-export async function safeEmit(input: EmitInput): Promise<void> {
+export async function safeEmit(input: EmitInput, tenantId?: string): Promise<void> {
   try {
-    await emitEvent(automationDeps(), input);
+    await emitEvent(automationDeps(tenantId), input);
   } catch (e) {
     console.error(`automation: could not process ${input.type}: ${sanitizeError(e, 160)}`);
   }
