@@ -113,7 +113,8 @@ describe("sending", () => {
 
 describe("signing", () => {
   async function requestSignature(opts: { reminderDays?: number; linkDays?: number } = {}) {
-    const s = setup();
+    // Starts at the real time: the in-memory repo stamps created_at with the real clock, and a fixed date in the past would expire the link before the reminder is due.
+    const s = setup(TENANT_A, { t: new Date() });
     const doc = await upload(s.deps, s.store, "engagement.pdf", await makePdf(["client_name", "signer_name", "signed_date"], { signatureBox: true }));
     await assert.rejects(createDelivery(s.deps, { ...base, documentId: doc.document.id, kind: "signature", executionId: null, actionIndex: null, values }), /no signing consent statement/);
     await setConsentText(s.deps, doc.document.id, CONSENT, "admin");

@@ -93,7 +93,7 @@ export async function setWorkflowStatus(repo: AutomationRepo, actor: Actor, id: 
 export async function duplicateWorkflow(repo: AutomationRepo, actor: Actor, id: string): Promise<Workflow> {
   const src = await repo.getWorkflow(id);
   if (!src) throw new ValidationError("Workflow not found.");
-  const copy = await repo.insertWorkflow({ workflow_key: null, name: `${src.name} (copy)`.slice(0, 120), description: src.description, trigger_event: src.trigger_event, conditions: src.conditions, actions: src.actions, status: "paused", max_attempts: src.max_attempts, cooldown_hours: src.cooldown_hours, created_by: actor.id, updated_by: actor.id });
+  const copy = await repo.insertWorkflow({ workflow_key: null, name: `${src.name} (copy)`.slice(0, 120), description: src.description, trigger_event: src.trigger_event, conditions: src.conditions, actions: src.actions, steps: src.steps ?? null, trigger_config: src.trigger_config ?? {}, status: "paused", max_attempts: src.max_attempts, cooldown_hours: src.cooldown_hours, created_by: actor.id, updated_by: actor.id });
   await repo.addAudit({ actor_id: actor.id, action: "workflow_duplicated", target_type: "workflow", target_id: copy.id, detail: { from: id } });
   return copy;
 }

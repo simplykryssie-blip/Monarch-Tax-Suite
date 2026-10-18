@@ -21,6 +21,9 @@ import { emailConfig, emailConfigProblems, ResendEmailSender } from "./email.ts"
 import { platformProblems, platformSendProblems, platformTwilio } from "./twilio.ts";
 import { sanitizeError } from "./sanitize.ts";
 import { SupabaseAutomationRepo } from "./supabase-repo.ts";
+import { SupabaseContacts } from "./contact-supabase.ts";
+import { businessDeps } from "../calendar/server";
+import { loadCalendar } from "../calendar/service.ts";
 
 // Server wiring for the Automation Center. Secrets (Resend key, service role, encryption key) are read here
 // from the environment and never returned to callers or the browser.
@@ -68,6 +71,8 @@ export function automationDeps(tenantId: string = currentTenantId()): Automation
     senders: new SupabaseSendersRepo(db),
     fallbackSender: platformSender(tenantId),
     formAnswers: forms ? (id: string) => answerStrings(forms, id) : null,
+    contacts: new SupabaseContacts(tenantId),
+    calendar: () => loadCalendar(businessDeps(tenantId)),
   };
 }
 

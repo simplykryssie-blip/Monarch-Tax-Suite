@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
+import { emitTagChanges } from "@/lib/automation/emit";
 import { createLead, deleteLead, importCsv, markContacted, updateLead, UUID, type ImportResult } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
 
@@ -62,7 +63,10 @@ export async function createLeadAction(_prev: LeadFormState, form: FormData): Pr
 export async function updateLeadAction(form: FormData) {
   const id = str(form, "id");
   await act(`/leads/${UUID.test(id) ? id : ""}`, async (adminId) => {
-    await updateLead(leadsDeps(), idOf(form), fieldsOf(form), adminId);
+    const leads = leadsDeps();
+    const before = (await leads.repo.getLead(idOf(form)))?.tags ?? [];
+    const lead = await updateLead(leads, idOf(form), fieldsOf(form), adminId);
+    await emitTagChanges({ type: "lead", id: lead.id }, before, lead.tags);
     return { notice: "Saved." };
   });
 }

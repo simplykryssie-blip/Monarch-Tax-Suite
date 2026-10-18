@@ -41,7 +41,7 @@ export class MemoryAutomationRepo implements AutomationRepo {
       const existing = this.executions.find((x) => x.workflow_id === input.workflow_id && x.event_id === input.event_id && !x.is_test);
       if (existing) return { execution: clone(existing), created: false };
     }
-    const x: Execution = { ...input, id: randomUUID(), status: "queued", attempts: 0, started_at: null, finished_at: null, action_log: [], error: null, error_kind: null, provider_message_id: null, created_at: now(), updated_at: now() };
+    const x: Execution = { ...input, id: randomUUID(), status: "queued", attempts: 0, pc: 0, started_at: null, finished_at: null, action_log: [], error: null, error_kind: null, provider_message_id: null, created_at: now(), updated_at: now() };
     this.executions.push(x);
     return { execution: clone(x), created: true };
   }
@@ -50,12 +50,12 @@ export class MemoryAutomationRepo implements AutomationRepo {
     return clone(this.executions.filter((x) => (!f.status || x.status === f.status) && (!f.workflow_id || x.workflow_id === f.workflow_id)).slice(-f.limit).reverse());
   }
   async listDue(nowIso: string, limit: number) {
-    return clone(this.executions.filter((x) => (x.status === "queued" || x.status === "retrying") && (x.next_attempt_at ?? "") <= nowIso).slice(0, limit));
+    return clone(this.executions.filter((x) => (x.status === "queued" || x.status === "retrying" || x.status === "waiting") && (x.next_attempt_at ?? "") <= nowIso).slice(0, limit));
   }
   async claimExecution(id: string, nowIso: string, staleBeforeIso: string) {
     const x = this.executions.find((e) => e.id === id);
     if (!x) return null;
-    const ok = x.status === "queued" || x.status === "retrying" || (x.status === "running" && (x.started_at ?? "") < staleBeforeIso);
+    const ok = x.status === "queued" || x.status === "retrying" || x.status === "waiting" || (x.status === "running" && (x.started_at ?? "") < staleBeforeIso);
     if (!ok) return null;
     Object.assign(x, { status: "running", started_at: nowIso, attempts: x.attempts + 1, next_attempt_at: null, updated_at: now() });
     return clone(x);

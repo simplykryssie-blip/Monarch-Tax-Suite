@@ -9,6 +9,7 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
+import { emitInvoicePaid, emitReturnStage } from "@/lib/automation/emit";
 import { addClient, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveClient, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
@@ -92,6 +93,7 @@ export async function moveReturnAction(returnId: string, stageId: string): Promi
     await requireAdmin();
     const stages = await firstStage();
     await moveReturn(workspaceRepo(), returnId, stageId, stages.map((s) => s.id));
+    await emitReturnStage(returnId, stageId);
     revalidatePath("/workspace", "layout");
     return { ok: true };
   } catch (e) {
@@ -206,6 +208,7 @@ export async function invoiceStatusAction(form: FormData) {
     if (str(form, "do") === "send") { const i = await sendInvoice(repo, str(form, "id")); return { notice: `${i.number} marked sent.` }; }
     if (str(form, "do") === "void") { const i = await voidInvoice(repo, str(form, "id")); return { notice: `${i.number} voided.` }; }
     const i = await recordPayment(repo, str(form, "id"), str(form, "amount"), str(form, "paid_on"));
+    await emitInvoicePaid(i.id);
     return { notice: i.status === "paid" ? `${i.number} is paid.` : `Payment recorded on ${i.number}.` };
   });
 }
@@ -247,6 +250,7 @@ export async function reviewImportAction(form: FormData) {
     const chosen = form.getAll("apply").map(String);
     if (!chosen.length) throw new ValidationError("Tick the payments you want to apply.");
     const r = await applyImport(repo, id, chosen);
+    for (const row of await repo.listImportRows(id)) if (chosen.includes(row.id) && row.invoice_id) await emitInvoicePaid(row.invoice_id);
     return { notice: `${r.applied} payment${r.applied === 1 ? "" : "s"} applied to invoices.${r.overpaid ? ` ${r.overpaid} was more than the balance; the invoice is paid in full and the extra was not recorded.` : ""}` };
   });
 }
