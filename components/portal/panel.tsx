@@ -1,15 +1,21 @@
-import { cancelRequestAction, invitePortalAction, openStaffDocAction, requestDocAction, setPortalAccessAction, shareDocAction, withdrawPortalAction } from "@/app/portal-staff-actions";
+import Link from "next/link";
+import { clearSsnAction, saveSsnAction, sendSignatureAction, cancelRequestAction, invitePortalAction, openStaffDocAction, requestDocAction, setPortalAccessAction, shareDocAction, withdrawPortalAction } from "@/app/portal-staff-actions";
+import { documentDeps } from "@/lib/documents/server";
+import { askFieldsFor } from "@/lib/portal/signing.ts";
 import { portalMemberRepo, portalStaffRepo } from "@/lib/portal/server";
+import { ssnDeps } from "@/lib/ssn/server";
+import { hasStoredSsn } from "@/lib/ssn/service.ts";
 
 type Area = "admin" | "office" | "practice";
 
 /** The "Client portal" panel on a client's page: invite, resend, withdraw, turn access off or on. */
-export async function PortalPanel({ area, tenantId, clientId, email }: { area: Area; tenantId: string; clientId: string; email: string | null }) {
+export async function PortalPanel({ area, tenantId, clientId, email, signDocId, backHref }: { area: Area; tenantId: string; clientId: string; email: string | null; /** The library document chosen for signing (admin workspace). */ signDocId?: string; backHref?: string }) {
   const [member, requests, docs] = await Promise.all([
     portalMemberRepo(tenantId).getForClient(clientId).catch(() => null),
     portalStaffRepo(tenantId).listRequests(clientId).catch(() => []),
     portalStaffRepo(tenantId).listDocs(clientId).catch(() => []),
   ]);
+  const signing = area === "admin" ? await signingChoices(tenantId, clientId, signDocId) : null;
   const hidden = (<><input type="hidden" name="area" value={area} /><input type="hidden" name="client_id" value={clientId} /></>);
   const when = (iso: string | null) => (iso ? new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(new Date(iso)) : "");
   return (
@@ -83,6 +89,67 @@ export async function PortalPanel({ area, tenantId, clientId, email }: { area: A
         </ul>
       )}
     </section>
+    {signing && (
+      <>
+        <section className="monarch-panel" style={{ padding: 20 }}>
+          <h2 style={{ marginTop: 0 }}>Send a form to sign</h2>
+          {signing.docs.length === 0 ? (
+            <p className="monarch-muted">No signable documents yet. In Documents, upload a PDF (Form 8879, Form 8821, an engagement letter), name its form fields after the merge fields, and add its signing consent statement.</p>
+          ) : (
+            <>
+              <form method="get" action={backHref} className="monarch-form">
+                <input type="hidden" name="tab" value="portal" />
+                <label>Document<select name="sign" defaultValue={signDocId ?? ""}><option value="">Choose a document…</option>{signing.docs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
+                <div className="is-wide"><button className="monarch-secondary">Continue</button></div>
+              </form>
+              {signing.chosen && (
+                <form action={sendSignatureAction} className="monarch-form" style={{ marginTop: 14 }}>
+                  {hidden}
+                  <input type="hidden" name="document_id" value={signing.chosen.id} />
+                  <p className="is-wide">Filled in automatically from the client&apos;s record and your firm profile. {signing.chosen.needsSsn ? (signing.ssnOnFile ? "The client's Social Security number is filled from the encrypted copy." : "This form needs the client's Social Security number: add it under Tax ID below first.") : ""}</p>
+                  {signing.asks.map((a) => <label key={a.name} className="is-wide">{a.label} *<input name={a.name} required maxLength={300} /></label>)}
+                  <label className="is-wide">Message to the client (optional)<input name="message" maxLength={1000} /></label>
+                  <div className="is-wide"><button className="monarch-primary" disabled={!email || (signing.chosen.needsSsn && !signing.ssnOnFile)}>Send to {email ?? "the client"}</button></div>
+                </form>
+              )}
+              {signing.error && <p className="monarch-alert is-error" role="alert">{signing.error}</p>}
+            </>
+          )}
+        </section>
+        <section className="monarch-panel" style={{ padding: 20 }}>
+          <h2 style={{ marginTop: 0 }}>Tax ID</h2>
+          <p>{signing.ssnOnFile ? "A full Social Security number is on file, encrypted." : "No full Social Security number on file."} It is used only to fill IRS forms you send, and every use is recorded. The portal and exports show the last four digits only.</p>
+          <form action={saveSsnAction} className="monarch-form" autoComplete="off">
+            {hidden}
+            <label>{signing.ssnOnFile ? "Replace with" : "Social Security number"}<input name="ssn" type="password" inputMode="numeric" autoComplete="off" maxLength={11} placeholder="9 digits" /></label>
+            <div className="is-wide"><button className="monarch-secondary">{signing.ssnOnFile ? "Replace" : "Save"}</button></div>
+          </form>
+          {signing.ssnOnFile && <form action={clearSsnAction} style={{ marginTop: 8 }}>{hidden}<button className="monarch-link is-danger">Remove the stored number</button></form>}
+          <p className="monarch-muted" style={{ marginTop: 10 }}>Signed forms the client has returned are in <Link href="/documents">Documents</Link>.</p>
+        </section>
+      </>
+    )}
     </>
   );
+}
+
+async function signingChoices(tenantId: string, clientId: string, signDocId?: string) {
+  const docs = documentDeps(tenantId);
+  const all = await docs.repo.listDocuments().catch(() => []);
+  const signable = all.filter((d) => d.status === "active" && d.file_type === "pdf" && d.current_version_id && d.signature_consent);
+  const ssnOnFile = await hasStoredSsn(ssnDeps(tenantId), clientId).catch(() => false);
+  const doc = signDocId ? signable.find((d) => d.id === signDocId) ?? null : null;
+  let chosen: { id: string; needsSsn: boolean } | null = null;
+  let asks: { name: string; label: string }[] = [];
+  let error: string | null = null;
+  if (doc) {
+    try {
+      asks = await askFieldsFor(docs, doc.id);
+      const version = await docs.repo.getVersion(doc.current_version_id!);
+      chosen = { id: doc.id, needsSsn: Boolean(version?.merge_fields.includes("client_ssn")) };
+    } catch (e) {
+      error = e instanceof Error ? e.message : "That document can't be sent.";
+    }
+  }
+  return { docs: signable, chosen, asks, ssnOnFile, error };
 }

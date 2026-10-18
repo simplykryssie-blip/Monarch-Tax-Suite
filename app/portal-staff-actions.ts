@@ -3,10 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
+import { automationDeps } from "@/lib/automation/server";
+import { senderFor } from "@/lib/automation/engine.ts";
+import { documentDeps } from "@/lib/documents/server";
+import { deliveryPathFor } from "@/lib/documents/service.ts";
+import { documentEmail } from "@/lib/documents/emails.ts";
+import { sendForSignature } from "@/lib/portal/signing.ts";
+import { ssnDeps } from "@/lib/ssn/server";
+import { clearSsn, storeSsn } from "@/lib/ssn/service.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { loadBrand } from "@/lib/branding/server";
 import { ValidationError } from "@/lib/commerce/validation.ts";
-import { portalInviteEmail, inviteClient, setPortalAccess, withdrawPortalInvite, type InvitableClient } from "@/lib/portal/service.ts";
+import { portalInviteEmail, inviteClient, setPortalAccess, withdrawPortalInvite } from "@/lib/portal/service.ts";
+import type { Client } from "@/lib/workspace/types";
 import { portalInviteLink, portalMemberRepo, portalStaffRepo, sendPortalEmail } from "@/lib/portal/server";
 import { isArea, requirePrep } from "@/lib/prep/server";
 import { loadClient } from "@/lib/prep/service.ts";
@@ -29,7 +38,7 @@ const failure = (e: unknown) => {
   return "That did not work. Nothing was changed. Please try again.";
 };
 
-type Staff = { tenantId: string; userId: string; client: InvitableClient; back: string };
+type Staff = { tenantId: string; userId: string; client: Client; back: string };
 
 /** Who is acting, which office, and the client (only one that person may see). */
 async function staffFor(form: FormData): Promise<Staff> {
@@ -125,4 +134,37 @@ export async function openStaffDocAction(form: FormData) {
     message = failure(e);
   }
   redirect(url ?? to(back, "error", message));
+}
+
+/** Admin workspace only: the document library lives there. Sends a library document to the client for signature and emails the link. */
+export async function sendSignatureAction(form: FormData) {
+  await run(form, async (s) => {
+    if (str(form, "area") !== "admin") throw new ValidationError("Sending documents to sign is available from the main workspace.");
+    const asks = Object.fromEntries([...form.entries()].filter(([k, v]) => k.startsWith("ask.") && typeof v === "string"));
+    const auto = automationDeps(s.tenantId);
+    const made = await sendForSignature({ docs: documentDeps(s.tenantId), ssn: ssnDeps(s.tenantId) }, { documentId: str(form, "document_id"), client: s.client, asks, actorId: s.userId });
+    const to = s.client.email!;
+    if (auto.config.env !== "production" && !auto.config.testRecipients.map((r) => r.toLowerCase()).includes(to.toLowerCase())) {
+      throw new ValidationError(`The request was saved for the portal, but this is a ${auto.config.env} environment: emails go only to the addresses in AUTOMATION_TEST_RECIPIENTS.`);
+    }
+    const origin = (await auto.config.origin()).replace(/\/$/, "");
+    const mail = documentEmail({ kind: "signature", firmName: made.firmName, documentName: made.document.name, clientFirstName: made.firstName || null, message: str(form, "message").slice(0, 1000), url: `${origin}${deliveryPathFor("signature", made.token)}`, expiresAt: new Date(made.delivery.expires_at) });
+    const result = await auto.email.send({ ...(await senderFor(auto, null)), to, subject: mail.subject, html: mail.html, text: mail.text, idempotencyKey: `portal-sign:${made.delivery.id}` });
+    if (!result.ok) throw new ValidationError(`The request is in the client's portal, but the email was not sent: ${result.message}`);
+    return `"${made.document.name}" was sent to ${to} and is waiting in their portal.`;
+  });
+}
+
+export async function saveSsnAction(form: FormData) {
+  await run(form, async (s) => {
+    await storeSsn(ssnDeps(s.tenantId), { clientId: s.client.id, ssn: form.get("ssn"), actorId: s.userId });
+    return "Social Security number saved (encrypted).";
+  });
+}
+
+export async function clearSsnAction(form: FormData) {
+  await run(form, async (s) => {
+    await clearSsn(ssnDeps(s.tenantId), { clientId: s.client.id, actorId: s.userId });
+    return "Stored Social Security number removed.";
+  });
 }

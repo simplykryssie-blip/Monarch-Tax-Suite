@@ -11,11 +11,14 @@ export type TenantProfile = {
   email: string | null;
   phone: string | null;
   address: string | null;
+  /** Preparer tax identification number ("P" and eight digits) and CAF number, for IRS forms. */
+  ptin?: string | null;
+  caf_number?: string | null;
   time_zone: string;
   updated_by: string | null;
   updated_at: string;
 };
-export type ProfilePatch = Partial<Pick<TenantProfile, "legal_name" | "display_name" | "email" | "phone" | "address" | "time_zone" | "updated_by">>;
+export type ProfilePatch = Partial<Pick<TenantProfile, "legal_name" | "display_name" | "email" | "phone" | "address" | "ptin" | "caf_number" | "time_zone" | "updated_by">>;
 
 export type DocumentStatus = "active" | "archived";
 export type LibraryDocument = {
@@ -58,6 +61,8 @@ export type Delivery = {
   kind: DeliveryKind;
   customer_id: string | null;
   order_id: string | null;
+  /** The client (a person the office prepares returns for) this was made for, when it is a portal document. */
+  client_id?: string | null;
   recipient_email: string;
   recipient_name: string | null;
   execution_id: string | null;

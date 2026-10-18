@@ -19,7 +19,7 @@ const TABS = [["overview", "Overview"], ["documents", "Documents"], ["messages",
 const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other" } as const;
 
 /** One client: overview, documents, messages, work, billing (with the $223 breakdown), tasks and notes. */
-export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; notice?: string; error?: string }> }) {
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; notice?: string; error?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
   if (!UUID.test(id)) notFound();
@@ -277,7 +277,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         </>
       )}
 
-      {tab === "portal" && <PortalPanel area="admin" tenantId={client.tenant_id} clientId={client.id} email={client.email} />}
+      {tab === "portal" && <PortalPanel area="admin" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`} />}
 
       {tab === "notes" && (
         <>

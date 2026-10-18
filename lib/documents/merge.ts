@@ -11,7 +11,7 @@ import type { DocumentFileType } from "./files.ts";
 export type TemplateScan = { fields: string[]; hasSignatureField: boolean };
 
 const TAG = /\{\{([^{}]*)\}\}/g;
-const NAME = /^(form\.)?[a-z][a-z0-9_]{0,39}$/;
+const NAME = /^((form|ask)\.)?[a-z][a-z0-9_]{0,39}$/;
 
 /** Word splits text into runs; join each paragraph's text so {{field}} written with mixed formatting is found. */
 function docxParagraphTexts(xml: string): string[] {

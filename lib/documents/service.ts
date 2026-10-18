@@ -165,6 +165,8 @@ export type DeliveryInput = {
   recipientName: string | null;
   customerId: string | null;
   orderId: string | null;
+  /** The portal client this is for (their portal lists it). */
+  clientId?: string | null;
   executionId: string | null;
   actionIndex: number | null;
   isTest: boolean;
@@ -202,7 +204,7 @@ export async function createDelivery(deps: DocumentDeps, input: DeliveryInput): 
   const token = linkToken(deps.linkKey, id);
   const delivery = await deps.repo.insertDelivery({
     id, document_id: document.id, version_id: version.id, kind: input.kind,
-    customer_id: input.customerId, order_id: input.orderId, recipient_email: input.recipientEmail, recipient_name: input.recipientName,
+    customer_id: input.customerId, order_id: input.orderId, client_id: input.clientId ?? null, recipient_email: input.recipientEmail, recipient_name: input.recipientName,
     execution_id: input.executionId, action_index: input.actionIndex, is_test: input.isTest,
     storage_path: path, file_name: `${document.name.replace(/[^A-Za-z0-9._ -]/g, "_").slice(0, 100)}.${document.file_type}`,
     sha256: sha, token_hash: hashLinkToken(token), expires_at: expires, created_by: input.createdBy,
