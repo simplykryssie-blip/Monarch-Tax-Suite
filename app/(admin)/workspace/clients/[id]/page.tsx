@@ -1,3 +1,4 @@
+import { PortalPanel } from "@/components/portal/panel";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
@@ -14,7 +15,7 @@ import { emailConfig, emailConfigProblems } from "@/lib/automation/email.ts";
 import { WorkspaceSetup } from "../../setup";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TABS = [["overview", "Overview"], ["documents", "Documents"], ["messages", "Messages"], ["work", "Work"], ["billing", "Billing"], ["tasks", "Tasks"], ["notes", "Notes"]] as const;
+const TABS = [["overview", "Overview"], ["documents", "Documents"], ["messages", "Messages"], ["work", "Work"], ["billing", "Billing"], ["tasks", "Tasks"], ["notes", "Notes"], ["portal", "Portal"]] as const;
 const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other" } as const;
 
 /** One client: overview, documents, messages, work, billing (with the $223 breakdown), tasks and notes. */
@@ -275,6 +276,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           </form>
         </>
       )}
+
+      {tab === "portal" && <PortalPanel area="admin" tenantId={client.tenant_id} clientId={client.id} email={client.email} />}
 
       {tab === "notes" && (
         <>

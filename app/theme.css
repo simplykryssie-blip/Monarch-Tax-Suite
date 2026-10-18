@@ -840,3 +840,10 @@ html[data-popup] body{background:#fff}
 .mt-brand-name{color:#fff;font-size:20px;letter-spacing:.02em;text-align:center}
 .mt-topmark b{font-size:14px}
 .mt-login-name{margin:0;font-size:38px;color:#fff}
+/* Client portal */
+.portal-switch{display:flex;gap:6px;align-items:center}
+.portal-switch select{max-width:160px}
+.portal-list{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.portal-list li{border-bottom:1px solid var(--line,#e7e5de);padding-bottom:12px}
+.portal-list li:last-child{border-bottom:0;padding-bottom:0}
+@media (max-width:520px){.portal-switch label{display:none}.office-top{flex-wrap:wrap;gap:8px}}
