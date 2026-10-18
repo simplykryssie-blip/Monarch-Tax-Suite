@@ -7,10 +7,12 @@ import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { loadBrand } from "@/lib/branding/server";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { portalInviteEmail, inviteClient, setPortalAccess, withdrawPortalInvite, type InvitableClient } from "@/lib/portal/service.ts";
-import { portalInviteLink, portalMemberRepo, sendPortalEmail } from "@/lib/portal/server";
+import { portalInviteLink, portalMemberRepo, portalStaffRepo, sendPortalEmail } from "@/lib/portal/server";
 import { isArea, requirePrep } from "@/lib/prep/server";
 import { loadClient } from "@/lib/prep/service.ts";
-import { workspaceRepo } from "@/lib/workspace/server";
+import { cancelRequest, requestDocument, setDocShared } from "@/lib/portal/staff-docs.ts";
+import { clientDocLink } from "@/lib/workspace/docs.ts";
+import { docDeps, workspaceRepo } from "@/lib/workspace/server";
 import { currentTenantId } from "@/lib/tenants.ts";
 
 // Staff side of the client portal: invite a client, send a fresh link, withdraw an invite, turn a client's access off or
@@ -83,4 +85,44 @@ export async function setPortalAccessAction(form: FormData) {
     await setPortalAccess({ repo: portalMemberRepo(s.tenantId) }, s.userId, s.client.id, on);
     return on ? "Portal access turned on." : "Portal access turned off.";
   });
+}
+
+export async function requestDocAction(form: FormData) {
+  await run(form, async (s) => {
+    await requestDocument(portalStaffRepo(s.tenantId), s.client.id, { title: form.get("title"), note: form.get("note"), due_on: form.get("due_on") }, s.userId);
+    return "Request added. The client sees it in their portal.";
+  });
+}
+
+export async function cancelRequestAction(form: FormData) {
+  await run(form, async (s) => {
+    await cancelRequest(portalStaffRepo(s.tenantId), s.client.id, str(form, "request_id"), s.userId);
+    return "Request cancelled.";
+  });
+}
+
+export async function shareDocAction(form: FormData) {
+  await run(form, async (s) => {
+    const shared = str(form, "shared") === "1";
+    await setDocShared(portalStaffRepo(s.tenantId), s.client.id, str(form, "doc_id"), shared, s.userId);
+    return shared ? "Shared with the client." : "Hidden from the client.";
+  });
+}
+
+/** A one-minute download link for one of this client's documents. */
+export async function openStaffDocAction(form: FormData) {
+  let url: string | null = null;
+  let back = "/";
+  let message = "";
+  try {
+    const s = await staffFor(form);
+    back = s.back;
+    const doc = await portalStaffRepo(s.tenantId).getDoc(str(form, "doc_id"));
+    if (!doc || doc.client_id !== s.client.id) throw new ValidationError("That document wasn't found.");
+    url = await clientDocLink(docDeps(s.tenantId), doc.id);
+  } catch (e) {
+    unstable_rethrow(e);
+    message = failure(e);
+  }
+  redirect(url ?? to(back, "error", message));
 }

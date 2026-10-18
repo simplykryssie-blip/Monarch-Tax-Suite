@@ -7,6 +7,9 @@ import { mfaState, sendOfficeEmail } from "../office/server";
 import { practiceMfaGate } from "../practice/mfa.ts";
 import { createClient } from "../supabase/server";
 import { platformClient, tenantClient } from "../supabase/service";
+import { SupabaseDocumentStore } from "../documents/supabase-repo.ts";
+import { SupabasePortalDocsRepo, SupabasePortalStaffRepo } from "./docs-supabase.ts";
+import type { PortalDocDeps } from "./documents.ts";
 import { PortalReader } from "./reader.ts";
 import type { PortalMember, PortalMemberRepo } from "./service.ts";
 import { SupabasePortalMemberRepo } from "./supabase-repo.ts";
@@ -20,6 +23,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export const portalMemberRepo = (tenantId: string): PortalMemberRepo => new SupabasePortalMemberRepo(tenantClient(tenantId));
 export const portalReader = (tenantId: string, clientId: string) => new PortalReader(tenantClient(tenantId), tenantId, clientId);
+
+/** Document deps for one client of one office: the repo is limited to that client, the store to that office's folder. */
+export function portalDocDeps(tenantId: string, clientId: string): PortalDocDeps {
+  const db = tenantClient(tenantId);
+  return { tenantId, repo: new SupabasePortalDocsRepo(db, clientId), store: new SupabaseDocumentStore(db) };
+}
+
+export const portalStaffRepo = (tenantId: string) => new SupabasePortalStaffRepo(tenantClient(tenantId));
 
 type MemberRow = PortalMember;
 
