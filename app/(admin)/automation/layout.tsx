@@ -7,7 +7,7 @@ import { automationDeps } from "@/lib/automation/server";
 import { historyRows } from "@/lib/automation/history.ts";
 import { retryExecutionAction } from "./actions";
 
-const TABS = [["/automation/workflows", "Workflows"], ["/automation/pipelines", "Pipelines"], ["/automation/templates", "Templates"], ["/automation/images", "Images"]] as const;
+const TABS = [["/automation/workflows", "Workflows"], ["/automation/pipelines", "Pipelines"], ["/automation/tasks", "Tasks"], ["/automation/templates", "Templates"], ["/automation/images", "Images"]] as const;
 
 const RESULT = { completed: ["Completed", "run-ok"], error: ["Error", "run-err"], skipped: ["Skipped", "run-skip"], waiting: ["Waiting", "monarch-muted"] } as const;
 
@@ -26,7 +26,8 @@ async function recentRuns() {
     return historyRows({
       executions, events, people,
       workflows: new Map(workflows.map((w) => [w.id, w.name])),
-      plannedSteps: new Map(workflows.map((w) => [w.id, w.actions.map((a) => a.type)])),
+      // Only a flat workflow has a fixed list of steps to preview; a tree's path depends on the person.
+      plannedSteps: new Map(workflows.map((w) => [w.id, w.steps ? [] : w.actions.map((a) => a.type)])),
     });
   } catch {
     return null;

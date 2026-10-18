@@ -133,6 +133,36 @@ export const EVENTS: Record<string, EventDef> = {
     description: "Staff marked an appointment as a no-show.",
     fields: { source: ["public", "staff"] },
   },
+  "invoice.paid": {
+    label: "Invoice paid",
+    description: "A client's invoice was marked paid in full.",
+    fields: {},
+  },
+  "invoice.overdue": {
+    label: "Invoice overdue",
+    description: "An invoice is past its due date and still unpaid. Raised once per invoice, the morning after it falls due.",
+    fields: {},
+  },
+  "contact.tag_added": {
+    label: "Tag added to a person",
+    description: "Someone added a tag to a lead or client. Conditions can test which tag. Tags added by a workflow don't start another workflow.",
+    fields: { tag: [] },
+  },
+  "contact.tag_removed": {
+    label: "Tag removed from a person",
+    description: "Someone removed a tag from a lead or client. Conditions can test which tag. Tags removed by a workflow don't start another workflow.",
+    fields: { tag: [] },
+  },
+  "return.stage_changed": {
+    label: "Return moved to a new stage",
+    description: "A client's return moved to another stage on the returns board. Conditions can test the stage_id it moved to.",
+    fields: { stage_id: [] },
+  },
+  "date.return_due": {
+    label: "Days before or after a return's due date",
+    description: "Starts a set number of days before (negative) or after the due date of each open return. Choose the number of days when you set up the workflow.",
+    fields: {},
+  },
 };
 
 /** Condition fields whose values are a tenant's own records (checked against them when a workflow is saved). */
