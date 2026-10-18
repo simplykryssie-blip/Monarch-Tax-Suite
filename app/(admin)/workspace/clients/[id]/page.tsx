@@ -1,3 +1,4 @@
+import { PortalPanel } from "@/components/portal/panel";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
@@ -14,11 +15,11 @@ import { emailConfig, emailConfigProblems } from "@/lib/automation/email.ts";
 import { WorkspaceSetup } from "../../setup";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TABS = [["overview", "Overview"], ["documents", "Documents"], ["messages", "Messages"], ["work", "Work"], ["billing", "Billing"], ["tasks", "Tasks"], ["notes", "Notes"]] as const;
+const TABS = [["overview", "Overview"], ["documents", "Documents"], ["messages", "Messages"], ["work", "Work"], ["billing", "Billing"], ["tasks", "Tasks"], ["notes", "Notes"], ["portal", "Portal"]] as const;
 const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other" } as const;
 
 /** One client: overview, documents, messages, work, billing (with the $223 breakdown), tasks and notes. */
-export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; notice?: string; error?: string }> }) {
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; notice?: string; error?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
   if (!UUID.test(id)) notFound();
@@ -216,7 +217,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                         <form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value={back} />
                           {i.status !== "paid" && i.status !== "void" && <><input name="amount" placeholder="Amount received" aria-label="Amount received" size={10} defaultValue={(balance(i) / 100).toFixed(2)} /><button name="do" value="pay" className="monarch-link">Record payment</button></>}
-                          {i.status === "draft" && <button name="do" value="send" className="monarch-link">Mark sent</button>}
+                          {i.status === "draft" && <button name="do" value="send" className="monarch-link">Send to client</button>}
                           {i.status !== "void" && i.paid_cents === 0 && <button name="do" value="void" className="monarch-link is-danger">Void</button>}
                         </form>
                       </td>
@@ -275,6 +276,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           </form>
         </>
       )}
+
+      {tab === "portal" && <PortalPanel area="admin" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`} />}
 
       {tab === "notes" && (
         <>

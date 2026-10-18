@@ -10,10 +10,10 @@ import type { SubjectType } from "./types.ts";
 // Where the business raises events for workflows: an invoice is paid, a return moves, a tag changes. Each call is a
 // courtesy to the Automation Center and can never fail the action that raised it (safeEmit swallows problems).
 
-export async function emitInvoicePaid(invoiceId: string): Promise<void> {
-  const { data } = await tenantClient(currentTenantId()).from("invoices").select("id, status").eq("id", invoiceId).maybeSingle();
+export async function emitInvoicePaid(invoiceId: string, tenantId: string = currentTenantId()): Promise<void> {
+  const { data } = await tenantClient(tenantId).from("invoices").select("id, status").eq("id", invoiceId).maybeSingle();
   if (data?.status !== "paid") return;
-  await safeEmit({ type: "invoice.paid", key: `invoice.paid:${invoiceId}`, subject: { type: "invoice", id: invoiceId } });
+  await safeEmit({ type: "invoice.paid", key: `invoice.paid:${invoiceId}`, subject: { type: "invoice", id: invoiceId } }, tenantId);
 }
 
 export async function emitReturnStage(returnId: string, stageId: string): Promise<void> {

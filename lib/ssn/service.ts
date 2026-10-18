@@ -121,6 +121,31 @@ export async function revealSsn(deps: SsnDeps, gate: RevealGate, input: { client
   return { ssn: formatSsn(digits), expiresAt: new Date(now + REVEAL_SECONDS * 1000).toISOString(), seconds: REVEAL_SECONDS };
 }
 
+/** Whether a full number is on file (never the number). */
+export async function hasStoredSsn(deps: SsnDeps, clientId: string): Promise<boolean> {
+  return UUID.test(clientId) && (await deps.repo.getCiphertext(clientId)) !== null;
+}
+
+/**
+ * The full number, for filling an IRS form on the server. It goes into the filled document and nowhere else: not a page,
+ * a log, an email or an event. Each use is written to the audit trail (who, which client, never the number).
+ */
+export async function ssnForDocument(deps: SsnDeps, input: { clientId: string; actorId: string | null; documentName: string }): Promise<string> {
+  if (!UUID.test(input.clientId)) throw new ValidationError("That client wasn't found.");
+  const sealed = await deps.repo.getCiphertext(input.clientId);
+  const key = sealed ? await dataKey(deps, false) : null;
+  if (!sealed || !key) throw new ValidationError("There is no Social Security number on file for this client. Add it on their Tax ID panel, then send the form again.");
+  let digits: string;
+  try {
+    digits = ring(deps).open(key, sealed, aadFor(deps.tenantId, input.clientId));
+  } catch {
+    await deps.repo.audit({ action: "ssn.fill_failed", clientId: input.clientId, actorId: input.actorId });
+    throw new ValidationError("That number couldn't be read. Enter it again on the client's Tax ID panel.");
+  }
+  await deps.repo.audit({ action: "ssn.filled_document", clientId: input.clientId, actorId: input.actorId });
+  return formatSsn(digits);
+}
+
 /** After a new master key is added and made current: re-wraps the tenant's data key so the old master can be retired. */
 export async function rewrapTenantKey(deps: SsnDeps): Promise<boolean> {
   const k = ring(deps);

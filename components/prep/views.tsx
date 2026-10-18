@@ -1,3 +1,4 @@
+import { PortalPanel } from "@/components/portal/panel";
 import Link from "next/link";
 import { Badge, EmptyRow, Flash } from "@/components/admin/ui";
 import {
@@ -79,6 +80,7 @@ export async function ClientView({ ctx, id, sp }: { ctx: PrepContext; id: string
           <div className="is-wide"><button className="monarch-primary">Save</button></div>
         </form>
       </section>
+      <PortalPanel area={ctx.area === "practice" ? "practice" : "office"} tenantId={ctx.tenantId} clientId={client.id} email={client.email} />
       <section className="monarch-panel">
         <div className="monarch-panel-head"><div><h2>Returns</h2></div></div>
         <div className="monarch-table-wrap"><table>

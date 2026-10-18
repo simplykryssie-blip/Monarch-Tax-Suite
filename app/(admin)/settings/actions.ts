@@ -59,9 +59,13 @@ export async function saveFirmProfileAction(form: FormData) {
     if (legal.length < 2 || display.length < 2) throw new ValidationError("Enter the firm's legal name and the name clients see.");
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ValidationError("Enter a valid email address.");
     try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); } catch { throw new ValidationError("Choose a valid time zone."); }
+    const ptin = str(form, "ptin").trim().toUpperCase();
+    const caf = str(form, "caf_number").trim();
+    if (ptin && !/^P\d{8}$/.test(ptin)) throw new ValidationError("A PTIN is the letter P and eight digits, like P01234567.");
+    if (caf && !/^\d{4}-?\d{5}$/.test(caf)) throw new ValidationError("A CAF number is nine digits, like 1234-56789.");
     await documentDeps().repo.saveProfile(currentTenantId(), {
       legal_name: legal, display_name: display, email: email || null, phone: str(form, "phone").trim().slice(0, 40) || null,
-      address: str(form, "address").replace(/\r\n/g, "\n").trim().slice(0, 400) || null, time_zone: tz, updated_by: adminId,
+      address: str(form, "address").replace(/\r\n/g, "\n").trim().slice(0, 400) || null, ptin: ptin || null, caf_number: caf || null, time_zone: tz, updated_by: adminId,
     });
     return "Firm profile saved.";
   });

@@ -7,7 +7,7 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabaseConfigProblems } from "
 // The Stripe webhook authenticates by signature, not session. /shop lists
 // published products only. /integrations authorizes each action with the buyer's license key; the
 // lead endpoint authorizes with a signed embed token.
-const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
+const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/stripe/connect-webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
   // Customer setup links (the token is the credential) and the retry runner (authorized by CRON_SECRET).
   "/setup", "/api/automation/run", "/api/automation/tick",
   // Buyer downloads: every file request is authorized by the buyer's license key and checked again on each click.
@@ -23,7 +23,7 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   // The WISP Generator: public audit and builder; downloads need the buying browser's secret or the emailed link token.
   "/wisp",
   // Office invites: the one-time link token is the credential. The rest of /office requires sign-in and two-step sign-in.
-  "/office/invite/", "/practice/invite/",
+  "/office/invite/", "/practice/invite/", "/portal/invite/",
   // Password reset: the email link lands on /auth/callback; /reset-password checks for the session itself.
   "/forgot-password", "/reset-password", "/auth/",
   // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).

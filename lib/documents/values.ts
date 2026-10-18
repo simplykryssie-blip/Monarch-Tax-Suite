@@ -38,6 +38,8 @@ export function documentValues(input: {
     values.firm_email = input.profile.email ?? "";
     values.firm_phone = input.profile.phone ?? "";
     values.firm_address = input.profile.address ?? "";
+    values.firm_ptin = input.profile.ptin ?? "";
+    values.firm_caf_number = input.profile.caf_number ?? "";
   }
   if (input.customer) {
     const name = input.customer.full_name?.trim() ?? "";
@@ -52,5 +54,23 @@ export function documentValues(input: {
     values.amount_paid = money(input.order.amount_cents, input.order.currency);
   }
   if (input.product) values.product_name = input.product.name;
+  return values;
+}
+
+/** Merge values for a client of an office (a portal document): the client's record and the office's profile. The full SSN is added separately, on the server, only when the document asks for it. */
+export function clientDocumentValues(input: {
+  profile: TenantProfile | null;
+  client: { full_name: string; email: string | null; phone: string | null; address: string | null; ssn_last4: string | null };
+  now: Date;
+}): Record<string, string> {
+  const values = documentValues({ profile: input.profile, customer: null, now: input.now });
+  const name = input.client.full_name.trim();
+  values.client_name = name;
+  values.client_first_name = name.split(/\s+/)[0] ?? "";
+  values.client_email = input.client.email ?? "";
+  values.client_phone = input.client.phone ?? "";
+  values.client_address = input.client.address ?? "";
+  values.client_ssn_last4 = input.client.ssn_last4 ?? "";
+  values.client_business_name = "";
   return values;
 }
