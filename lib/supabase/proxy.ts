@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./database.types";
 import { LEGAL_PAGES_APPROVED, LEGAL_PATHS } from "../legal.ts";
+import { PLATFORM_LEGAL_APPROVED, PLATFORM_LEGAL_PATHS } from "../platform-legal.ts";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabaseConfigProblems } from "./config";
 
 // The Stripe webhook authenticates by signature, not session. /shop lists
@@ -31,6 +32,8 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   "/forgot-password", "/reset-password", "/auth/",
   // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).
   ...(LEGAL_PAGES_APPROVED ? LEGAL_PATHS : []),
+  // Verexa HQ's own policies: public only once the owner approves final wording (lib/platform-legal.ts).
+  ...(PLATFORM_LEGAL_APPROVED ? PLATFORM_LEGAL_PATHS : []),
 ];
 
 /**
