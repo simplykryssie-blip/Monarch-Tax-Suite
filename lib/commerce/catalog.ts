@@ -1,5 +1,5 @@
 import { copyProductImages } from "./images.ts";
-import { publishBlockers, slugify, ValidationError } from "./validation.ts";
+import { publishBlockers, sellableBlockers, slugify, ValidationError } from "./validation.ts";
 import type { CommerceRepo, ImageStore, NewProduct, Product, ProductStatus } from "./types.ts";
 
 /**
@@ -15,9 +15,20 @@ async function assertBillingModel(repo: CommerceRepo, productId: string | null, 
   }
 }
 
-/** Customers only ever see published products. */
-export function isStorefrontVisible(product: Pick<Product, "status">): boolean {
+/**
+ * Only published products can be bought. Checked server-side when a checkout starts and again when the payment
+ * arrives, so a draft, unpublished or archived product is never sold through an old link or a forged request.
+ */
+export function isPurchasable(product: Pick<Product, "status">): boolean {
   return product.status === "published";
+}
+
+/**
+ * Customers only ever see published products. Annual update products are sold only through the license update
+ * checkout (/update), never as a storefront purchase, so they are not listed.
+ */
+export function isStorefrontVisible(product: Pick<Product, "status" | "category">): boolean {
+  return isPurchasable(product) && product.category !== "software_update";
 }
 
 export async function createProduct(repo: CommerceRepo, input: NewProduct): Promise<Product> {
@@ -40,7 +51,7 @@ export async function editProduct(repo: CommerceRepo, id: string, input: NewProd
   // A hand-edited Stripe price id has an unknown amount until it is synced again.
   if (details.stripe_price_id !== current.stripe_price_id) Object.assign(details, { stripe_price_cents: null, stripe_sync_status: null });
   if (current.status === "published") {
-    const blockers = publishBlockers(details);
+    const blockers = sellableBlockers(details);
     if (blockers.length) throw new ValidationError(`A published product must stay sellable: ${blockers.join(" ")}`);
   }
   return repo.updateProduct(id, details);
@@ -58,7 +69,7 @@ export async function setProductStatus(repo: CommerceRepo, id: string, status: P
   if (!current) throw new ValidationError("Product not found.");
   if (!TRANSITIONS[current.status].includes(status)) throw new ValidationError(`A ${current.status} product cannot be ${status}.`);
   if (status === "published") {
-    const blockers = publishBlockers(current);
+    const blockers = publishBlockers(current, (await repo.listProductImages([current.id])).length);
     if (blockers.length) throw new ValidationError(`Not ready to publish: ${blockers.join(" ")}`);
   }
   return repo.updateProduct(id, { status });

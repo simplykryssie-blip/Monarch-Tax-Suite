@@ -1,7 +1,11 @@
+import { restoreCustomerOnPurchase } from "../archive-service.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { generateEmbedId } from "./embed.ts";
 import { generateLicenseKey, hashLicenseKey, licenseKeyPrefix } from "./license-keys.ts";
 import { PLATFORM_GUIDES } from "./platforms.ts";
+import { isPurchasable } from "./catalog.ts";
+import { checkoutMismatch } from "./storefront-checkout.ts";
+import { cancelServiceForOrder, ensureServiceOrder, type ServiceOrdersRepo } from "./service-orders.ts";
 import { applyPaidUpdate, latestAvailable, reverseUpdate } from "./versions.ts";
 import { normalizeDomain, normalizeEmail, normalizeWebsiteUrl, ValidationError } from "./validation.ts";
 import {
@@ -26,8 +30,9 @@ import {
 // after the webhook route has verified the Stripe signature.
 // ---------------------------------------------------------------------------
 
-type CheckoutSession = {
+export type CheckoutSession = {
   id: string;
+  status?: string | null;
   payment_status: "paid" | "unpaid" | "no_payment_required";
   payment_intent: string | { id: string } | null;
   amount_total: number | null;
@@ -51,8 +56,34 @@ export type FulfillmentDeps = {
   emit?: AutomationEmit;
   /** Stripe product ids of a checkout session's line items (Stripe API call in production). */
   listCheckoutProductIds(sessionId: string): Promise<string[]>;
+  /** Service orders (a paid service product creates one). Absent in callers that never sell services. */
+  services?: { repo: ServiceOrdersRepo; tenantId: string };
+  /**
+   * WISP Generator delivery for a paid WISP product: makes and emails the PDF the buyer built. Errors are logged, not
+   * thrown: the payment is recorded either way, and the buyer's confirmation page (or an administrator) retries.
+   */
+  wisp?: (input: { sessionId: string; planId: string | null; customerId: string; orderId: string }) => Promise<unknown>;
+  /** Text messaging checkouts (credit packs, number setup): paid by a tax office to the platform. */
+  sms?: (session: CheckoutSession) => Promise<string>;
   now?: () => string;
 };
+
+/** Products delivered by the WISP Generator carry this product setting. */
+export const WISP_DELIVERY = "wisp_generator";
+export const isWispProduct = (p: Pick<Product, "metadata">) => p.metadata?.delivery === WISP_DELIVERY;
+
+/** Creates the service order for a paid service purchase and tells automation, once per order. */
+async function fulfilService(deps: FulfillmentDeps, order: Order, product: Product) {
+  if (product.product_type !== "service" || !deps.services) return;
+  const result = await ensureServiceOrder(deps.services.repo, deps.services.tenantId, order, product);
+  if (result?.created && deps.emit) {
+    try {
+      await deps.emit({ type: "service.order_created", key: `order:${order.id}:service_created`, customerId: order.customer_id, orderId: order.id, data: {} });
+    } catch {
+      // swallowed on purpose
+    }
+  }
+}
 
 export type EventOutcome = { status: "processed" | "ignored" | "duplicate"; detail: string };
 
@@ -86,8 +117,13 @@ function detailsFromMetadata(metadata: Record<string, string> | null): Installat
   };
 }
 
-async function findOrCreateCustomer(repo: CommerceRepo, email: string, fullName: string | null, stripeCustomerId: string | null): Promise<Customer> {
-  const existing = await repo.findCustomerByEmail(email);
+async function findOrCreateCustomer(repo: CommerceRepo, email: string, fullName: string | null, stripeCustomerId: string | null, why: string): Promise<Customer> {
+  let existing = await repo.findCustomerByEmail(email);
+  if (existing?.archived_at) {
+    // An archived customer who buys again is a customer again; the archive history records why.
+    await restoreCustomerOnPurchase({ update: async (_e, id, p) => { await repo.updateCustomer(id, p); }, log: (entry) => repo.logArchive(entry) }, existing, why);
+    existing = { ...existing, archived_at: null, archived_by: null, archive_reason: null };
+  }
   if (existing) {
     const patch: Partial<Customer> = {};
     if (!existing.full_name && fullName) patch.full_name = fullName;
@@ -177,8 +213,19 @@ async function restrictLicenseForOrder(repo: CommerceRepo, order: Order, status:
   if (installation) await repo.addInstallationEvent({ installation_id: installation.id, from_status: installation.status, to_status: installation.status, note: `License ${status}: ${reason}`, actor_id: null });
 }
 
+/** Orders flagged "Review:" were paid but are never fulfilled automatically; an administrator decides. */
+export const needsReview = (o: Pick<Order, "notes">) => (o.notes ?? "").startsWith("Review:");
+
+const notSellableNote = (product: Pick<Product, "status">) =>
+  `Review: the product was ${product.status} (not published) when this payment arrived, so nothing was delivered automatically. Refund the customer or fulfil the order manually.`;
+
 async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSession, paid: boolean): Promise<EventOutcome> {
   if (session.metadata?.purpose === "annual_update") return handleUpdateCheckout(deps, session, paid);
+  if (session.metadata?.purpose === "sms_credits" || session.metadata?.purpose === "sms_setup") {
+    if (!deps.sms) return { status: "ignored", detail: "Text messaging checkouts aren't handled here." };
+    if (!paid) return { status: "ignored", detail: "Text messaging checkout not paid yet." };
+    return { status: "processed", detail: `Text messaging checkout: ${await deps.sms(session)}.` };
+  }
   const { repo } = deps;
   const at = nowIso(deps);
   const productIds = await deps.listCheckoutProductIds(session.id);
@@ -196,10 +243,16 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
 
   const paymentIntentId = idOf(session.payment_intent);
   if (!paymentIntentId) return { status: "ignored", detail: "Checkout has no payment intent (not a one-time payment)." };
+  // Checked again at payment time: a product unpublished after the buyer opened checkout, or one bought through an
+  // old payment link, is never fulfilled automatically. The payment is still recorded so it can be reviewed.
+  const notSellable = !isPurchasable(product);
+  // Only a session the storefront started, paid at the amount it recorded, is fulfilled automatically.
+  const checkout = await repo.findStorefrontCheckout(session.id);
+  const mismatch = checkoutMismatch(checkout, session, product.id);
   const rawEmail = session.customer_details?.email;
   if (!rawEmail) throw new Error(`Checkout ${session.id} has no customer email.`);
 
-  const customer = await findOrCreateCustomer(repo, normalizeEmail(rawEmail), session.customer_details?.name?.trim() || null, idOf(session.customer));
+  const customer = await findOrCreateCustomer(repo, normalizeEmail(rawEmail), session.customer_details?.name?.trim() || null, idOf(session.customer), `Bought ${product.name} again (Stripe checkout).`);
   const { order } = await repo.createOrder({
     customer_id: customer.id,
     product_id: product.id,
@@ -214,20 +267,27 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
     license_id: null,
     tax_year: null,
     previous_tax_year: null,
-    installation_type: installationTypeFrom(session.metadata, product),
+    installation_type: checkout?.installation_type ?? installationTypeFrom(session.metadata, product),
     verification_method: "stripe_webhook",
     verified_by: null,
     verified_at: at,
-    notes: null,
+    notes: notSellable ? notSellableNote(product) : mismatch ? `Review: ${mismatch}, so nothing was delivered automatically. Refund the customer or fulfil the order manually.` : null,
     paid_at: paid ? at : null,
     refunded_at: null,
+    ...(checkout ? { terms_version: checkout.terms_version, terms_accepted_at: checkout.terms_accepted_at } : {}),
   });
+  if (checkout && paid && checkout.status !== "completed") await repo.updateStorefrontCheckout(checkout.id, { status: "completed", completed_at: at });
   if (order.customer_id !== customer.id) throw new Error(`Payment intent ${paymentIntentId} is already attached to a different customer.`);
 
   let current = order;
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
-  if (current.payment_status === "paid") {
+  if (current.payment_status === "paid" && !needsReview(current)) {
     const { license } = await ensureFulfillment(repo, current, product, null, detailsFromMetadata(session.metadata));
+    await fulfilService(deps, current, product);
+    if (deps.wisp && isWispProduct(product)) {
+      await deps.wisp({ sessionId: session.id, planId: session.metadata?.wisp_plan_id ?? null, customerId: customer.id, orderId: current.id })
+        .catch((e) => console.error(`stripe-webhook: WISP delivery for order ${current.id} failed, the buyer's page will retry: ${e instanceof Error ? e.message.slice(0, 160) : "unknown"}`));
+    }
     // Only reached for a signature-verified, paid order. The event key is per order, so Stripe retries or a second
     // event for the same payment cannot start the onboarding workflow twice.
     if (license && deps.emit) {
@@ -262,9 +322,12 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
   // A license revoked between checkout and payment is never upgraded; the payment is flagged for a refund.
   const revoked = license.status === "revoked";
   // The paid line item must be the catalog's Annual Update product.
-  const updateProductIds = (await repo.listProducts()).filter((p) => p.category === "software_update" && p.stripe_product_id).map((p) => p.stripe_product_id!);
+  const updateProducts = (await repo.listProducts()).filter((p) => p.category === "software_update" && p.stripe_product_id);
   const paidProductIds = await deps.listCheckoutProductIds(session.id);
-  const wrongProduct = !paidProductIds.some((id) => updateProductIds.includes(id));
+  const paidUpdateProducts = updateProducts.filter((p) => paidProductIds.includes(p.stripe_product_id!));
+  const wrongProduct = paidUpdateProducts.length === 0;
+  // The update product must still be published when the payment arrives, not only when checkout started.
+  const notSellable = !wrongProduct && !paidUpdateProducts.some(isPurchasable);
   // A second, separate payment for an update this license already received is flagged for a refund.
   const priorPaid = (await repo.listOrders()).find(
     (o) => o.order_type === "annual_update" && o.license_id === license.id && o.tax_year === taxYear && o.provider_payment_intent_id !== paymentIntentId && o.payment_status === "paid",
@@ -294,6 +357,8 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
         ? `Review: duplicate payment; this license already paid for the ${taxYear} update (order ${priorPaid.id}). Refund the customer.`
       : wrongProduct
         ? "Review: the paid item is not the Annual Tax-Year Update product; update not applied automatically."
+      : notSellable
+        ? notSellableNote(paidUpdateProducts[0])
       : priceMismatch
         ? `Review: paid ${amount} ${session.currency ?? ""} does not match the ${taxYear} update price; update not applied automatically.`
         : null,
@@ -303,7 +368,7 @@ async function handleUpdateCheckout(deps: FulfillmentDeps, session: CheckoutSess
   if (order.license_id !== license.id) throw new Error(`Payment intent ${paymentIntentId} is already recorded for another order.`);
   let current = order;
   if (paid && current.payment_status === "pending") current = await setOrderPayment(repo, current, "paid", at);
-  if (current.payment_status === "paid" && !current.notes?.startsWith("Review:")) await applyPaidUpdate(repo, current, null);
+  if (current.payment_status === "paid" && !needsReview(current)) await applyPaidUpdate(repo, current, null);
   return { status: "processed", detail: `Update order ${current.id} is ${current.payment_status}.` };
 }
 
@@ -337,6 +402,10 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
       return handleCheckoutSession(deps, object as CheckoutSession, true);
     case "checkout.session.async_payment_failed":
     case "checkout.session.expired": {
+      if (event.type === "checkout.session.expired") {
+        const checkout = await repo.findStorefrontCheckout((object as CheckoutSession).id);
+        if (checkout?.status === "open") await repo.updateStorefrontCheckout(checkout.id, { status: "expired" });
+      }
       const pi = idOf((object as CheckoutSession).payment_intent);
       const order = pi ? await repo.findOrderByPaymentIntent(pi) : null;
       if (!order) return { status: "ignored", detail: "No order for this checkout." };
@@ -351,10 +420,16 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
       if (order.payment_status === "pending") {
         const paidOrder = await setOrderPayment(repo, order, "paid", at);
         if (paidOrder.order_type === "annual_update") {
-          if (!paidOrder.notes?.startsWith("Review:")) await applyPaidUpdate(repo, paidOrder, null);
+          if (!needsReview(paidOrder)) await applyPaidUpdate(repo, paidOrder, null);
         } else {
           const product = await repo.getProduct(paidOrder.product_id);
-          if (product) await ensureFulfillment(repo, paidOrder, product, null);
+          if (product && !needsReview(paidOrder)) {
+            if (isPurchasable(product)) {
+              await ensureFulfillment(repo, paidOrder, product, null);
+              await fulfilService(deps, paidOrder, product);
+            }
+            else await repo.updateOrder(paidOrder.id, { notes: notSellableNote(product) });
+          }
         }
       }
       return { status: "processed", detail: `Order ${order.id} paid.` };
@@ -379,6 +454,7 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
         // A refunded update reverts only that update; a refunded purchase revokes the license.
         if (order.order_type === "annual_update") await reverseUpdate(repo, order, "Update payment refunded");
         else await restrictLicenseForOrder(repo, order, "revoked", "Payment refunded", at);
+        if (deps.services) await cancelServiceForOrder(deps.services.repo, order.id, "Payment refunded.");
       }
       return { status: "processed", detail: `Order ${order.id} ${full ? "refunded" : "partially refunded"}.` };
     }
@@ -389,6 +465,7 @@ async function applyEvent(deps: FulfillmentDeps, event: StripeEventLike): Promis
       await setOrderPayment(repo, order, "disputed", at);
       if (order.order_type === "annual_update") await reverseUpdate(repo, order, "Update payment disputed");
       else await restrictLicenseForOrder(repo, order, "suspended", "Payment disputed", at);
+      if (deps.services) await cancelServiceForOrder(deps.services.repo, order.id, "Payment disputed.");
       return { status: "processed", detail: `Order ${order.id} disputed.` };
     }
     default:
@@ -453,7 +530,7 @@ export async function reconcilePurchase(repo: CommerceRepo, input: ReconcileInpu
     if (owner?.email !== email) throw new ValidationError("This payment is already recorded for a different customer.");
   }
 
-  const customer = await findOrCreateCustomer(repo, email, input.full_name, null);
+  const customer = await findOrCreateCustomer(repo, email, input.full_name, null, "A purchase was recorded for them by an administrator.");
   const { order, created } = await repo.createOrder({
     customer_id: customer.id,
     product_id: product.id,
@@ -535,7 +612,7 @@ export async function createInternalLicense(repo: CommerceRepo, input: InternalL
   if (product.access_type !== "license") throw new ValidationError("Internal licenses are only for licensed software products.");
   if (!product.installation_options.includes("self_service")) throw new ValidationError("That installation option is not offered for this product.");
 
-  const customer = await findOrCreateCustomer(repo, email, fullName, null);
+  const customer = await findOrCreateCustomer(repo, email, fullName, null, "An internal license was issued to them.");
   const notes = `${INTERNAL_ORDER_MARKER} Reason: ${reason}.${phone ? ` Phone on file: ${phone}.` : ""} Domain to authorize: ${domain}.`;
   const existing = (await repo.listOrders()).find((o) => o.customer_id === customer.id && o.product_id === product.id && isInternalOrder(o));
   const { order, created } = existing

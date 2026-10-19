@@ -3,6 +3,8 @@ import { automationDeps } from "@/lib/automation/server";
 import { crmDeps } from "@/lib/crm/server";
 import { commerceRepo } from "@/lib/admin";
 import { deriveProgress, inviteFacts, STATUS_LABELS } from "@/lib/automation/progress.ts";
+import Link from "next/link";
+import { installationNextStep } from "@/lib/commerce/installation-progress.ts";
 import { Badge, when } from "./ui";
 
 const currentTime = () => Date.now();
@@ -44,7 +46,8 @@ export async function OnboardingPanel({ licenseId }: { licenseId: string }) {
           <dt>Customer details</dt><dd>{profile?.business_name ? `${profile.business_name} · ${profile.contact_name} · ${profile.business_email}` : "Not entered yet"}</dd>
           <dt>Website</dt><dd>{active.length ? active.map((d) => d.domain).join(", ") + " (authorized)" : "Not authorized yet"}</dd>
           <dt>CRM</dt><dd>{!conn ? "Not connected" : `${conn.provider === "highlevel" ? "GoHighLevel (OAuth)" : "Webhook"} · ${conn.status}${conn.last_checked_at && !conn.last_error ? " · test passed" : conn.last_error ? " · test failed" : " · not tested"}`}</dd>
-          <dt>Installation</dt><dd>{installation ? <>{installation.status.replace(/_/g, " ")} <small>(confirmed by an administrator on the Installations page)</small></> : "No installation record"}</dd>
+          <dt>Installation</dt><dd>{installation ? <Link href={`/installations/${installation.id}`}>{installation.status.replace(/_/g, " ")}</Link> : "No installation record"}</dd>
+          {installation && (<><dt>Next step</dt><dd>{installationNextStep({ installation, license, activeDomains: active.map((d) => d.domain), onboarding: { completed: progress.status === "completed", remaining: progress.remaining.map((s) => s.label), invite: invite.status, linkState: invite.linkState, linkOpened: Boolean(invite.linkOpenedAt) } }).text}</dd></>)}
           <dt>Last activity</dt><dd>{when(progress.lastActivity)}</dd>
           <dt>Steps left</dt><dd>{progress.remaining.length ? progress.remaining.map((s) => s.label).join(", ") : "None"}</dd>
           {progress.attention.length > 0 && (<><dt>Needs attention</dt><dd>{progress.attention.join(" ")}</dd></>)}

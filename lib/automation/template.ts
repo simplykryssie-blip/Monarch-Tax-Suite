@@ -1,3 +1,6 @@
+import type { EmailBrand } from "../branding/brand.ts";
+import { blockHtml, parseRich, richToText } from "../richtext.ts";
+
 // Email template rendering. Templates are plain text with {{variable}} placeholders from a fixed list.
 // Everything is HTML-escaped; there is no expression evaluation, no includes and no raw HTML.
 
@@ -16,6 +19,17 @@ export const VARIABLES: Record<string, string> = {
   installation_status: "The calculator installation status",
   embed_instructions: "Step-by-step embed instructions with the calculator code",
   failure_reason: "A plain-language reason for a failed delivery",
+  product_name: "The product the customer bought",
+  service_deliverable: "Services: what the customer receives",
+  service_owner: "Services: who delivers it",
+  service_response_time: "Services: the expected response time",
+  service_next_step: "Services: the next step on the service order",
+  appointment_time: "Appointments: when it is, in the client's time zone",
+  appointment_type: "Appointments: what was booked",
+  appointment_link: "Appointments: the link to see, move or cancel it",
+  invoice_number: "Invoices: the invoice number",
+  invoice_total: "Invoices: the amount",
+  invoice_due: "Invoices: the due date",
   support_email: "Monarch Tax Suite support email",
   app_url: "The Monarch Tax Suite website address",
 };
@@ -50,54 +64,70 @@ function fill(text: string, values: Record<string, string>, mode: "text" | "html
 }
 
 /** Renders a template for one recipient. Throws on unknown variables so a typo can never reach a customer. */
-export function renderTemplate(subjectTemplate: string, bodyTemplate: string, values: Record<string, string>, brand: { supportEmail: string }): RenderedEmail {
+export function renderTemplate(subjectTemplate: string, bodyTemplate: string, values: Record<string, string>, brand: { supportEmail: string } & Partial<Pick<EmailBrand, "name" | "color" | "textColor" | "logoUrl" | "poweredBy">>): RenderedEmail {
+  // Defaults are the Monarch look, so callers that pass nothing about branding render exactly as before.
+  const name = brand.name ?? "Monarch Tax Suite";
+  const bg = brand.color ?? "#111111";
+  const fg = brand.textColor ?? (brand.color ? "#ffffff" : "#e8d9a8");
   const unknown = unknownVariables(subjectTemplate, bodyTemplate);
   if (unknown.length) throw new Error(`Unknown template variable(s): ${unknown.join(", ")}`);
 
   const subject = oneLine(fill(subjectTemplate, values, "text")).slice(0, 200);
-  const blocks = bodyTemplate.replace(/\r\n/g, "\n").split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+  const blocks = parseRich(bodyTemplate);
+  const val = (name: string) => clean(values[name] ?? "");
 
   const htmlBlocks = blocks.map((block) => {
-    const only = block.match(/^\{\{\s*([A-Za-z0-9_]+)\s*\}\}$/)?.[1];
+    // A paragraph that is only one of these placeholders gets special treatment.
+    const only = block.t === "p" && block.c.length === 1 && block.c[0].t === "token" ? block.c[0].name : null;
     if (only === "setup_link" && safeUrl(values.setup_link ?? "")) {
       const href = esc(values.setup_link);
-      return `<p style="margin:24px 0"><a href="${href}" style="background:#111;color:#e8d9a8;text-decoration:none;padding:12px 22px;border-radius:4px;font-weight:600;display:inline-block">Open your setup page</a></p><p style="font-size:12px;color:#6b665a;word-break:break-all">Or copy this address: ${href}</p>`;
+      return `<p style="margin:24px 0"><a href="${href}" style="background:${bg};color:${fg};text-decoration:none;padding:12px 22px;border-radius:4px;font-weight:600;display:inline-block">Open your setup page</a></p><p style="font-size:12px;color:#6b665a;word-break:break-all">Or copy this address: ${href}</p>`;
     }
     if (only === "embed_instructions") {
       return `<pre style="background:#f6f4ee;border:1px solid #e3dfd2;border-radius:4px;padding:12px;font-size:12px;white-space:pre-wrap;word-break:break-word">${esc(clean(values.embed_instructions ?? "", 4000))}</pre>`;
     }
-    if (block.startsWith("# ")) return `<h2 style="font-size:20px;margin:0 0 12px;color:#111">${fill(block.slice(2), values, "html")}</h2>`;
-    return `<p style="margin:0 0 14px;line-height:1.6">${fill(block, values, "html").replace(/\n/g, "<br>")}</p>`;
+    return blockHtml(block, val);
   });
 
   const text = blocks
     .map((block) => {
-      const only = block.match(/^\{\{\s*([A-Za-z0-9_]+)\s*\}\}$/)?.[1];
+      const only = block.t === "p" && block.c.length === 1 && block.c[0].t === "token" ? block.c[0].name : null;
       if (only === "embed_instructions") return clean(values.embed_instructions ?? "", 4000);
-      return fill(block.startsWith("# ") ? block.slice(2) : block, values, "text");
+      return richToText([block], Object.fromEntries(Object.keys(values).map((k) => [k, val(k)])));
     })
     .join("\n\n");
 
-  const html = `<!doctype html><html><body style="margin:0;background:#f3f1ea;font-family:Arial,Helvetica,sans-serif;color:#2b2a26"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border:1px solid #e3dfd2;border-radius:6px"><tr><td style="background:#111;color:#e8d9a8;padding:16px 24px;font-size:13px;letter-spacing:2px;font-weight:700">MONARCH TAX SUITE</td></tr><tr><td style="padding:24px;font-size:15px">${htmlBlocks.join("")}</td></tr><tr><td style="padding:16px 24px;border-top:1px solid #eee;font-size:12px;color:#6b665a">Questions? Reply to this email or write to ${esc(brand.supportEmail)}.</td></tr></table></td></tr></table></body></html>`;
-  return { subject, html, text: `${text}\n\n--\nMonarch Tax Suite · ${brand.supportEmail}` };
+  const html = `<!doctype html><html><body style="margin:0;background:#f3f1ea;font-family:Arial,Helvetica,sans-serif;color:#2b2a26"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border:1px solid #e3dfd2;border-radius:6px"><tr><td style="background:${bg};color:${fg};padding:16px 24px;font-size:13px;letter-spacing:2px;font-weight:700">${brand.logoUrl && /^https:\/\//.test(brand.logoUrl) ? `<img src="${esc(brand.logoUrl)}" alt="${esc(name)}" height="36" style="display:block;max-height:36px;max-width:240px;border:0">` : esc(name.toUpperCase())}</td></tr><tr><td style="padding:24px;font-size:15px">${htmlBlocks.join("")}</td></tr><tr><td style="padding:16px 24px;border-top:1px solid #eee;font-size:12px;color:#6b665a">Questions? Reply to this email or write to ${esc(brand.supportEmail)}.${brand.poweredBy ? ' <span style="color:#9a958a">Powered by Verexa HQ</span>' : ""}</td></tr></table></td></tr></table></body></html>`;
+  return { subject, html, text: `${text}\n\n--\n${name} · ${brand.supportEmail}${brand.poweredBy ? "\nPowered by Verexa HQ" : ""}` };
 }
 
 /** Sample values for previews and test sends. Obviously fake; never real customer data. */
 export const SAMPLE_VALUES: Record<string, string> = {
   customer_name: "Sample Customer",
   customer_first_name: "Sample",
+  appointment_time: "Tuesday, October 13 at 2:00 PM EDT",
+  appointment_type: "Tax prep consultation",
+  appointment_link: "https://app.yourfirm.com/book/manage/SAMPLE-LINK-NOT-REAL",
+  invoice_number: "INV-0001",
+  invoice_total: "$223.00",
+  invoice_due: "October 31, 2026",
   business_name: "Sample Tax Co",
   license_reference: "MTS-SAMPL…",
   license_status: "active",
   tax_year: "2026",
   order_number: "1000",
   authorized_domain: "example-sample.com",
-  setup_link: "https://monarch-tax-suite.vercel.app/setup?t=SAMPLE-LINK-NOT-REAL",
+  setup_link: "https://app.yourfirm.com/setup?t=SAMPLE-LINK-NOT-REAL",
   crm_status: "Connected",
   crm_account: "Sample Tax Co (GoHighLevel)",
   installation_status: "active",
   embed_instructions: "SAMPLE: add a Custom Code block to your page and paste the calculator code shown in your setup page.",
   failure_reason: "SAMPLE: GoHighLevel access expired. Reconnect it from your setup page.",
-  support_email: "info@monarchtaxsuite.com",
-  app_url: "https://monarch-tax-suite.vercel.app",
+  product_name: "Sample Bureau Setup Review",
+  service_deliverable: "SAMPLE: a written review of your bureau setup",
+  service_owner: "SAMPLE: Monarch support",
+  service_response_time: "SAMPLE: 2 business days",
+  service_next_step: "SAMPLE: we will email you to confirm the details",
+  support_email: "support@monarchtaxsuite.com",
+  app_url: "https://app.yourfirm.com",
 };

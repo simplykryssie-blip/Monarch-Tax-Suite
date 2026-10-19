@@ -1,9 +1,10 @@
 # Turning on rate limiting for `/api/license/validate`
 
-**Status today: NOT ACTIVE in production.** The code is in the application and
-safe, but its database table does not exist in production yet. Until the
-migration below is applied and checked, requests are not limited. Do not tell
-anyone rate limiting is on until step 4 below has been done and observed.
+**Status: applied to production on 2026-10-12.** The table and function exist,
+and a rolled-back test of the server's call counted correctly (1, then 2) while
+public and signed-in roles were refused. The last check in step 4 is still open:
+watching the counters rise from real traffic. Before the migration, every call
+returned 404 and was allowed through (fail-open), so nothing was throttled.
 
 ## What it does
 
@@ -13,7 +14,7 @@ per minute per embed id (HTTP 429 with a `Retry-After` header beyond that). The
 calculator itself does not call this endpoint; only integrators do. Visitor
 addresses are stored only as a keyed one-way hash, never as the address.
 
-## The migration (reviewed, additive, not applied)
+## The migration (reviewed, additive, applied 2026-10-12)
 
 `supabase/migrations/20261009200000_rate_limit_counters.sql`
 

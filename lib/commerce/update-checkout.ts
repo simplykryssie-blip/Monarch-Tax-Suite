@@ -1,3 +1,4 @@
+import { isPurchasable } from "./catalog.ts";
 import { lookupUpdate } from "./versions.ts";
 import { lookupMessage, priceIssues, updateProductFor, type StripeCatalogPort } from "./stripe-verify.ts";
 import { ValidationError } from "./validation.ts";
@@ -37,7 +38,7 @@ export async function startUpdateCheckout(
 
   // Verify the linked price live before every checkout; fail safely if Stripe cannot confirm it.
   const updateProduct = await updateProductFor(repo).catch(() => null);
-  if (!updateProduct) throw new ValidationError("This update is not yet available for online purchase. Please contact Monarch Tax Suite.");
+  if (!updateProduct || !isPurchasable(updateProduct)) throw new ValidationError("This update is not yet available for online purchase. Please contact Monarch Tax Suite.");
   let issues: string[];
   try {
     const price = await catalog.getPrice(version.stripe_update_price_id);

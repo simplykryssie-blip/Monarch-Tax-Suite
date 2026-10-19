@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { MemoryImageStore, MemoryRepo } from "./memory-repo.ts";
-import { createProduct, duplicateProduct, editProduct, isStorefrontVisible, setProductStatus } from "../lib/commerce/catalog.ts";
+import { MemoryImageStore, MemoryRepo, makeSellable } from "./memory-repo.ts";
+import { createProduct, duplicateProduct, editProduct, isPurchasable, isStorefrontVisible, setProductStatus } from "../lib/commerce/catalog.ts";
 import {
   imageDimensions,
   MAX_IMAGE_BYTES,
@@ -13,7 +13,8 @@ import {
   uploadProductImage,
   validateImage,
 } from "../lib/commerce/images.ts";
-import { createStripePrice, createStripeProduct, priceSyncState, syncStripeProductInfo, type StripePort } from "../lib/commerce/stripe-sync.ts";
+import { verifyCatalogProduct, type StripeCatalogPort } from "../lib/commerce/stripe-verify.ts";
+import { createStripePrice, createStripeProduct, priceSyncState, syncStripeAvailability, syncStripeProductInfo, type StripePort } from "../lib/commerce/stripe-sync.ts";
 import { handleStripeEvent, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
 import { parseFeatures, parseMetadata, parseProductForm, ValidationError } from "../lib/commerce/validation.ts";
 import type { NewProduct } from "../lib/commerce/types.ts";
@@ -86,7 +87,7 @@ describe("product images", () => {
   test("upload stores the file in storage and only path + metadata in the database", async () => {
     const { repo, store, product } = await setup();
     const image = await uploadProductImage(repo, store, product.id, upload(png(), "image/png", "  Calculator  screenshot "), "admin");
-    assert.match(image.storage_path, new RegExp(`^products/${product.id}/[0-9a-f-]{36}\\.png$`));
+    assert.match(image.storage_path, new RegExp(`^images/products/${product.id}/[0-9a-f-]{36}\\.png$`));
     assert.equal(image.is_primary, true, "first image is primary");
     assert.equal(image.alt_text, "Calculator screenshot");
     assert.equal(image.width, 800);
@@ -104,7 +105,7 @@ describe("product images", () => {
     const replaced = await uploadProductImage(repo, store, product.id, upload(webp(), "image/webp"), "admin", first.id);
     assert.equal(replaced.is_primary, true);
     assert.equal(replaced.sort_order, first.sort_order);
-    assert.equal(store.files.has(first.storage_path), false);
+    assert.deepEqual(store.discarded, [first.storage_path], "the old file is queued for the 24-hour window");
     assert.equal(await repo.getProductImage(first.id), null);
     assert.equal((await repo.listProductImages([product.id])).length, 2);
   });
@@ -119,7 +120,7 @@ describe("product images", () => {
     await updateImageAlt(repo, a.id, "Results screen");
     assert.equal((await repo.getProductImage(a.id))?.alt_text, "Results screen");
     await removeProductImage(repo, store, b.id);
-    assert.equal(store.files.has(b.storage_path), false);
+    assert.ok(store.discarded.includes(b.storage_path), "queued for the 24-hour window");
     assert.equal((await repo.getProductImage(a.id))?.is_primary, true);
   });
 
@@ -157,7 +158,7 @@ describe("product editing", () => {
       features: "- 2025 and 2026 tax years\n• Child Tax Credit\n\n",
       terms: "Lifetime license for the purchased tax year.",
       disclaimer: "Estimates only.",
-      metadata: "checkout_url: https://buy.stripe.com/test\nSupport Email: info@monarchtaxsuite.com",
+      metadata: "Service Owner: Monarch support\nSupport Email: info@monarchtaxsuite.com",
       stripe_product_id: "prod_TESTCALC123",
       stripe_price_id: "price_TESTCALC123",
     }).forEach(([k, v]) => form.set(k, v));
@@ -165,7 +166,7 @@ describe("product editing", () => {
     const saved = await editProduct(repo, product.id, parseProductForm(form));
     assert.equal(saved.description, "Line one.\n\nLine two.");
     assert.deepEqual(saved.features, ["2025 and 2026 tax years", "Child Tax Credit"]);
-    assert.deepEqual(saved.metadata, { checkout_url: "https://buy.stripe.com/test", support_email: "info@monarchtaxsuite.com" });
+    assert.deepEqual(saved.metadata, { service_owner: "Monarch support", support_email: "info@monarchtaxsuite.com" });
     assert.equal(saved.id, product.id);
     assert.equal(saved.stripe_product_id, "prod_TESTCALC123");
   });
@@ -198,6 +199,7 @@ describe("product editing", () => {
 
   test("duplicate creates a draft without Stripe links and copies images", async () => {
     const { repo, store, product } = await setup();
+    await repo.updateProduct(product.id, { stripe_price_cents: 7500 }); // verified price; the image is uploaded below
     const img = await uploadProductImage(repo, store, product.id, upload(png()), "admin");
     await setProductStatus(repo, product.id, "published");
     const copy = await duplicateProduct(repo, store, product.id, "admin");
@@ -233,6 +235,7 @@ describe("product editing", () => {
 describe("storefront visibility", () => {
   test("only published products are customer-visible", async () => {
     const { repo, product } = await setup();
+    await makeSellable(repo, product.id);
     assert.equal(isStorefrontVisible(product), false);
     const published = await setProductStatus(repo, product.id, "published");
     assert.equal(isStorefrontVisible(published), true);
@@ -240,8 +243,17 @@ describe("storefront visibility", () => {
     assert.equal(isStorefrontVisible(await setProductStatus(repo, product.id, "archived")), false);
   });
 
+  test("annual update products are purchasable when published but never listed in the storefront", async () => {
+    const { repo } = await setup();
+    const update = await createProduct(repo, { ...BASE, slug: "yearly-update", category: "software_update", stripe_product_id: "prod_UPDATE0009" });
+    const published = await repo.updateProduct(update.id, { status: "published" });
+    assert.equal(isPurchasable(published), true);
+    assert.equal(isStorefrontVisible(published), false);
+  });
+
   test("saving a published product keeps it sellable", async () => {
     const { repo, product } = await setup();
+    await makeSellable(repo, product.id);
     await setProductStatus(repo, product.id, "published");
     await assert.rejects(editProduct(repo, product.id, { ...BASE, price_cents: null }), /stay sellable/);
   });
@@ -251,7 +263,8 @@ function mockStripe() {
   const calls: string[] = [];
   let n = 0;
   const port: StripePort = {
-    async updateProduct(id) { calls.push(`update:${id}`); return { id }; },
+    async updateProduct(id, params) { calls.push(`update:${id}:${params.active ? "active" : "inactive"}`); return { id }; },
+    async setProductActive(id, active) { calls.push(`active:${id}:${active}`); return { id }; },
     async createProduct() { calls.push("createProduct"); return { id: `prod_NEW${++n}` }; },
     async createPrice(p) { calls.push(`createPrice:${p.unit_amount}:${p.recurring ? "recurring" : "once"}`); return { id: `price_NEW${++n}`, unit_amount: p.unit_amount }; },
   };
@@ -273,10 +286,63 @@ describe("explicit Stripe sync", () => {
     const { port, calls } = mockStripe();
     const result = await syncStripeProductInfo(repo, store, port, product.id);
     assert.equal(result.ok, true);
-    assert.deepEqual(calls, ["update:prod_TESTCALC123"]);
+    assert.deepEqual(calls, ["update:prod_TESTCALC123:inactive"], "a draft is never active in Stripe");
     const after = await repo.getProduct(product.id);
     assert.equal(after?.stripe_sync_status, "synced");
     assert.equal(after?.stripe_price_id, "price_TESTCALC123");
+  });
+
+  test("only a published product is active in Stripe, following every status change", async () => {
+    const { repo, product } = await setup();
+    await makeSellable(repo, product.id);
+    const { port, calls } = mockStripe();
+    for (const status of ["published", "unpublished", "published", "archived"] as const) {
+      await setProductStatus(repo, product.id, status);
+      const result = await syncStripeAvailability(repo, port, product.id);
+      assert.equal(result?.ok, true);
+    }
+    assert.deepEqual(calls, ["active:prod_TESTCALC123:true", "active:prod_TESTCALC123:false", "active:prod_TESTCALC123:true", "active:prod_TESTCALC123:false"]);
+    const unlinked = await createProduct(repo, { ...BASE, slug: "unlinked", stripe_product_id: null, stripe_price_id: null });
+    assert.equal(await syncStripeAvailability(repo, port, unlinked.id), null);
+  });
+
+  test("publishing refreshes the saved Stripe check, so it never shows the draft's inactive state", async () => {
+    const { repo, product } = await setup();
+    await makeSellable(repo, product.id);
+    let active = false;
+    const port: StripePort = { ...mockStripe().port, async setProductActive(id, a) { active = a; return { id }; } };
+    const catalog: StripeCatalogPort = {
+      mode: "live",
+      async getProduct(id) { return { id, name: "Calc", active, livemode: true }; },
+      async getPrice(id) { return { id, product_id: "prod_TESTCALC123", product_name: "Calc", product_active: active, active: true, currency: "usd", unit_amount: 7500, type: "one_time", interval: null, livemode: true }; },
+      async listActivePrices() { return []; },
+      async createOneTimePrice() { throw new Error("not used"); },
+    };
+    // Checked while a draft: inactive in Stripe, as expected.
+    await verifyCatalogProduct(repo, catalog, product.id);
+    assert.equal((await repo.getProduct(product.id))?.stripe_verification?.product?.active, false);
+    // Publish: Stripe is switched on and the saved check is refreshed in the same step.
+    await setProductStatus(repo, product.id, "published");
+    const result = await syncStripeAvailability(repo, port, product.id, catalog);
+    assert.match(result!.message, /now active\. Stripe check: verified\./);
+    const after = (await repo.getProduct(product.id))!;
+    assert.equal(after.stripe_verification?.product?.active, true);
+    assert.equal(after.stripe_verification?.ok, true);
+    assert.deepEqual(after.stripe_verification?.issues, []);
+  });
+
+  test("a failed Stripe deactivation is recorded, and the status change stands", async () => {
+    const { repo, product } = await setup();
+    await makeSellable(repo, product.id);
+    await setProductStatus(repo, product.id, "published");
+    await setProductStatus(repo, product.id, "unpublished");
+    const port: StripePort = { ...mockStripe().port, async setProductActive() { throw new Error("Stripe unavailable"); } };
+    const result = await syncStripeAvailability(repo, port, product.id);
+    assert.equal(result?.ok, false);
+    assert.match(result!.message, /inactive: Stripe unavailable/);
+    const after = await repo.getProduct(product.id);
+    assert.equal(after?.status, "unpublished");
+    assert.equal(after?.stripe_sync_status, "failed");
   });
 
   test("never creates a second Stripe product", async () => {

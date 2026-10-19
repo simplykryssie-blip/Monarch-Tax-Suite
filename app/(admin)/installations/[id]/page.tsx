@@ -4,6 +4,8 @@ import { appOrigin, commerceRepo, requireAdmin } from "@/lib/admin";
 import { IntakeLinkButton } from "@/components/admin/intake-link";
 import { embedSnippet, embedUrl, METHOD_LABELS, PLATFORM_GUIDES, PLATFORM_ORDER, SUPPORT_LABELS } from "@/lib/commerce/platforms.ts";
 import { updateInstallationAction } from "../../actions";
+import { installationNextStep } from "@/lib/commerce/installation-progress.ts";
+import { loadOnboardingFacts } from "@/lib/onboarding-facts";
 import { Badge, EmptyRow, Flash, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 
 export default async function InstallationPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -21,15 +23,17 @@ export default async function InstallationPage({ params, searchParams }: { param
       repo.listInstallationEvents(installation.id),
       installation.license_id ? repo.listDomains(installation.license_id) : Promise.resolve([]),
     ]);
-    return { installation, customer, order, product, license, events, domains };
+    const onboarding = installation.installation_type === "self_service" && installation.license_id ? await loadOnboardingFacts(installation.license_id) : null;
+    return { installation, customer, order, product, license, events, domains, onboarding };
   });
   if (!result.ok) return <SetupRequired message={result.message} />;
   if (!result.data) notFound();
-  const { installation: i, customer, order, product, license, events, domains } = result.data;
+  const { installation: i, customer, order, product, license, events, domains, onboarding } = result.data;
   const guide = PLATFORM_GUIDES[i.platform];
   const activeDomains = domains.filter((d) => d.status === "active").map((d) => d.domain);
   const origin = await appOrigin();
   const canEmbed = license?.status === "active" && license.embed_id && activeDomains.length > 0;
+  const next = installationNextStep({ installation: i, license, activeDomains, onboarding });
 
   return (
     <>
@@ -37,6 +41,10 @@ export default async function InstallationPage({ params, searchParams }: { param
         {product?.name} · <Link href={`/customers/${i.customer_id}`}>{customer?.full_name ?? customer?.email}</Link> · <Badge value={i.status} />
       </PageTitle>
       <Flash {...await searchParams} />
+      <section className="monarch-panel monarch-pad">
+        <h2 className="monarch-h2">Next step</h2>
+        <p><b>{{ nobody: "Nothing to do", administrator: "Waiting on you", customer: "Waiting on the customer" }[next.waitingOn]}:</b> {next.text}</p>
+      </section>
       <div className="monarch-lower-grid">
         <section className="monarch-panel monarch-pad">
           <h2 className="monarch-h2">Order &amp; payment</h2>

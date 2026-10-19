@@ -1,15 +1,15 @@
 "use server";
 
+import { DELETE_NOTICE } from "@/lib/storage/window.ts";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type Stripe from "stripe";
-import { commerceRepo, imageStore, requireAdmin, stripeClient } from "@/lib/admin";
+import { appOrigin, commerceRepo, imageStore, requireAdmin, stripeClient } from "@/lib/admin";
 import { createProduct, duplicateProduct, editProduct, setProductStatus } from "@/lib/commerce/catalog.ts";
 import { removeProductImage, setPrimaryImage, updateImageAlt, uploadProductImage } from "@/lib/commerce/images.ts";
 import { createStripePrice, createStripeProduct, syncStripeProductInfo, type StripePort, type SyncResult } from "@/lib/commerce/stripe-sync.ts";
 import { parseProductForm, ValidationError } from "@/lib/commerce/validation.ts";
 import { checkVersionPrice, createVersionPrice, linkVersionPrice, verifyCatalogProduct, type StripeCatalogPort } from "@/lib/commerce/stripe-verify.ts";
-import { stripeCatalogPort } from "@/lib/stripe-catalog";
+import { fixWebhook, stripeAvailabilityNote, stripeCatalogPort, stripeSyncPort } from "@/lib/stripe-catalog";
 
 // Product editor, image and Stripe actions. Every action re-checks
 // administrator access server-side before touching data or storage.
@@ -40,7 +40,7 @@ export async function saveProductAction(_prev: SaveProductState, form: FormData)
     if (publish && product.status !== "published") {
       try {
         await setProductStatus(repo, product.id, "published");
-        target = notice(`/products/${product.id}`, "notice", "Product saved and published.");
+        target = notice(`/products/${product.id}`, "notice", `Product saved and published.${await stripeAvailabilityNote(product.id)}`);
       } catch (error) {
         if (!(error instanceof ValidationError)) throw error;
         // The edits are saved; only publishing was refused.
@@ -110,7 +110,7 @@ export async function removeProductImageAction(_prev: ImageActionState, form: Fo
   await requireAdmin();
   return imageAction(async () => {
     await removeProductImage(commerceRepo(), imageStore(), uuid(form, "image_id"));
-    return "Image removed.";
+    return `Image removed. ${DELETE_NOTICE}`;
   });
 }
 
@@ -133,18 +133,6 @@ export async function updateImageAltAction(_prev: ImageActionState, form: FormDa
 
 // ------------------------------------------------------------------ Stripe
 
-function stripePort(stripe: Stripe): StripePort {
-  return {
-    updateProduct: (id, params) => stripe.products.update(id, params),
-    // Idempotency keys stop a double-submit from creating two Stripe objects.
-    createProduct: (params) => stripe.products.create(params, { idempotencyKey: `monarch-product-${params.metadata.monarch_product_id}` }),
-    createPrice: (params) =>
-      stripe.prices.create(params, {
-        idempotencyKey: `monarch-price-${params.metadata.monarch_product_id}-${params.unit_amount}-${params.currency}-${params.recurring?.interval ?? "once"}`,
-      }),
-  };
-}
-
 async function stripeAction(form: FormData, run: (port: StripePort, productId: string) => Promise<SyncResult>) {
   await requireAdmin();
   const productId = uuid(form, "id");
@@ -155,7 +143,7 @@ async function stripeAction(form: FormData, run: (port: StripePort, productId: s
     target = notice(back, "error", "Stripe is not connected: STRIPE_SECRET_KEY is not configured, so nothing was sent to Stripe.");
   } else {
     try {
-      const result = await run(stripePort(stripe), productId);
+      const result = await run(stripeSyncPort(stripe), productId);
       target = notice(back, result.ok ? "notice" : "error", result.ok ? result.message : `Stripe sync failed: ${result.message}`);
     } catch (error) {
       if (!(error instanceof ValidationError)) throw error;
@@ -167,11 +155,11 @@ async function stripeAction(form: FormData, run: (port: StripePort, productId: s
 }
 
 export async function syncStripeProductInfoAction(form: FormData) {
-  await stripeAction(form, (port, productId) => syncStripeProductInfo(commerceRepo(), imageStore(), port, productId));
+  await stripeAction(form, async (port, productId) => syncStripeProductInfo(commerceRepo(), imageStore(await appOrigin()), port, productId, stripeCatalogPort()));
 }
 
 export async function createStripeProductAction(form: FormData) {
-  await stripeAction(form, (port, productId) => createStripeProduct(commerceRepo(), imageStore(), port, productId));
+  await stripeAction(form, async (port, productId) => createStripeProduct(commerceRepo(), imageStore(await appOrigin()), port, productId));
 }
 
 export async function createStripePriceAction(form: FormData) {
@@ -241,4 +229,20 @@ export async function createVersionPriceAction(form: FormData) {
     const v = await createVersionPrice(commerceRepo(), port, uuid(form, "id"), form.get("confirm") === "on");
     return `New one-time Stripe price ${v.stripe_update_price_id} created on the Annual Update product and linked.`;
   });
+}
+
+/** Points the existing Stripe webhook endpoint at this app (keeps its signing secret). */
+export async function fixWebhookAction() {
+  await requireAdmin();
+  let message: string;
+  let ok = true;
+  try {
+    message = await fixWebhook();
+  } catch (error) {
+    if (!(error instanceof ValidationError)) throw error;
+    message = error.message;
+    ok = false;
+  }
+  revalidatePath("/", "layout");
+  redirect(`/products?${ok ? "notice" : "error"}=${encodeURIComponent(message)}`);
 }

@@ -1,13 +1,13 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { MemoryRepo } from "./memory-repo.ts";
+import { MemoryRepo, published, seedCheckout } from "./memory-repo.ts";
 import { MemoryAutomationRepo } from "./automation-memory.ts";
 import { createProduct } from "../lib/commerce/catalog.ts";
 import { createInternalLicense, handleStripeEvent, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
 import { CrmSecrets } from "../lib/crm/crypto.ts";
-import { createSetupLink, emitEvent, processExecution, retryExecution, runDue, runTest, BACKOFF_SECONDS, type AutomationDeps } from "../lib/automation/engine.ts";
-import { installDefaults } from "../lib/automation/defaults.ts";
+import { createSetupLink, emitEvent, processExecution, retryExecution, runClientTest, runDue, runTest, BACKOFF_SECONDS, type AutomationDeps } from "../lib/automation/engine.ts";
+import { installDefaults, missingDefaults } from "../lib/automation/defaults.ts";
 import { openSetupLink, resolveSetupSession } from "../lib/automation/onboarding.ts";
 import { createTemplate, duplicateWorkflow, removeWorkflow, sendTemplateTest, setTemplateActive, setWorkflowStatus, workflowsUsing } from "../lib/automation/admin.ts";
 import { emailConfig, emailConfigProblems, type EmailMessage, type EmailSender, type SendResult } from "../lib/automation/email.ts";
@@ -36,7 +36,8 @@ class FakeEmail implements EmailSender {
 
 async function setup(env: "production" | "preview" = "production", testRecipients: string[] = []) {
   const commerce = new MemoryRepo();
-  const product = await createProduct(commerce, CALCULATOR);
+  const product = await published(commerce, await createProduct(commerce, CALCULATOR));
+  for (const session of ["cs_1", "cs_u", "cs_f"]) await seedCheckout(commerce, session, product.id);
   const repo = new MemoryAutomationRepo();
   const email = new FakeEmail();
   let clock = Date.parse("2026-10-10T12:00:00Z");
@@ -314,6 +315,34 @@ describe("test mode and safe tests", () => {
   });
 });
 
+describe("testing with a client", () => {
+  test("sending steps are checked but never sent, the run carries on, and every step is recorded", async () => {
+    const { deps, repo, email, commerce } = await setup();
+    const wf = await workflowByKey(repo, "manual_license_created");
+    // A second step after the email, so we can see the run continue past the skipped send.
+    await repo.updateWorkflow(wf.id, { actions: [...wf.actions, { type: "record_note", note: "Checked the onboarding" }] });
+    const client = await commerce.createCustomer({ email: "client@example.com", full_name: "Casey Client", stripe_customer_id: null });
+    const x = await runClientTest(deps, wf.id, client.id, ADMIN);
+    assert.equal(x.status, "succeeded");
+    assert.equal(email.sent.length, 0, "nothing is sent to the client or to the admin");
+    assert.deepEqual(x.action_log.map((l) => l.status), ["skipped", "ok"]);
+    assert.match(x.action_log[0].detail, /Skipped in test: would email .* to client@example\.com/);
+    assert.equal(repo.links.length, 0);
+  });
+
+  test("a switched-off template or an unknown client is reported", async () => {
+    const { deps, repo, commerce } = await setup();
+    const wf = await workflowByKey(repo, "manual_license_created");
+    const client = await commerce.createCustomer({ email: "client@example.com", full_name: "Casey", stripe_customer_id: null });
+    await assert.rejects(runClientTest(deps, wf.id, "00000000-0000-4000-8000-0000000000ff", ADMIN), /Choose a client/);
+    const first = wf.actions[0];
+    if (first.type === "send_email") await repo.updateTemplate(first.template_id, { active: false });
+    const x = await runClientTest(deps, wf.id, client.id, ADMIN);
+    assert.equal(x.status, "failed");
+    assert.match(x.error ?? "", /switched off/);
+  });
+});
+
 describe("templates", () => {
   test("variables are validated and escaped; unknown placeholders are rejected", () => {
     assert.throws(() => validateTemplateInput({ name: "Bad", subject: "Hi {{nope}}", body: "x" }), ValidationError);
@@ -389,5 +418,35 @@ describe("email provider configuration", () => {
     const set = emailConfig({ RESEND_API_KEY: "re_supersecretvalue123", MONARCH_EMAIL_FROM: "Monarch <hello@mail.example.com>" });
     assert.deepEqual(emailConfigProblems(set), []);
     assert.ok(!JSON.stringify(emailConfigProblems(set)).includes("supersecret"));
+  });
+});
+
+describe("standard set: adding what is missing", () => {
+  test("lists only defaults not yet installed, and installing them changes nothing else", async () => {
+    const repo = new MemoryAutomationRepo();
+    const all = await missingDefaults(repo);
+    assert.ok(all.workflows.length > 0 && all.templates.length > 0);
+    await installDefaults(repo, null);
+    assert.deepEqual(await missingDefaults(repo), { templates: [], workflows: [] });
+
+    // An installation from before the service-order defaults existed: remove them, keep an edited workflow.
+    for (const key of ["service_order_created", "service_order_delivered"]) repo.workflows.splice(repo.workflows.findIndex((w) => w.workflow_key === key), 1);
+    repo.templates.splice(repo.templates.findIndex((t) => t.template_key === "service_order_delivered"), 1);
+    const edited = repo.workflows.find((w) => w.workflow_key === "paid_license_created")!;
+    edited.name = "My own name";
+    edited.status = "paused";
+    const missing = await missingDefaults(repo);
+    assert.deepEqual(missing.workflows.map((w) => [w.key, w.status]), [["service_order_created", "active"], ["service_order_delivered", "active"]]);
+    assert.deepEqual(missing.templates.map((t) => t.key), ["service_order_delivered"]);
+
+    const result = await installDefaults(repo, null);
+    assert.deepEqual(result, { templates: 1, workflows: 2 });
+    assert.deepEqual(await missingDefaults(repo), { templates: [], workflows: [] });
+    const kept = repo.workflows.find((w) => w.workflow_key === "paid_license_created")!;
+    assert.equal(kept.name, "My own name");
+    assert.equal(kept.status, "paused");
+    const delivered = repo.workflows.find((w) => w.workflow_key === "service_order_delivered")!;
+    const template = repo.templates.find((t) => t.template_key === "service_order_delivered")!;
+    assert.equal(delivered.actions[0].type === "send_email" && delivered.actions[0].template_id, template.id, "the re-added workflow uses the re-added template");
   });
 });

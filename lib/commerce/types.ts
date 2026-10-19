@@ -1,3 +1,4 @@
+import type { ArchiveFields, ArchiveLogEntry } from "../archive.ts";
 // Domain types for the Monarch commerce/licensing CRM. Plain data only, so the
 // fulfillment logic can run against Supabase in production and an in-memory
 // store in tests.
@@ -67,7 +68,7 @@ export type Product = {
   stripe_verification?: StripeVerification | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 
 export type ProductImage = {
   id: string;
@@ -88,6 +89,8 @@ export type ProductImage = {
 export interface ImageStore {
   put(path: string, bytes: Uint8Array, contentType: ImageType): Promise<void>;
   remove(paths: string[]): Promise<void>;
+  /** Deleted by a person: kept for the 24-hour window, then deleted by the scheduler. */
+  discard(paths: string[]): Promise<void>;
   copy(from: string, to: string): Promise<void>;
   publicUrl(path: string): string;
 }
@@ -131,6 +134,8 @@ export type StripeVerification = {
   /** For versions: what the price lookup concluded. */
   state?: "linked_verified" | "linked_invalid" | "reuse_candidate" | "create_required" | "ambiguous" | "product_invalid";
   issues: string[];
+  /** Expected states that need no action, e.g. a draft's Stripe product being inactive. */
+  notes?: string[];
   price?: StripePriceFacts | null;
   candidates?: StripePriceFacts[];
   product?: { id: string; name: string | null; active: boolean; livemode: boolean } | null;
@@ -154,7 +159,7 @@ export type Customer = {
   stripe_customer_id: string | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 
 export type Order = {
   id: string;
@@ -181,9 +186,30 @@ export type Order = {
   notes: string | null;
   paid_at: string | null;
   refunded_at: string | null;
+  /** The Terms / Refund Policy version the buyer accepted at storefront checkout; null for other orders. */
+  terms_version?: string | null;
+  terms_accepted_at?: string | null;
   created_at: string;
   updated_at: string;
+} & ArchiveFields;
+
+/** A Stripe Checkout Session started by the storefront. The webhook fulfils only sessions recorded here. */
+export type StorefrontCheckout = {
+  id: string;
+  product_id: string;
+  stripe_session_id: string;
+  stripe_price_id: string;
+  amount_cents: number;
+  currency: string;
+  installation_type: InstallationType | null;
+  terms_version: string;
+  terms_accepted_at: string;
+  status: "open" | "completed" | "expired";
+  expires_at: string;
+  completed_at: string | null;
+  created_at: string;
 };
+export type NewStorefrontCheckout = Omit<StorefrontCheckout, "id" | "status" | "completed_at" | "created_at">;
 
 export type License = {
   id: string;
@@ -205,7 +231,7 @@ export type License = {
   revoke_reason: string | null;
   created_at: string;
   updated_at: string;
-};
+} & ArchiveFields;
 
 export type AuthorizedDomain = {
   id: string;
@@ -299,12 +325,19 @@ export interface CommerceRepo {
   getCustomer(id: string): Promise<Customer | null>;
   findCustomerByEmail(email: string): Promise<Customer | null>;
   createCustomer(input: { email: string; full_name: string | null; stripe_customer_id: string | null }): Promise<Customer>;
-  updateCustomer(id: string, patch: Partial<Pick<Customer, "full_name" | "status" | "stripe_customer_id">>): Promise<Customer>;
+  updateCustomer(id: string, patch: Partial<Pick<Customer, "full_name" | "status" | "stripe_customer_id" | "archived_at" | "archived_by" | "archive_reason">>): Promise<Customer>;
+  /** One entry in the tenant's archive history (lib/archive.ts). */
+  logArchive(entry: ArchiveLogEntry): Promise<void>;
 
   listOrders(): Promise<Order[]>;
   /** Most recent recorded update Checkout Session for a license and tax year that has not expired. */
   findOpenUpdateCheckout(licenseId: string, taxYear: number, now: string): Promise<{ stripe_session_id: string; expires_at: string } | null>;
   recordUpdateCheckout(input: { license_id: string; tax_year: number; stripe_session_id: string; expires_at: string }): Promise<void>;
+  recordStorefrontCheckout(input: NewStorefrontCheckout): Promise<StorefrontCheckout>;
+  findStorefrontCheckout(stripeSessionId: string): Promise<StorefrontCheckout | null>;
+  updateStorefrontCheckout(id: string, patch: Partial<Pick<StorefrontCheckout, "status" | "completed_at">>): Promise<StorefrontCheckout>;
+  /** Newest first. With a product id, only that product's checkouts. */
+  listStorefrontCheckouts(limit: number, productId?: string): Promise<StorefrontCheckout[]>;
   getOrder(id: string): Promise<Order | null>;
   findOrderByPaymentIntent(paymentIntentId: string): Promise<Order | null>;
   /** Inserts unless an order with the same payment intent exists; returns the existing one then. */

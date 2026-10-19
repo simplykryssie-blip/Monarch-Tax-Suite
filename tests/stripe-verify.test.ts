@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { MemoryRepo } from "./memory-repo.ts";
-import { createProduct } from "../lib/commerce/catalog.ts";
+import { MemoryRepo, published, seedCheckout } from "./memory-repo.ts";
+import { createProduct, setProductStatus } from "../lib/commerce/catalog.ts";
 import { handleStripeEvent, issueLicenseKey, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
 import { createVersion, editVersion, setVersionStatus } from "../lib/commerce/versions.ts";
 import {
@@ -82,6 +82,8 @@ async function shop() {
     slug: "monarch-basic-tax-calculator-annual-update", name: "Annual Tax-Year Update", description: null, product_type: "software", access_type: "license",
     installation_options: ["self_service"], price_cents: 5000, currency: "usd", stripe_product_id: UPDATE_PRODUCT, stripe_price_id: UPDATE_PRICE, status: "draft", category: "software_update",
   });
+  await published(repo, calc);
+  await published(repo, update);
   const v2026 = await createVersion(repo, { product_id: calc.id, tax_year: 2026, label: null, release_date: "2026-10-09", update_price_cents: 5000, stripe_update_price_id: null });
   await setVersionStatus(repo, v2026.id, "available", "admin");
   return { repo, calc, update, v2026 };
@@ -253,6 +255,7 @@ async function customerWithUpdate() {
   const { repo, calc } = env;
   const deps: FulfillmentDeps = { repo, listCheckoutProductIds: async (sid) => (sid.startsWith("cs_buy") ? [CALC_PRODUCT] : [UPDATE_PRODUCT]) };
   const buy = (id: string, pi: string, email: string) => ({ id, type: "checkout.session.completed", data: { object: { id: `cs_buy_${id}`, payment_status: "paid", payment_intent: pi, amount_total: 7500, currency: "usd", customer: null, customer_details: { email }, metadata: {} } } });
+  for (const id of ["evt_a", "evt_b"]) await seedCheckout(repo, `cs_buy_${id}`, calc.id);
   await handleStripeEvent(deps, buy("evt_a", "pi_BUYA0000001", "a@example.com"));
   await handleStripeEvent(deps, buy("evt_b", "pi_BUYB0000001", "b@example.com"));
   const [licA, licB] = repo.licenses;
@@ -284,6 +287,26 @@ describe("update checkout and license upgrade", () => {
     assert.equal(url, s.url);
     assert.equal(s.priceId, UPDATE_PRICE);
     assert.deepEqual(s.metadata, { purpose: "annual_update", license_id: licA.id, tax_year: "2027" });
+  });
+
+  test("M4: no update checkout starts while the update product is not published", async () => {
+    const { repo, stripe, keyA, update } = await customerWithUpdate();
+    const sessions = sessionsMock();
+    for (const status of ["unpublished", "archived"] as const) {
+      await setProductStatus(repo, update.id, status);
+      await assert.rejects(startUpdateCheckout(repo, stripe.port, sessions.port, { licenseKey: keyA, origin: "https://monarch.test" }), /not yet available for online purchase/);
+    }
+    assert.equal(sessions.created.length, 0);
+  });
+
+  test("M4: an update paid after the update product was unpublished is flagged, not applied", async () => {
+    const { repo, deps, licA, update } = await customerWithUpdate();
+    await setProductStatus(repo, update.id, "unpublished");
+    await handleStripeEvent(deps, paidUpdate("evt_up", "cs_up", "pi_UPD0000009", licA.id, 2027));
+    const order = repo.orders.find((o) => o.order_type === "annual_update")!;
+    assert.equal(order.payment_status, "paid");
+    assert.match(order.notes ?? "", /^Review: the product was unpublished/);
+    assert.equal((await repo.getLicense(licA.id))?.licensed_tax_year, 2026);
   });
 
   test("a second click or a second tab reuses the open session; a completed one refuses a new charge", async () => {

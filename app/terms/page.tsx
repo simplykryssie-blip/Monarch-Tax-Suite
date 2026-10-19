@@ -53,7 +53,7 @@ export default function TermsPage() {
       </Section>
       <Section heading="6. Transfers">
         <p>
-          A license may be transferred to another person or business only with Monarch’s prior written approval, subject to applicable law. An unapproved transfer is not valid.
+          License keys are issued to the purchaser only and may not be transferred to another individual or business. See the Refund and Cancellation Policy.
         </p>
       </Section>
       <Section heading="7. Estimates only — not tax or legal advice">

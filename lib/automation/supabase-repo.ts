@@ -54,14 +54,14 @@ export class SupabaseAutomationRepo implements AutomationRepo {
   }
   async listDue(nowIso: string, limit: number) {
     const stale = new Date(Date.parse(nowIso) - 10 * 60_000).toISOString();
-    const due = unwrap(await this.db.from("automation_executions").select("*").in("status", ["queued", "retrying"]).lte("next_attempt_at", nowIso).order("next_attempt_at").limit(limit)) as Execution[];
+    const due = unwrap(await this.db.from("automation_executions").select("*").in("status", ["queued", "retrying", "waiting"]).lte("next_attempt_at", nowIso).order("next_attempt_at").limit(limit)) as Execution[];
     const stuck = unwrap(await this.db.from("automation_executions").select("*").eq("status", "running").lt("started_at", stale).limit(limit)) as Execution[];
     return [...due, ...stuck].slice(0, limit);
   }
   async claimExecution(id: string, nowIso: string, staleBeforeIso: string) {
     const current = await this.getExecution(id);
     if (!current) return null;
-    const claimable = current.status === "queued" || current.status === "retrying" || (current.status === "running" && (current.started_at ?? "") < staleBeforeIso);
+    const claimable = current.status === "queued" || current.status === "retrying" || current.status === "waiting" || (current.status === "running" && (current.started_at ?? "") < staleBeforeIso);
     if (!claimable) return null;
     // Compare-and-set on the status and attempt count we just read: only one caller can win.
     const rows = unwrap(

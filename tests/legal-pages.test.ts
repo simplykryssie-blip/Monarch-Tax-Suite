@@ -41,8 +41,13 @@ test("the shop links to the drafts only when they are approved", () => {
   }
 });
 
+test("the buy form (which links the Terms and Refund Policy) is shown, and checkout starts, only when they are approved", () => {
+  assert.match(read("app/shop/[slug]/page.tsx"), /purchase=\{LEGAL_PAGES_APPROVED \? <BuyForm/);
+  assert.match(read("app/shop/[slug]/actions.ts"), /!LEGAL_PAGES_APPROVED\) throw new ValidationError/);
+});
+
 test("nothing else in the app links to the drafts (alternate routes and navigation)", () => {
-  const allowed = new Set([...PAGES, "components/legal/legal-page.tsx", "app/shop/page.tsx", "lib/legal.ts"]);
+  const allowed = new Set([...PAGES, "components/legal/legal-page.tsx", "app/shop/page.tsx", "lib/legal.ts", "components/storefront/buy-form.tsx"]);
   // The proxy no longer lists the drafts as public routes unless they are approved.
   const proxy = read("lib/supabase/proxy.ts");
   assert.match(proxy, /\.\.\.\(LEGAL_PAGES_APPROVED \? LEGAL_PATHS : \[\]\)/);
@@ -59,6 +64,27 @@ test("nothing else in the app links to the drafts (alternate routes and navigati
   assert.deepEqual(offenders, []);
   // /terms-style routes exist only as these three page files (no aliases, redirects or rewrites).
   assert.doesNotMatch(read("next.config.ts"), /terms|privacy|refunds/);
+});
+
+test("the Refund Policy and Terms state the owner's final policy: no refunds, exchanges or transfers (2026-10-11)", () => {
+  const refunds = read("app/refunds/page.tsx").replace(/\s+/g, " ");
+  assert.match(refunds, /All sales are final\. Due to the nature of digital products, software licenses, courses, and services, Monarch Tax Suite does not offer refunds, exchanges, or transfers on any purchase\./);
+  assert.match(refunds, /License keys are issued to the purchaser only and may not be transferred to another individual or business\./);
+  assert.doesNotMatch(refunds, /When we will refund|generally final|How to request a refund/);
+  assert.doesNotMatch(read("app/terms/page.tsx"), /transferred to another person or business only with/);
+  assert.match(read("lib/legal.ts"), /LEGAL_VERSION = "2026-10-11"/);
+});
+
+test("the Refund Policy (approved as final 2026-10-11) has no draft banner; Terms and Privacy keep it until counsel reviews them", () => {
+  assert.match(read("components/legal/legal-page.tsx"), /draft = true/);
+  assert.match(read("app/refunds/page.tsx"), /<LegalPage title="Refund and Cancellation Policy" draft=\{false\}>/);
+  for (const file of ["app/terms/page.tsx", "app/privacy/page.tsx"]) assert.doesNotMatch(read(file), /draft=\{false\}/, file);
+  assert.doesNotMatch(read("app/refunds/page.tsx"), /\[To confirm/, "a final page carries no counsel notes");
+});
+
+test("the legal pages give support@monarchtaxsuite.com as the contact address", () => {
+  assert.match(read("components/legal/legal-page.tsx"), /SUPPORT_EMAIL = "support@monarchtaxsuite\.com"/);
+  for (const file of [...PAGES, "components/legal/legal-page.tsx"]) assert.doesNotMatch(read(file), /info@monarchtaxsuite\.com/, file);
 });
 
 test("the published text keeps its draft banner and counsel notes, and makes no compliance or approval claims", () => {
