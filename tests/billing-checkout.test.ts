@@ -58,3 +58,29 @@ test("emails: text is escaped, unsafe addresses never become buttons, and emails
   assert.match(html, />Open &lt;it&gt;</);
   assert.equal(renderEmailHtml("Hello\nhttps://x.test/a"), '<p style="margin:0 0 12px">Hello</p><p><a href="https://x.test/a">https://x.test/a</a></p>');
 });
+
+import { planStatus, runBillingSetup, SETUP_PLANS, type PlanRow, type SetupStripe } from "../lib/billing/setup.ts";
+
+function fakeStripe(existing: Record<string, number> = {}) {
+  const created: PlanRow[] = [];
+  const stripe: SetupStripe = {
+    findPrice: async (k) => (k in existing ? { id: `price_${k}`, cents: existing[k] } : null),
+    createPlan: async (row) => { created.push(row); },
+    ensurePortal: async () => "created",
+  };
+  return { stripe, created };
+}
+
+test("billing setup creates only the missing plans, at the owner's prices, and never edits an existing price", async () => {
+  assert.deepEqual(SETUP_PLANS.map((p) => [p.lookupKey, p.cents]), [["verexa_ptin_monthly", 9900], ["verexa_ero_monthly", 19900], ["verexa_bureau_monthly", 29900], ["verexa_pause_monthly", 2700]]);
+  const fresh = fakeStripe();
+  const r1 = await runBillingSetup(fresh.stripe);
+  assert.equal(fresh.created.length, 4);
+  assert.deepEqual(r1.plans.map((p) => p.status), ["created", "created", "created", "created"]);
+  const partly = fakeStripe({ verexa_ptin_monthly: 9900, verexa_ero_monthly: 15000 });
+  const r2 = await runBillingSetup(partly.stripe);
+  assert.deepEqual(partly.created.map((p) => p.lookupKey), ["verexa_bureau_monthly", "verexa_pause_monthly"]);
+  assert.deepEqual(r2.plans.map((p) => p.status), ["exists", "wrong_amount", "created", "created"]);
+  const status = await planStatus(partly.stripe);
+  assert.deepEqual(status.map((s) => s.exists), [true, true, false, false]);
+});

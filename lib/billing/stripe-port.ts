@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { billingKey, billingMode, PAUSE_PLAN, PLANS, type PlanKey } from "./plans.ts";
 import { reactivateSessionParams, signupSessionParams } from "./checkout-params.ts";
 import type { BillingStripe } from "./service.ts";
+import type { SetupStripe } from "./setup.ts";
 
 /** The Stripe SDK behind the BillingStripe port, using Verexa HQ's platform account. Nothing here logs a key. */
 export function billingStripe(env: NodeJS.ProcessEnv = process.env): { stripe: Stripe; port: BillingStripe; livemode: boolean } | null {
@@ -88,3 +89,37 @@ export function billingStripe(env: NodeJS.ProcessEnv = process.env): { stripe: S
 
 export type { PlanKey };
 export const PAUSE_LOOKUP_KEY = PAUSE_PLAN.lookupKey;
+
+/** The Stripe calls behind the one-time plan setup (the same ones scripts/billing-setup.mjs makes). */
+export function billingSetupPort(stripe: Stripe): SetupStripe {
+  return {
+    async findPrice(lookupKey) {
+      const r = await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
+      const p = r.data[0];
+      return p ? { id: p.id, cents: p.unit_amount } : null;
+    },
+    async createPlan(row) {
+      const product = await stripe.products.create({ name: row.label, statement_descriptor: "VEREXA HQ" });
+      await stripe.prices.create({ product: product.id, currency: "usd", unit_amount: row.cents, recurring: { interval: "month" }, lookup_key: row.lookupKey });
+    },
+    async ensurePortal() {
+      const settings = {
+        business_profile: { headline: "Manage your Verexa HQ subscription" },
+        features: {
+          customer_update: { enabled: true, allowed_updates: ["email", "address", "phone", "tax_id"] as Stripe.BillingPortal.ConfigurationUpdateParams.Features.CustomerUpdate.AllowedUpdate[] },
+          invoice_history: { enabled: true },
+          payment_method_update: { enabled: true },
+          subscription_cancel: { enabled: true, mode: "at_period_end" as const, cancellation_reason: { enabled: true, options: ["too_expensive", "missing_features", "switched_service", "unused", "other"] as Stripe.BillingPortal.ConfigurationUpdateParams.Features.SubscriptionCancel.CancellationReason.Option[] } },
+          subscription_update: { enabled: false },
+        },
+      };
+      const existing = await stripe.billingPortal.configurations.list({ is_default: true, limit: 1 });
+      if (existing.data[0]) {
+        await stripe.billingPortal.configurations.update(existing.data[0].id, settings);
+        return "updated";
+      }
+      await stripe.billingPortal.configurations.create(settings);
+      return "created";
+    },
+  };
+}
