@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   // and stores the one-time OAuth state in that host's HttpOnly cookie. Relay the
   // callback to the configured public host before reading cookies; keep the
   // original registered redirect URI for the later token exchange.
-  const canonicalOrigin = (process.env.NEXT_PUBLIC_APP_URL || "https://monarch-tax-suite.vercel.app").replace(/\\/$/, "");
+  const canonicalOrigin = (process.env.NEXT_PUBLIC_APP_URL || "https://monarch-tax-suite.vercel.app").replace(/\/$/, "");
   if (request.nextUrl.origin !== canonicalOrigin) {
     const canonicalCallback = new URL(request.nextUrl.pathname + request.nextUrl.search, canonicalOrigin);
     const response = NextResponse.redirect(canonicalCallback, 307);
