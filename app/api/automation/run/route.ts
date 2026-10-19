@@ -10,6 +10,8 @@ import { retryNotifications } from "@/lib/forms/after.ts";
 import { complianceDeps } from "@/lib/compliance/server";
 import { runComplianceSweep, sweepPendingUploads } from "@/lib/compliance/service.ts";
 import { sweepStorageCleanup } from "@/lib/storage/objects.ts";
+import { billingDeps } from "@/lib/billing/server";
+import { runBillingSweep } from "@/lib/billing/service.ts";
 import { runSmsSweep } from "@/lib/sms/server";
 import { sweepPendingClientDocs } from "@/lib/workspace/docs.ts";
 import { docDeps } from "@/lib/workspace/server";
@@ -82,7 +84,16 @@ async function handle(request: Request) {
       console.error(`sms-sweep: ${sanitizeError(e, 160)}`);
       sms = { error: "Texting sweep failed or is not set up yet" };
     }
-    return Response.json({ processed, efin, signatures, forms, compliance, storage, sms });
+    // Subscriptions, every workspace: late payments move along (suspended, read-only, cancelled), cards are checked before renewal.
+    let billing: unknown = null;
+    try {
+      const b = billingDeps();
+      billing = b ? await runBillingSweep(b) : { skipped: "billing is not configured" };
+    } catch (e) {
+      console.error(`billing-sweep: ${sanitizeError(e, 160)}`);
+      billing = { error: "Billing sweep failed or is not set up yet" };
+    }
+    return Response.json({ processed, efin, signatures, forms, compliance, storage, sms, billing });
   } catch (e) {
     console.error(`automation-run: ${sanitizeError(e, 160)}`);
     return new Response("Run failed", { status: 500 });

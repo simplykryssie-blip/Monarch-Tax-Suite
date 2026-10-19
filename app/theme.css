@@ -884,3 +884,17 @@ html[data-popup] body{background:#fff}
 .cp-list{list-style:none;padding:0;margin:0;display:grid;gap:8px}
 .cp-list li{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .cp-bulk{display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px}
+
+/* Signup and billing */
+.su-form{width:min(440px,100%);display:flex;flex-direction:column;gap:8px}
+.su-plans{border:0;padding:0;margin:0 0 8px;display:grid;gap:8px}
+.su-legend{font-size:13.5px;font-weight:600;margin-bottom:6px;padding:0}
+.su-plan{display:flex;gap:10px;align-items:flex-start;border:1px solid #d4d4d4;border-radius:12px;padding:12px 14px;margin:0;font-weight:400}
+.su-plan.is-off{opacity:.6}
+.su-plan small{display:block;color:var(--muted);font-weight:400}
+.su-price{color:var(--muted)}
+.su-agree{display:flex;gap:8px;align-items:flex-start;font-weight:400}
+.su-summary{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0 0 12px}
+.su-summary dt{color:var(--muted)}
+.su-summary dd{margin:0;overflow-wrap:anywhere}
+@media(max-width:700px){.mt-login{grid-template-columns:1fr}.mt-login-brand{display:none}}

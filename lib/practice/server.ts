@@ -1,5 +1,8 @@
 import "server-only";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { accessOf, type Subscription } from "../billing/access.ts";
+import { gateFor } from "../billing/gate.ts";
 import { appOrigin } from "../admin";
 import { createClient } from "../supabase/server";
 import { platformClient, tenantClient } from "../supabase/service";
@@ -30,7 +33,7 @@ export async function practiceMemberForInviteHash(hash: string): Promise<MemberR
   return (data as MemberRow | null) ?? null;
 }
 
-export type PracticeContext = { userId: string; email: string; tenantId: string; member: PracticeMember; workspace: string };
+export type PracticeContext = { userId: string; email: string; tenantId: string; member: PracticeMember; workspace: string; subscription: Subscription | null };
 
 /** Who is using the workspace. Not signed in → sign-in; no workspace → an explanation; no two-step sign-in → its setup. */
 export async function requirePractice(): Promise<PracticeContext> {
@@ -45,12 +48,18 @@ export async function requirePractice(): Promise<PracticeContext> {
   // The tier is read from the tenant itself; a workspace is only ever a ptin-tier tenant.
   const { data: tenant } = await platformClient("practice_member").from("tenants").select("name, tier").eq("id", member.tenant_id).maybeSingle();
   if (!tenant || (tenant as { tier: string }).tier !== "ptin") redirect("/login?error=" + encodeURIComponent("This account doesn't have a PTIN workspace."));
+  // The subscription decides what this workspace may do. A workspace with no subscription record isn't billed here; a lookup
+  // that fails (billing not installed yet) never locks anyone out.
+  const sub = await tenantClient(member.tenant_id).from("tenant_subscriptions").select("*").maybeSingle().then((r) => (r.error ? null : (r.data as Subscription | null)), () => null);
+  const h = await headers();
+  const gate = gateFor(accessOf(sub), h.get("x-pathname") ?? "", h.get("x-method") ?? "GET");
+  if (!gate.allowed) redirect(`/practice/billing?error=${encodeURIComponent(gate.message)}`);
   const repo = practiceRepo(member.tenant_id);
   // Recorded at most once an hour.
   if (!member.last_seen_at || Date.now() - Date.parse(member.last_seen_at) > 3_600_000) {
     await repo.updateMember(member.id, { last_seen_at: new Date().toISOString() }).catch(() => undefined);
   }
-  return { userId: user.id, email: user.email ?? "", tenantId: member.tenant_id, member, workspace: (tenant as { name: string }).name };
+  return { userId: user.id, email: user.email ?? "", tenantId: member.tenant_id, member, workspace: (tenant as { name: string }).name, subscription: sub };
 }
 
 export async function practiceInviteLink(token: string) {

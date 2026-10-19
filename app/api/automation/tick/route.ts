@@ -8,6 +8,7 @@ import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { rotate, runTick, type TickJob } from "@/lib/scheduler/tick.ts";
 import { campaignDeps } from "@/lib/campaigns/server";
 import { runCampaigns } from "@/lib/campaigns/service.ts";
+import { SupabaseBillingRepo } from "@/lib/billing/supabase-repo";
 import { platformClient } from "@/lib/supabase/service";
 
 // The five-minute tick (vercel.json). Same protection as the daily endpoint: CRON_SECRET as a Bearer token.
@@ -32,7 +33,10 @@ async function handle(request: Request) {
   try {
     const { data, error } = await platformClient("scheduler_tick").from("tenants").select("id").order("created_at");
     if (error) throw new Error(error.message);
-    const ids = ((data ?? []) as { id: string }[]).map((t) => t.id);
+    // Messages and automations stop for workspaces whose payment is late, paused or cancelled. If the billing table can't be
+    // read, nothing is skipped (a billing outage must not stop everyone's reminders).
+    const restricted = await new SupabaseBillingRepo().restrictedTenantIds().catch(() => new Set<string>());
+    const ids = ((data ?? []) as { id: string }[]).map((t) => t.id).filter((id) => !restricted.has(id));
     const report = await runTick(rotate(ids, Math.floor(Date.now() / 300_000)), JOBS, { log: (l) => console.error(l) });
     return Response.json(report);
   } catch (e) {

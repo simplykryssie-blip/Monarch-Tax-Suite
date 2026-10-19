@@ -8,13 +8,15 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabaseConfigProblems } from "
 // The Stripe webhook authenticates by signature, not session. /shop lists
 // published products only. /integrations authorizes each action with the buyer's license key; the
 // lead endpoint authorizes with a signed embed token.
-const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/stripe/connect-webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
+const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/stripe/connect-webhook", "/api/stripe/billing-webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
   // Customer setup links (the token is the credential) and the retry runner (authorized by CRON_SECRET).
   "/setup", "/api/automation/run", "/api/automation/tick",
   // Buyer downloads: every file request is authorized by the buyer's license key and checked again on each click.
   "/downloads",
   // Secure document links sent by a firm: the link token is the credential, checked again on every request.
   "/d/", "/sign/",
+  // Self-serve signup: public, with an email check, a bot check and rate limits; the payment page is Stripe's.
+  "/signup",
   // Campaign emails and texts: the per-recipient link token is the credential (open pixel, click redirect, unsubscribe), and the
   // provider callbacks (Resend, Twilio) authenticate themselves.
   "/t/", "/u/", "/api/campaigns/", "/api/sms/",
@@ -58,6 +60,10 @@ function configurationErrorResponse(problems: string[]) {
 export async function updateSession(request: NextRequest) {
   const problems = supabaseConfigProblems(process.env);
   if (problems.length) return configurationErrorResponse(problems);
+  // Server code (the workspace's billing gate) needs to know which page and method a request is for. Set here, always
+  // overwriting anything the browser sent.
+  request.headers.set("x-pathname", request.nextUrl.pathname);
+  request.headers.set("x-method", request.method);
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
