@@ -14,6 +14,9 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   "/downloads",
   // Secure document links sent by a firm: the link token is the credential, checked again on every request.
   "/d/", "/sign/",
+  // Campaign emails and texts: the per-recipient link token is the credential (open pixel, click redirect, unsubscribe), and the
+  // provider callbacks (Resend, Twilio) authenticate themselves.
+  "/t/", "/u/", "/api/campaigns/", "/api/sms/",
   // Public forms: anyone with the link may fill them in; every action is limited per visitor and checked again on the server.
   "/f/",
   // Public booking pages and the emailed manage links: the web address names the office, the link token is the credential.

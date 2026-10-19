@@ -301,7 +301,7 @@ const csvDate = (v: string) => {
   return us ? `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}` : t;
 };
 
-export type ImportResult = { added: number; skipped: { row: number; reason: string }[] };
+export type ImportResult = { added: number; skipped: { row: number; reason: string }[]; /** The email of each lead added, so the importer can record consent for them. */ addedEmails: string[] };
 
 /**
  * Adds a lead for each row of a spreadsheet's CSV. Columns are matched by their header (Name and Email are required;
@@ -317,7 +317,7 @@ export async function importCsv(deps: LeadsDeps, csv: string, importName: string
   if (rows.length - 1 > IMPORT_MAX_ROWS) throw new ValidationError(`That file has ${rows.length - 1} rows. Import up to ${IMPORT_MAX_ROWS} at a time.`);
   const cols = rows[0].map((h) => HEADERS[h.trim().toLowerCase().replace(/^﻿/, "")]);
   if (!cols.includes("full_name") || !cols.includes("email")) throw new ValidationError("The first row must name the columns, including Name and Email.");
-  const result: ImportResult = { added: 0, skipped: [] };
+  const result: ImportResult = { added: 0, skipped: [], addedEmails: [] };
   const parsed: { row: number; form: LeadForm }[] = [];
   for (let i = 1; i < rows.length; i++) {
     // Undo the apostrophe our own export adds in front of a leading +, -, = or @.
@@ -345,6 +345,7 @@ export async function importCsv(deps: LeadsDeps, csv: string, importName: string
     const lead = await deps.repo.insertLead({ ...blank, ...form, converted_at: form.status === "converted" ? nowOf(deps).toISOString() : null });
     await deps.repo.addEvent({ lead_id: lead.id, action: "imported", detail: { source: lead.source, row }, actor_id: actorId });
     result.added++;
+    result.addedEmails.push(form.email);
   }
   result.skipped.sort((a, b) => a.row - b.row);
   return result;

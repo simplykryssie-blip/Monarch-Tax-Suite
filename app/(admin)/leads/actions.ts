@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { emitTagChanges } from "@/lib/automation/emit";
+import { campaignRepo } from "@/lib/campaigns/server";
 import { createLead, deleteLead, importCsv, markContacted, updateLead, UUID, type ImportResult } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
 
@@ -98,6 +99,12 @@ export async function importLeadsAction(_prev: ImportState, form: FormData): Pro
     if (file.size > 2_000_000) throw new ValidationError("That file is larger than 2 MB. Split it and import each part.");
     if (!/\.csv$/i.test(file.name) && !/csv|text\/plain/i.test(file.type)) throw new ValidationError("Choose a .csv file (in Excel or Google Sheets: File → Download → CSV).");
     const result = await importCsv(leadsDeps(), await file.text(), str(form, "import_name"), admin.userId);
+    // The importer can say these people agreed to hear from the office (campaign consent, basis "import"). Nothing is recorded otherwise.
+    if (form.get("mark_marketable") === "on") {
+      const repo = campaignRepo();
+      const sms = form.get("mark_sms") === "on";
+      for (const email of result.addedEmails) await repo.upsertConsent({ email, basis: "import", sms, markedBy: admin.userId, note: "Marked as marketable when imported" });
+    }
     revalidatePath("/leads", "layout");
     return { ok: true, result };
   } catch (e) {

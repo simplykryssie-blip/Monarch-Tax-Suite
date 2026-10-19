@@ -11,7 +11,7 @@ import { loadBrand } from "@/lib/branding/server";
 import { DEFAULT_THEME, type FormTheme } from "@/lib/forms/theme.ts";
 import { publicDefinition } from "@/lib/forms/definition.ts";
 import { isPublicId, resumeDraft, startStamp } from "@/lib/forms/service.ts";
-import { respondentKeys } from "@/lib/forms/settings.ts";
+import { respondentKeys, showsTextConsent } from "@/lib/forms/settings.ts";
 
 export const metadata: Metadata = { title: "Form", robots: { index: false, follow: false } };
 
@@ -52,6 +52,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
           consentText={pf.form.signature_consent}
           allowSaveLater={pf.settings.allow_save_later}
           respondentEmailKey={respondentKeys(pf.settings, pf.version.definition).email_key}
+          textConsentLabel={showsTextConsent(pf.settings, pf.version.definition) ? `It's OK for ${firm || "this office"} to text me about my account, deadlines and offers. Message and data rates may apply. Reply STOP any time to opt out.` : null}
           stamp={startStamp(ctx.deps, pf.form.id)}
           initialAnswers={resumed?.answers}
           initialToken={resumed?.token ?? null}

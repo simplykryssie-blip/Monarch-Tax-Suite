@@ -12,7 +12,7 @@ import { buildFirmPayload, efinFrom } from "./firm.ts";
 import { checkUpload, cleanUploadName, kindOfContentType, sha256Hex, UPLOAD_CONTENT_TYPES } from "./files.ts";
 import { evaluate, type RawAnswers } from "./logic.ts";
 import { buildSubmissionPdf, type PdfAttachment, type PdfSection } from "./pdf.ts";
-import { checkSettings, DEFAULT_SETTINGS, readSettings, respondentKeys, settingsProblems, type FormSettings } from "./settings.ts";
+import { checkSettings, DEFAULT_SETTINGS, readSettings, respondentKeys, settingsProblems, showsTextConsent, type FormSettings } from "./settings.ts";
 import { effectiveBrand, type Brand } from "../brands.ts";
 import type { FirmsRepo, FormRow, FormsRepo, FormStores, FormVersion, SealedAnswer, SignatureRecord, StoredAnswers, Submission, SubmissionStatus, UploadRow } from "./types.ts";
 
@@ -33,7 +33,7 @@ export type FormDeps = {
   /** The tenant's firms/brands (connected sending domains) and which brand each verified sender belongs to. */
   brandCatalog?: () => Promise<{ brands: Brand[]; senderDomain: Record<string, string> }>;
   /** Adds a respondent to Leads (source: the form's name). Wired on the server; absent in tests. */
-  addLead?: (input: { formName: string; name: string | null; email: string }) => Promise<unknown>;
+  addLead?: (input: { formName: string; name: string | null; email: string; phone?: string | null; textConsent?: boolean }) => Promise<unknown>;
   now?: () => Date;
 };
 
@@ -465,7 +465,9 @@ export async function submitForm(deps: FormDeps, publicId: string, input: Submit
   if (!input.isTest && (age === null || age < MIN_FILL_SECONDS)) spam ??= age === null ? "missing start stamp" : "submitted too fast";
 
   const sig = input.signature;
-  const checked = checkAnswers(def, input.answers, { today, signed: !!sig });
+  // The "OK to text me" box is not a question: it rides along under its own name and never reaches the stored answers.
+  const { _text_consent: textBox, ...plainAnswers } = input.answers;
+  const checked = checkAnswers(def, plainAnswers, { today, signed: !!sig });
   const errors = { ...checked.errors };
   let signature: SignatureRecord | null = null;
   const sigField = inputFields(def).find((f) => f.type === "signature");
@@ -546,6 +548,7 @@ export async function submitForm(deps: FormDeps, publicId: string, input: Submit
     number,
     answers: seal(deps, def, id, opened) as StoredAnswers,
     respondent_email: email,
+    text_consent: textBox === "yes" && showsTextConsent(pf.settings, def),
     respondent_name: name ?? signature?.signed_name ?? null,
     submitted_at: now.toISOString(),
     ip_hash: who.ipHash,

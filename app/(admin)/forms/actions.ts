@@ -117,7 +117,8 @@ export async function saveFormSettingsAction(form: FormData) {
   await act(`/forms/${str(form, "id")}/settings`, async (adminId) => {
     const people = [0, 1, 2, 3, 4, 5].map((i) => ({ role: str(form, `p_role_${i}`), name_key: str(form, `p_name_${i}`), email_key: str(form, `p_email_${i}`), phone_key: str(form, `p_phone_${i}`), ptin_key: str(form, `p_ptin_${i}`) }));
     const raw = {
-      respondent: { email_key: str(form, "email_key"), name_key: str(form, "name_key") },
+      respondent: { email_key: str(form, "email_key"), name_key: str(form, "name_key"), phone_key: str(form, "phone_key") },
+      text_consent_box: form.get("text_consent_box") === "on",
       create_customer: form.get("create_customer") === "on",
       add_to_leads: form.get("add_to_leads") === "on",
       firm: {

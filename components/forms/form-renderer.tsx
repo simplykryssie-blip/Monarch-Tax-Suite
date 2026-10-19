@@ -24,6 +24,8 @@ export type FormRendererProps = {
   consentText: string | null;
   allowSaveLater: boolean;
   respondentEmailKey: string | null;
+  /** When set, an "OK to text me" box (ticked to start, not required) is shown above Submit. */
+  textConsentLabel?: string | null;
   stamp: string;
   initialAnswers?: RawAnswers;
   initialToken?: string | null;
@@ -94,6 +96,7 @@ export function FormRenderer(props: FormRendererProps) {
   const [sent, setSent] = useState<string | null>(null);
   const honeypot = useRef<HTMLInputElement>(null);
   const token = useRef<string | null>(props.initialToken ?? null);
+  const [textOk, setTextOk] = useState(true);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const today = useMemo(todayLocal, []);
   const live = mode !== "preview";
@@ -165,7 +168,7 @@ export function FormRenderer(props: FormRendererProps) {
     setFormError(null);
     try {
       await queue.current;
-      const input = { token: token.current, answers, signature: signaturePayload(), stamp: props.stamp };
+      const input = { token: token.current, answers: props.textConsentLabel ? { ...answers, _text_consent: textOk ? "yes" : "no" } : answers, signature: signaturePayload(), stamp: props.stamp };
       const result = mode === "test" && props.testSubmit ? await props.testSubmit(input) : await submitFormAction(props.publicId, { ...input, honeypot: honeypot.current?.value ?? "" });
       if (result.ok) {
         // Say so straight away, then load the confirmation page in full. A soft navigation right after an action that
@@ -404,6 +407,9 @@ export function FormRenderer(props: FormRendererProps) {
             </section>
           );
         })}
+        {isLast && props.textConsentLabel && (
+          <label className="monarch-check is-wide"><input type="checkbox" checked={textOk} onChange={(e) => setTextOk(e.target.checked)} /> <span>{props.textConsentLabel}</span></label>
+        )}
         {formError && <p className="monarch-alert is-error is-wide" role="alert">{formError}</p>}
         <div className="is-wide mf-nav">
           {pathIndex > 0 && <button type="button" className="monarch-secondary" onClick={back} disabled={busy}>Back</button>}

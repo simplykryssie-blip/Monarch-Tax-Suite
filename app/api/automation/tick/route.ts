@@ -6,6 +6,8 @@ import { sendDueReminders } from "@/lib/appointments/service.ts";
 import { runTriggerSweeps } from "@/lib/automation/emit";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { rotate, runTick, type TickJob } from "@/lib/scheduler/tick.ts";
+import { campaignDeps } from "@/lib/campaigns/server";
+import { runCampaigns } from "@/lib/campaigns/service.ts";
 import { platformClient } from "@/lib/supabase/service";
 
 // The five-minute tick (vercel.json). Same protection as the daily endpoint: CRON_SECRET as a Bearer token.
@@ -19,6 +21,7 @@ const JOBS: TickJob[] = [
   { name: "workflowsDue", run: async (tenantId) => (await runDue(automationDeps(tenantId), 25)).processed },
   { name: "triggerSweeps", run: (tenantId) => runTriggerSweeps(tenantId) },
   { name: "appointmentReminders", run: async (tenantId) => { const r = await sendDueReminders(appointmentDeps(tenantId)); return r.sent + r.failed + r.skipped; } },
+  { name: "campaigns", run: (tenantId) => runCampaigns(campaignDeps(tenantId)) },
 ];
 
 async function handle(request: Request) {

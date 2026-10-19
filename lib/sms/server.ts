@@ -5,7 +5,8 @@ import { CrmSecrets } from "../crm/crypto.ts";
 import { platformLogin, platformTwilio, TwilioAccounts, TwilioSmsSender, type SmsSender } from "../automation/twilio.ts";
 import { resolveSmsRoute, type SmsRoute } from "./route.ts";
 import { SupabaseSmsAccountsRepo } from "./supabase-repo.ts";
-import { advanceRegistration, fulfilSmsCheckout, provision, runRenewal, type Notify, type PaidSession, type Payments, type SetupDeps } from "./service.ts";
+import { inboundUrlForNumbers } from "./inbound";
+import { advanceRegistration, ensureInbound, fulfilSmsCheckout, provision, runRenewal, type Notify, type PaidSession, type Payments, type SetupDeps } from "./service.ts";
 import { SupabaseDocumentsRepo } from "../documents/supabase-repo.ts";
 import { SupabaseBrandRepo } from "../branding/supabase-repo.ts";
 import { emailConfig, emailConfigProblems, ResendEmailSender } from "../automation/email.ts";
@@ -79,6 +80,7 @@ export async function smsSetupDeps(tenantId: string = currentTenantId()): Promis
     secrets: secrets(),
     primaryProfileSid: primaryProfileSid(),
     officeName: office.name,
+    inboundUrl: await inboundUrlForNumbers(),
     officeEmail: office.email,
     notify: emailNotify(tenantId, office.email),
   };
@@ -133,6 +135,7 @@ export async function runSmsSweep(limit = 200): Promise<{ offices: number; renew
       const d = await smsSetupDeps(id);
       if (account.setup_paid_at && account.provision_status !== "done") await provision(d);
       else if (account.registration_status === "submitted" || (account.provision_status === "done" && account.registration_status === "not_started")) await advanceRegistration(d);
+      await ensureInbound(d).catch((e) => console.warn(`sms-sweep: incoming-text address not set for ${id.slice(0, 8)}: ${e instanceof Error ? e.message.slice(0, 120) : "unknown"}`));
       const did = await runRenewal(d);
       renewals[did] = (renewals[did] ?? 0) + 1;
     } catch (e) {
@@ -140,5 +143,17 @@ export async function runSmsSweep(limit = 200): Promise<{ offices: number; renew
       console.error(`sms-sweep: tenant ${id.slice(0, 8)}: ${e instanceof Error ? e.message.slice(0, 160) : "unknown"}`);
     }
   }
+  await ensurePlatformInbound().catch((e) => console.warn(`sms-sweep: owner number incoming-text address not set: ${e instanceof Error ? e.message.slice(0, 120) : "unknown"}`));
   return { offices, renewals, errors };
+}
+
+/** The owner's own number (Monarch texts from it) also sends incoming texts to the platform, so STOP replies are honoured there too. */
+async function ensurePlatformInbound(): Promise<void> {
+  const platform = platformTwilio(process.env);
+  const login = platformLogin(platform);
+  const url = await inboundUrlForNumbers();
+  if (!url || !login || !platform.accountSid || !platform.from) return;
+  const twilio = new TwilioAccounts(login);
+  const found = await twilio.findNumberSid(platform.accountSid, platform.from);
+  if (found && found.smsUrl !== url) await twilio.setNumberInbound(platform.accountSid, found.sid, url);
 }
