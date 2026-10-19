@@ -16,7 +16,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const result = await load(loadSnapshot);
   return (
     <>
-      <PageTitle title="Settings">The lists your team picks from when adding a firm. Nothing here is shared outside Monarch.</PageTitle>
+      <PageTitle title="Settings">The lists your team picks from when adding a firm. Nothing here is shared outside Verexa HQ.</PageTitle>
       <Flash {...sp} />
       {!result.ok ? <SetupRequired message={result.message} module="efin" /> : (
         <div className="efin-flow">

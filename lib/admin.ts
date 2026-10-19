@@ -65,7 +65,7 @@ export async function isAdminUser(userId: string): Promise<boolean> {
 
 export type AdminSession = { userId: string; email: string };
 
-/** Verifies the signed-in user is a Monarch administrator. Use in every admin page and server action. */
+/** Verifies the signed-in user is a platform administrator. Use in every admin page and server action. */
 export const requireAdmin = cache(async (): Promise<AdminSession> => {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -89,8 +89,8 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
       if (portal) redirect("/portal");
     }
     const message = setupMissing
-      ? "Administrator access is not set up yet. Apply the Monarch commerce database migration."
-      : "This account is not a Monarch administrator.";
+      ? "Administrator access is not set up yet. Apply the commerce database migration."
+      : "This account is not a platform administrator.";
     redirect("/login?error=" + encodeURIComponent(message));
   }
   return { userId: decision.userId, email: user?.email ?? "" };

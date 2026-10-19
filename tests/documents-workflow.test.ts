@@ -75,7 +75,7 @@ async function setup(opts: { env?: "production" | "preview"; senders?: boolean }
   const repo = new MemoryAutomationRepo();
   const deps: AutomationDeps = {
     repo, commerce, crm: null, email, documents, senders: opts.senders === false ? null : senders,
-    fallbackSender: { from: "Monarch Tax Suite <support@monarchtaxsuite.com>", replyTo: null, label: "platform" },
+    fallbackSender: { from: "Monarch Tax Suite <support@verexahq.com>", replyTo: null, label: "platform" },
     config: { origin: () => "https://app.test", supportEmail: "support@acmetax.test", supportRecipient: "office@acmetax.test", env: opts.env ?? "production", testRecipients: [] },
   };
   const upload = async (fileName: string, bytes: Uint8Array) => {
@@ -104,7 +104,7 @@ describe("send document step", () => {
     assert.equal(m.to, "ana@example.com");
     assert.match(m.text, /https:\/\/app\.test\/d\/[A-Za-z0-9_-]{40,}/);
     assert.match(m.text, /Welcome aboard\./);
-    assert.equal(m.from, "Monarch Tax Suite <support@monarchtaxsuite.com>", "no own sender yet: the platform fallback");
+    assert.equal(m.from, "Monarch Tax Suite <support@verexahq.com>", "no own sender yet: the platform fallback");
     assert.deepEqual(s.repo.events.map((e) => e.event_type), ["service.order_created", "document.sent"]);
     assert.equal(s.repo.events[1].data.document_id, doc.id);
   });

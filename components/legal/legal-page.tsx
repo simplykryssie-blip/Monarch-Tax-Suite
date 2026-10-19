@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { LEGAL_LAST_UPDATED } from "@/lib/legal";
+import { PLATFORM_SUPPORT_EMAIL } from "@/lib/platform-brand";
 
-export const SUPPORT_EMAIL = "support@monarchtaxsuite.com";
+export const SUPPORT_EMAIL = PLATFORM_SUPPORT_EMAIL;
 
 /**
  * Shared shell for the Terms, Privacy and Refund pages. A page shows the "Draft for review" banner until its text is

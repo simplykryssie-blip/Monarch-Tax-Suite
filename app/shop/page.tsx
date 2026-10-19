@@ -21,7 +21,7 @@ export default async function ShopPage() {
         <h1>Shop</h1>
       </header>
       {products.length === 0 ? (
-        <p className="sf-empty">No products are available right now. Contact <a href="mailto:support@monarchtaxsuite.com">support@monarchtaxsuite.com</a>.</p>
+        <p className="sf-empty">No products are available right now. Contact <a href="mailto:support@verexahq.com">support@verexahq.com</a>.</p>
       ) : (
         <ul className="sf-shop">
           {products.map((p) => {

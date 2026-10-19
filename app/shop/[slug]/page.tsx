@@ -5,7 +5,7 @@ import { BuyForm } from "@/components/storefront/buy-form";
 import { LEGAL_PAGES_APPROVED } from "@/lib/legal";
 import { ProductView } from "@/components/storefront/product-view";
 import { commerceRepo } from "@/lib/admin";
-import { shareMeta } from "@/lib/site-meta";
+import { MONARCH_SHARE_BRAND, shareMeta } from "@/lib/site-meta";
 import { Reviews } from "@/components/storefront/reviews";
 import { reviewsRepo } from "@/lib/reviews/server";
 import { publishedProductBySlug, toStorefrontImages } from "@/lib/storefront";
@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const product = await publishedProductBySlug((await params).slug);
   if (!product) return { title: "Not found | Monarch Tax Suite" };
   const description = product.description?.slice(0, 160);
-  return { title: `${product.name} | Monarch Tax Suite`, description, ...shareMeta({ title: product.name, description, path: `/shop/${product.slug}` }) };
+  return { title: `${product.name} | Monarch Tax Suite`, description, ...shareMeta({ title: product.name, description, path: `/shop/${product.slug}`, brand: MONARCH_SHARE_BRAND }) };
 }
 
 /** Public product page. Drafts, unpublished and archived products return 404. */

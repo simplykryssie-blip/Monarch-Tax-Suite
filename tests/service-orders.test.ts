@@ -149,7 +149,7 @@ describe("service emails", () => {
     await pay(1);
     const repo = new MemoryAutomationRepo();
     const email = new FakeEmail();
-    const auto: AutomationDeps = { repo, commerce, crm: null, services, email, config: { origin: () => "https://app.test", supportEmail: "support@monarchtaxsuite.com", supportRecipient: "team@monarch.test", env: "production", testRecipients: [] } };
+    const auto: AutomationDeps = { repo, commerce, crm: null, services, email, config: { origin: () => "https://app.test", supportEmail: "support@verexahq.com", supportRecipient: "team@monarch.test", env: "production", testRecipients: [] } };
     await installDefaults(repo, null);
     const so = services.orders[0];
     await emitEvent(auto, { type: "service.order_created", key: `order:${so.order_id}:service_created`, customerId: so.customer_id, orderId: so.order_id });

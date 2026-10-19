@@ -51,7 +51,7 @@ export default async function ReconcilePage({ searchParams }: { searchParams: Pr
             <label>Domain where it will run (if known)<input name="target_location" maxLength={253} placeholder="example.com" /></label>
             <label className="is-wide">Internal notes<textarea name="notes" rows={3} maxLength={4000} /></label>
             <label className="monarch-check is-wide">
-              <input type="checkbox" name="legacy_account" /> This payment was made in a previous Stripe account that Monarch did not own at the time (it cannot be looked up with Monarch&apos;s current Stripe key).
+              <input type="checkbox" name="legacy_account" /> This payment was made in a previous Stripe account that this account did not own at the time (it cannot be looked up with the current Stripe key).
             </label>
             <label className="monarch-check is-wide">
               <input type="checkbox" name="attest" required={!stripeConfigured} /> I verified this payment in the Stripe dashboard where it was made: it succeeded, and the amount and customer email match.{stripeConfigured && " (Required for previous-account payments.)"}

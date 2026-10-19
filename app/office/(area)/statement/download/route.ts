@@ -23,6 +23,6 @@ export async function GET(request: Request) {
   const office = { id: ctx.office.id, name: ctx.office.name, archived: false };
   if (format === "csv") return new Response(`﻿${statementCsv(office, statement, banks)}`, { headers: { ...headers, "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${base}.csv"` } });
   const profile = await documentDeps(ctx.tenantId).repo.getProfile().catch(() => null);
-  const bytes = await buildStatementPdf({ bureauName: profile?.display_name || "Monarch Tax Suite", officeName: ctx.office.name, statement, banks, generatedAt: new Date() });
+  const bytes = await buildStatementPdf({ bureauName: profile?.display_name || "Your office", officeName: ctx.office.name, statement, banks, generatedAt: new Date() });
   return new Response(Buffer.from(bytes), { headers: { ...headers, "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${base}.pdf"` } });
 }

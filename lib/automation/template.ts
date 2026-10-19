@@ -1,4 +1,5 @@
 import type { EmailBrand } from "../branding/brand.ts";
+import { PLATFORM } from "../platform-brand.ts";
 import { blockHtml, parseRich, richToText } from "../richtext.ts";
 
 // Email template rendering. Templates are plain text with {{variable}} placeholders from a fixed list.
@@ -30,8 +31,8 @@ export const VARIABLES: Record<string, string> = {
   invoice_number: "Invoices: the invoice number",
   invoice_total: "Invoices: the amount",
   invoice_due: "Invoices: the due date",
-  support_email: "Monarch Tax Suite support email",
-  app_url: "The Monarch Tax Suite website address",
+  support_email: "Your support email address",
+  app_url: "Your website address",
 };
 export const VARIABLE_NAMES = Object.keys(VARIABLES);
 
@@ -65,8 +66,8 @@ function fill(text: string, values: Record<string, string>, mode: "text" | "html
 
 /** Renders a template for one recipient. Throws on unknown variables so a typo can never reach a customer. */
 export function renderTemplate(subjectTemplate: string, bodyTemplate: string, values: Record<string, string>, brand: { supportEmail: string } & Partial<Pick<EmailBrand, "name" | "color" | "textColor" | "logoUrl" | "poweredBy">>): RenderedEmail {
-  // Defaults are the Monarch look, so callers that pass nothing about branding render exactly as before.
-  const name = brand.name ?? "Monarch Tax Suite";
+  // Callers that pass nothing about branding get the platform's own look.
+  const name = brand.name ?? PLATFORM.name;
   const bg = brand.color ?? "#111111";
   const fg = brand.textColor ?? (brand.color ? "#ffffff" : "#e8d9a8");
   const unknown = unknownVariables(subjectTemplate, bodyTemplate);
@@ -125,9 +126,9 @@ export const SAMPLE_VALUES: Record<string, string> = {
   failure_reason: "SAMPLE: GoHighLevel access expired. Reconnect it from your setup page.",
   product_name: "Sample Bureau Setup Review",
   service_deliverable: "SAMPLE: a written review of your bureau setup",
-  service_owner: "SAMPLE: Monarch support",
+  service_owner: "SAMPLE: our support team",
   service_response_time: "SAMPLE: 2 business days",
   service_next_step: "SAMPLE: we will email you to confirm the details",
-  support_email: "support@monarchtaxsuite.com",
+  support_email: "support@yourfirm.com",
   app_url: "https://app.yourfirm.com",
 };

@@ -494,7 +494,7 @@ async function dryRunStep(deps: AutomationDeps, event: AutomationEvent, action: 
     try {
       const eb = (await deps.brand?.().catch(() => null)) ?? null;
       const rendered = renderTemplate(template.subject, template.body, { ...SAMPLE_VALUES, ...values }, { ...(eb ?? {}), supportEmail: eb?.supportEmail ?? deps.config.supportEmail });
-      const to = action.to === "support" ? "Monarch support" : (await recipientFor(deps, event, "customer")) ?? "the client (no email address on file)";
+      const to = action.to === "support" ? "platform support" : (await recipientFor(deps, event, "customer")) ?? "the client (no email address on file)";
       return { status: "skipped", kind: "skipped", detail: `Skipped in test: would email "${template.name}" to ${to} with the subject "${rendered.subject}". The message filled in without problems.` };
     } catch (e) {
       return { status: "failed", kind: "permanent", detail: sanitizeError(e, 200) };

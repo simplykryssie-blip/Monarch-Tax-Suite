@@ -72,7 +72,7 @@ const returnForm = (form: FormData): ReturnForm => ({
 });
 
 export async function loadTemplateAction(form: FormData): Promise<FormResult> {
-  return act(safeBack(form, "/fees/schedule"), async (a) => { await loadTemplate(feesDeps(), a); return { notice: "Monarch's template is loaded. Edit any amount to match your pricing." }; });
+  return act(safeBack(form, "/fees/schedule"), async (a) => { await loadTemplate(feesDeps(), a); return { notice: "The starter template is loaded. Edit any amount to match your pricing." }; });
 }
 export async function addLineAction(form: FormData): Promise<FormResult> {
   const officeId = optionalId(form, "office_id");

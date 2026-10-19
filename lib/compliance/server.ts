@@ -52,5 +52,5 @@ export function ctxFor(office: OfficeContext): Ctx {
 /** The name the tenant's documents carry (its firm profile), for the WISP PDF footer. */
 export async function brandName(tenantId: string): Promise<string> {
   const profile = await new SupabaseDocumentsRepo(tenantClient(tenantId)).getProfile().catch(() => null);
-  return profile?.display_name || "Monarch Tax Suite";
+  return profile?.display_name || "Your office";
 }

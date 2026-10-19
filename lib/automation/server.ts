@@ -1,5 +1,6 @@
 import "server-only";
 import { appOrigin } from "../admin";
+import { PLATFORM_SUPPORT_EMAIL } from "../platform-brand.ts";
 import { SupabaseCommerceRepo } from "../commerce/supabase-repo.ts";
 import { SupabaseServiceOrdersRepo } from "../commerce/supabase-services.ts";
 import { tenantClient } from "../supabase/service";
@@ -32,7 +33,7 @@ const env = () => process.env;
 
 export function automationConfig(): AutomationConfig {
   const e = env();
-  const support = e.MONARCH_SUPPORT_EMAIL?.trim() || "support@monarchtaxsuite.com";
+  const support = e.MONARCH_SUPPORT_EMAIL?.trim() || PLATFORM_SUPPORT_EMAIL;
   const vercel = e.VERCEL_ENV;
   return {
     origin: () => appOrigin(),

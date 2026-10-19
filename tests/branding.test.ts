@@ -34,9 +34,9 @@ test("a tenant without a brand falls back to its firm name, with the platform's 
   assert.equal(brandOf(null, null).name, "Your account");
 });
 
-test("customer emails carry the tenant's name, logo and colour, and the default look is unchanged", () => {
-  const def = renderTemplate("Hello", "Body text", {}, { supportEmail: "support@monarchtaxsuite.com" });
-  assert.match(def.html, /MONARCH TAX SUITE/);
+test("customer emails carry the tenant's name, logo and colour, and the default look is the platform's", () => {
+  const def = renderTemplate("Hello", "Body text", {}, { supportEmail: "support@verexahq.com" });
+  assert.match(def.html, /VEREXA HQ/);
   assert.match(def.html, /background:#111111/);
   assert.doesNotMatch(def.html, /Powered by/);
   const brand = emailBrandOf(brandOf({ name: "Acme Tax", sidebar_color: "#0b1220", logo_url: "https://cdn.acme.test/logo.png", support_email: "help@acme.test", show_powered_by: false }));

@@ -3,9 +3,13 @@
 // PLATFORM: the product itself is Verexa HQ. Its name, logo and tagline appear everywhere the software is the one
 // speaking: the sign-in page, the admin shell, browser tabs and the default share image.
 //
-// TENANT: every account (tenant) keeps its own brand for what its customers see: Monarch Tax Suite's storefront,
-// calculators, emails, forms and documents say Monarch. A tenant's own name shows in the admin as "the account you
+// TENANT: every account (tenant) keeps its own brand for what its customers see: Monarch Tax Suite (a tenant like any
+// other) keeps its storefront, calculators, emails, forms and documents saying Monarch. A tenant's own name shows in the admin as "the account you
 // are working in", next to the platform brand, never instead of it.
+
+/** Where people reach the platform: the support address in emails and legal pages, and the platform's own domain. */
+export const PLATFORM_SUPPORT_EMAIL = "support@verexahq.com";
+export const PLATFORM_DOMAIN = "verexahq.com";
 
 export const PLATFORM = {
   name: "Verexa HQ",

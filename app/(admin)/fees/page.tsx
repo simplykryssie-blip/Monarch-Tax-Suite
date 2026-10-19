@@ -21,7 +21,7 @@ export default async function FeesOverview({ searchParams }: { searchParams: Pro
         const sum = (k: "owed" | "collected" | "balance" | "returns") => offices.reduce((s, o) => s + o.totals[k], 0);
         return (
           <div className="efin-flow">
-            {!hasSchedule && <div className="monarch-notice"><b>NO FEE SCHEDULE YET</b> Returns are charged from your fee schedule. <Link href="/fees/schedule">Set up your fees</Link> first. You can start from Monarch&apos;s template and change any amount.</div>}
+            {!hasSchedule && <div className="monarch-notice"><b>NO FEE SCHEDULE YET</b> Returns are charged from your fee schedule. <Link href="/fees/schedule">Set up your fees</Link> first. You can start from the starter template and change any amount.</div>}
             {unmatched > 0 && <div className="monarch-notice"><b>{unmatched} BANK {unmatched === 1 ? "ROW" : "ROWS"} TO LINK</b> Some bank rows didn&apos;t match a return. <Link href="/fees/bank">Link them</Link> so the money counts.</div>}
             <YearPicker year={year} action="/fees" />
             <div className="monarch-metrics">

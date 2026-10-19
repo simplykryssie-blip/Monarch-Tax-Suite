@@ -46,7 +46,7 @@ function configurationErrorResponse(problems: string[]) {
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Configuration required</title></head>` +
       `<body style="font-family:Arial,sans-serif;max-width:640px;margin:60px auto;padding:0 16px;color:#211f19">` +
       `<h1 style="font-size:22px">This deployment is not configured</h1>` +
-      `<p>Monarch Tax Suite cannot start because its database settings are missing or unsafe for this environment.</p><ul>${items}</ul>` +
+      `<p>Verexa HQ cannot start because its database settings are missing or unsafe for this environment.</p><ul>${items}</ul>` +
       `<p style="color:#69665d;font-size:13px">Set the variables for this environment in the Vercel project settings and redeploy.</p></body></html>`,
     { status: 503, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } },
   );
