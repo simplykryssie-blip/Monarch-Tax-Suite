@@ -17,7 +17,7 @@ export type TwilioRoute = {
 };
 
 export interface SmsSender {
-  send(to: string, body: string): Promise<SendResult>;
+  send(to: string, body: string, opts?: { statusCallback?: string }): Promise<SendResult>;
 }
 
 type Env = Record<string, string | undefined>;
@@ -110,13 +110,14 @@ export class TwilioSmsSender implements SmsSender {
     this.fetchImpl = fetchImpl;
   }
 
-  async send(to: string, body: string): Promise<SendResult> {
+  async send(to: string, body: string, opts: { statusCallback?: string } = {}): Promise<SendResult> {
     if (!isE164(to)) return { ok: false, kind: "permanent", message: "The phone number is not valid." };
     const { accountSid, username, password, from, messagingServiceSid } = this.route;
     if (!from && !messagingServiceSid) return { ok: false, kind: "config", message: "Text messaging has no sending number yet." };
     const form = new URLSearchParams({ To: to, Body: body });
     if (messagingServiceSid) form.set("MessagingServiceSid", messagingServiceSid);
     else form.set("From", from!);
+    if (opts.statusCallback) form.set("StatusCallback", opts.statusCallback);
     let res: Response;
     try {
       res = await this.fetchImpl(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {

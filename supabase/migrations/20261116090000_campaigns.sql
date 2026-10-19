@@ -104,6 +104,8 @@ create table if not exists public.campaign_recipients (
   provider_id text check (provider_id is null or length(provider_id) <= 100),
   error text check (error is null or length(error) <= 300),
   segments integer check (segments is null or segments between 1 and 40),
+  attempts integer not null default 0 check (attempts between 0 and 10),
+  claimed_at timestamptz,
   sent_at timestamptz,
   delivered_at timestamptz,
   opened_at timestamptz,
@@ -170,7 +172,7 @@ end $$;
 create or replace function public.campaign_claim(p_campaign uuid, p_limit integer) returns setof public.campaign_recipients
 language sql set search_path = public as $$
   update public.campaign_recipients r
-     set status = 'sending'
+     set status = 'sending', claimed_at = now()
    where r.id in (
      select id from public.campaign_recipients
       where campaign_id = p_campaign and status = 'queued'
@@ -182,3 +184,19 @@ language sql set search_path = public as $$
 $$;
 revoke all on function public.campaign_claim(uuid, integer) from public, anon, authenticated;
 grant execute on function public.campaign_claim(uuid, integer) to service_role, tenant_app;
+
+-- Counts an open or a click on a recipient (and, for a click, on the campaign's link) in one statement.
+create or replace function public.campaign_note_event(p_recipient uuid, p_kind text, p_link_campaign uuid default null, p_link_position integer default null) returns void
+language plpgsql set search_path = public as $$
+begin
+  if p_kind = 'open' then
+    update public.campaign_recipients set open_count = open_count + 1, opened_at = coalesce(opened_at, now()) where id = p_recipient;
+  elsif p_kind = 'click' then
+    update public.campaign_recipients set click_count = click_count + 1, clicked_at = coalesce(clicked_at, now()), opened_at = coalesce(opened_at, now()) where id = p_recipient;
+    if p_link_campaign is not null and p_link_position is not null then
+      update public.campaign_links set click_count = click_count + 1 where campaign_id = p_link_campaign and position = p_link_position;
+    end if;
+  end if;
+end $$;
+revoke all on function public.campaign_note_event(uuid, text, uuid, integer) from public, anon, authenticated;
+grant execute on function public.campaign_note_event(uuid, text, uuid, integer) to service_role, tenant_app;

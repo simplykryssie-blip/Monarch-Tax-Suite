@@ -5,7 +5,7 @@ import { sanitizeError } from "./sanitize.ts";
 
 /** `from` / `replyTo` override the configured sender, for tenants sending from their own verified domains. */
 export type EmailAttachment = { filename: string; content: Uint8Array };
-export type EmailMessage = { to: string; subject: string; html: string; text: string; idempotencyKey: string; from?: string | null; replyTo?: string | null; attachments?: EmailAttachment[] };
+export type EmailMessage = { to: string; subject: string; html: string; text: string; idempotencyKey: string; from?: string | null; replyTo?: string | null; attachments?: EmailAttachment[]; /** Extra message headers, e.g. List-Unsubscribe for marketing mail. */ headers?: Record<string, string> };
 export type SendResult = { ok: true; id: string } | { ok: false; kind: "config" | "transient" | "permanent"; message: string };
 export interface EmailSender {
   send(message: EmailMessage): Promise<SendResult>;
@@ -68,6 +68,7 @@ export class ResendEmailSender implements EmailSender {
         headers: { Authorization: `Bearer ${this.config.apiKey}`, "Content-Type": "application/json", "Idempotency-Key": m.idempotencyKey.slice(0, 256) },
         body: JSON.stringify({
           from, to: [m.to], subject: m.subject, html: m.html, text: m.text, ...(replyTo ? { reply_to: replyTo } : {}),
+          ...(m.headers && Object.keys(m.headers).length ? { headers: m.headers } : {}),
           ...(m.attachments?.length ? { attachments: m.attachments.map((a) => ({ filename: a.filename, content: Buffer.from(a.content).toString("base64") })) } : {}),
         }),
         signal: AbortSignal.timeout(10_000),

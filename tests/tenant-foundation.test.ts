@@ -17,6 +17,7 @@ const PLATFORM_TABLES = new Set([
   "tenant_members", // carries tenant_id; has its own policies
   "admin_users", // platform administrators
   "rate_limit_counters", // abuse counters keyed by hashed client, shared across tenants
+  "platform_suppressions", // addresses (keyed hash only) that hard-bounced or complained anywhere; about the address, not an office
 ]);
 
 const sql = (file: string) => readFileSync(join(MIGRATIONS, file), "utf8");
@@ -75,7 +76,7 @@ describe("server code reaches tenant data through the tenant client", () => {
 
   test("platform access is limited to platform tables", () => {
     const uses = files.flatMap((f) => [...readFileSync(f, "utf8").matchAll(/platformClient\("([a-z_]+)"\)\.(from|rpc)\("([a-z_]+)"/g)].map((m) => `${m[1]}:${m[3]}`));
-    assert.deepEqual(uses.sort(), ["admin_lookup:admin_users", "brand_host:tenant_brands", "connect_webhook:payment_connections", "document_link:document_deliveries", "form_link:forms", "office_invite:office_members", "office_member:office_members", "office_member:office_members", "portal_invite:portal_members", "portal_member:portal_members", "portal_member:portal_members", "practice_invite:practice_members", "practice_member:practice_members", "practice_member:practice_members", "practice_member:tenants", "rate_limit:hit_rate_limit", "scheduler_tick:tenants", "site_host:site_domains", "site_host:site_domains", "site_host:site_domains", "sms_sweep:tenants", "wisp_link:email_domains"]);
+    assert.deepEqual(uses.sort(), ["admin_lookup:admin_users", "brand_host:tenant_brands", "campaign_token:campaign_recipients", "campaign_token:campaign_recipients", "campaign_token:campaign_recipients", "connect_webhook:payment_connections", "document_link:document_deliveries", "form_link:forms", "office_invite:office_members", "office_member:office_members", "office_member:office_members", "portal_invite:portal_members", "portal_member:portal_members", "portal_member:portal_members", "practice_invite:practice_members", "practice_member:practice_members", "practice_member:practice_members", "practice_member:tenants", "rate_limit:hit_rate_limit", "scheduler_tick:tenants", "site_host:site_domains", "site_host:site_domains", "site_host:site_domains", "sms_inbound:tenant_sms_accounts", "sms_sweep:tenants", "suppression:platform_suppressions", "suppression:platform_suppressions", "wisp_link:email_domains"]);
     // The platform uses that aren't a table read: creating the sign-in for an accepted invite, and creating a PTIN workspace.
     const other = files.filter((f) => !f.endsWith("lib/supabase/service.ts") && /platformClient\(/.test(readFileSync(f, "utf8").replace(/platformClient\("[a-z_]+"\)\.(from|rpc)\("[a-z_]+"/g, "").replace(/platformClient\("(office|practice|portal)_invite"\)\.auth\.admin\.createUser\(/g, "").replace(/new SupabasePracticePlatform\(platformClient\("practice_provision"\)\)/g, "")));
     assert.deepEqual(other, []);

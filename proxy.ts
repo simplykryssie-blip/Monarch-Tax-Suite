@@ -7,7 +7,7 @@ import { hostHasSite } from "@/lib/sites/server";
 
 // On an office's website address only the website and the parts it embeds are served: its pages, booking pages, public
 // forms and account images. Everything else (login, admin, APIs) belongs to the application's own address.
-const SITE_PASSTHROUGH = ["/book/", "/f/", "/media/"];
+const SITE_PASSTHROUGH = ["/book/", "/f/", "/media/", "/t/", "/u/"];
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
