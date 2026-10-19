@@ -6,6 +6,8 @@ import { addressFor, EXCLUSION_TEXT, LEAD_STATUSES, marketable, sanitizeFilter, 
 import { CAMPAIGN_VARIABLES, renderEmail, renderSmsBody, smsSegments, valuesFor } from "@/lib/campaigns/compose.ts";
 import type { CampaignsContext } from "@/lib/campaigns/context";
 import { officeHealth, previewAudience, scheduleProblems, type Campaign, type Recipient } from "@/lib/campaigns/service.ts";
+import { appOrigin } from "@/lib/admin";
+import { inboundUrl } from "@/lib/campaigns/server";
 import { tenantClient } from "@/lib/supabase/service";
 import {
   blockEmailAction, cancelCampaignAction, consentAction, copyCampaignAction, createCampaignAction, deleteDraftAction, removeSegmentAction, resumeCampaignAction,
@@ -19,6 +21,7 @@ const STATUS: Record<Campaign["status"], string> = { draft: "Draft", scheduled: 
 const CHANNEL = { email: "Email", sms: "Text" } as const;
 const when = (iso: string | null, tz = "America/New_York") => (iso ? new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: tz }).format(new Date(iso)) : "—");
 const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)}%` : "—");
+const webhookUrl = async () => `${await appOrigin()}/api/campaigns/resend-webhook`;
 const people = (n: number) => `${n} ${n === 1 ? "person" : "people"}`;
 
 function Tabs({ ctx, here }: { ctx: CampaignsContext; here: "campaigns" | "contacts" }) {
@@ -416,6 +419,16 @@ export async function ContactsView({ ctx, sp }: { ctx: CampaignsContext; sp: Sea
           </table></div>
         )}
       </section>
+      {ctx.area === "admin" && (
+        <section className="monarch-panel" style={{ padding: 20 }}>
+          <h2 style={{ marginTop: 0 }}>Provider setup (one time)</h2>
+          <p className="monarch-muted">Open and bounce reports come from Resend; STOP replies come from Twilio. Both need an address registered with the provider.</p>
+          <ul>
+            <li>Resend → Webhooks: add <code>{await webhookUrl()}</code> for the events <i>email.delivered</i>, <i>email.bounced</i> and <i>email.complained</i>, then set its signing secret as <code>RESEND_WEBHOOK_SECRET</code> in Vercel.</li>
+            <li>Twilio → your messaging service (or number) → incoming messages: <code>{await inboundUrl().catch(() => "needs MONARCH_ENCRYPTION_KEY")}</code></li>
+          </ul>
+        </section>
+      )}
       {segments.length > 0 && (
         <section className="monarch-panel" style={{ padding: 20 }}>
           <h2 style={{ marginTop: 0 }}>Saved audiences</h2>
