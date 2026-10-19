@@ -56,6 +56,7 @@ export const NAV: Entry[] = [
       { label: "Calendar", icon: "calendar", href: "/calendar" },
       { label: "Automation", icon: "automation", href: "/automation/workflows" },
       { label: "Forms", icon: "checklist", href: "/forms" },
+      { label: "Website", icon: "store", href: "/sites" },
     ],
   },
   {

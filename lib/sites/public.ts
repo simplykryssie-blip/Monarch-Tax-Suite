@@ -24,7 +24,11 @@ export const loadPublicSite = cache(async (host: string): Promise<PublicSite | n
 
 export type RenderedSite = { view: SiteView; published: boolean };
 
-export async function buildView(ps: PublicSite, blocks: Block[] | null): Promise<SiteView> {
+export const buildView = (ps: PublicSite, blocks: Block[] | null): Promise<SiteView> => viewFor(ps.tenantId, ps.site.name, ps.pages, blocks);
+
+/** The look of a site for the blocks about to be shown: brand, menu (published pages only), contact details, pictures. */
+export async function viewFor(tenantId: string, siteName: string, pages: PublicSite["pages"], blocks: Block[] | null): Promise<SiteView> {
+  const ps = { tenantId, pages, site: { name: siteName } };
   const db = tenantClient(ps.tenantId);
   const [brand, profile] = await Promise.all([loadBrand(ps.tenantId).catch(() => null), new SupabaseDocumentsRepo(db).getProfile().catch(() => null)]);
   const ids = blocks ? imageIdsOf(blocks) : [];

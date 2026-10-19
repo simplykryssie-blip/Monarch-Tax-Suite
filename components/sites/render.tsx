@@ -15,10 +15,14 @@ export type SiteView = {
   nav: { href: string; label: string }[];
   contact: { phone: string | null; email: string | null; address: string | null };
   images: Record<string, SiteImage>;
+  /** In the editor: booking pages and forms are described instead of loaded (they belong to the live address). */
+  preview?: boolean;
+  /** "" on a website address; "/s/<address>" when a Preview shows the site on the deployment's own address. */
+  base?: string;
 };
 
 const SAFE_LINK = /^(\/(?!\/)[A-Za-z0-9\-._~/?#=&%]*|https:\/\/[^\s"'<>]+|mailto:[^\s"'<>]+|tel:[+0-9\-.() ]+)$/;
-const hrefOf = (h: string) => (SAFE_LINK.test(h) ? h : "#");
+const hrefOf = (h: string, base = "") => (SAFE_LINK.test(h) ? (h.startsWith("/") ? `${base}${h === "/" && base ? "" : h}` || "/" : h) : "#");
 const external = (h: string) => h.startsWith("https://");
 
 function Paragraphs({ text }: { text: string }) {
@@ -46,12 +50,14 @@ function Leaf({ block, view }: { block: LeafBlock; view: SiteView }) {
     case "button":
       return (
         <p className={`ws-a-${block.align}`}>
-          <a className={`ws-btn ws-btn-${block.style}`} href={hrefOf(block.href)} {...(external(block.href) ? { target: "_blank", rel: "noopener noreferrer" } : {})}>{block.label}</a>
+          <a className={`ws-btn ws-btn-${block.style}`} href={hrefOf(block.href, view.base)} {...(external(block.href) ? { target: "_blank", rel: "noopener noreferrer" } : {})}>{block.label}</a>
         </p>
       );
     case "booking":
+      if (view.preview) return <p className="ws-ph">Booking page “{block.slug}” appears here on your live site.</p>;
       return <iframe className="ws-frame" title="Book an appointment" src={`/book/${encodeURIComponent(block.slug)}`} style={{ height: block.height }} loading="lazy" />;
     case "form":
+      if (view.preview) return <p className="ws-ph">Your form appears here on your live site.</p>;
       return <iframe className="ws-frame" title="Form" src={`/f/${encodeURIComponent(block.formId)}`} style={{ height: block.height }} loading="lazy" />;
     case "spacer":
       return <div className={`ws-space ws-space-${block.size}`} aria-hidden="true" />;
@@ -109,6 +115,7 @@ h3.ws-h{font-size:clamp(18px,4.5vw,22px)}
 .ws-btn-secondary{background:transparent;color:var(--p)!important}
 .ws-tone-accent .ws-btn-primary{background:var(--on-p);color:var(--p)!important;border-color:var(--on-p)}
 .ws-tone-accent .ws-btn-secondary{color:var(--on-p)!important;border-color:var(--on-p)}
+.ws-ph{border:2px dashed #b9b4a4;border-radius:6px;padding:18px;text-align:center;color:#4a483f;margin:1em 0}
 .ws-frame{display:block;width:100%;border:0;margin:1em 0;background:#fff;border-radius:6px}
 .ws-space-small{height:12px}.ws-space-medium{height:28px}.ws-space-large{height:56px}
 .ws-hr{border:0;border-top:1px solid #d9d4c7;margin:1.5em 0}
@@ -124,7 +131,7 @@ export function SiteFrame({ view, currentPath, children }: { view: SiteView; cur
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <header className="ws-header">
         <div className="ws-header-in">
-          <Link className="ws-brand" href="/">
+          <Link className="ws-brand" href={view.base || "/"}>
             {view.logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={view.logoUrl} alt="" />
@@ -132,7 +139,7 @@ export function SiteFrame({ view, currentPath, children }: { view: SiteView; cur
             <span>{view.name}</span>
           </Link>
           {view.nav.length > 1 && (
-            <nav aria-label="Pages"><ul className="ws-nav">{view.nav.map((n) => <li key={n.href}><Link href={n.href} {...(n.href === currentPath ? { "aria-current": "page" as const } : {})}>{n.label}</Link></li>)}</ul></nav>
+            <nav aria-label="Pages"><ul className="ws-nav">{view.nav.map((n) => <li key={n.href}><Link href={n.href === "/" ? view.base || "/" : `${view.base ?? ""}${n.href}`} {...(n.href === currentPath ? { "aria-current": "page" as const } : {})}>{n.label}</Link></li>)}</ul></nav>
           )}
         </div>
       </header>
@@ -145,6 +152,16 @@ export function SiteFrame({ view, currentPath, children }: { view: SiteView; cur
           {view.contact.email && <span><a href={`mailto:${view.contact.email}`}>{view.contact.email}</a></span>}
         </div>
       </footer>
+    </div>
+  );
+}
+
+/** The page body inside the site's look, without the header and footer: the preview in the editor. */
+export function SitePreview({ view, blocks }: { view: SiteView; blocks: Block[] }) {
+  return (
+    <div className="ws" style={{ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, minHeight: 0 } as React.CSSProperties}>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <Blocks blocks={blocks} view={{ ...view, preview: true }} />
     </div>
   );
 }

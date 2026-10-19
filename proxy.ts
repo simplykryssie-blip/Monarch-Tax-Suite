@@ -13,8 +13,16 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const hostKind = classifyHost(request.headers.get("x-forwarded-host") ?? request.headers.get("host"));
   if (hostKind.kind === "app") {
-    // The website renderer is only reachable through a website address (the proxy sets x-site-host itself).
-    if (path === "/s" || path.startsWith("/s/")) return new NextResponse("Not found", { status: 404 });
+    // The website renderer is reachable through a website address only (the proxy sets x-site-host itself). Outside
+    // production, /s/<address>/… also shows a site on the deployment's own address so a Preview can be tested without DNS.
+    if (path === "/s" || path.startsWith("/s/")) {
+      const testHost = process.env.VERCEL_ENV === "production" ? null : cleanRequestHost(decodeURIComponent(/^\/s\/([^/]+)/.exec(path)?.[1] ?? ""));
+      if (!testHost) return new NextResponse("Not found", { status: 404 });
+      const headers = new Headers(request.headers);
+      headers.set("x-site-host", testHost);
+      headers.set("x-site-base", `/s/${testHost}`);
+      return NextResponse.next({ request: { headers } });
+    }
   } else if (hostKind.kind === "platform-subdomain" || (await hostHasSite(hostKind.host))) {
     if (SITE_PASSTHROUGH.some((p) => path.startsWith(p))) return updateSession(request);
     const host = cleanRequestHost(hostKind.host)!;
@@ -22,6 +30,7 @@ export async function proxy(request: NextRequest) {
     url.pathname = `/s/${host}${path === "/" ? "" : path}`;
     const headers = new Headers(request.headers);
     headers.set("x-site-host", host);
+    headers.set("x-site-base", "");
     return NextResponse.rewrite(url, { request: { headers } });
   }
   if (request.nextUrl.pathname.startsWith("/embed/")) {

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { Blocks, SiteFrame } from "@/components/sites/render";
 import { buildView, loadPublicSite, requestSiteHost } from "@/lib/sites/public";
@@ -40,7 +41,7 @@ export default async function SitePage(input: Params) {
     notFound();
   }
   const blocks = page!.published ?? [];
-  const view = await buildView(ps!, blocks);
+  const view = { ...(await buildView(ps!, blocks)), base: (await headers()).get("x-site-base") ?? "" };
   return (
     <SiteFrame view={view} currentPath={page!.is_home ? "/" : `/${page!.slug}`}>
       <Blocks blocks={blocks} view={view} />
