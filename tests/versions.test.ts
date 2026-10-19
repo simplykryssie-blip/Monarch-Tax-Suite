@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { MemoryRepo } from "./memory-repo.ts";
+import { MemoryRepo, published, seedCheckout } from "./memory-repo.ts";
 import { createProduct } from "../lib/commerce/catalog.ts";
 import { handleStripeEvent, issueLicenseKey, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
 import {
@@ -56,9 +56,10 @@ const updateEvent = (id: string, pi: string, licenseId: string, taxYear: number,
 /** A shop with a released 2026 version and a released 2027 version (the build is extended for the test). */
 async function setup({ release2027 = true } = {}) {
   const repo = new MemoryRepo();
-  const product = await createProduct(repo, PRODUCT);
+  const product = await published(repo, await createProduct(repo, PRODUCT));
+  for (const id of ["evt_buy", "evt_buy2", "evt_direct"]) await seedCheckout(repo, `cs_${id}`, product.id);
   // The separate Annual Tax-Year Update catalog product (its Stripe product is what update checkouts charge).
-  await createProduct(repo, { ...PRODUCT, slug: "monarch-basic-tax-calculator-annual-update", name: "Annual Tax-Year Update", category: "software_update", stripe_product_id: "prod_UPDATEPROD1", price_cents: 5000 });
+  await published(repo, await createProduct(repo, { ...PRODUCT, slug: "monarch-basic-tax-calculator-annual-update", name: "Annual Tax-Year Update", category: "software_update", stripe_product_id: "prod_UPDATEPROD1", price_cents: 5000 }));
   const v2026 = await createVersion(repo, { product_id: product.id, tax_year: 2026, label: null, release_date: null, update_price_cents: 5000, stripe_update_price_id: null });
   await setVersionStatus(repo, v2026.id, "available", "admin");
   // Purchases contain the calculator product; update checkouts (session ids cs_evt_up…, cs_evt_…) contain the update product.

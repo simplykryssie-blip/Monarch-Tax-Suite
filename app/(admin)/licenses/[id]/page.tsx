@@ -4,8 +4,10 @@ import { commerceRepo, requireAdmin } from "@/lib/admin";
 import { authorizeDomainAction, removeDomainAction, setLicenseStatusAction } from "../../actions";
 import { IssueKeyForm } from "@/components/admin/issue-key";
 import { OnboardingPanel } from "@/components/admin/onboarding-panel";
+import { LicenseDownloadsPanel } from "@/components/admin/license-downloads-panel";
 import { CrmPanel } from "@/components/admin/crm-panel";
 import { Badge, EmptyRow, Flash, label, load, money, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { ArchivePanel } from "@/components/admin/archive";
 import { latestAvailable } from "@/lib/commerce/versions.ts";
 
 export default async function LicensePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -101,6 +103,7 @@ export default async function LicensePage({ params, searchParams }: { params: Pr
         </section>
       </div>
       <OnboardingPanel licenseId={license.id} />
+      <LicenseDownloadsPanel licenseId={license.id} />
       <CrmPanel licenseId={license.id} />
       <section className="monarch-panel">
         <div className="monarch-panel-head"><h2>Annual updates purchased</h2></div>
@@ -128,6 +131,7 @@ export default async function LicensePage({ params, searchParams }: { params: Pr
           </table>
         </div>
       </section>
+      <ArchivePanel entity="license" id={license.id} />
     </>
   );
 }

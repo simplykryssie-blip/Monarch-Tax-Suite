@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { disconnect, finishPendingInstall, setWebhook, startConnection } from "@/lib/crm/connection.ts";
 import { authorizeUrl } from "@/lib/crm/highlevel.ts";
-import { crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri, PENDING_COOKIE, pendingCookieOptions } from "@/lib/crm/server";
+import { crmConfigStatus, crmDeps, licenseFromKey, OAUTH_COOKIE, oauthCookieOptions, oauthRedirectUri, PENDING_COOKIE, pendingCookieOptions } from "@/lib/crm/server";
 import { DEFAULT_LEAD_SETTINGS } from "@/lib/crm/types.ts";
 import { activateDomain, assertCanEnable, deriveSetupStatus, previewActivation, runConnectionTest, type SetupStatus } from "@/lib/crm/setup.ts";
 import { normalizeEmail, ValidationError } from "@/lib/commerce/validation.ts";
@@ -15,6 +15,7 @@ import { embedSnippet } from "@/lib/commerce/platforms.ts";
 import { completeOnboarding, connectionVerified, stepsFor, validateProfileInput, type Step } from "@/lib/automation/progress.ts";
 import { appOrigin } from "@/lib/admin";
 import { safeEmit } from "@/lib/automation/server";
+import { noteInstallation } from "@/lib/installation-server";
 
 // Buyer self-service for the lead destination. There is no account or
 // session: every action is authorized by the license key submitted with it,
@@ -182,6 +183,7 @@ export async function saveSettingsAction(_prev: SetupState, form: FormData): Pro
 export async function connectHighLevelAction(_prev: SetupState, form: FormData): Promise<SetupState> {
   let target: string;
   try {
+    if (!crmConfigStatus().highlevelConnect) throw new ValidationError("Connecting GoHighLevel with one click isn't available right now. Please use the workflow link method below.");
     const license = await licenseForRequest(form);
     const state = await startConnection(crmDeps(), license.id);
     (await cookies()).set(OAUTH_COOKIE, state, oauthCookieOptions);
@@ -212,6 +214,7 @@ export async function saveProfileAction(_prev: SetupState, form: FormData): Prom
   return run(form, async (licenseId) => {
     const v = validateProfileInput({ contact_name: form.get("contact_name"), business_name: form.get("business_name"), business_email: form.get("business_email"), phone: form.get("phone"), ghl_account: form.get("ghl_account") });
     await automationDeps().repo.saveProfile(licenseId, { ...v, last_activity_at: new Date().toISOString() });
+    await noteInstallation(licenseId, { kind: "setup_started" });
     return { message: "Details saved." };
   });
 }
@@ -225,6 +228,7 @@ export async function completeOnboardingAction(_prev: SetupState, form: FormData
     const connection = c ? { provider: c.provider, status: c.status, last_checked_at: c.last_checked_at, last_error: c.last_error } : null;
     const result = await completeOnboarding(auto.repo, { license: license!, domains, connection }, new Date().toISOString());
     if (!result.ok) throw new ValidationError(`Not finished yet: ${result.remaining.map((s) => s.label.toLowerCase()).join(", ")}.`);
+    await noteInstallation(licenseId, { kind: "setup_completed" });
     // The completion is saved first; the confirmation email can fail without undoing it.
     if (!result.alreadyCompleted) await safeEmit({ type: "onboarding.completed", key: `onboarding_completed:${licenseId}`, licenseId, customerId: license!.customer_id });
     return { message: result.alreadyCompleted ? "Setup was already complete." : "Setup complete. We emailed you a confirmation with your installation instructions." };

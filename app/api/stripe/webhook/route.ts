@@ -1,7 +1,7 @@
-import { commerceRepo, stripeClient } from "@/lib/admin";
-import { safeEmit } from "@/lib/automation/server";
+import { stripeClient } from "@/lib/admin";
 import { handleStripeEvent } from "@/lib/commerce/fulfillment.ts";
 import { checkEventMode } from "@/lib/commerce/stripe-verify.ts";
+import { stripeFulfillmentDeps } from "@/lib/stripe-fulfillment";
 
 // Stripe webhook: the only path that grants paid access automatically. The
 // signature is verified against the raw body before anything is read, and
@@ -35,17 +35,7 @@ export async function POST(request: Request) {
 
   try {
     const outcome = await handleStripeEvent(
-      {
-        repo: commerceRepo(),
-        emit: safeEmit,
-        async listCheckoutProductIds(sessionId) {
-          const items = await stripe.checkout.sessions.listLineItems(sessionId, { limit: 100, expand: ["data.price.product"] });
-          return items.data
-            .map((item) => item.price?.product)
-            .map((product) => (typeof product === "string" ? product : product?.id))
-            .filter((id): id is string => Boolean(id));
-        },
-      },
+      stripeFulfillmentDeps(stripe),
       event,
     );
     // Log ids and outcomes only — never customer or payment details.

@@ -176,7 +176,7 @@ export function ProductEditor({ product, images, hasVersions }: { product?: Prod
         <p className="monarch-muted is-wide">Saving only updates the Monarch catalog; it never calls Stripe. Use the Stripe panel to sync the Stripe product or create a new price.</p>
         <label>Stripe product ID<input name="stripe_product_id" value={fields.stripe_product_id} onChange={set("stripe_product_id")} placeholder="prod_…" /></label>
         <label>Stripe price ID<input name="stripe_price_id" value={fields.stripe_price_id} onChange={set("stripe_price_id")} placeholder="price_…" /></label>
-        <label className="is-wide">Product settings (one <code>key: value</code> per line)<textarea name="metadata" rows={3} value={fields.metadata} onChange={set("metadata")} placeholder="checkout_url: https://buy.stripe.com/…" /></label>
+        <label className="is-wide">Product settings (one <code>key: value</code> per line)<textarea name="metadata" rows={3} value={fields.metadata} onChange={set("metadata")} placeholder="service_deliverable: …" /></label>
 
         <div className="is-wide pe-actions">
           {published ? (

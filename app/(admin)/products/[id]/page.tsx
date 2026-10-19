@@ -10,8 +10,12 @@ import { duplicateProductAction } from "../../product-actions";
 import { ImageManager } from "@/components/admin/image-manager";
 import { ProductEditor } from "@/components/admin/product-editor";
 import { StripePanel } from "@/components/admin/stripe-panel";
+import { ProductFilesPanel } from "@/components/admin/product-files-panel";
 import { VersionsPanel } from "@/components/admin/versions-panel";
 import { Badge, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { ArchivePanel } from "@/components/admin/archive";
+import { ReviewsPanel } from "@/components/admin/reviews-panel";
+import { reviewsRepo } from "@/lib/reviews/server";
 
 const NEXT: Record<string, { status: string; label: string }[]> = {
   draft: [{ status: "published", label: "Publish" }, { status: "archived", label: "Archive" }],
@@ -34,10 +38,12 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   if (!result.ok) return <SetupRequired message={result.message} />;
   const { product, versions, changes, images } = result.data;
   if (!product) notFound();
-  const blockers = publishBlockers(product);
+  const blockers = publishBlockers(product, images.length);
   const store = imageStore();
   const managed = orderedImages(images).map((i) => ({ id: i.id, url: store.publicUrl(i.storage_path), alt: i.alt_text, is_primary: i.is_primary, width: i.width, height: i.height, size_bytes: i.size_bytes }));
   const archived = product.status === "archived";
+  // Optional: the page works before the reviews table is installed.
+  const reviews = await reviewsRepo().listForProduct(product.id, true).catch(() => null);
 
   return (
     <>
@@ -58,7 +64,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
             <input type="hidden" name="id" value={product.id} />
             <button className="monarch-secondary" type="submit">Duplicate</button>
           </form>
-          {NEXT[product.status].map((n) => (
+          {NEXT[product.status].filter((n) => n.status !== "archived").map((n) => (
             <form key={n.status} action={setProductStatusAction}>
               <input type="hidden" name="id" value={product.id} />
               <input type="hidden" name="status" value={n.status} />
@@ -80,7 +86,10 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
         </section>
       )}
       <StripePanel product={product} stripeConfigured={stripeConfig().keyModeRecognized} config={stripeConfig()} />
+      <ProductFilesPanel product={product} />
       <VersionsPanel productId={product.id} versions={versions} changes={changes} stripeReady={stripeConfig().keyModeRecognized} />
+      {reviews && <ReviewsPanel productId={product.id} reviews={reviews} />}
+      <ArchivePanel entity="product" id={product.id} />
     </>
   );
 }

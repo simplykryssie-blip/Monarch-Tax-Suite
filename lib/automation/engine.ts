@@ -1,11 +1,21 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { CommerceRepo } from "../commerce/types.ts";
+import type { ServiceOrdersRepo } from "../commerce/service-orders.ts";
 import { embedSnippet } from "../commerce/platforms.ts";
 import { isEventType, EVENTS } from "./events.ts";
 import { isEmailAddress, type EmailSender } from "./email.ts";
 import { sanitizeError } from "./sanitize.ts";
 import { renderTemplate, SAMPLE_VALUES, VARIABLES, variablesIn } from "./template.ts";
-import type { Action, ActionResult, AutomationEvent, AutomationRepo, Condition, ErrorKind, Execution, SendEmailAction, Workflow } from "./types.ts";
+import { resolveSender, type ResolvedSender, type SendersRepo } from "./senders.ts";
+import { ValidationError } from "../commerce/validation.ts";
+import { createDelivery, deliveryPathFor, MissingValuesError, type DocumentDeps } from "../documents/service.ts";
+import { SAMPLE_FIELD_VALUES } from "../documents/fields.ts";
+import { documentValues } from "../documents/values.ts";
+import { documentEmail } from "../documents/emails.ts";
+import { shiftBusinessTime, BusinessInputError, DEFAULT_TIME_ZONE, DEFAULT_WEEK, type BusinessCalendar } from "../calendar/business.ts";
+import { CONTACT_FIELD, type Contact, type ContactPort } from "./contact.ts";
+import { compile, stepsOf, waitText } from "./steps.ts";
+import type { Action, ActionResult, AutomationEvent, AutomationRepo, Condition, ErrorKind, Execution, RequestSignatureAction, SendDocumentAction, SendEmailAction, SubjectType, WaitStep, Workflow } from "./types.ts";
 
 // The workflow engine. Rules:
 //  - Emitting the same event key twice never runs workflows twice.
@@ -26,12 +36,31 @@ export type AutomationConfig = {
   testRecipients: string[];
 };
 
+/** A tenant's look for its customer emails (name, logo, colour, support address). Absent: the Monarch default. */
+export type EmailBrandSource = () => Promise<import("../branding/brand.ts").EmailBrand | null>;
+
 export type AutomationDeps = {
+  /** The tenant's email brand. Optional: tests and the default render the standard look. */
+  brand?: EmailBrandSource;
   repo: AutomationRepo;
   commerce: CommerceRepo;
   crm: { getLiveConnection(licenseId: string): Promise<{ status: string; provider: string; location_name: string | null } | null>; getLeadSettings(licenseId: string): Promise<{ business_name: string | null } | null> } | null;
+  /** Service orders, for the service email values. Optional: absent where no service orders exist. */
+  services?: Pick<ServiceOrdersRepo, "findServiceOrderByOrder"> | null;
   email: EmailSender;
   config: AutomationConfig;
+  /** The tenant's document library (send document / request signature steps). */
+  documents?: DocumentDeps | null;
+  /** The tenant's sending addresses. Absent: emails go from the configured platform sender. */
+  senders?: SendersRepo | null;
+  /** Used when the tenant has no verified sender of its own (only for tenants allowed the platform sender). */
+  fallbackSender?: ResolvedSender | null;
+  /** A form submission's answers as text (form.submitted events): for answer.<key> conditions and {{form.<key>}} merge fields. */
+  formAnswers?: ((submissionId: string) => Promise<Record<string, string> | null>) | null;
+  /** The people and tasks steps act on (tags, lead status, tasks, texts). Absent: those steps explain that they can't run. */
+  contacts?: ContactPort | null;
+  /** The office's business hours and closures, for business-time waits. Absent: Monday to Friday, 9 to 5, Eastern. */
+  calendar?: (() => Promise<BusinessCalendar>) | null;
   now?: () => Date;
 };
 
@@ -48,16 +77,43 @@ export type EmitInput = {
   licenseId?: string | null;
   customerId?: string | null;
   orderId?: string | null;
+  /** What the event is about; the person is looked up from it when a step runs. */
+  subject?: { type: SubjectType; id: string } | null;
   data?: Record<string, string | number | boolean | null>;
 };
 
-export function conditionsMatch(conditions: Condition[], data: AutomationEvent["data"]): boolean {
+/** Conditions on `product.<attribute>` read the attributes of the product behind the event's order. */
+export const PRODUCT_FIELD = /^product\.([a-z][a-z0-9_]{1,39})$/;
+/** Conditions on `answer.<key>` read the submitted answer to that form question (form.submitted events). */
+export const ANSWER_FIELD = /^answer\.([a-z][a-z0-9_]{0,39})$/;
+
+export function conditionsMatch(conditions: Condition[], data: AutomationEvent["data"], product: Record<string, string> | null = null, answers: Record<string, string> | null = null, contact: Contact | null = null): boolean {
   return conditions.every((c) => {
-    const actual = data[c.field] === undefined || data[c.field] === null ? "" : String(data[c.field]);
+    if (CONTACT_FIELD.test(c.field)) return contactCondition(c, contact);
+    const attr = c.field.match(PRODUCT_FIELD)?.[1];
+    const answer = c.field.match(ANSWER_FIELD)?.[1];
+    const raw = attr ? product?.[attr] : answer ? answers?.[answer] : data[c.field];
+    const actual = raw === undefined || raw === null ? "" : String(raw).trim();
     if (c.op === "eq") return actual === c.value;
     if (c.op === "neq") return actual !== c.value;
+    if (c.op === "contains") return actual.includes(c.value);
+    if (c.op === "not_contains") return !actual.includes(c.value);
     return c.value.split(",").map((s) => s.trim()).includes(actual);
   });
+}
+
+/** A condition about the person. Without one (no lead or client record), tag and status tests are false and "is not" tests are true. */
+function contactCondition(c: Condition, contact: Contact | null): boolean {
+  const field = c.field.slice("contact.".length);
+  const value = c.value.trim().toLowerCase();
+  if (field === "tags") {
+    const has = !!contact && contact.tags.includes(value);
+    return c.op === "not_contains" || c.op === "neq" ? !has : has;
+  }
+  const actual = field === "lead_status" ? contact?.leadStatus ?? "" : field === "is_lead" ? (contact?.leadId ? "yes" : "no") : contact?.clientId ? "yes" : "no";
+  if (c.op === "neq" || c.op === "not_contains") return actual !== value;
+  if (c.op === "in") return value.split(",").map((x) => x.trim()).includes(actual);
+  return actual === value;
 }
 
 function cleanData(data: EmitInput["data"]): AutomationEvent["data"] {
@@ -81,11 +137,17 @@ export async function emitEvent(deps: AutomationDeps, input: EmitInput): Promise
     license_id: input.licenseId ?? null,
     customer_id: input.customerId ?? null,
     order_id: input.orderId ?? null,
+    subject_type: input.subject?.type ?? null,
+    subject_id: input.subject?.id ?? null,
     data: cleanData(input.data),
   });
   if (!created) return { duplicate: true, eventId: event.id, executionIds: [] };
 
-  const workflows = (await deps.repo.listWorkflows()).filter((w) => w.status === "active" && w.trigger_event === input.type && conditionsMatch(w.conditions, event.data));
+  // A date-based workflow only reacts to the event made for its own number of days.
+  const candidates = (await deps.repo.listWorkflows()).filter((w) => w.status === "active" && w.trigger_event === input.type && (!input.type.startsWith("date.") || Number(w.trigger_config?.offset_days) === Number(event.data.offset_days)));
+  const product = candidates.some((w) => w.conditions.some((c) => PRODUCT_FIELD.test(c.field))) ? await productAttributes(deps, event) : null;
+  const answers = candidates.some((w) => w.conditions.some((c) => ANSWER_FIELD.test(c.field))) ? await submissionAnswers(deps, event) : null;
+  const workflows = candidates.filter((w) => conditionsMatch(w.conditions, event.data, product, answers));
   const executionIds: string[] = [];
   for (const wf of workflows) {
     const { execution, created: fresh } = await deps.repo.insertExecution({ workflow_id: wf.id, event_id: event.id, is_test: false, max_attempts: wf.max_attempts, next_attempt_at: iso(deps) });
@@ -113,8 +175,35 @@ export async function emitEvent(deps: AutomationDeps, input: EmitInput): Promise
 
 // ------------------------------------------------------------------ context
 
+/** The attributes (product settings) of the product behind an event's order, for package conditions. */
+async function productAttributes(deps: AutomationDeps, event: AutomationEvent): Promise<Record<string, string> | null> {
+  let orderId = event.order_id;
+  if (!orderId && event.license_id) orderId = (await deps.commerce.getLicense(event.license_id))?.order_id ?? null;
+  const order = orderId ? await deps.commerce.getOrder(orderId) : null;
+  const product = order ? await deps.commerce.getProduct(order.product_id) : null;
+  return product ? { ...product.metadata } : null;
+}
+
+/** The answers of the form submission behind a form.submitted event. */
+async function submissionAnswers(deps: AutomationDeps, event: AutomationEvent): Promise<Record<string, string> | null> {
+  const id = typeof event.data.submission_id === "string" ? event.data.submission_id : null;
+  return id && deps.formAnswers ? deps.formAnswers(id) : null;
+}
+
+/** From / reply-to for an email: the chosen sender, else the tenant's default, else the platform sender. */
+export async function senderFor(deps: AutomationDeps, senderId: string | null | undefined): Promise<{ from?: string; replyTo?: string | null; label?: string }> {
+  if (!deps.senders && !senderId) return {};
+  const s = await resolveSender(deps.senders ?? null, senderId ?? null, deps.fallbackSender ?? null);
+  return { from: s.from, replyTo: s.replyTo, label: s.label };
+}
+
 async function recipientFor(deps: AutomationDeps, event: AutomationEvent, who: SendEmailAction["to"]): Promise<string | null> {
   if (who === "support") return deps.config.supportRecipient;
+  // An event about a person (an appointment, a lead, a client) is emailed to that person.
+  if (event.subject_type && deps.contacts) {
+    const contact = await deps.contacts.resolve(event).catch(() => null);
+    if (contact?.email) return contact.email;
+  }
   let customerId = event.customer_id;
   if (!customerId && event.license_id) customerId = (await deps.commerce.getLicense(event.license_id))?.customer_id ?? null;
   const customer = customerId ? await deps.commerce.getCustomer(customerId) : null;
@@ -130,7 +219,8 @@ const FAILURE_TEXT: Record<string, string> = {
 /** Real values for one event. Only fields a customer should see; never keys, tokens or lead contents. */
 async function contextFor(deps: AutomationDeps, event: AutomationEvent): Promise<Record<string, string>> {
   const origin = (await deps.config.origin()).replace(/\/$/, "");
-  const values: Record<string, string> = { support_email: deps.config.supportEmail, app_url: origin };
+  const eb = (await deps.brand?.().catch(() => null)) ?? null;
+  const values: Record<string, string> = { support_email: eb?.supportEmail ?? deps.config.supportEmail, app_url: origin };
   const license = event.license_id ? await deps.commerce.getLicense(event.license_id) : null;
   const customerId = event.customer_id ?? license?.customer_id ?? null;
   const customer = customerId ? await deps.commerce.getCustomer(customerId) : null;
@@ -163,6 +253,31 @@ async function contextFor(deps: AutomationDeps, event: AutomationEvent): Promise
           `3. Publish the page. The calculator shows only on your authorized website${domain ? ` (${domain} and its www version)` : ""}. If the area stays blank, check the website address in your setup page.`,
         ].join("\n")
       : "Your calculator code is created when your license is activated. We will email you as soon as it is ready.";
+  }
+  // Purchases without a license (services): the order, the product, and what the buyer was promised.
+  if (!license && event.order_id) {
+    const order = await deps.commerce.getOrder(event.order_id);
+    if (order) {
+      values.order_number = String(order.order_number);
+      if (!customer) {
+        const c = await deps.commerce.getCustomer(order.customer_id);
+        if (c) Object.assign(values, { customer_name: c.full_name?.trim() || "there", customer_first_name: (c.full_name?.trim() || "there").split(/\s+/)[0] });
+      }
+      const product = await deps.commerce.getProduct(order.product_id);
+      if (product) values.product_name = product.name;
+      const so = deps.services ? await deps.services.findServiceOrderByOrder(order.id).catch(() => null) : null;
+      if (so) Object.assign(values, { service_deliverable: so.deliverable, service_owner: so.owner, service_response_time: so.response_time, service_next_step: so.next_step ?? "" });
+    }
+  }
+  // An event about a person: their name and the subject's own merge fields (appointment time, invoice number…).
+  if (event.subject_type && deps.contacts) {
+    const contact = await deps.contacts.resolve(event).catch(() => null);
+    if (contact) {
+      const name = contact.name?.trim() || "there";
+      if (!values.customer_name) Object.assign(values, { customer_name: name, customer_first_name: name.split(/\s+/)[0] ?? name });
+      if (!values.business_name) values.business_name = name;
+      Object.assign(values, contact.variables);
+    }
   }
   const kind = typeof event.data.error_kind === "string" ? event.data.error_kind : "";
   if (kind) values.failure_reason = FAILURE_TEXT[kind] ?? "A calculator lead could not be delivered.";
@@ -220,11 +335,19 @@ async function runSendEmail(deps: AutomationDeps, exec: Execution, event: Automa
 
   let rendered;
   try {
-    rendered = renderTemplate(template.subject, template.body, values, { supportEmail: deps.config.supportEmail });
+    const eb = (await deps.brand?.().catch(() => null)) ?? null;
+    rendered = renderTemplate(template.subject, template.body, values, { ...(eb ?? {}), supportEmail: eb?.supportEmail ?? deps.config.supportEmail });
   } catch (e) {
     return { status: "failed", kind: "permanent", detail: sanitizeError(e, 200) };
   }
+  let sender;
+  try {
+    sender = await senderFor(deps, template.sender_id);
+  } catch (e) {
+    return { status: "failed", kind: "config", detail: sanitizeError(e, 240) };
+  }
   const result = await deps.email.send({
+    ...sender,
     to,
     subject: isTest ? `[TEST] ${rendered.subject}` : rendered.subject,
     html: rendered.html,
@@ -237,12 +360,165 @@ async function runSendEmail(deps: AutomationDeps, exec: Execution, event: Automa
   return { status: "ok", detail: `Email "${template.name}" sent to ${isTest ? "the test recipient" : action.to === "support" ? "support" : "the customer"}.`, messageId: result.id };
 }
 
-async function runAction(deps: AutomationDeps, exec: Execution, event: AutomationEvent, action: Action, index: number): Promise<ActionOutcome> {
+/**
+ * Send document / request signature: fill the library document for the event's customer, save the fingerprinted
+ * copy, and email the secure link. A retried run reuses the copy (and link) it already made.
+ */
+async function runDocumentStep(deps: AutomationDeps, exec: Execution, event: AutomationEvent, action: SendDocumentAction | RequestSignatureAction, index: number): Promise<ActionOutcome> {
+  const docs = deps.documents;
+  if (!docs) return { status: "failed", kind: "config", detail: "Document management is not set up for this account yet." };
+  const kind = action.type === "request_signature" ? "signature" : "send";
+  const isTest = exec.is_test;
+  const testRecipient = typeof event.data.test_recipient === "string" ? event.data.test_recipient : null;
+  const license = event.license_id ? await deps.commerce.getLicense(event.license_id) : null;
+  const customerId = event.customer_id ?? license?.customer_id ?? null;
+  const customer = !isTest && customerId ? await deps.commerce.getCustomer(customerId) : null;
+  const to = isTest ? testRecipient : customer?.email ?? null;
+  if (!to || !isEmailAddress(to)) return { status: "failed", kind: "permanent", detail: isTest ? "No valid test recipient." : "There is no valid email address for this customer, so nothing was sent." };
+  if (!isTest && deps.config.env !== "production" && !deps.config.testRecipients.map((r) => r.toLowerCase()).includes(to.toLowerCase())) {
+    return { status: "skipped", kind: "skipped", detail: `Not sent: this is a ${deps.config.env} environment, where email goes only to the addresses in AUTOMATION_TEST_RECIPIENTS.` };
+  }
+
+  const profile = await docs.repo.getProfile();
+  let values: Record<string, string>;
+  if (isTest) {
+    values = { ...SAMPLE_FIELD_VALUES };
+    // Sample answers for any {{form.<key>}} merge fields the document uses.
+    const doc = await docs.repo.getDocument(action.document_id);
+    const version = doc?.current_version_id ? await docs.repo.getVersion(doc.current_version_id) : null;
+    for (const f of version?.merge_fields ?? []) if (f.startsWith("form.")) values[f] = `Sample ${f.slice(5).replace(/_/g, " ")}`;
+  } else {
+    const orderId = event.order_id ?? license?.order_id ?? null;
+    const order = orderId ? await deps.commerce.getOrder(orderId) : null;
+    const product = order ? await deps.commerce.getProduct(order.product_id) : null;
+    const onboarding = license ? await deps.repo.getProfile(license.id).catch(() => null) : null;
+    values = documentValues({ profile, customer, businessName: onboarding?.business_name ?? null, order, product, now: nowOf(deps) });
+    const answers = await submissionAnswers(deps, event);
+    for (const [k, v] of Object.entries(answers ?? {})) values[`form.${k}`] = v;
+  }
+
+  let sender;
+  try {
+    sender = await senderFor(deps, action.sender_id);
+  } catch (e) {
+    return { status: "failed", kind: "config", detail: sanitizeError(e, 240) };
+  }
+  let made;
+  try {
+    made = await createDelivery(docs, {
+      documentId: action.document_id, kind, recipientEmail: to, recipientName: isTest ? "Test recipient" : customer?.full_name ?? null,
+      customerId: isTest ? null : customerId, orderId: isTest ? null : event.order_id ?? license?.order_id ?? null,
+      executionId: exec.id, actionIndex: index, isTest, values, linkDays: action.link_days,
+      reminderDays: action.type === "request_signature" ? action.reminder_days : null, createdBy: null,
+    });
+  } catch (e) {
+    if (e instanceof MissingValuesError || e instanceof ValidationError) return { status: "failed", kind: "config", detail: sanitizeError(e, 300) };
+    throw e;
+  }
+  const origin = (await deps.config.origin()).replace(/\/$/, "");
+  const firmName = profile?.display_name ?? "Your tax office";
+  const email = documentEmail({
+    kind, firmName, documentName: made.document.name, clientFirstName: isTest ? "there" : values.client_first_name || null,
+    message: action.message, url: `${origin}${deliveryPathFor(kind, made.token)}`, expiresAt: new Date(made.delivery.expires_at),
+  });
+  const result = await deps.email.send({
+    ...sender,
+    to,
+    subject: isTest ? `[TEST] ${email.subject}` : email.subject,
+    html: email.html,
+    text: isTest ? `*** TEST EMAIL: sample data only ***\n\n${email.text}` : email.text,
+    idempotencyKey: `${exec.id}:${index}`,
+  });
+  if (!result.ok) return { status: "failed", kind: result.kind, detail: result.message };
+  if (!isTest && !made.reused && kind === "send") {
+    await emitEvent(deps, { type: "document.sent", key: `delivery:${made.delivery.id}:sent`, customerId, orderId: made.delivery.order_id, licenseId: event.license_id, data: { document_id: made.document.id } }).catch((e) => console.error(`automation: document.sent not recorded: ${sanitizeError(e, 120)}`));
+  }
+  const what = kind === "signature" ? "Signature request for" : "Document";
+  return { status: "ok", detail: `${what} "${made.document.name}" sent to ${isTest ? "the test recipient" : "the customer"}${made.reused ? " (same copy as the earlier attempt)" : ""}.`, messageId: result.id };
+}
+
+type RunCtx = { contact: () => Promise<Contact | null> };
+
+const NEW_ACTIONS = new Set(["create_task", "add_tag", "remove_tag", "update_contact", "send_text"]);
+
+async function runAction(deps: AutomationDeps, exec: Execution, event: AutomationEvent, action: Action, index: number, ctx: RunCtx): Promise<ActionOutcome> {
   if (action.type === "record_note") return { status: "ok", detail: action.note.slice(0, 300) };
-  return runSendEmail(deps, exec, event, action, index);
+  if (action.type === "send_document" || action.type === "request_signature") return runDocumentStep(deps, exec, event, action, index);
+  if (action.type === "send_email") return runSendEmail(deps, exec, event, action, index);
+  return runContactStep(deps, exec, action, index, ctx);
+}
+
+/** Tags, lead status, tasks and texts. These need the person, so they say plainly when there isn't one. */
+async function runContactStep(deps: AutomationDeps, exec: Execution, action: Extract<Action, { type: "create_task" | "add_tag" | "remove_tag" | "update_contact" | "send_text" }>, index: number, ctx: RunCtx): Promise<ActionOutcome> {
+  const port = deps.contacts;
+  if (!port) return { status: "failed", kind: "config", detail: "This step needs the contact records, which aren't connected for this account." };
+  const contact = await ctx.contact();
+  const nobody = (what: string): ActionOutcome => ({ status: "skipped", kind: "skipped", detail: `Skipped: this event isn't about a lead or client, so there is nobody to ${what}.` });
+  if (action.type === "create_task") {
+    const due = action.due_days === null ? null : new Date(nowOf(deps).getTime() + action.due_days * 86_400_000).toISOString().slice(0, 10);
+    const made = await port.createTask({ title: action.title, dueOn: due, contact, executionId: exec.id });
+    return { status: "ok", detail: made ? `Task "${action.title}" added to Automation → Tasks${due ? `, due ${due}` : ""}.` : `Task "${action.title}" was already added by this run.` };
+  }
+  if (!contact) return nobody(action.type === "send_text" ? "text" : action.type === "update_contact" ? "update" : "tag");
+  if (action.type === "add_tag" || action.type === "remove_tag") {
+    if (!contact.leadId && !contact.clientId) return nobody("tag");
+    const n = action.type === "add_tag" ? await port.addTag(contact, action.tag) : await port.removeTag(contact, action.tag);
+    return { status: "ok", detail: n ? `Tag "${action.tag}" ${action.type === "add_tag" ? "added to" : "removed from"} ${contact.name ?? "the contact"}.` : `Nothing to do: ${contact.name ?? "the contact"} ${action.type === "add_tag" ? "already had" : "didn't have"} the tag "${action.tag}".` };
+  }
+  if (action.type === "update_contact") {
+    if (!contact.leadId) return nobody("update");
+    await port.setLeadStatus(contact, action.value);
+    return { status: "ok", detail: `${contact.name ?? "The lead"} marked ${action.value}.` };
+  }
+  // send_text
+  if (!contact.phone) return { status: "skipped", kind: "skipped", detail: "Skipped: there is no mobile number for this person." };
+  if (!contact.smsConsent) return { status: "skipped", kind: "skipped", detail: "Skipped: this person hasn't agreed to texts (no consent on record), so no text was sent." };
+  const sent = await port.sendText(contact, action.body, `workflow-text:${exec.id}:${index}`);
+  return sent.ok ? { status: "ok", detail: `Text sent to ${contact.name ?? "the contact"}.` } : { status: "failed", kind: sent.kind, detail: sent.message };
+}
+
+// -------------------------------------------------------------- client test
+
+/** A test with a real client: sending steps are checked but never sent, and everything else runs. */
+const isClientTest = (exec: Execution, event: AutomationEvent) => exec.is_test && event.data.test_client === true;
+
+async function dryRunStep(deps: AutomationDeps, event: AutomationEvent, action: Action): Promise<ActionOutcome> {
+  if (action.type === "record_note") return { status: "ok", detail: action.note.slice(0, 300) };
+  if (action.type === "send_email") {
+    const template = await deps.repo.getTemplate(action.template_id);
+    if (!template) return { status: "failed", kind: "permanent", detail: "The email template for this step no longer exists. Choose another template in the workflow." };
+    if (!template.active) return { status: "failed", kind: "config", detail: `The template "${template.name}" is switched off. Turn it on before this workflow can send it.` };
+    const values = await contextFor(deps, event);
+    // A setup link is made only for a real send; the test shows where it would go.
+    if (action.include_setup_link || variablesIn(template.subject, template.body).includes("setup_link")) values.setup_link = "https://example.com/setup-link-made-when-sent";
+    try {
+      const eb = (await deps.brand?.().catch(() => null)) ?? null;
+      const rendered = renderTemplate(template.subject, template.body, { ...SAMPLE_VALUES, ...values }, { ...(eb ?? {}), supportEmail: eb?.supportEmail ?? deps.config.supportEmail });
+      const to = action.to === "support" ? "Monarch support" : (await recipientFor(deps, event, "customer")) ?? "the client (no email address on file)";
+      return { status: "skipped", kind: "skipped", detail: `Skipped in test: would email "${template.name}" to ${to} with the subject "${rendered.subject}". The message filled in without problems.` };
+    } catch (e) {
+      return { status: "failed", kind: "permanent", detail: sanitizeError(e, 200) };
+    }
+  }
+  if (action.type === "create_task") return { status: "skipped", kind: "skipped", detail: `Skipped in test: would add the task "${action.title}"${action.due_days === null ? "" : `, due in ${action.due_days} day${action.due_days === 1 ? "" : "s"}`}.` };
+  if (action.type === "add_tag" || action.type === "remove_tag") return { status: "skipped", kind: "skipped", detail: `Skipped in test: would ${action.type === "add_tag" ? "add" : "remove"} the tag "${action.tag}".` };
+  if (action.type === "update_contact") return { status: "skipped", kind: "skipped", detail: `Skipped in test: would mark the lead ${action.value}.` };
+  if (action.type === "send_text") return { status: "skipped", kind: "skipped", detail: `Skipped in test: would text "${action.body.slice(0, 60)}${action.body.length > 60 ? "…" : ""}" (only if the person agreed to texts).` };
+  const what = action.type === "request_signature" ? "request a signature on" : "send";
+  const doc = deps.documents ? await deps.documents.repo.getDocument(action.document_id).catch(() => null) : null;
+  if (deps.documents && !doc) return { status: "failed", kind: "permanent", detail: "The document for this step no longer exists. Choose another document in the workflow." };
+  return { status: "skipped", kind: "skipped", detail: `Skipped in test: would ${what} "${doc?.name ?? "the document"}" to the client.` };
 }
 
 // -------------------------------------------------------------- execution
+
+const defaultCalendar = (): BusinessCalendar => ({ timeZone: DEFAULT_TIME_ZONE, week: DEFAULT_WEEK, closures: [] });
+
+/** When a wait ends. Business waits count only the office's open hours; calendar waits are plain elapsed time. */
+export async function wakeTime(deps: AutomationDeps, wait: WaitStep, from: Date): Promise<Date> {
+  const cal = deps.calendar ? await deps.calendar().catch(() => defaultCalendar()) : defaultCalendar();
+  return shiftBusinessTime(cal, from, { amount: wait.amount, unit: wait.unit, mode: wait.mode }, 1);
+}
 
 export async function processExecution(deps: AutomationDeps, executionId: string): Promise<Execution | null> {
   const now = nowOf(deps);
@@ -255,21 +531,71 @@ export async function processExecution(deps: AutomationDeps, executionId: string
     return deps.repo.updateExecution(claimed.id, { status: "skipped", error_kind: "skipped", error: "The workflow is paused or archived, so this did not run. Turn it on and use Retry to run it.", finished_at: iso(deps), next_attempt_at: null });
   }
 
+  const program = compile(stepsOf(wf));
   const log: ActionResult[] = [...claimed.action_log];
   let messageId = claimed.provider_message_id;
-  for (let i = 0; i < wf.actions.length; i++) {
-    const done = log.find((l) => l.index === i && (l.status === "ok" || l.status === "skipped"));
-    if (done) continue;
+  let pc = claimed.pc ?? 0;
+  let contact: Contact | null | undefined;
+  const ctx: RunCtx = { contact: async () => (contact === undefined ? (contact = deps.contacts ? await deps.contacts.resolve(event).catch(() => null) : null) : contact) };
+  const record = (entry: ActionResult) => {
+    const at = log.findIndex((l) => l.index === entry.index);
+    if (at >= 0) log[at] = entry;
+    else log.push(entry);
+  };
+  const dryOnly = isClientTest(claimed, event);
+
+  for (let guard = 0; pc < program.length; guard++) {
+    if (guard > 400) return deps.repo.updateExecution(claimed.id, { status: "failed", error_kind: "permanent", error: "This workflow went round more steps than it has. Edit it and try again.", action_log: log, finished_at: iso(deps), next_attempt_at: null });
+    const ins = program[pc];
+    if (ins.op === "jump") { pc = ins.to; continue; }
+
+    if (ins.op === "branch") {
+      const needsProduct = ins.conditions.some((c) => PRODUCT_FIELD.test(c.field));
+      const needsAnswers = ins.conditions.some((c) => ANSWER_FIELD.test(c.field));
+      const needsContact = ins.conditions.some((c) => CONTACT_FIELD.test(c.field));
+      const hit = conditionsMatch(
+        ins.conditions, event.data,
+        needsProduct ? await productAttributes(deps, event) : null,
+        needsAnswers ? await submissionAnswers(deps, event) : null,
+        needsContact ? await ctx.contact() : null,
+      );
+      record({ index: pc, type: "branch", path: ins.path, status: "ok", detail: hit ? "Conditions met: took the Yes path." : "Conditions not met: took the No path.", at: iso(deps) });
+      pc = hit ? pc + 1 : ins.elseAt;
+      continue;
+    }
+
+    if (ins.op === "wait") {
+      const done = log.find((l) => l.index === pc && l.status !== "failed");
+      if (done) { pc++; continue; }
+      if (claimed.is_test) {
+        record({ index: pc, type: "wait", path: ins.path, status: "skipped", detail: `Skipped in test: would wait ${waitText(ins.wait)}.`, at: iso(deps) });
+        pc++;
+        continue;
+      }
+      let wake: Date;
+      try {
+        wake = await wakeTime(deps, ins.wait, nowOf(deps));
+      } catch (e) {
+        const detail = e instanceof BusinessInputError ? `${e.message} Check Settings → Business hours.` : sanitizeError(e, 240);
+        return deps.repo.updateExecution(claimed.id, { status: "failed", error: sanitizeError(detail, 500), error_kind: "config", pc, action_log: log, finished_at: iso(deps), next_attempt_at: null });
+      }
+      record({ index: pc, type: "wait", path: ins.path, status: "ok", detail: `Waiting ${waitText(ins.wait)}, until ${wake.toISOString()}.`, at: iso(deps) });
+      // Attempts start over after a wait, so a long workflow never runs out of tries for its later steps.
+      return deps.repo.updateExecution(claimed.id, { status: "waiting", pc: pc + 1, attempts: 0, error: null, error_kind: null, action_log: log, next_attempt_at: wake.toISOString(), finished_at: null });
+    }
+
+    // An action.
+    const action = ins.action;
+    const finished = log.find((l) => l.index === pc && (l.status === "ok" || l.status === "skipped"));
+    if (finished) { pc++; continue; }
     let outcome: ActionOutcome;
     try {
-      outcome = await runAction(deps, claimed, event, wf.actions[i], i);
+      const dry = dryOnly || (claimed.is_test && NEW_ACTIONS.has(action.type));
+      outcome = dry ? await dryRunStep(deps, event, action) : await runAction(deps, claimed, event, action, pc, ctx);
     } catch (e) {
       outcome = { status: "failed", kind: "transient", detail: sanitizeError(e, 240) };
     }
-    const entry: ActionResult = { index: i, type: wf.actions[i].type, status: outcome.status, detail: sanitizeError(outcome.detail, 300), message_id: outcome.messageId ?? null, at: iso(deps) };
-    const at = log.findIndex((l) => l.index === i);
-    if (at >= 0) log[at] = entry;
-    else log.push(entry);
+    record({ index: pc, type: action.type, path: ins.path, status: outcome.status, detail: sanitizeError(outcome.detail, 300), message_id: outcome.messageId ?? null, at: iso(deps) });
     if (outcome.messageId) messageId = outcome.messageId;
 
     if (outcome.status === "failed") {
@@ -280,14 +606,16 @@ export async function processExecution(deps: AutomationDeps, executionId: string
         status: retry ? "retrying" : "failed",
         error: sanitizeError(outcome.detail, 500),
         error_kind: kind,
+        pc,
         action_log: log,
         provider_message_id: messageId,
         next_attempt_at: retry ? new Date(nowOf(deps).getTime() + wait * 1000).toISOString() : null,
         finished_at: retry ? null : iso(deps),
       });
     }
+    pc++;
   }
-  return deps.repo.updateExecution(claimed.id, { status: "succeeded", error: null, error_kind: null, action_log: log, provider_message_id: messageId, finished_at: iso(deps), next_attempt_at: null });
+  return deps.repo.updateExecution(claimed.id, { status: "succeeded", error: null, error_kind: null, pc, action_log: log, provider_message_id: messageId, finished_at: iso(deps), next_attempt_at: null });
 }
 
 /** Processes queued and retrying executions that are due. Safe to call from many places; claims are atomic. */
@@ -327,6 +655,22 @@ export async function runTest(deps: AutomationDeps, workflowId: string, admin: {
   const { event } = await deps.repo.insertEvent({ event_key: `test:${randomBytes(9).toString("base64url")}`, event_type: wf.trigger_event, license_id: null, customer_id: null, order_id: null, data: { test_recipient: admin.email } });
   const { execution } = await deps.repo.insertExecution({ workflow_id: wf.id, event_id: event.id, is_test: true, max_attempts: 1, next_attempt_at: iso(deps) });
   await deps.repo.addAudit({ actor_id: admin.id, action: "workflow_test_run", target_type: "workflow", target_id: wf.id, detail: {} });
+  return (await processExecution(deps, execution.id)) ?? execution;
+}
+
+/**
+ * Tests a workflow end to end with a real client chosen by the administrator. Steps that would send an email or text
+ * (or a document) are checked and skipped, so nothing reaches the client, and the run carries on to the next step. Every
+ * step's result is recorded in the run history.
+ */
+export async function runClientTest(deps: AutomationDeps, workflowId: string, customerId: string, admin: { id: string; email: string }): Promise<Execution> {
+  const wf = await deps.repo.getWorkflow(workflowId);
+  if (!wf) throw new Error("Workflow not found.");
+  const customer = await deps.commerce.getCustomer(customerId);
+  if (!customer) throw new Error("Choose a client to test with.");
+  const { event } = await deps.repo.insertEvent({ event_key: `client-test:${randomBytes(9).toString("base64url")}`, event_type: wf.trigger_event, license_id: null, customer_id: customer.id, order_id: null, data: { test_client: true, test_recipient: admin.email } });
+  const { execution } = await deps.repo.insertExecution({ workflow_id: wf.id, event_id: event.id, is_test: true, max_attempts: 1, next_attempt_at: iso(deps) });
+  await deps.repo.addAudit({ actor_id: admin.id, action: "workflow_client_test", target_type: "workflow", target_id: wf.id, detail: { customer_id: customer.id } });
   return (await processExecution(deps, execution.id)) ?? execution;
 }
 

@@ -7,9 +7,28 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabaseConfigProblems } from "
 // The Stripe webhook authenticates by signature, not session. /shop lists
 // published products only. /integrations authorizes each action with the buyer's license key; the
 // lead endpoint authorizes with a signed embed token.
-const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
+const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/stripe/connect-webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
   // Customer setup links (the token is the credential) and the retry runner (authorized by CRON_SECRET).
-  "/setup", "/api/automation/run",
+  "/setup", "/api/automation/run", "/api/automation/tick",
+  // Buyer downloads: every file request is authorized by the buyer's license key and checked again on each click.
+  "/downloads",
+  // Secure document links sent by a firm: the link token is the credential, checked again on every request.
+  "/d/", "/sign/",
+  // Campaign emails and texts: the per-recipient link token is the credential (open pixel, click redirect, unsubscribe), and the
+  // provider callbacks (Resend, Twilio) authenticate themselves.
+  "/t/", "/u/", "/api/campaigns/", "/api/sms/",
+  // Public forms: anyone with the link may fill them in; every action is limited per visitor and checked again on the server.
+  "/f/",
+  // Public booking pages and the emailed manage links: the web address names the office, the link token is the credential.
+  "/book/",
+  // Account images shown in emails, public forms and the shop: image files only, read from that tenant's own bucket.
+  "/media/",
+  // The WISP Generator: public audit and builder; downloads need the buying browser's secret or the emailed link token.
+  "/wisp",
+  // Office invites: the one-time link token is the credential. The rest of /office requires sign-in and two-step sign-in.
+  "/office/invite/", "/practice/invite/", "/portal/invite/",
+  // Password reset: the email link lands on /auth/callback; /reset-password checks for the session itself.
+  "/forgot-password", "/reset-password", "/auth/",
   // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).
   ...(LEGAL_PAGES_APPROVED ? LEGAL_PATHS : []),
 ];

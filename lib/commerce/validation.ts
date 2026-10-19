@@ -15,6 +15,7 @@ import {
   type InstallationStatus,
   type InstallationType,
   type NewProduct,
+  type Product,
   type Platform,
   type ProductStatus,
   type ProductType,
@@ -119,6 +120,7 @@ export function parseMetadata(raw: string | null): Record<string, string> {
     const value = line.slice(at + 1).trim();
     if (!/^[a-z0-9_]{1,40}$/.test(key)) throw new ValidationError(`Setting name "${key}" may only use letters, numbers and underscores.`);
     if (value.length > 500) throw new ValidationError(`Setting "${key}" is too long.`);
+    if (key === "checkout_url") throw new ValidationError("checkout_url is no longer used: buyers always check out through the storefront's Purchase button. Remove that line.");
     out[key] = value;
   }
   if (Object.keys(out).length > 30) throw new ValidationError("Use at most 30 settings.");
@@ -190,11 +192,52 @@ export function cleanNote(value: unknown, max = 4000): string | null {
   return note || null;
 }
 
-/** A product can be published only when it is genuinely sellable. */
-export function publishBlockers(product: Pick<NewProduct, "price_cents" | "stripe_product_id" | "access_type" | "installation_options">): string[] {
+type SellableFields = Pick<NewProduct, "price_cents" | "stripe_product_id" | "access_type" | "installation_options">;
+type PublishFields = SellableFields &
+  Pick<NewProduct, "name" | "description" | "product_type" | "stripe_price_id"> &
+  Partial<Pick<Product, "category" | "payment_type" | "metadata" | "stripe_price_cents">>;
+
+/** The minimum a published product must keep while it is edited. */
+export function sellableBlockers(product: SellableFields): string[] {
   const blockers: string[] = [];
   if (product.price_cents === null) blockers.push("Set a verified price.");
   if (!product.stripe_product_id) blockers.push("Link the Stripe product so purchases can be fulfilled.");
   if (product.access_type === "license" && product.installation_options.length === 0) blockers.push("Choose at least one installation option.");
+  return blockers;
+}
+
+/** Details a service must define before it can be sold (decision E4). Stored as product settings. */
+export const SERVICE_SETTINGS = { service_deliverable: "what the customer receives", service_owner: "who delivers it", service_response_time: "the expected response time" } as const;
+
+/**
+ * Everything a product needs before it can be published: complete details, a Stripe price that is verified to
+ * match the catalog, and a delivery that actually works for its type. Checked when publishing, and again before
+ * every checkout.
+ */
+export function publishBlockers(product: PublishFields, imageCount: number): string[] {
+  const blockers = sellableBlockers(product);
+  if (!product.description?.trim()) blockers.push("Add a description.");
+  if (imageCount === 0) blockers.push("Add a product image.");
+  if (product.price_cents !== null && (!product.stripe_price_id || product.stripe_price_cents !== product.price_cents)) {
+    blockers.push("Create or verify the Stripe price so Stripe confirms it charges the catalog price.");
+  }
+  if (product.payment_type === "recurring") blockers.push("Recurring billing is not available at checkout yet; sell this as a one-time payment.");
+  if (product.product_type === "course" || product.access_type === "course_access" || product.category === "course") {
+    blockers.push("Courses cannot be sold until course delivery is ready (decision E1).");
+  }
+  // The WISP Generator is the one digital download with a delivery built: it makes, files and emails the buyer's PDF.
+  const wisp = product.metadata?.delivery === "wisp_generator";
+  if (wisp && (product.product_type !== "digital_download" || product.access_type !== "instant_download")) {
+    blockers.push("The WISP Generator product must be a digital download with instant-download access.");
+  } else if (!wisp && (product.product_type === "digital_download" || product.access_type === "instant_download")) {
+    blockers.push("Digital downloads cannot be sold until secure delivery is built (Phase 1 step F3).");
+  }
+  if (product.product_type === "membership") blockers.push("Memberships cannot be sold yet.");
+  if (product.product_type === "software" && product.access_type !== "license") blockers.push("Software is delivered with a license; set the access type to License.");
+  if (product.product_type === "service") {
+    for (const [key, what] of Object.entries(SERVICE_SETTINGS)) {
+      if (!product.metadata?.[key]?.trim()) blockers.push(`Services need ${what}: add a "${key}" product setting.`);
+    }
+  }
   return blockers;
 }

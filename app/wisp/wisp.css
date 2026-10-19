@@ -1,0 +1,177 @@
+/* WISP Generator. Ported from the owner's static build (wisp-generator-source/styles.css): pure black, metallic
+   gold foil, Oswald condensed headlines. Every rule is scoped under .wisp so nothing leaks into the rest of the app. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oswald:wght@500;600;700&display=swap");
+
+.wisp {
+  --black: #000000; --near-black: #0a0a0a; --card-bg: #111111; --card-border: #1e1e1e; --white: #ffffff;
+  --gray-300: #d4d4d4; --gray-500: #8a8a8a; --gold-1: #BF953F; --gold-2: #FCF6BA; --gold-3: #B38728; --gold-4: #FBF5B7; --gold-5: #AA771C;
+  --gold-gradient: linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%);
+  --gold-glow: 0 0 24px rgba(191, 149, 63, 0.35);
+  --font-display: 'Oswald', 'Arial Narrow', sans-serif; --font-body: 'Inter', -apple-system, sans-serif;
+  background: var(--black); color: var(--white); font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased; min-height: 100vh; overflow-x: hidden; scroll-behavior: smooth;
+}
+.wisp *, .wisp *::before, .wisp *::after { box-sizing: border-box; margin: 0; padding: 0; }
+@keyframes wispFadeSlideIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes wispSpin { to { transform: rotate(360deg); } }
+.wisp .hidden { display: none !important; }
+.wisp .gold-gradient-text { background: var(--gold-gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+.wisp .gold-divider { height: 1px; background: linear-gradient(90deg, transparent, var(--gold-1), var(--gold-2), var(--gold-1), transparent); box-shadow: 0 0 12px rgba(191, 149, 63, 0.4); margin: 0; border: none; }
+.wisp .btn { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; border: none; cursor: pointer; border-radius: 4px; transition: all 0.25s ease; display: inline-block; text-decoration: none; text-align: center; }
+.wisp .btn-gold { background: var(--gold-gradient); color: #000; box-shadow: 0 2px 12px rgba(191, 149, 63, 0.3); }
+.wisp .btn-gold:hover { box-shadow: var(--gold-glow); transform: translateY(-1px); filter: brightness(1.08); }
+.wisp .btn-gold:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.wisp .btn-outline { background: transparent; color: var(--gold-2); border: 1px solid var(--gold-1); }
+.wisp .btn-outline:hover { background: rgba(191, 149, 63, 0.12); box-shadow: var(--gold-glow); }
+.wisp .btn-outline:disabled { opacity: 0.35; cursor: not-allowed; }
+.wisp .btn-sm { padding: 10px 20px; font-size: 13px; }
+.wisp .btn-lg { padding: 16px 36px; font-size: 16px; }
+.wisp .btn:not(.btn-sm):not(.btn-lg) { padding: 13px 28px; font-size: 14px; }
+.wisp .navbar { position: sticky; top: 0; z-index: 100; background: rgba(0,0,0,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--card-border); }
+.wisp .nav-inner { max-width: 1200px; margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.wisp .nav-brand { display: flex; align-items: center; gap: 12px; color: var(--white); text-decoration: none; }
+.wisp .brand-m { width: 40px; height: 40px; border-radius: 6px; background: var(--gold-gradient); color: #000; font-family: var(--font-display); font-weight: 700; font-size: 24px; display: flex; align-items: center; justify-content: center; box-shadow: var(--gold-glow); }
+.wisp .brand-text { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.12em; font-size: 15px; text-transform: uppercase; }
+.wisp .nav-links { display: flex; gap: 28px; }
+.wisp .nav-links a { color: var(--gray-300); text-decoration: none; font-size: 14px; font-weight: 500; letter-spacing: 0.04em; transition: color 0.2s; }
+.wisp .nav-links a:hover { color: var(--gold-2); }
+.wisp .hero { position: relative; padding: 100px 24px 80px; overflow: hidden; text-align: center; }
+.wisp .hero-glow { position: absolute; top: -200px; left: 50%; transform: translateX(-50%); width: 800px; max-width: 100vw; height: 500px; background: radial-gradient(ellipse, rgba(191,149,63,0.14) 0%, transparent 70%); pointer-events: none; }
+.wisp .hero-inner { position: relative; max-width: 900px; margin: 0 auto; }
+.wisp .hero-eyebrow { font-family: var(--font-display); letter-spacing: 0.3em; font-size: 13px; color: var(--gold-1); margin-bottom: 20px; }
+.wisp .hero-title { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: clamp(38px, 6vw, 72px); line-height: 1.1; letter-spacing: 0.02em; margin-bottom: 24px; }
+.wisp .hero-sub { color: var(--gray-300); font-size: 18px; max-width: 640px; margin: 0 auto 36px; }
+.wisp .hero-disclaimer { color: var(--gray-400, #a3a3a3); font-size: 13px; line-height: 1.5; max-width: 640px; margin: -16px auto 24px; }
+.wisp .done-disclaimer { color: var(--gray-300); font-size: 13px; margin: 14px 0 0; }
+.wisp .hero-ctas { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 56px; }
+.wisp .hero-stats { display: flex; justify-content: center; align-items: center; gap: 32px; flex-wrap: wrap; }
+.wisp .stat { text-align: center; }
+.wisp .stat-num { display: block; font-family: var(--font-display); font-size: 36px; font-weight: 700; background: var(--gold-gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.wisp .stat-min { font-size: 18px; }
+.wisp .stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--gray-500); }
+.wisp .stat-divider { width: 1px; height: 48px; background: var(--card-border); }
+.wisp .section { padding: 80px 24px; }
+.wisp .container { max-width: 1100px; margin: 0 auto; }
+.wisp .section-eyebrow { font-family: var(--font-display); letter-spacing: 0.3em; font-size: 13px; color: var(--gold-1); text-align: center; margin-bottom: 12px; }
+.wisp .section-title { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: clamp(30px, 4vw, 48px); text-align: center; letter-spacing: 0.03em; margin-bottom: 16px; }
+.wisp .section-sub { text-align: center; color: var(--gray-300); max-width: 600px; margin: 0 auto 48px; font-size: 17px; }
+.wisp .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+.wisp .step-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 36px 28px; transition: all 0.3s ease; position: relative; overflow: hidden; }
+.wisp .step-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--gold-gradient); opacity: 0; transition: opacity 0.3s; }
+.wisp .step-card:hover { border-color: var(--gold-1); transform: translateY(-4px); box-shadow: var(--gold-glow); }
+.wisp .step-card:hover::before { opacity: 1; }
+.wisp .step-num { font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: 0.2em; background: var(--gold-gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
+.wisp .step-card h3 { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 20px; margin-bottom: 10px; }
+.wisp .step-card p { color: var(--gray-300); font-size: 15px; }
+.wisp .quiz-container { max-width: 720px; margin: 0 auto; }
+.wisp .quiz-progress-wrap { margin-bottom: 28px; }
+.wisp .quiz-progress-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--gray-500); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.1em; }
+.wisp .quiz-progress-track { height: 6px; background: var(--card-border); border-radius: 3px; overflow: hidden; }
+.wisp .quiz-progress-fill { height: 100%; width: 0%; border-radius: 3px; background: var(--gold-gradient); box-shadow: 0 0 10px rgba(191,149,63,0.5); transition: width 0.4s ease; }
+.wisp .quiz-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 40px 36px; margin-bottom: 24px; animation: wispFadeSlideIn 0.35s ease; }
+.wisp .quiz-category { font-family: var(--font-display); font-size: 12px; letter-spacing: 0.24em; color: var(--gold-1); text-transform: uppercase; margin-bottom: 12px; }
+.wisp .quiz-question { font-family: var(--font-display); font-size: 24px; font-weight: 600; line-height: 1.35; margin-bottom: 28px; }
+.wisp .quiz-answers { display: flex; flex-direction: column; gap: 12px; }
+.wisp .quiz-answer { background: var(--near-black); border: 1px solid var(--card-border); border-radius: 8px; padding: 16px 20px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; gap: 14px; text-align: left; width: 100%; color: var(--white); font-family: var(--font-body); font-size: 15px; }
+.wisp .quiz-answer:hover { border-color: var(--gold-1); background: rgba(191,149,63,0.06); }
+.wisp .quiz-answer.selected { border-color: var(--gold-2); background: rgba(191,149,63,0.12); box-shadow: 0 0 0 1px var(--gold-2); }
+.wisp .answer-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--gray-500); flex-shrink: 0; transition: all 0.2s; position: relative; }
+.wisp .quiz-answer.selected .answer-dot { border-color: var(--gold-2); }
+.wisp .quiz-answer.selected .answer-dot::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--gold-gradient); }
+.wisp .quiz-nav { display: flex; justify-content: flex-start; }
+.wisp .ero-interstitial { max-width: 620px; margin: 0 auto; text-align: center; padding: 48px 32px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; }
+.wisp .spinner { width: 48px; height: 48px; margin: 0 auto 24px; border-radius: 50%; border: 3px solid var(--card-border); border-top-color: var(--gold-2); animation: wispSpin 0.9s linear infinite; }
+.wisp .ero-interstitial h3 { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 22px; margin-bottom: 12px; }
+.wisp .ero-interstitial p { color: var(--gray-300); margin-bottom: 24px; }
+.wisp .ero-inputs { display: flex; flex-direction: column; gap: 14px; max-width: 400px; margin: 0 auto 28px; text-align: left; }
+.wisp .field label { display: block; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-300); margin-bottom: 8px; }
+.wisp .field input[type="text"], .wisp .field input[type="email"], .wisp .field input[type="number"], .wisp .field input[type="tel"], .wisp .field select, .wisp .field textarea { width: 100%; background: var(--near-black); border: 1px solid var(--card-border); border-radius: 6px; color: var(--white); padding: 13px 16px; font-size: 16px; font-family: var(--font-body); transition: border-color 0.2s, box-shadow 0.2s; }
+.wisp .field input:focus, .wisp .field select:focus, .wisp .field textarea:focus { outline: none; border-color: var(--gold-1); box-shadow: 0 0 0 3px rgba(191,149,63,0.18); }
+.wisp .field textarea { min-height: 110px; resize: vertical; }
+.wisp .field select option { background: var(--near-black); }
+.wisp .field-error { color: #ff6b6b; font-size: 13px; margin-top: 6px; }
+.wisp .check-field { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--gray-300); }
+.wisp .check-field input { margin-top: 4px; accent-color: var(--gold-1); }
+.wisp .check-field a { color: var(--gold-2); }
+.wisp .results-container { max-width: 860px; margin: 0 auto; animation: wispFadeSlideIn 0.5s ease; }
+.wisp .score-display { text-align: center; margin-bottom: 48px; }
+.wisp .score-ring { position: relative; width: 220px; height: 220px; margin: 0 auto 28px; }
+.wisp .score-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.wisp .score-bg { fill: none; stroke: var(--card-border); stroke-width: 14; }
+.wisp .score-fill { fill: none; stroke: url(#wispGoldGrad); stroke-width: 14; stroke-linecap: round; stroke-dasharray: 534; stroke-dashoffset: 534; transition: stroke-dashoffset 1.2s ease; }
+.wisp .score-number { position: absolute; inset: 0; display: flex; align-items: baseline; justify-content: center; font-family: var(--font-display); font-weight: 700; padding-top: 78px; }
+.wisp .score-number span:first-child { font-size: 64px; background: var(--gold-gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.wisp .score-max { font-size: 22px; color: var(--gray-500); margin-left: 4px; }
+.wisp .score-headline { font-family: var(--font-display); text-transform: uppercase; font-size: 32px; letter-spacing: 0.04em; margin-bottom: 12px; }
+.wisp .score-headline.danger { color: #ff6b6b; }
+.wisp .score-headline.warning { color: var(--gold-2); }
+.wisp .score-headline.good { color: #51cf66; }
+.wisp .score-subtext { color: var(--gray-300); max-width: 560px; margin: 0 auto; font-size: 16px; }
+.wisp .category-breakdown { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; margin-bottom: 40px; }
+.wisp .cat-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 24px 20px; text-align: center; }
+.wisp .cat-card h4 { font-family: var(--font-display); font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gray-300); margin-bottom: 10px; }
+.wisp .cat-score { font-family: var(--font-display); font-size: 36px; font-weight: 700; background: var(--gold-gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.wisp .cat-bar { height: 4px; background: var(--card-border); border-radius: 2px; margin-top: 12px; overflow: hidden; }
+.wisp .cat-bar-fill { height: 100%; background: var(--gold-gradient); border-radius: 2px; }
+.wisp .cat-rec { font-size: 13px; color: var(--gray-500); margin-top: 10px; }
+.wisp .fee-comparison { background: var(--card-bg); border: 1px solid var(--gold-1); border-radius: 12px; padding: 32px; margin-bottom: 40px; text-align: center; }
+.wisp .fee-comparison h3 { font-family: var(--font-display); letter-spacing: 0.14em; font-size: 16px; margin-bottom: 20px; color: var(--gold-2); }
+.wisp .fee-grid { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
+.wisp .fee-card { background: var(--near-black); border: 1px solid var(--card-border); border-radius: 8px; padding: 20px 32px; min-width: 200px; }
+.wisp .fee-card.highlight { border-color: var(--gold-1); box-shadow: var(--gold-glow); }
+.wisp .fee-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--gray-500); margin-bottom: 8px; }
+.wisp .fee-num { font-family: var(--font-display); font-size: 32px; font-weight: 700; }
+.wisp .fee-num.gold { background: var(--gold-gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.wisp .fee-note { color: var(--gray-300); font-size: 14px; }
+.wisp .results-cta { text-align: center; background: linear-gradient(180deg, rgba(191,149,63,0.08), transparent); border: 1px solid var(--card-border); border-radius: 12px; padding: 48px 32px; }
+.wisp .results-cta h3 { font-family: var(--font-display); font-size: 28px; letter-spacing: 0.06em; margin-bottom: 12px; }
+.wisp .results-cta p { color: var(--gray-300); margin-bottom: 24px; max-width: 520px; margin-left: auto; margin-right: auto; }
+.wisp .fine-print { font-size: 12px !important; color: var(--gray-500) !important; margin-top: 20px !important; margin-bottom: 0 !important; }
+.wisp .builder-layout { display: grid; grid-template-columns: 280px 1fr; gap: 32px; max-width: 1100px; margin: 0 auto; }
+.wisp .builder-sidebar { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 28px 20px; align-self: start; position: sticky; top: 90px; }
+.wisp .builder-steps { display: flex; flex-direction: column; gap: 4px; }
+.wisp .builder-step { display: flex; align-items: center; gap: 14px; padding: 13px 14px; border-radius: 8px; cursor: pointer; transition: background 0.2s; border: 1px solid transparent; background: none; color: var(--white); text-align: left; width: 100%; font: inherit; }
+.wisp .builder-step:hover { background: rgba(191,149,63,0.06); }
+.wisp .builder-step.active { background: rgba(191,149,63,0.1); border-color: var(--gold-1); }
+.wisp .builder-step.done .step-indicator { background: var(--gold-gradient); color: #000; border-color: transparent; }
+.wisp .step-indicator { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--gray-500); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-family: var(--font-display); font-weight: 600; font-size: 14px; color: var(--gray-300); }
+.wisp .builder-step.active .step-indicator { border-color: var(--gold-2); color: var(--gold-2); }
+.wisp .step-label { font-size: 14px; font-weight: 500; }
+.wisp .step-label small { display: block; font-size: 11px; color: var(--gray-500); font-weight: 400; }
+.wisp .builder-main { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 40px; min-width: 0; }
+.wisp .builder-panel { animation: wispFadeSlideIn 0.3s ease; }
+.wisp .builder-panel h3 { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 24px; margin-bottom: 8px; }
+.wisp .builder-panel .panel-desc { color: var(--gray-300); margin-bottom: 28px; font-size: 15px; }
+.wisp .builder-fields { display: flex; flex-direction: column; gap: 20px; margin-bottom: 32px; }
+.wisp .builder-nav { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.wisp .review-box { background: var(--near-black); border: 1px solid var(--card-border); border-radius: 8px; padding: 24px; margin-bottom: 24px; }
+.wisp .review-box h4 { font-family: var(--font-display); letter-spacing: 0.1em; font-size: 14px; color: var(--gold-2); margin-bottom: 16px; text-transform: uppercase; }
+.wisp .review-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--card-border); font-size: 14px; }
+.wisp .review-row:last-child { border-bottom: none; }
+.wisp .review-row .rk { color: var(--gray-500); }
+.wisp .review-row .rv { color: var(--white); text-align: right; max-width: 60%; overflow-wrap: break-word; word-break: normal; white-space: pre-wrap; min-width: 0; }
+.wisp .email-capture { background: rgba(191,149,63,0.06); border: 1px solid var(--gold-1); border-radius: 8px; padding: 24px; margin-bottom: 24px; display: grid; gap: 14px; }
+.wisp .email-capture h4 { font-family: var(--font-display); letter-spacing: 0.08em; }
+.wisp .email-capture p { font-size: 14px; color: var(--gray-300); }
+.wisp .alert { border: 1px solid #ff6b6b; color: #ffb3b3; background: rgba(255,107,107,0.08); border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; font-size: 14px; }
+.wisp .notice { border: 1px solid var(--gold-1); color: var(--gold-4); background: rgba(191,149,63,0.08); border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; font-size: 14px; }
+.wisp .delivery-status { text-align: center; padding: 32px 0; }
+.wisp .delivery-status h3 { font-family: var(--font-display); font-size: 26px; margin: 20px 0 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.wisp .delivery-status p { color: var(--gray-300); margin-bottom: 8px; }
+.wisp .check-icon { width: 72px; height: 72px; border-radius: 50%; margin: 0 auto; background: var(--gold-gradient); display: flex; align-items: center; justify-content: center; font-size: 36px; color: #000; font-weight: 700; box-shadow: var(--gold-glow); }
+.wisp .delivery-actions { display: flex; gap: 16px; justify-content: center; margin: 28px 0; flex-wrap: wrap; }
+.wisp .footer { border-top: 1px solid var(--card-border); padding: 48px 24px 32px; text-align: center; }
+.wisp .footer-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 16px; }
+.wisp .footer p { color: var(--gray-500); font-size: 13px; max-width: 640px; margin: 0 auto 8px; }
+.wisp .footer-links { margin-top: 20px; display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+.wisp .footer-links a { color: var(--gray-500); text-decoration: none; font-size: 13px; }
+.wisp .footer-links a:hover { color: var(--gold-2); }
+@media (max-width: 768px) { .wisp .nav-links { display: none; } .wisp .hero { padding: 72px 16px 56px; } .wisp .section { padding: 56px 16px; } .wisp .stat-divider { display: none; } }
+@media (max-width: 860px) { .wisp .builder-layout { grid-template-columns: 1fr; } .wisp .builder-sidebar { position: static; order: 2; } }
+.wisp .start-form { max-width: 560px; margin: 0 auto; background: linear-gradient(180deg, rgba(191,149,63,0.08), transparent); border: 1px solid var(--gold-1); border-radius: 12px; padding: 32px; display: grid; gap: 16px; text-align: left; }
+.wisp .start-form h3 { font-family: var(--font-display); font-size: 26px; letter-spacing: 0.06em; text-align: center; }
+.wisp .start-form > p { color: var(--gray-300); text-align: center; }
+.wisp .start-form .alert { margin-bottom: 0; }
+.wisp .start-form .btn { width: 100%; justify-content: center; }
+@media (max-width: 600px) { .wisp .builder-main { padding: 28px 20px; } .wisp .quiz-card { padding: 28px 20px; } .wisp .quiz-question { font-size: 20px; } .wisp .results-cta { padding: 32px 20px; } .wisp .start-form { padding: 24px 18px; } .wisp .fee-card { min-width: 0; width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .wisp *, .wisp *::before, .wisp *::after { animation: none !important; transition: none !important; } }

@@ -1,6 +1,6 @@
 import "server-only";
 import { appOrigin } from "../admin";
-import { serviceClient } from "../supabase/service";
+import { tenantDb } from "../admin";
 import { SupabaseCommerceRepo } from "../commerce/supabase-repo.ts";
 import { hashLicenseKey, isWellFormedLicenseKey } from "../commerce/license-keys.ts";
 import { ValidationError } from "../commerce/validation.ts";
@@ -21,12 +21,15 @@ import { after } from "next/server";
 export function crmConfigStatus() {
   return {
     highlevel: Boolean(process.env.HIGHLEVEL_CLIENT_ID && process.env.HIGHLEVEL_CLIENT_SECRET),
+    // The customer-facing "Connect GoHighLevel" button. Off unless HIGHLEVEL_CONNECT_ENABLED=true, so the
+    // workflow-link method is the only one customers see until the OAuth install is working end to end.
+    highlevelConnect: Boolean(process.env.HIGHLEVEL_CLIENT_ID && process.env.HIGHLEVEL_CLIENT_SECRET) && process.env.HIGHLEVEL_CONNECT_ENABLED === "true",
     encryption: CrmSecrets.fromBase64(process.env.MONARCH_ENCRYPTION_KEY) !== null,
   };
 }
 
 export function crmDeps(): CrmDeps {
-  const db = serviceClient();
+  const db = tenantDb();
   const id = process.env.HIGHLEVEL_CLIENT_ID;
   const secret = process.env.HIGHLEVEL_CLIENT_SECRET;
   return {
@@ -64,7 +67,7 @@ export const oauthCookieOptions = { httpOnly: true, secure: process.env.NODE_ENV
  */
 export async function licenseFromKey(rawKey: string): Promise<License> {
   if (!isWellFormedLicenseKey(rawKey)) throw new ValidationError("Enter your license key (MTS-XXXXX-XXXXX-XXXXX-XXXXX).");
-  const license = await new SupabaseCommerceRepo(serviceClient()).findLicenseByKeyHash(hashLicenseKey(rawKey));
+  const license = await new SupabaseCommerceRepo(tenantDb()).findLicenseByKeyHash(hashLicenseKey(rawKey));
   if (!license || license.status !== "active") throw new ValidationError("That license key was not found or the license is not active.");
   return license;
 }
