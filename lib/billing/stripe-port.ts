@@ -1,6 +1,7 @@
 import "server-only";
 import Stripe from "stripe";
 import { billingKey, billingMode, PAUSE_PLAN, PLANS, type PlanKey } from "./plans.ts";
+import { reactivateSessionParams, signupSessionParams } from "./checkout-params.ts";
 import type { BillingStripe } from "./service.ts";
 
 /** The Stripe SDK behind the BillingStripe port, using Verexa HQ's platform account. Nothing here logs a key. */
@@ -19,41 +20,12 @@ export function billingStripe(env: NodeJS.ProcessEnv = process.env): { stripe: S
 
   const port: BillingStripe = {
     async signupCheckout(i) {
-      const meta = { kind: "signup", plan: i.plan, email: i.email, name: i.claims.name.slice(0, 200), workspace: i.claims.workspace.slice(0, 120), terms: i.claims.terms };
-      const s = await stripe.checkout.sessions.create(
-        {
-          mode: "subscription",
-          line_items: [{ price: await priceId(PLANS[i.plan].lookupKey), quantity: 1 }],
-          customer_email: i.email,
-          // The card is required and charged now: there is no trial.
-          payment_method_collection: "always",
-          client_reference_id: i.email,
-          metadata: meta,
-          subscription_data: { metadata: meta },
-          allow_promotion_codes: false,
-          success_url: i.successUrl,
-          cancel_url: i.cancelUrl,
-        },
-        { idempotencyKey: i.idempotencyKey },
-      );
+      const s = await stripe.checkout.sessions.create(signupSessionParams(i, await priceId(PLANS[i.plan].lookupKey)), { idempotencyKey: i.idempotencyKey });
       if (!s.url) throw new Error("Stripe did not return a payment page.");
       return { url: s.url };
     },
     async reactivateCheckout(i) {
-      const meta = { kind: "reactivate", tenant_id: i.tenantId, plan: i.plan };
-      const s = await stripe.checkout.sessions.create(
-        {
-          mode: "subscription",
-          line_items: [{ price: await priceId(PLANS[i.plan].lookupKey), quantity: 1 }],
-          ...(i.customerId ? { customer: i.customerId } : { customer_email: i.email }),
-          payment_method_collection: "always",
-          metadata: meta,
-          subscription_data: { metadata: meta },
-          success_url: i.successUrl,
-          cancel_url: i.cancelUrl,
-        },
-        { idempotencyKey: i.idempotencyKey },
-      );
+      const s = await stripe.checkout.sessions.create(reactivateSessionParams(i, await priceId(PLANS[i.plan].lookupKey)), { idempotencyKey: i.idempotencyKey });
       if (!s.url) throw new Error("Stripe did not return a payment page.");
       return { url: s.url };
     },

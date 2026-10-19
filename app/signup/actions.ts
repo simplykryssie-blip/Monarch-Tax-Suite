@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
+import { explainStripeFailure } from "@/lib/billing/checkout-params.ts";
 import { signupState } from "@/lib/billing/open.ts";
 import { billingDeps, ipHashOf } from "@/lib/billing/server";
 import { requestSignup, startCheckout } from "@/lib/billing/service.ts";
@@ -13,6 +14,10 @@ export type SignupResult = { ok: true; message: string } | { ok: false; error: s
 const failure = (e: unknown) => {
   if (e instanceof ValidationError) return e.message;
   console.error(`signup failed: ${sanitizeError(e, 200)}`);
+  // On a Preview or locally, say what is wrong with the setup. In production customers never see Stripe's details.
+  if (process.env.VERCEL_ENV !== "production" && e instanceof Error) {
+    return `${explainStripeFailure(e as { type?: string; code?: string; message?: string; param?: string })} (Shown on test deployments only.)`;
+  }
   return "That did not work. Nothing was charged. Please try again.";
 };
 

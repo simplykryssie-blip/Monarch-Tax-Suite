@@ -56,6 +56,7 @@ export function readSignup(key: Buffer, token: unknown, now: Date = new Date()):
 export function verificationEmail(input: { name: string; link: string; hours?: number }) {
   return {
     subject: "Confirm your email to finish creating your Verexa HQ account",
+    action: { label: "Confirm email", url: input.link },
     text: [
       `Hi ${input.name},`,
       "",
@@ -70,6 +71,7 @@ export function verificationEmail(input: { name: string; link: string; hours?: n
 export function existingAccountEmail(input: { name: string; link: string }) {
   return {
     subject: "You already have a Verexa HQ account",
+    action: { label: "Sign in", url: input.link },
     text: ["Hi " + input.name + ",", "", "Someone (we hope you) tried to sign up with this email address, but it already has a Verexa HQ account. Sign in here:", input.link, "", "If it wasn't you, you can ignore this email."].join("\n"),
   };
 }

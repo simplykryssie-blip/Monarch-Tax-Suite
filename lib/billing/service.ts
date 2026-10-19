@@ -37,7 +37,7 @@ export interface BillingStripe {
   cancelNow(subscriptionId: string): Promise<void>;
 }
 
-export type Mail = { subject: string; text: string };
+export type Mail = { subject: string; text: string; /** The email's main step, shown as a button. */ action?: { label: string; url: string } };
 export type BillingDeps = {
   repo: BillingRepo;
   stripe: BillingStripe;
@@ -342,6 +342,7 @@ const when = (d: Date) => new Intl.DateTimeFormat("en-US", { dateStyle: "long", 
 export function welcomeEmail(i: { name: string; workspace: string; plan: PlanKey; link: string }): Mail {
   return {
     subject: "Welcome to Verexa HQ: set your password",
+    action: { label: "Set my password", url: i.link },
     text: [
       `Hi ${i.name},`, "",
       `Your payment went through and ${i.workspace} is ready (${PLANS[i.plan].label}, ${dollars(PLANS[i.plan].priceCents)} per month).`, "",
