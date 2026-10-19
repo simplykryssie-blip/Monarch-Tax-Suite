@@ -2,8 +2,28 @@ import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
 import { frameAncestors, hostFromHeader } from "@/lib/commerce/embed.ts";
 import { loadEmbedDecision } from "@/lib/embed-server";
+import { classifyHost, cleanRequestHost } from "@/lib/sites/host.ts";
+import { hostHasSite } from "@/lib/sites/server";
+
+// On an office's website address only the website and the parts it embeds are served: its pages, booking pages, public
+// forms and account images. Everything else (login, admin, APIs) belongs to the application's own address.
+const SITE_PASSTHROUGH = ["/book/", "/f/", "/media/"];
 
 export async function proxy(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  const hostKind = classifyHost(request.headers.get("x-forwarded-host") ?? request.headers.get("host"));
+  if (hostKind.kind === "app") {
+    // The website renderer is only reachable through a website address (the proxy sets x-site-host itself).
+    if (path === "/s" || path.startsWith("/s/")) return new NextResponse("Not found", { status: 404 });
+  } else if (hostKind.kind === "platform-subdomain" || (await hostHasSite(hostKind.host))) {
+    if (SITE_PASSTHROUGH.some((p) => path.startsWith(p))) return updateSession(request);
+    const host = cleanRequestHost(hostKind.host)!;
+    const url = request.nextUrl.clone();
+    url.pathname = `/s/${host}${path === "/" ? "" : path}`;
+    const headers = new Headers(request.headers);
+    headers.set("x-site-host", host);
+    return NextResponse.rewrite(url, { request: { headers } });
+  }
   if (request.nextUrl.pathname.startsWith("/embed/")) {
     // Embeds have no admin session; the browser enforces where they may render.
     let policy = "frame-ancestors 'none'";

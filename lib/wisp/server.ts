@@ -24,7 +24,10 @@ export async function tenantForHost(host: string | null): Promise<string> {
   if (!host) return MONARCH_TENANT_ID;
   const bare = host.replace(/:\d+$/, "");
   const { data } = await platformClient("wisp_link").from("email_domains").select("tenant_id").eq("link_host", bare).maybeSingle();
-  return (data?.tenant_id as string | undefined) ?? MONARCH_TENANT_ID;
+  if (data?.tenant_id) return data.tenant_id as string;
+  // An office's website address also names the office, so booking pages and forms embedded in its site work on it.
+  const site = await platformClient("site_host").from("site_domains").select("tenant_id").eq("hostname", bare).maybeSingle();
+  return (site.data?.tenant_id as string | undefined) ?? MONARCH_TENANT_ID;
 }
 
 export async function requestTenant(): Promise<string> {
