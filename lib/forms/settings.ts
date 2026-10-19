@@ -26,7 +26,9 @@ export type FirmMap = {
 };
 
 export type FormSettings = {
-  respondent: { email_key: string | null; name_key: string | null };
+  respondent: { email_key: string | null; name_key: string | null; phone_key: string | null };
+  /** On a form that adds respondents to Leads, with a phone question: show a "it's OK to text me" box (ticked to start, not required). */
+  text_consent_box: boolean;
   /** Link the submission to the customer with the respondent's email, creating one when there is none. */
   create_customer: boolean;
   /** Add each respondent to Leads, labelled with this form's name as the source. */
@@ -52,7 +54,8 @@ export type FormSettings = {
 };
 
 export const DEFAULT_SETTINGS: FormSettings = {
-  respondent: { email_key: null, name_key: null },
+  respondent: { email_key: null, name_key: null, phone_key: null },
+  text_consent_box: true,
   create_customer: true,
   add_to_leads: false,
   firm: { enabled: false, relationship: null, legal_name_key: null, dba_name_key: null, ein_key: null, efin_key: null, address_key: null, people: [] },
@@ -118,9 +121,11 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
   const respondent = {
     email_key: pick(fields, r.respondent?.email_key, { types: ["email"], what: "an email question" }, "respondent's email"),
     name_key: pick(fields, r.respondent?.name_key, text, "respondent's name"),
+    phone_key: pick(fields, r.respondent?.phone_key, { types: ["phone"], what: "a phone question" }, "respondent's phone"),
   };
   const create_customer = r.create_customer !== false && r.create_customer !== "off";
   const add_to_leads = r.add_to_leads === true || r.add_to_leads === "on";
+  const text_consent_box = r.text_consent_box === true || r.text_consent_box === "on";
 
   const fr = r.firm ?? {};
   const enabled = fr.enabled === true || fr.enabled === "on";
@@ -191,6 +196,7 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
     respondent,
     create_customer,
     add_to_leads,
+    text_consent_box,
     firm,
     notify: { recipients, sender_id: sender || null },
     brand_domain_id: brand || null,
@@ -212,14 +218,18 @@ export function checkSettings(raw: unknown, def: FormDefinition, senderIds: stri
  * email question, and the first short answer whose key or label mentions a name, so every submission with an email
  * still links to its customer.
  */
-export function respondentKeys(settings: FormSettings, def: FormDefinition): { email_key: string | null; name_key: string | null } {
+export function respondentKeys(settings: FormSettings, def: FormDefinition): { email_key: string | null; name_key: string | null; phone_key: string | null } {
   const fields = inputFields(def);
   const email = settings.respondent.email_key && fields.some((f) => f.key === settings.respondent.email_key) ? settings.respondent.email_key : fields.find((f) => f.type === "email")?.key ?? null;
   const name = settings.respondent.name_key && fields.some((f) => f.key === settings.respondent.name_key)
     ? settings.respondent.name_key
     : fields.find((f) => f.type === "short_text" && !f.format && !f.sensitive && /name/i.test(`${f.key} ${f.label}`) && !/business|company|firm|dba|legal/i.test(`${f.key} ${f.label}`))?.key ?? null;
-  return { email_key: email, name_key: name };
+  const phone = settings.respondent.phone_key && fields.some((f) => f.key === settings.respondent.phone_key) ? settings.respondent.phone_key : fields.find((f) => f.type === "phone" && !f.internal)?.key ?? null;
+  return { email_key: email, name_key: name, phone_key: phone };
 }
+
+/** Whether the public form shows the "it's OK to text me" box: it adds people to Leads and asks for a phone number. */
+export const showsTextConsent = (settings: FormSettings, def: FormDefinition) => settings.add_to_leads && settings.text_consent_box && respondentKeys(settings, def).phone_key !== null;
 
 /** Problems with stored settings against a definition about to be published (for example a mapped question was deleted). */
 export function settingsProblems(settings: FormSettings, def: FormDefinition, brands?: BrandCatalog): string[] {

@@ -71,8 +71,10 @@ export class SupabaseCampaignRepo implements CampaignRepo {
     ));
   }
   /** A form that adds respondents to Leads is the opt-in. Keeps any consent already on record (and a revoke) as it is. */
-  async recordFormConsent(email: string) {
+  async recordFormConsent(email: string, sms: boolean) {
     unwrap(await this.db.from("marketing_consents").upsert({ email, basis: "form", note: "Submitted a form" }, { onConflict: "tenant_id,email", ignoreDuplicates: true }));
+    // Text consent is only ever added here (a later form can't take it away), and never on someone whose consent was removed.
+    if (sms) unwrap(await this.db.from("marketing_consents").update({ sms_consent: true, sms_consent_at: new Date().toISOString() }).eq("email", email).eq("sms_consent", false).is("revoked_at", null));
   }
   async revokeConsent(email: string, markedBy: string | null) {
     const at = new Date().toISOString();

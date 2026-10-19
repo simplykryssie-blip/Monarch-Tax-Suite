@@ -42,8 +42,9 @@ export function formDeps(tenantId: string = currentTenantId()): FormDeps {
     profile: () => docs.getProfile().catch(() => null),
     addLead: async (input) => {
       const lead = await captureFormLead(leadsDeps(tenantId), input);
-      // Filling in a form that adds people to Leads is their opt-in to hear from the office (campaign consent, basis "form").
-      await new SupabaseCampaignRepo(db).recordFormConsent(lead.email).catch(() => undefined);
+      // Filling in a form that adds people to Leads is their opt-in to hear from the office (campaign consent, basis "form");
+      // the "OK to text me" box adds text consent.
+      await new SupabaseCampaignRepo(db).recordFormConsent(lead.email, input.textConsent === true).catch(() => undefined);
       return lead;
     },
     brandCatalog: async () => {

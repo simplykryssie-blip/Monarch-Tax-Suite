@@ -47,6 +47,8 @@ export type Submission = {
   /** Draft: the answers as typed (sensitive ones sealed). Submitted: checked answers, never changed afterwards. */
   answers: StoredAnswers | RawAnswers;
   respondent_email: string | null;
+  /** Ticked "it's OK to text me" on a form that adds respondents to Leads. */
+  text_consent: boolean;
   respondent_name: string | null;
   customer_id: string | null;
   organization_id: string | null;

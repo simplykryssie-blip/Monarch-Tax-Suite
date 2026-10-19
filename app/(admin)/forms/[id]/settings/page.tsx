@@ -111,6 +111,10 @@ export default async function FormSettingsPage({ params, searchParams }: { param
           <small className="monarch-muted">Shown at the top of each submission and on the customer record.</small>
         </label>
         <label className="monarch-check is-wide"><input type="checkbox" name="create_customer" defaultChecked={s.create_customer} /> <span><b>Connect each submission to a customer record.</b> If a customer with that email already exists (for example from a package purchase), the submission is attached to them. If not, a new customer is created.</span></label>
+        <label>Which question is their mobile number?<QuestionSelect name="phone_key" value={s.respondent.phone_key} fields={fields} types={["phone"]} none="Pick for me: the first phone question" />
+          <small className="monarch-muted">Saved on the lead when Forms-to-Leads is on. Needed for the text box below.</small>
+        </label>
+        <label className="monarch-check is-wide"><input type="checkbox" name="text_consent_box" defaultChecked={s.text_consent_box} /> <span><b>Show an &ldquo;OK to text me&rdquo; box.</b> Appears at the end of a Forms-to-Leads form that asks for a phone number. It starts ticked and is not required; leave it ticked and the person can be sent text campaigns. You are responsible for making sure this fits the rules that apply to you.</span></label>
         <label className="monarch-check is-wide"><input type="checkbox" name="add_to_leads" defaultChecked={s.add_to_leads} /> <span><b>Forms-to-Leads: add each respondent to Leads.</b> The form&apos;s name becomes their source. Someone who is already a lead keeps their current source and status.</span></label>
 
         <h2 className="is-wide">Set up a new tax office from this form (optional)</h2>

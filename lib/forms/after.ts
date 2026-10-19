@@ -2,8 +2,8 @@ import { emitEvent, senderFor, type AutomationDeps } from "../automation/engine.
 import { sanitizeError } from "../automation/sanitize.ts";
 import { formatInZone } from "../documents/signing.ts";
 import { firmSubmissionEmail, respondentConfirmationEmail, resumeEmail } from "./emails.ts";
-import { brandFor, linkCustomer, linkFirm, makePdfSafe, type FormDeps, type PublicForm } from "./service.ts";
-import { readSettings, type FormSettings } from "./settings.ts";
+import { brandFor, linkCustomer, linkFirm, makePdfSafe, openAnswers, type FormDeps, type PublicForm } from "./service.ts";
+import { readSettings, respondentKeys, type FormSettings } from "./settings.ts";
 import type { Submission } from "./types.ts";
 
 // What follows a submission: the PDF, the customer and firm records, the firm's notice, the respondent's
@@ -123,7 +123,9 @@ export async function afterSubmit(auto: AutomationDeps, deps: FormDeps, submissi
   // Respondents become leads when the form is set to, with the form's name as the source. Never blocks the rest.
   await step("lead", async () => {
     if (!settings.add_to_leads || !submission.respondent_email) return;
-    await deps.addLead?.({ formName: pf.form.name, name: submission.respondent_name, email: submission.respondent_email });
+    const phoneKey = respondentKeys(settings, pf.version.definition).phone_key;
+    const phone = phoneKey ? openAnswers(deps, submission)[phoneKey] : null;
+    await deps.addLead?.({ formName: pf.form.name, name: submission.respondent_name, email: submission.respondent_email, phone: typeof phone === "string" ? phone : null, textConsent: submission.text_consent });
   });
   const fresh = (await deps.repo.getSubmission(submission.id).catch(() => null)) ?? submission;
   await step("notify", () => notifyFirm(auto, deps, fresh));

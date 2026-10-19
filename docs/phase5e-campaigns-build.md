@@ -18,6 +18,7 @@ Email and text campaigns for an office's own clients and contacts, in the main w
 - Apply `supabase/migrations/20261116090000_campaigns.sql`.
 
 ## Notes for review
-- Form opt-in is recorded whenever a form that adds respondents to Leads is submitted (`lib/forms/server.ts`).
+- Email opt-in is recorded whenever a form that adds respondents to Leads is submitted (`lib/forms/server.ts`).
+- Text opt-in: a Forms-to-Leads form with a phone question shows an "OK to text me" box at the end, ticked to start and not required (Form settings → "Show an OK to text me box", default on; pick the mobile-number question). Ticking it stores `form_submissions.text_consent` (migration `20261116100000_form_text_consent.sql`) and records text consent for that email; a later form can never remove it, and a person whose consent was removed is not re-opted by it.
 - Platform-level lookups added (all logged): `campaign_token`, `suppression`, `sms_inbound`.
 - Gate: `supabase/tests/phase5e_isolation.sql` (run on the test project; every line PASS).
