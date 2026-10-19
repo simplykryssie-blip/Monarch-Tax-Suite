@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unwrap } from "../commerce/supabase-repo.ts";
+import { TAG_MAX } from "../leads/tags.ts";
 import type { AudienceContact, Channel, ConsentRow } from "./audience.ts";
 import type { SendStats } from "./health.ts";
 import type { Campaign, CampaignRepo, Recipient, StatusCounts, SuppressionReason } from "./service.ts";
@@ -92,6 +93,9 @@ export class SupabaseCampaignRepo implements CampaignRepo {
   async updateCampaign(id: string, patch: Parameters<CampaignRepo["updateCampaign"]>[1]) {
     return unwrap(await this.db.from("campaigns").update(patch).eq("id", id).select("*").single()) as Campaign;
   }
+  async deleteDraft(id: string) {
+    unwrap(await this.db.from("campaigns").delete().eq("id", id).eq("status", "draft"));
+  }
   async dueCampaigns(nowIso: string) {
     return unwrap(await this.db.from("campaigns").select("*").eq("status", "scheduled").lte("send_at", nowIso).order("send_at").limit(20)) as Campaign[];
   }
@@ -161,6 +165,23 @@ export class SupabaseCampaignRepo implements CampaignRepo {
   }
   async countClick(id: string, campaignId: string, position: number) {
     unwrap(await this.db.rpc("campaign_note_event", { p_recipient: id, p_kind: "click", p_link_campaign: campaignId, p_link_position: position }));
+  }
+  /** Adds or removes one tag on the given leads or clients. Returns how many people changed. */
+  async tagContacts(kind: "lead" | "client", ids: string[], tag: string, remove: boolean): Promise<number> {
+    let changed = 0;
+    const table = kind === "lead" ? "leads" : "clients";
+    for (let i = 0; i < ids.length; i += 200) {
+      const rows = unwrap(await this.db.from(table).select("id, tags").in("id", ids.slice(i, i + 200))) as { id: string; tags: string[] | null }[];
+      for (const r of rows) {
+        const tags = r.tags ?? [];
+        const next = remove ? tags.filter((t) => t !== tag) : tags.includes(tag) ? tags : [...tags, tag];
+        if (next.length === tags.length && next.every((t, j) => t === tags[j])) continue;
+        if (next.length > TAG_MAX) continue;
+        unwrap(await this.db.from(table).update({ tags: next }).eq("id", r.id));
+        changed++;
+      }
+    }
+    return changed;
   }
   async listSegments() {
     return unwrap(await this.db.from("audience_segments").select("*").order("name").limit(200)) as { id: string; name: string; filter: unknown; created_at: string }[];
