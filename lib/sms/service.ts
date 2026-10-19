@@ -35,6 +35,8 @@ export type SetupDeps = {
   /** The platform's primary Twilio business profile; local (10DLC) registrations link to it. */
   primaryProfileSid: string | null;
   officeName: string;
+  /** Where replies to an office's number are sent (STOP, START, HELP). Null outside production, so a test deployment never repoints a real number. */
+  inboundUrl?: string | null;
   api?: (login: { username: string; password: string }) => TwilioApi;
   notify?: Notify;
   now?: () => Date;
@@ -213,12 +215,12 @@ export async function provision(d: SetupDeps): Promise<SmsAccount> {
     if (!a.from_number) {
       let bought;
       try {
-        bought = await twilio.buyNumber(a.subaccount_sid!, a.chosen_number!);
+        bought = await twilio.buyNumber(a.subaccount_sid!, a.chosen_number!, d.inboundUrl);
       } catch {
         const area = a.number_type === "local" ? a.chosen_number!.slice(2, 5) : undefined;
         const other = (await twilio.searchNumbers(parentSid, { type: a.number_type!, areaCode: area }))[0];
         if (!other) throw new Error(`The number you chose was taken, and no other ${a.number_type === "local" ? `number in area code ${area}` : "toll-free number"} is free right now.`);
-        bought = await twilio.buyNumber(a.subaccount_sid!, other.phoneNumber);
+        bought = await twilio.buyNumber(a.subaccount_sid!, other.phoneNumber, d.inboundUrl);
       }
       a = await d.repo.update(a.id, { from_number: bought.phoneNumber, phone_number_sid: bought.sid });
     }
@@ -324,3 +326,12 @@ export const priceLines = () => ({
   pack: creditPack(1),
   plans: Object.values(NUMBER_PLANS).map((p) => ({ ...p, setup: dollars(p.setupCents), monthly: `${creditsLabel(p.monthlyCredits)} a month (${dollars(p.monthlyCents)})` })),
 });
+
+/** Makes sure an office's number sends incoming texts to the platform. Numbers bought now already do; this covers older ones. */
+export async function ensureInbound(d: SetupDeps): Promise<boolean> {
+  if (!d.inboundUrl || !d.twilio) return false;
+  const a = await d.repo.get();
+  if (!a?.subaccount_sid || !a.phone_number_sid || a.provision_status !== "done" || a.status === "released") return false;
+  await d.twilio.setNumberInbound(a.subaccount_sid, a.phone_number_sid, d.inboundUrl);
+  return true;
+}

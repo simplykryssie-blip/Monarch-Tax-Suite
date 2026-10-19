@@ -14,7 +14,7 @@ Email and text campaigns for an office's own clients and contacts, in the main w
 
 ## Owner setup
 - `RESEND_WEBHOOK_SECRET` (Vercel): signing secret of a Resend webhook pointed at `<app>/api/campaigns/resend-webhook` for `email.delivered`, `email.bounced`, `email.complained`.
-- Twilio: set the incoming-message URL of each office's messaging service/number to the address shown in Contacts → Provider setup (it carries a signature; texts to unknown numbers are ignored).
+- Twilio: nothing to set up by hand. A number bought for an office is created with its incoming-message address already pointing at `/api/sms/inbound/<signature>` (the signature is derived from `MONARCH_ENCRYPTION_KEY`); the daily SMS sweep points older offices' numbers, and the owner's own number, at it too. Production only: a Preview never repoints a real number, so STOP handling is tested by posting to the endpoint directly or on production.
 - Apply `supabase/migrations/20261116090000_campaigns.sql`.
 
 ## Notes for review

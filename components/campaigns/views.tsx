@@ -7,7 +7,6 @@ import { CAMPAIGN_VARIABLES, renderEmail, renderSmsBody, smsSegments, valuesFor 
 import type { CampaignsContext } from "@/lib/campaigns/context";
 import { officeHealth, previewAudience, scheduleProblems, type Campaign, type Recipient } from "@/lib/campaigns/service.ts";
 import { appOrigin } from "@/lib/admin";
-import { inboundUrl } from "@/lib/campaigns/server";
 import { tenantClient } from "@/lib/supabase/service";
 import {
   blockEmailAction, cancelCampaignAction, consentAction, copyCampaignAction, createCampaignAction, deleteDraftAction, removeSegmentAction, resumeCampaignAction,
@@ -421,11 +420,11 @@ export async function ContactsView({ ctx, sp }: { ctx: CampaignsContext; sp: Sea
       </section>
       {ctx.area === "admin" && (
         <section className="monarch-panel" style={{ padding: 20 }}>
-          <h2 style={{ marginTop: 0 }}>Provider setup (one time)</h2>
-          <p className="monarch-muted">Open and bounce reports come from Resend; STOP replies come from Twilio. Both need an address registered with the provider.</p>
+          <h2 style={{ marginTop: 0 }}>Provider setup (one time, for the whole platform)</h2>
+          <p className="monarch-muted">Open and bounce reports come from Resend, registered once for the platform.</p>
           <ul>
             <li>Resend → Webhooks: add <code>{await webhookUrl()}</code> for the events <i>email.delivered</i>, <i>email.bounced</i> and <i>email.complained</i>, then set its signing secret as <code>RESEND_WEBHOOK_SECRET</code> in Vercel.</li>
-            <li>Twilio → your messaging service (or number) → incoming messages: <code>{await inboundUrl().catch(() => "needs MONARCH_ENCRYPTION_KEY")}</code></li>
+            <li>Texts: nothing to do. Each office&apos;s number is pointed at the platform automatically when it&apos;s bought, and the daily check covers older numbers.</li>
           </ul>
         </section>
       )}

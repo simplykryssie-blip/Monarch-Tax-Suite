@@ -189,9 +189,20 @@ export class TwilioAccounts {
     const r = await this.call<{ available_phone_numbers?: { phone_number: string; friendly_name: string; locality?: string | null; region?: string | null }[] }>("GET", `/Accounts/${accountSid}/AvailablePhoneNumbers/US/${kind}.json?${q}`);
     return (r.available_phone_numbers ?? []).map((n) => ({ phoneNumber: n.phone_number, friendlyName: n.friendly_name, locality: n.locality ?? null, region: n.region ?? null }));
   }
-  async buyNumber(subaccountSid: string, phoneNumber: string): Promise<{ sid: string; phoneNumber: string }> {
-    const r = await this.call<{ sid: string; phone_number: string }>("POST", `/Accounts/${subaccountSid}/IncomingPhoneNumbers.json`, { PhoneNumber: phoneNumber });
+  /** Buys a number; with `smsUrl`, replies to it are sent to that address from the start. */
+  async buyNumber(subaccountSid: string, phoneNumber: string, smsUrl?: string | null): Promise<{ sid: string; phoneNumber: string }> {
+    const r = await this.call<{ sid: string; phone_number: string }>("POST", `/Accounts/${subaccountSid}/IncomingPhoneNumbers.json`, { PhoneNumber: phoneNumber, ...(smsUrl ? { SmsUrl: smsUrl, SmsMethod: "POST" } : {}) });
     return { sid: r.sid, phoneNumber: r.phone_number };
+  }
+  /** Points a number's incoming texts at an address. Safe to repeat. */
+  async setNumberInbound(accountSid: string, phoneNumberSid: string, smsUrl: string): Promise<void> {
+    await this.call("POST", `/Accounts/${accountSid}/IncomingPhoneNumbers/${phoneNumberSid}.json`, { SmsUrl: smsUrl, SmsMethod: "POST" });
+  }
+  /** The id of one of an account's numbers, found by its number. */
+  async findNumberSid(accountSid: string, e164: string): Promise<{ sid: string; smsUrl: string | null } | null> {
+    const r = await this.call<{ incoming_phone_numbers?: { sid: string; sms_url?: string | null }[] }>("GET", `/Accounts/${accountSid}/IncomingPhoneNumbers.json?${new URLSearchParams({ PhoneNumber: e164 })}`);
+    const n = r.incoming_phone_numbers?.[0];
+    return n ? { sid: n.sid, smsUrl: n.sms_url ?? null } : null;
   }
   /** Gives a number back to Twilio (it stops costing anything and can't be got back). */
   async releaseNumber(subaccountSid: string, phoneNumberSid: string): Promise<void> {

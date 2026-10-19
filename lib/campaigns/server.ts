@@ -36,12 +36,7 @@ const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(
 /** The signed address the text provider reports a message's delivery to. */
 export const statusSignature = (recipientId: string) => mac("sms-status", recipientId);
 export const statusSignatureOk = (recipientId: string, given: string) => same(statusSignature(recipientId), given);
-/** The signed address text replies are sent to (set on the texting number's incoming-message webhook). */
-export const inboundSignature = () => mac("sms-inbound", "v1");
-export const inboundSignatureOk = (given: string) => same(inboundSignature(), given);
-export async function inboundUrl(): Promise<string> {
-  return `${await appOrigin()}/api/sms/inbound/${inboundSignature()}`;
-}
+export { inboundSignatureOk, inboundUrl } from "../sms/inbound";
 
 const platformHash = (channel: Channel, address: string) => secrets().hashIdentifier(`platform-suppression:${channel}`, address.toLowerCase());
 
