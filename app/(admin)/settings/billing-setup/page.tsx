@@ -31,9 +31,9 @@ export default async function BillingSetupPage({ searchParams }: { searchParams:
           <>
             <p>Stripe <b>{s.livemode ? "LIVE" : "test"}</b> mode.</p>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>PLAN</th><th>MONTHLY PRICE</th><th>IN STRIPE</th></tr></thead>
+              <thead><tr><th>PLAN</th><th>PRICE</th><th>STATUS</th></tr></thead>
               <tbody>{rows.map((r) => (
-                <tr key={r.lookupKey}><td>{r.label}</td><td>{dollars(r.wanted)}</td><td>{!r.exists ? "Missing" : r.found === r.wanted ? "Ready" : `Exists at ${r.found === null ? "an unknown amount" : dollars(r.found)}: needs attention`}</td></tr>
+                <tr key={r.lookupKey}><td>{r.label.replace(/^Verexa HQ: /, "")}</td><td>{dollars(r.wanted)}/mo</td><td>{!r.exists ? "Missing" : r.found === r.wanted ? "Ready" : `Exists at ${r.found === null ? "an unknown amount" : dollars(r.found)}: needs attention`}</td></tr>
               ))}</tbody>
             </table></div>
             <form action={setUpBillingAction} style={{ marginTop: 16 }}>
