@@ -29,7 +29,7 @@ export const PAGES: SearchHit[] = [
   { id: "p-wf", group: "Pages", title: "Workflows", detail: "Automation", href: "/automation/workflows" },
   { id: "p-tpl", group: "Pages", title: "Email templates", detail: "Automation", href: "/automation/templates" },
   { id: "p-pipe", group: "Pages", title: "Pipelines", detail: "Automation", href: "/automation/pipelines" },
-  { id: "p-integ", group: "Pages", title: "Integrations", detail: "Settings", href: "/settings/integrations" },
+  { id: "p-integ", group: "Pages", title: "Calculator setup links", detail: "Settings", href: "/settings/integrations" },
   { id: "p-newlic", group: "Pages", title: "Create a license", detail: "Action", href: "/orders/internal" },
   { id: "p-rec", group: "Pages", title: "Reconcile a payment", detail: "Action", href: "/orders/reconcile" },
 ];

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
-import { requireSection } from "@/lib/tier-server";
+import { requirePlatformAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { PLATFORM } from "@/lib/platform-brand";
@@ -28,7 +28,7 @@ async function send(tenantId: string, workspace: string, member: { id: string; e
   const link = await practiceInviteLink(token);
   const problem = await sendPracticeEmail(currentTenantId(), member.email, inviteEmail({ brand: PLATFORM.name, workspace, name: member.full_name, link }));
   await practiceRepo(tenantId).addAudit({ actor_id: adminUserId, action: problem ? "invite_email_failed" : "invite_emailed", subject_type: "practice_member", subject_id: member.id, detail: problem ? { reason: problem.slice(0, 200) } : {} });
-  revalidatePath("/offices/holders");
+  revalidatePath("/admin/workspaces");
   return problem
     ? { ok: true, message: `Workspace created, but the email wasn't sent: ${problem} Share this one-time link with ${member.full_name} yourself.`, link }
     : { ok: true, message: `Workspace created. The invite was emailed to ${member.email}; the link works for 7 days.`, link: null };
@@ -36,7 +36,7 @@ async function send(tenantId: string, workspace: string, member: { id: string; e
 
 export async function createWorkspaceAction(input: { workspaceName: string; fullName: string; email: string }): Promise<HolderResult> {
   try {
-    const admin = await requireSection("bureau");
+    const admin = await requirePlatformAdmin();
     const made = await provisionWorkspace(practicePlatform(), practiceRepo, admin.userId, { workspaceName: String(input.workspaceName ?? ""), fullName: String(input.fullName ?? ""), email: String(input.email ?? "") });
     return await send(made.tenantId, String(input.workspaceName || input.fullName), made.member, made.token, admin.userId);
   } catch (e) {
@@ -47,7 +47,7 @@ export async function createWorkspaceAction(input: { workspaceName: string; full
 
 export async function resendInviteAction(input: { tenantId: string; memberId: string; workspace: string }): Promise<HolderResult> {
   try {
-    const admin = await requireSection("bureau");
+    const admin = await requirePlatformAdmin();
     if (!UUID.test(input.tenantId) || !UUID.test(input.memberId)) throw new ValidationError("Not found.");
     const { member, token } = await reissueInvite({ repo: practiceRepo(input.tenantId) }, admin.userId, input.memberId);
     return await send(input.tenantId, input.workspace, member, token, admin.userId);
@@ -59,12 +59,12 @@ export async function resendInviteAction(input: { tenantId: string; memberId: st
 
 export async function holderAccessAction(input: { tenantId: string; memberId: string; change: "withdraw" | "suspend" | "reactivate" }): Promise<{ ok: boolean; error?: string }> {
   try {
-    const admin = await requireSection("bureau");
+    const admin = await requirePlatformAdmin();
     if (!UUID.test(input.tenantId) || !UUID.test(input.memberId)) throw new ValidationError("Not found.");
     const deps = { repo: practiceRepo(input.tenantId) };
     if (input.change === "withdraw") await withdrawInvite(deps, admin.userId, input.memberId);
     else await setSuspended(deps, admin.userId, input.memberId, input.change === "suspend");
-    revalidatePath("/offices/holders");
+    revalidatePath("/admin/workspaces");
     return { ok: true };
   } catch (e) {
     unstable_rethrow(e);

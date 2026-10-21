@@ -97,6 +97,27 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
 });
 
 /**
+ * Verifies the signed-in user is a Verexa HQ platform administrator: the operator of the platform itself, not an admin of
+ * a workspace (tenant). Every page and action under /admin uses this. Today `admin_users` is exactly that list; a
+ * workspace's own administrators will be tenant members and are never in it, so they can neither see nor open these pages.
+ */
+export const requirePlatformAdmin = cache(async (): Promise<AdminSession> => {
+  const session = await requireAdmin();
+  if (!(await isAdminUser(session.userId))) redirect("/");
+  return session;
+});
+
+/** Whether the signed-in user may use the Admin area (to decide whether to show it in the menu). Never throws. */
+export async function isPlatformAdmin(): Promise<boolean> {
+  try {
+    const { data: { user } } = await (await createClient()).auth.getUser();
+    return Boolean(user) && (await isAdminUser(user!.id));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Public origin of this deployment (for embed, intake, form and email links). NEXT_PUBLIC_APP_URL (the production
  * domain) is used everywhere except Preview, where links must point at the preview deployment itself.
  */
