@@ -55,9 +55,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
               <h2 style={{ marginTop: 0 }}>Change plan</h2>
               {preview ? (
                 <>
-                  <p>Switching to <b>{PLANS[preview.to].label}</b> ({dollars(PLANS[preview.to].priceCents)} per month) starts today and your monthly billing date becomes today&apos;s date. You get credit for the unused days of your current plan{preview.creditCents > 0 ? ` (${dollars(preview.creditCents)})` : ""}, so you pay <b>{dollars(preview.dueCents)}</b> today.</p>
+                  <p>Switching to <b>{PLANS[preview.to].label}</b> ({dollars(PLANS[preview.to].priceCents)} per month) starts today and your monthly billing date becomes today&apos;s date. You get credit for the unused days of your current plan{preview.creditCents > 0 ? ` (${dollars(preview.creditCents)})` : ""}, so you pay <b>{dollars(preview.dueCents)}</b> today. This price holds for 30 minutes.</p>
                   <form action={changePlanAction} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <input type="hidden" name="plan" value={preview.to} />
+                    <input type="hidden" name="proration_date" value={preview.prorationDate} />
                     <button className="monarch-primary">Confirm and pay {dollars(preview.dueCents)}</button>
                     <a className="monarch-secondary" href="/practice/billing">Not now</a>
                   </form>

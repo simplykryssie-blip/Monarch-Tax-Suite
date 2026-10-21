@@ -23,7 +23,7 @@ function setup(over: { now?: Date; captcha?: boolean; exists?: boolean } = {}) {
   const mails: { to: string; mail: Mail }[] = [];
   const hits = new Map<string, number>();
   const prices: { sub: string; key: string }[] = [];
-  const changes = { previews: [] as string[], applied: [] as { sub: string; key: string }[], quote: { dueCents: 17600, creditCents: 2300 }, cardFails: false };
+  const changes = { previews: [] as string[], applied: [] as { sub: string; key: string; prorationDate: number }[], quote: { dueCents: 17600, creditCents: 2300 }, cardFails: false };
   const members = new Map<string, PracticeMember[]>();
   const tenants = new Map<string, string>();
   const stripeState = { retry: "none" as "none" | "paid" | "failed", card: { ok: true } as { ok: true } | { ok: false; reason: string }, canceled: [] as string[], facts: { status: "active", currentPeriodEnd: iso(T0.getTime() + 30 * DAY), cancelAtPeriodEnd: false, lookupKey: "verexa_ptin_monthly", customerId: "cus_1" } as SubscriptionFacts };
@@ -42,10 +42,10 @@ function setup(over: { now?: Date; captcha?: boolean; exists?: boolean } = {}) {
     reactivateCheckout: async (i) => ({ url: `https://checkout.test/back/${i.tenantId}` }),
     portalUrl: async () => "https://portal.test",
     setPrice: async (sub, key) => { prices.push({ sub, key }); },
-    previewPlanChange: async (_sub, key) => { changes.previews.push(key); return changes.quote; },
-    changePlan: async (sub, key) => {
+    previewPlanChange: async (_sub, key) => { changes.previews.push(key); return { ...changes.quote, prorationDate: Math.floor(T0.getTime() / 1000) }; },
+    changePlan: async (sub, key, prorationDate) => {
       if (changes.cardFails) throw new Error("Your card was declined.");
-      changes.applied.push({ sub, key });
+      changes.applied.push({ sub, key, prorationDate });
       return { currentPeriodEnd: iso(T0.getTime() + 30 * DAY) };
     },
     subscriptionFacts: async () => stripeState.facts,
@@ -300,10 +300,10 @@ test("changing plan: the new plan starts today, the unused part of the old one i
     const q = await previewPlanChange(s.deps, tenantId!, "ero");
     assert.deepEqual([q.from, q.to, q.dueCents, q.creditCents], ["ptin", "ero", 17600, 2300], "the owner is shown what they pay today before confirming");
     assert.deepEqual(s.changes.applied, [], "looking changes nothing");
-    await assert.rejects(() => changePlan(s.deps, tenantId!, "ptin"), /Choose a different plan/);
-    await assert.rejects(() => changePlan(s.deps, tenantId!, "nonsense"), /Choose a different plan/);
-    assert.equal(await changePlan(s.deps, tenantId!, "ero"), "ero");
-    assert.deepEqual(s.changes.applied, [{ sub: "sub_1", key: "verexa_ero_monthly" }]);
+    await assert.rejects(() => changePlan(s.deps, tenantId!, "ptin", q.prorationDate), /Choose a different plan/);
+    await assert.rejects(() => changePlan(s.deps, tenantId!, "nonsense", q.prorationDate), /Choose a different plan/);
+    assert.equal(await changePlan(s.deps, tenantId!, "ero", q.prorationDate), "ero");
+    assert.deepEqual(s.changes.applied, [{ sub: "sub_1", key: "verexa_ero_monthly", prorationDate: q.prorationDate }], "the charge is worked out as of the same moment as the quote");
     const after = s.subs.get(tenantId!)!;
     assert.equal(after.plan, "ero");
     assert.equal(after.current_period_end, iso(T0.getTime() + 30 * DAY), "the new monthly cycle starts today");
@@ -311,7 +311,7 @@ test("changing plan: the new plan starts today, the unused part of the old one i
     // A paused, late or cancelled account can't change plan.
     for (const status of ["paused", "read_only", "canceled"] as const) {
       s.subs.set(tenantId!, { ...after, status, ...(status === "canceled" ? { canceled_at: iso(T0.getTime()), delete_after: iso(T0.getTime() + 90 * DAY) } : {}) });
-      await assert.rejects(() => changePlan(s.deps, tenantId!, "bureau"), /resume|good standing/i, status);
+      await assert.rejects(() => changePlan(s.deps, tenantId!, "bureau", Math.floor(T0.getTime() / 1000)), /resume|good standing/i, status);
     }
   } finally {
     PLANS.ero.selfServe = false;
@@ -324,7 +324,7 @@ test("changing plan: if the card can't pay, the plan stays as it was", async () 
   PLANS.bureau.selfServe = true;
   try {
     s.changes.cardFails = true;
-    await assert.rejects(() => changePlan(s.deps, tenantId!, "bureau"), /declined/);
+    await assert.rejects(() => changePlan(s.deps, tenantId!, "bureau", Math.floor(T0.getTime() / 1000)), /declined/);
     assert.equal(s.subs.get(tenantId!)!.plan, "ptin");
   } finally {
     PLANS.bureau.selfServe = false;
@@ -337,4 +337,25 @@ test("plan switching: production follows the self-serve flags; a Preview offers 
   assert.deepEqual(switchablePlans("ptin", {}).map((p) => p.key), []);
   assert.deepEqual(switchablePlans("ptin", { VERCEL_ENV: "preview" }).map((p) => p.key), ["ero", "bureau"]);
   assert.deepEqual(switchablePlans("ero", { VERCEL_ENV: "preview" }).map((p) => p.key), ["ptin", "bureau"]);
+});
+
+test("changing plan: the price shown is the price charged; an old or missing quote is refused", async () => {
+  const s = setup();
+  const { tenantId } = await handleBillingEvent(s.deps, completed("evt_1"));
+  PLANS.ero.selfServe = true;
+  try {
+    const q = await previewPlanChange(s.deps, tenantId!, "ero");
+    assert.equal(q.prorationDate, Math.floor(T0.getTime() / 1000));
+    await assert.rejects(() => changePlan(s.deps, tenantId!, "ero", undefined), /out of date/);
+    await assert.rejects(() => changePlan(s.deps, tenantId!, "ero", "not a number"), /out of date/);
+    s.tick(31 * 60 * 1000);
+    await assert.rejects(() => changePlan(s.deps, tenantId!, "ero", q.prorationDate), /out of date/, "after 30 minutes the person is shown the price again");
+    assert.equal(s.changes.applied.length, 0);
+    // Within 30 minutes the charge is as of the quote's own moment, however long they took.
+    s.set(new Date(T0.getTime() + 20 * 60 * 1000));
+    assert.equal(await changePlan(s.deps, tenantId!, "ero", String(q.prorationDate)), "ero");
+    assert.equal(s.changes.applied[0].prorationDate, q.prorationDate);
+  } finally {
+    PLANS.ero.selfServe = false;
+  }
 });

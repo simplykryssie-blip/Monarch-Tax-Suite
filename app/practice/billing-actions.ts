@@ -61,7 +61,7 @@ export async function previewPlanChangeAction(form: FormData) {
 }
 export async function changePlanAction(form: FormData) {
   await run(async (ctx, deps) => {
-    const plan = await changePlan(deps, ctx.tenantId, form.get("plan"));
+    const plan = await changePlan(deps, ctx.tenantId, form.get("plan"), form.get("proration_date"));
     return go("notice", `Your plan is now ${PLANS[plan].label}.`);
   });
 }
