@@ -1,11 +1,11 @@
 import { Badge, EmptyRow, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 import { HolderForm, HolderRowActions } from "@/components/office/holder-form";
 import { practicePlatform } from "@/lib/practice/server";
-import { requireSection } from "@/lib/tier-server";
+import { requirePlatformAdmin } from "@/lib/admin";
 
 /** Independent PTIN holders' workspaces: created and invited here by the platform administrator. */
 export default async function PtinWorkspacesPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
-  await requireSection("bureau");
+  await requirePlatformAdmin();
   const sp = await searchParams;
   const result = await load(() => practicePlatform().listWorkspaces());
   return (

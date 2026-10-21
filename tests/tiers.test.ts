@@ -31,7 +31,7 @@ describe("tiers", () => {
     const sb = NAV[0] && isBranch(NAV[0]) ? NAV[0].items.find((e) => e.label === "My Service Bureau") : undefined;
     assert.ok(sb && isBranch(sb));
     assert.equal(sb.href, undefined);
-    assert.deepEqual(sb.items.map((i) => i.label), ["Dashboard", "EROs & EFINs", "Renewals", "Fees & statements", "Office access", "PTIN workspaces", "Compliance"]);
+    assert.deepEqual(sb.items.map((i) => i.label), ["Dashboard", "EROs & EFINs", "Renewals", "Fees & statements", "Office access", "Compliance"]);
     assert.equal(sb.items[0].href, "/efin");
   });
 
@@ -83,6 +83,61 @@ describe("tiers", () => {
     const src = readFileSync("lib/tier-server.ts", "utf8");
     assert.match(src, /if \(error\) return "bureau"/);
     assert.match(src, /catch \{\s*return "bureau"/);
+  });
+});
+
+describe("the Admin area (platform administrators only)", () => {
+  const admin = NAV[NAV.length - 1];
+
+  test("Admin is the last item of the menu and holds the platform tools", () => {
+    assert.ok(isBranch(admin));
+    assert.equal(admin.label, "Admin");
+    assert.equal(admin.section, "platform");
+    assert.deepEqual(admin.items.map((i) => i.label), ["Workspaces", "Billing setup", "Integrations"]);
+    assert.ok(admin.items.every((i) => i.href?.startsWith("/admin/")));
+  });
+
+  test("no tier sees it; only a platform administrator does", () => {
+    for (const tier of TIERS) {
+      assert.ok(!labels(navFor(tier)).includes("Admin"), `${tier} must not see Admin`);
+      assert.ok(!hrefs(navFor(tier)).some((h) => h.startsWith("/admin")), `${tier} must not get any /admin link`);
+      assert.equal(allows(tier, "platform"), false);
+      const shown = navFor(tier, undefined, undefined, true);
+      assert.equal(shown[shown.length - 1].label, "Admin", "a platform administrator sees it last");
+    }
+    // The platform tools are not left in the tenant menus.
+    const all = hrefs(navFor("bureau"));
+    for (const gone of ["/settings/billing-setup", "/offices/holders"]) assert.ok(!all.includes(gone), `${gone} moved to Admin`);
+  });
+
+  test("everything under /admin is the platform section, and the area guards itself", () => {
+    assert.equal(sectionOf("/admin/billing-setup"), "platform");
+    assert.equal(sectionOf("/admin"), "platform");
+    assert.equal(sectionOf("/administrators"), null);
+    const layout = readFileSync("app/(admin)/admin/layout.tsx", "utf8");
+    assert.match(layout, /requirePlatformAdmin\(\)/);
+    for (const f of ["app/(admin)/admin/billing-setup/page.tsx", "app/(admin)/admin/billing-setup/actions.ts", "app/(admin)/admin/workspaces/page.tsx", "app/(admin)/admin/workspaces/actions.ts", "app/(admin)/admin/integrations/page.tsx"]) {
+      const src = readFileSync(f, "utf8");
+      assert.match(src, /requirePlatformAdmin\(\)/, `${f} must check for a platform administrator`);
+      assert.doesNotMatch(src, /requireAdmin\(\)|requireSection\("(?!platform)/, `${f} must not rely on the broader checks`);
+    }
+  });
+
+  test("requireSection('platform') never lets a tier decide", () => {
+    assert.match(readFileSync("lib/tier-server.ts", "utf8"), /section === "platform"\) return \{ \.\.\.\(await requirePlatformAdmin\(\)\)/);
+  });
+
+  test("the old addresses lead to the new ones", () => {
+    const cfg = readFileSync("next.config.ts", "utf8");
+    assert.match(cfg, /source: "\/settings\/billing-setup", destination: "\/admin\/billing-setup"/);
+    assert.match(cfg, /source: "\/offices\/holders", destination: "\/admin\/workspaces"/);
+  });
+
+  test("platform connection health is in Admin; the calculator setup links stay in Monarch's settings", () => {
+    assert.match(readFileSync("app/(admin)/admin/integrations/page.tsx", "utf8"), /integrationStatus/);
+    const links = readFileSync("app/(admin)/settings/integrations/page.tsx", "utf8");
+    assert.doesNotMatch(links, /integrationStatus/);
+    assert.match(links, /Customer setup links/);
   });
 });
 

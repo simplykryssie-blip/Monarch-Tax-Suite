@@ -105,9 +105,9 @@ function Popover({ trigger, children }: { trigger: (open: boolean, toggle: () =>
   );
 }
 
-export function AdminShell({ email, brand, today, alerts = [], tier = "bureau", children }: { email: string; brand?: Brand; today: string; alerts?: Alert[]; tier?: Tier; children: React.ReactNode }) {
+export function AdminShell({ email, brand, today, alerts = [], tier = "bureau", platformAdmin = false, children }: { email: string; brand?: Brand; today: string; alerts?: Alert[]; tier?: Tier; platformAdmin?: boolean; children: React.ReactNode }) {
   const pathname = usePathname();
-  const nav = navFor(tier);
+  const nav = navFor(tier, undefined, undefined, platformAdmin);
   // White-labelled accounts see their own brand in the shell; everyone else sees the platform brand.
   const white = !!brand?.whiteLabelAdmin;
   const id = white && brand ? { name: brand.name, logo: brand.logoUrl, mark: brand.markUrl ?? brand.logoUrl, eyebrow: brand.name.toUpperCase(), tagline: brand.tagline ?? "" } : { name: PLATFORM.name, logo: PLATFORM.logo, mark: PLATFORM.mark, eyebrow: PLATFORM.eyebrow, tagline: PLATFORM.tagline };

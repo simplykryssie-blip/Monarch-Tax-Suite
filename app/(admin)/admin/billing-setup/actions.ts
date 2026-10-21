@@ -2,18 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
-import { requireAdmin } from "@/lib/admin";
+import { requirePlatformAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { explainStripeFailure } from "@/lib/billing/checkout-params.ts";
 import { runBillingSetup } from "@/lib/billing/setup.ts";
 import { billingSetupPort, billingStripe } from "@/lib/billing/stripe-port";
 
-const BASE = "/settings/billing-setup";
+const BASE = "/admin/billing-setup";
 const go = (key: "notice" | "error", message: string) => `${BASE}?${key}=${encodeURIComponent(message)}`;
 
 /** Creates the plan prices and the billing portal settings in Verexa HQ's Stripe account. Platform administrators only. */
 export async function setUpBillingAction(form: FormData) {
-  await requireAdmin();
+  await requirePlatformAdmin();
   let target: string;
   try {
     const s = billingStripe();

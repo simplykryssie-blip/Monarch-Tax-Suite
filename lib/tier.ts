@@ -9,13 +9,14 @@ export type Tier = (typeof TIERS)[number];
 export const TIER_LABEL: Record<Tier, string> = { ptin: "PTIN", ero: "ERO", bureau: "Service Bureau" };
 export const isTier = (v: unknown): v is Tier => typeof v === "string" && (TIERS as readonly string[]).includes(v);
 
-export type Section = "workspace" | "ero" | "bureau" | "leads" | "store" | "operations" | "settings";
+/** "platform" is the Verexa HQ Admin area. It belongs to no tier: only a platform administrator can open it (see lib/admin.ts). */
+export type Section = "workspace" | "ero" | "bureau" | "leads" | "store" | "operations" | "settings" | "platform";
 
-/** The lowest tier that includes each section. */
-const FROM: Record<Section, Tier> = { workspace: "ptin", settings: "ptin", ero: "ero", bureau: "bureau", leads: "bureau", store: "bureau", operations: "bureau" };
+/** The lowest tier that includes each section. The platform Admin area is in no tier. */
+const FROM: Record<Exclude<Section, "platform">, Tier> = { workspace: "ptin", settings: "ptin", ero: "ero", bureau: "bureau", leads: "bureau", store: "bureau", operations: "bureau" };
 
 const RANK: Record<Tier, number> = { ptin: 0, ero: 1, bureau: 2 };
-export const allows = (tier: Tier, section: Section) => RANK[tier] >= RANK[FROM[section]];
+export const allows = (tier: Tier, section: Section) => section !== "platform" && RANK[tier] >= RANK[FROM[section]];
 
 /** Where each section lives. The first prefix that matches a path decides. */
 const ROUTES: [string, Section][] = [
@@ -27,6 +28,7 @@ const ROUTES: [string, Section][] = [
   ["/automation", "operations"], ["/forms", "operations"], ["/calendar", "operations"], ["/sites", "operations"], ["/campaigns", "operations"],
   ["/settings/integrations", "bureau"],
   ["/settings", "settings"],
+  ["/admin", "platform"],
 ];
 
 export function sectionOf(pathname: string): Section | null {

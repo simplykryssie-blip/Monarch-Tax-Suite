@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin";
+import { requirePlatformAdmin } from "@/lib/admin";
 import { Flash, PageTitle } from "@/components/admin/ui";
 import { billingProblems, dollars } from "@/lib/billing/plans.ts";
 import { planStatus } from "@/lib/billing/setup.ts";
@@ -6,7 +6,7 @@ import { billingSetupPort, billingStripe } from "@/lib/billing/stripe-port";
 import { setUpBillingAction } from "./actions";
 
 export default async function BillingSetupPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
-  await requireAdmin();
+  await requirePlatformAdmin();
   const { notice, error } = await searchParams;
   const problems = billingProblems(process.env);
   const s = billingStripe();

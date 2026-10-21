@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { createWorkspaceAction, holderAccessAction, resendInviteAction, type HolderResult } from "@/app/(admin)/offices/holders/actions";
+import { createWorkspaceAction, holderAccessAction, resendInviteAction, type HolderResult } from "@/app/(admin)/admin/workspaces/actions";
 
 // Platform administrator: create an independent PTIN holder's workspace, and manage its owner's invite or access.
 // If the email can't be sent, the one-time link is shown here to share by hand.

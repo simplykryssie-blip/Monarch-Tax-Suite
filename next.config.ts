@@ -18,6 +18,9 @@ const nextConfig: NextConfig = {
       { source: "/automation", destination: "/automation/workflows", permanent: false },
       { source: "/automation/activity", destination: "/automation/workflows", permanent: false },
       { source: "/automation/settings", destination: "/settings/integrations", permanent: false },
+      // Platform tools moved under Admin (platform administrators only).
+      { source: "/settings/billing-setup", destination: "/admin/billing-setup", permanent: false },
+      { source: "/offices/holders", destination: "/admin/workspaces", permanent: false },
     ];
   },
 };

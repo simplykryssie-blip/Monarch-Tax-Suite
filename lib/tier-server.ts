@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
-import { requireAdmin, tenantDb } from "./admin";
+import { requireAdmin, requirePlatformAdmin, tenantDb } from "./admin";
 import { allows, homeFor, isTier, type Section, type Tier } from "./tier.ts";
 
 /**
@@ -21,6 +21,8 @@ export const currentTier = cache(async (): Promise<Tier> => {
 
 /** Page guard: administrators only, and only if their tier includes this section. Otherwise they go to their own home. */
 export async function requireSection(section: Section) {
+  // The platform Admin area is for platform administrators only, whatever tier the account is on.
+  if (section === "platform") return { ...(await requirePlatformAdmin()), tier: await currentTier() };
   const admin = await requireAdmin();
   const tier = await currentTier();
   if (!allows(tier, section)) redirect(homeFor(tier));

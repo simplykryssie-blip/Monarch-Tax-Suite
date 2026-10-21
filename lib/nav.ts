@@ -28,7 +28,6 @@ export const NAV: Entry[] = [
           { label: "Renewals", icon: "bell", href: "/efin/renewals" },
           { label: "Fees & statements", icon: "reports", href: "/fees" },
           { label: "Office access", icon: "customers", href: "/offices" },
-          { label: "PTIN workspaces", icon: "customers", href: "/offices/holders" },
           { label: "Compliance", icon: "shield", href: "/compliance" },
         ],
       },
@@ -71,24 +70,34 @@ export const NAV: Entry[] = [
       { label: "Business hours", icon: "checklist", href: "/settings/business-hours" },
       { label: "Payments", icon: "card", href: "/settings/payments" },
       { label: "Text messaging", icon: "bell", href: "/settings/sms" },
-      { label: "Billing setup", icon: "card", href: "/settings/billing-setup", section: "bureau" },
       { label: "Package attributes", icon: "checklist", href: "/settings/package-attributes" },
       { label: "Archive history", icon: "reports", href: "/settings/archive" },
-      { label: "Integrations", icon: "licenses", href: "/settings/integrations", section: "bureau" },
+      { label: "Calculator setup links", icon: "licenses", href: "/settings/integrations", section: "bureau" },
       { label: "Software & banking", icon: "settings", href: "/bureau/settings", section: "bureau" },
       { label: "History", icon: "reports", href: "/bureau/settings/history", section: "bureau" },
     ],
   },
+  {
+    // Verexa HQ's own tools, last in the menu. Only a platform administrator sees or can open this; no workspace does.
+    label: "Admin",
+    icon: "shield",
+    section: "platform",
+    items: [
+      { label: "Workspaces", icon: "customers", href: "/admin/workspaces" },
+      { label: "Billing setup", icon: "card", href: "/admin/billing-setup" },
+      { label: "Integrations", icon: "licenses", href: "/admin/integrations" },
+    ],
+  },
 ];
 
-/** The menu for one tier: entries outside the tier are removed, and so are groups left with nothing in them. */
-export function navFor(tier: Tier, entries: Entry[] = NAV, inherited: Section | undefined = undefined): Entry[] {
+/** The menu for one tier: entries outside the tier are removed, and so are groups left with nothing in them. The Admin group appears only for a platform administrator. */
+export function navFor(tier: Tier, entries: Entry[] = NAV, inherited: Section | undefined = undefined, platformAdmin = false): Entry[] {
   const out: Entry[] = [];
   for (const e of entries) {
     const section = e.section ?? inherited;
-    if (section && !allows(tier, section)) continue;
+    if (section === "platform" ? !platformAdmin : section && !allows(tier, section)) continue;
     if (isBranch(e)) {
-      const items = navFor(tier, e.items, section);
+      const items = navFor(tier, e.items, section, platformAdmin);
       if (items.length) out.push({ ...e, items });
     } else out.push(e);
   }
