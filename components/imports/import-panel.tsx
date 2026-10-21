@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { importAction, type ImportState } from "@/app/import-actions";
 import type { Destination } from "@/lib/imports/contacts.ts";
 
@@ -33,7 +33,9 @@ export function ImportPanel({ scope, destinations }: { scope: string; destinatio
   return (
     <section className="monarch-panel" id="import" style={{ padding: 20 }}>
       <h2 style={{ marginTop: 0 }}>Import from a spreadsheet or GoHighLevel</h2>
-      <form action={action} className="monarch-form">
+      {/* Submitted by hand, not through the form's action: an action form is reset when it finishes, which put the file type
+          back to "People" and made the confirm step read a notes file as a contact list. */}
+      <form className="monarch-form" onSubmit={(e) => { e.preventDefault(); const data = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter); startTransition(() => action(data)); }}>
         <input type="hidden" name="scope" value={scope} />
         {destinations.length > 1 ? (
           <label>Import into

@@ -6,6 +6,8 @@ export type Client = {
   archived_at: string | null; created_by: string | null; created_at: string; updated_at: string;
   /** The preparer who owns the client (people see their own clients), and the office whose team entered them (null = the account's own). */
   owner_id: string | null; organization_id: string | null;
+  /** Labels on the client (the column has been there since automations; older rows may not carry it). */
+  tags?: string[] | null;
 };
 export type ClientInput = Pick<Client, "full_name" | "email" | "phone" | "ssn_last4" | "address">;
 

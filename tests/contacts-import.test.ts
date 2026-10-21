@@ -283,3 +283,22 @@ test("each import action re-checks who is signed in and which part of the app th
   assert.match(src, /clients: "workspace", leads: "leads", customers: "store", firms: "bureau"/);
   assert.match(src, /scope === "admin" \? str\(form, "destination"\) : "clients"/, "the PTIN workspace and office area can only import clients");
 });
+
+test("imported notes, messages and tags can be seen on the client's page and in the list", async () => {
+  const { readFileSync } = await import("node:fs");
+  const views = readFileSync("components/prep/views.tsx", "utf8");
+  assert.match(views, /ctx\.deps\.ws\.listNotes\(client\.id\)/);
+  assert.match(views, /ctx\.deps\.ws\.listMessages\(client\.id\)/);
+  assert.match(views, /<h2 style=\{\{ marginTop: 0 \}\}>Notes<\/h2>/);
+  assert.match(views, /<h2 style=\{\{ marginTop: 0 \}\}>Messages<\/h2>/);
+  assert.match(views, /client\.tags\?\.length/, "tags show on the client's page");
+  assert.match(views, /<th>TAGS<\/th>/, "tags show in the client list");
+});
+
+test("the import screen is submitted by hand so finishing a preview doesn't reset the file type or the file", async () => {
+  const { readFileSync } = await import("node:fs");
+  const panel = readFileSync("components/imports/import-panel.tsx", "utf8");
+  assert.match(panel, /onSubmit=\{\(e\) => \{ e\.preventDefault\(\)/);
+  assert.match(panel, /new FormData\(e\.currentTarget, \(e\.nativeEvent as SubmitEvent\)\.submitter\)/, "the confirm button's value is still sent");
+  assert.doesNotMatch(panel, /<form action=/, "an action form is reset when it finishes");
+});
