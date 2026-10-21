@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { Block, LeafBlock } from "@/lib/sites/blocks.ts";
 import { onColor } from "@/lib/forms/theme.ts";
+import { HtmlEmbed } from "./html-embed";
 
-// How a published page looks. Server-rendered, plain HTML and CSS only (no script), mobile first: the layout is a single
+// How a published page looks. Server-rendered, plain HTML and CSS only (no script of ours; custom HTML blocks run only inside a sandboxed frame), mobile first: the layout is a single
 // column that widens at larger screens, and nothing is wider than the screen at 390px. Content is escaped by React; the
 // only attributes taken from block data are links that were checked when saved and are checked again here.
 
@@ -59,6 +60,8 @@ function Leaf({ block, view }: { block: LeafBlock; view: SiteView }) {
     case "form":
       if (view.preview) return <p className="ws-ph">Your form appears here on your live site.</p>;
       return <iframe className="ws-frame" title="Form" src={`/f/${encodeURIComponent(block.formId)}`} style={{ height: block.height }} loading="lazy" />;
+    case "html":
+      return <HtmlEmbed code={block.code} height={block.height} />;
     case "spacer":
       return <div className={`ws-space ws-space-${block.size}`} aria-hidden="true" />;
     case "divider":

@@ -11,7 +11,7 @@ An office builds its own website on the platform: blank canvas, sections and blo
 | Addresses: change the free address label; connect a custom domain, see the DNS records, check, remove | `/sites/domains`, `/practice/website/domains` |
 | Public site | served on the office's own hosts only: `<label>.<platform domain>` and connected custom domains |
 
-**Blank canvas.** There are no templates. A new site has one empty home page. **No custom HTML or script** exists: every block is validated plain data (`lib/sites/blocks.ts`); links are limited to https, same-site paths, mailto and tel.
+**Blank canvas.** There are no templates. A new site has one empty home page. Every block is validated data (`lib/sites/blocks.ts`); links are limited to https, same-site paths, mailto and tel. The one place owners' own code is allowed is the **Custom HTML** block: it is never put into the page, only into a frame with `sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"` (no `allow-same-origin`), so it runs as an empty origin with no access to the platform's cookies, storage or sign-in (`components/sites/html-embed.tsx`). 60,000 characters at most.
 
 **Draft and published.** Each page keeps a draft and a published copy. "Publish" copies every draft over its published copy in one statement (`site_publish`). Visitors never see a draft. "Take offline" hides the whole site and keeps the pages.
 

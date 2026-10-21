@@ -104,6 +104,14 @@ function LeafFields({ block, onChange, images, bookings, forms }: { block: LeafB
           <label>Height (pixels)<input type="number" min={400} max={1600} step={20} value={block.height} onChange={(e) => set({ height: Number(e.target.value) })} /></label>
         </div>
       );
+    case "html":
+      return (
+        <div className="se-fields">
+          <label className="se-wide">HTML, CSS and script (paste your code)<textarea value={block.code} rows={12} maxLength={60000} spellCheck={false} style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 13 }} onChange={(e) => set({ code: e.target.value })} /></label>
+          <label>Starting height (pixels)<input type="number" min={100} max={2000} step={20} value={block.height} onChange={(e) => set({ height: Number(e.target.value) })} /></label>
+          <p className="monarch-muted se-wide">Your code runs in its own box on the page, so it can&apos;t reach your account or this system. It grows to fit what you paste. Search engines may not read text inside it, so keep key wording in Heading and Text blocks. Links open in a new tab.</p>
+        </div>
+      );
     case "spacer":
       return <div className="se-fields"><label>Space<select value={block.size} onChange={(e) => set({ size: e.target.value as "small" | "medium" | "large" })}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></label></div>;
     case "divider":
