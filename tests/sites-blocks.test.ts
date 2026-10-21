@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cleanHref, imageIdsOf, isEmptyPage, MAX_BLOCKS, MAX_CHILDREN, newBlock, sanitizeBlocks } from "../lib/sites/blocks.ts";
+import { cleanHref, imageIdsOf, isEmptyPage, MAX_BLOCKS, MAX_CHILDREN, MAX_HTML, newBlock, sanitizeBlocks } from "../lib/sites/blocks.ts";
 
 let n = 0;
 const fresh = () => `id${++n}abcd`;
@@ -78,4 +78,16 @@ test("a page with only spacing is empty", () => {
   assert.equal(isEmptyPage([]), true);
   assert.equal(isEmptyPage(sanitizeBlocks([{ type: "spacer" }, { type: "section", children: [] }], fresh)), true);
   assert.equal(isEmptyPage(sanitizeBlocks([{ type: "text", text: "hi" }], fresh)), false);
+});
+
+test("custom html block: kept as written, limited, never empty, height clamped", () => {
+  const code = '<div style="color:red">Hi</div>\n<script>console.log(1)</script>';
+  const [b] = sanitizeBlocks([{ type: "html", code, height: 50 }], fresh) as { code: string; height: number }[];
+  assert.equal(b.code, code, "the owner's code is stored as written (it only ever runs in the sandboxed frame)");
+  assert.equal(b.height, 100);
+  assert.equal(sanitizeBlocks([{ type: "html", code: "   " }], fresh).length, 0);
+  assert.equal((sanitizeBlocks([{ type: "html", code: "x".repeat(70000), height: 9999 }], fresh)[0] as { code: string; height: number }).code.length, MAX_HTML);
+  assert.equal(sanitizeBlocks([newBlock("html", "abc131")], fresh).length, 0, "a blank html block is not saved");
+  const sec = sanitizeBlocks([{ type: "section", children: [{ type: "html", code: "<p>x</p>" }] }], fresh);
+  assert.equal((sec[0] as { children: unknown[] }).children.length, 1);
 });
