@@ -10,10 +10,10 @@ const READ = new Set(["GET", "HEAD", "OPTIONS"]);
 export type GateDecision = { allowed: true } | { allowed: false; message: string };
 
 export function gateFor(level: AccessLevel, pathname: string, method: string): GateDecision {
-  if (level === "full" || level === "grace") return { allowed: true };
+  if (level === "full") return { allowed: true };
   if (ALWAYS.some((p) => startsWith(pathname, p))) return { allowed: true };
   if (level === "read_only") {
-    return READ.has(method.toUpperCase()) ? { allowed: true } : { allowed: false, message: "Your workspace is read-only because payment is overdue. Update your card in Billing to make changes." };
+    return READ.has(method.toUpperCase()) ? { allowed: true } : { allowed: false, message: "Your workspace is read-only because your last payment didn\'t go through. Update your card in Billing to make changes." };
   }
   if (level === "contacts_only") {
     return pathname === "/practice" || startsWith(pathname, "/practice/clients")

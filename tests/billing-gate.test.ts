@@ -9,8 +9,8 @@ import type { Subscription } from "../lib/billing/access.ts";
 const BILLING = { STRIPE_BILLING_SECRET_KEY: "sk_test_abc", STRIPE_BILLING_WEBHOOK_SECRET: "whsec_x", MONARCH_ENCRYPTION_KEY: "k" };
 const sub = (over: Partial<Subscription>): Subscription => ({ tenant_id: "t", plan: "ptin", status: "active", stripe_customer_id: "cus_1", stripe_subscription_id: "sub_1", current_period_end: "2026-12-01T00:00:00Z", cancel_at_period_end: false, paused_from_plan: null, suspended_at: null, canceled_at: null, delete_after: null, precheck_mark: null, created_at: "", updated_at: "", ...over });
 
-test("gate: good and grace-period accounts can do everything", () => {
-  for (const level of ["full", "grace"] as const) assert.deepEqual(gateFor(level, "/practice/clients", "POST"), { allowed: true });
+test("gate: a good account can do everything", () => {
+  assert.deepEqual(gateFor("full", "/practice/clients", "POST"), { allowed: true });
 });
 
 test("gate: read-only can look but not change, and can always reach billing", () => {
@@ -64,7 +64,9 @@ test("billing view: plain words and the right buttons for each state", () => {
   assert.deepEqual([active.price, active.banner, active.can.pause, active.can.portal], ["$99", null, true, true]);
   const late = billingView(sub({ status: "suspended" }), now)!;
   assert.equal(late.banner?.tone, "warn");
-  assert.match(late.banner!.text, /Messages and automations are stopped/);
+  assert.match(late.banner!.text, /read-only/);
+  assert.match(late.banner!.text, /no messages are sent/);
+  assert.match(billingView(sub({ status: "read_only", suspended_at: "2026-11-05T00:00:00Z" }), now)!.banner!.text, /paid in 9 days/);
   const paused = billingView(sub({ status: "paused", paused_from_plan: "ptin" }), now)!;
   assert.deepEqual([paused.price, paused.can.resume, paused.can.pause], ["$27", true, false]);
   const gone = billingView(sub({ status: "canceled", canceled_at: "2026-11-01T00:00:00Z", delete_after: "2027-01-30T00:00:00Z" }), now)!;
