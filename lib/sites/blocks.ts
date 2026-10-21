@@ -1,12 +1,14 @@
 import { ValidationError } from "../commerce/validation.ts";
 
 // The content of a page: a short list of blocks. Everything is plain data that is checked on the way in (an unknown block
-// type or field is dropped, never kept), and rendered as plain text by the renderer. There is no custom HTML and no
-// script, so a site cannot run code on the platform's origin or phish through injected markup.
+// type or field is dropped, never kept), and rendered as plain text by the renderer. The one exception is the "html"
+// block: the owner's own code, which is never put into the page itself. It runs inside a sandboxed frame with no access
+// to the platform's origin (no cookies, no storage, no sign-in), so it cannot read or change anything on the platform.
 
 export const MAX_BLOCKS = 60;
 export const MAX_CHILDREN = 12;
 export const MAX_TEXT = 5000;
+export const MAX_HTML = 60000;
 export const SECTION_TONES = ["plain", "soft", "accent", "dark"] as const;
 export type SectionTone = (typeof SECTION_TONES)[number];
 
@@ -18,16 +20,18 @@ export type ButtonBlock = { id: string; type: "button"; label: string; href: str
 export type BookingBlock = { id: string; type: "booking"; slug: string; height: number };
 /** One of the office's published forms, by its public id. */
 export type FormBlock = { id: string; type: "form"; formId: string; height: number };
+/** Custom HTML (with its own CSS and script) shown in a sandboxed frame. `height` is the starting height; the frame then fits its content. */
+export type HtmlBlock = { id: string; type: "html"; code: string; height: number };
 export type SpacerBlock = { id: string; type: "spacer"; size: "small" | "medium" | "large" };
 export type DividerBlock = { id: string; type: "divider" };
-export type LeafBlock = HeadingBlock | TextBlock | ImageBlock | ButtonBlock | BookingBlock | FormBlock | SpacerBlock | DividerBlock;
+export type LeafBlock = HeadingBlock | TextBlock | ImageBlock | ButtonBlock | BookingBlock | FormBlock | HtmlBlock | SpacerBlock | DividerBlock;
 /** A band of the page with its own background, holding other blocks. Sections do not nest. */
 export type SectionBlock = { id: string; type: "section"; tone: SectionTone; children: LeafBlock[] };
 export type Block = LeafBlock | SectionBlock;
 
-export const LEAF_TYPES = ["heading", "text", "image", "button", "booking", "form", "spacer", "divider"] as const;
+export const LEAF_TYPES = ["heading", "text", "image", "button", "booking", "form", "html", "spacer", "divider"] as const;
 export const BLOCK_LABEL: Record<Block["type"], string> = {
-  section: "Section", heading: "Heading", text: "Text", image: "Image", button: "Button", booking: "Booking", form: "Form", spacer: "Space", divider: "Divider",
+  section: "Section", heading: "Heading", text: "Text", image: "Image", button: "Button", booking: "Booking", form: "Form", html: "Custom HTML", spacer: "Space", divider: "Divider",
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -96,6 +100,10 @@ function leaf(raw: unknown, fresh: () => string): LeafBlock | null {
       const formId = typeof b.formId === "string" ? b.formId.trim() : "";
       return FORM_ID.test(formId) ? { id, type: "form", formId, height: clampInt(b.height, 400, 1600, 900) } : null;
     }
+    case "html": {
+      const code = text(b.code, MAX_HTML).trim();
+      return code ? { id, type: "html", code, height: clampInt(b.height, 100, 2000, 400) } : null;
+    }
     case "spacer":
       return { id, type: "spacer", size: oneOf(b.size, ["small", "medium", "large"], "medium") };
     case "divider":
@@ -146,6 +154,7 @@ export function newBlock(type: Block["type"], id: string): Block {
     case "button": return { id, type, label: "Book now", href: "/", style: "primary", align: "left" };
     case "booking": return { id, type, slug: "", height: 760 };
     case "form": return { id, type, formId: "", height: 900 };
+    case "html": return { id, type, code: "", height: 400 };
     case "spacer": return { id, type, size: "medium" };
     case "divider": return { id, type };
   }
