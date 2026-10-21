@@ -2,24 +2,36 @@
 
 Goal: a tenant can bring their GoHighLevel (GHL) data into their workspace. Built in pieces; each is its own pull request.
 
-## Piece 1 (built): client import from CSV
-- **Where:** My Clients, "Import clients", in every area that has clients (PTIN workspace, office area).
-- **Source:** GHL's contact export (Contacts, choose contacts, Export as CSV), or any CSV with a name column and an email or phone column. GHL's headings are recognised: Contact Name, First Name, Last Name, Business Name, Phone, Email, Tags, Address1, City, State, Postal Code.
-- **Preview first:** the person sees how many would be added, a sample, the rows left out and why, and which columns were used, ignored or left out on purpose. Nothing is saved until they confirm. The same file is sent again to confirm, so nothing is held on the server in between.
-- **Matching:** by email (case-insensitive) or phone (last ten digits, any format), against everyone already in the account or office including archived clients, and within the file. A row matching a known person still makes its other details count as known.
-- **Never imported:** columns that look like SSN, tax IDs, date of birth, bank or card details. They are named to the person and ignored.
-- **Tags:** the person's GHL tags are kept (up to 12 per client), plus an optional tag for the whole import.
-- **Consent:** imported people are not marked as agreeing to marketing email or text. Consent stays a separate step in Campaigns.
-- **Ownership:** imported clients belong to the person importing, in their office, like clients added by hand.
-- **History:** records how many were added, skipped and failed, never names or contact details.
-- **Limits:** 2,000 rows and 2 MB per file. Running it again adds nobody twice.
+## What is built (branch `claude/ghl-import`)
 
-## Next pieces (not built)
-2. **Leads CSV import for every tier** (today only Service Bureau accounts have the Leads page), reusing the same matching.
-3. **Pipelines:** import stage names and order from a GHL pipeline export, or by typing them, into the tenant's pipelines.
-4. **Direct pull from GHL** through the existing connection: contacts, tags, custom fields, pipelines and opportunities. Needs the read scopes added to the GHL app (today: contacts.readonly, contacts.write, locations.readonly) and the GHL Marketplace app review finished; existing connections would have to approve the new scopes. To verify against GHL's current API docs before building.
-5. **Forms and automations:** a guided "rebuild" checklist listing what they had in GHL and the matching tool here. As far as we know GHL's API lists workflows but doesn't give their steps, so a true automation import isn't expected to be possible; to verify.
+**Where:** the person chooses where it goes and what kind of file it is, sees a preview, then confirms. Nothing is saved before that, and the same file is sent again to confirm, so nothing is held on the server in between.
+- PTIN workspace and office area: **My Clients, Import**. Clients only.
+- Main account admin: **Settings, Import data**. Clients, Leads (Service Bureau), Store customers (Service Bureau) and Firms (Service Bureau), as the account's tier allows. Each action re-checks the signed-in person and the destination's part of the app.
+
+**Three kinds of file**
+1. **People** (a contact list, GoHighLevel's "Export contacts" works as is). Name, email, phone, address, tags and a Notes column, where the destination keeps them.
+2. **Notes** for people already added: one note per row, matched by email, phone or (for firms) name. The note's original date goes in its text.
+3. **Messages** for people already added (clients only): direction, channel (email, text, call), subject, body, date. Saved as history only ("logged"); nothing is sent and no automation runs.
+
+| Destination | Keeps | Needs | Told apart by |
+|---|---|---|---|
+| Clients | name, email, phone, address, tags, notes, messages | email or phone | email or phone, incl. archived |
+| Leads | name, email, phone, firm name, tags, notes | email | email |
+| Store customers | name, email | email | email |
+| Firms (EROs & EFINs) | legal name, DBA, address, notes (email and phone go into the note) | name | name |
+
+**Tags:** tags are plain labels on each record, not a separate list, so importing a tag creates it. The preview and the result say which tags are new and which already existed (checked against the clients' and leads' tags in use). The tag limits stay: 12 per person, 40 characters each. Store customers and firms keep no tags, and say so.
+
+**Safety:** columns that look like SSN, tax IDs, birth dates or bank details are never imported and are named. Imported people are not marked as agreeing to marketing email or text. Messages are never sent. The history (clients area) records counts only.
+
+**Limits:** 2,000 rows (5,000 for notes or messages) and 2 MB per file. Running it again adds nobody twice.
+
+## Not built
+- Direct pull from GoHighLevel through the API (needs the read scopes on the GHL app and the app review; to verify against GHL's current docs).
+- Pipelines (stage names and order) and forms/automations (as far as we know GHL's API lists workflows but not their steps, so a guided rebuild checklist is the likely answer; to verify).
+- Lead messages (leads have no message history to hold them).
+- The admin area's import history: counts are recorded for the PTIN workspace and office area only.
 
 ## Decisions for the owner
-- Which tenants first for piece 2 and the order of pieces 3 to 5.
-- Whether the direct pull (piece 4) is worth waiting on the GHL app review, or CSV is enough to launch.
+- Direct GHL pull versus CSV only for launch.
+- Whether leads should get a message history, so GHL conversations on leads can be kept.

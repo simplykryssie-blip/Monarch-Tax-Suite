@@ -8,7 +8,6 @@ import { firstReturnStage, handoffMail, isArea, requirePrep, type PrepContext, t
 import {
   addChecklistItem, addMyClient, assignReturn, handOff, removeChecklistItem, savePrepNotes, saveMyClient, setChecklistDone, setPrepStatus, startReturn,
 } from "@/lib/prep/service.ts";
-import { importClients } from "@/lib/imports/service.ts";
 import type { PrepStatus } from "@/lib/workspace/types.ts";
 
 // Client intake and return-prep actions, shared by the PTIN holder's workspace and the office area. Each re-checks who
@@ -128,36 +127,3 @@ export async function handOffAction(form: FormData) {
   });
 }
 
-// ------------------------------------------------------------------ import clients from a spreadsheet
-
-export type ImportClientsState =
-  | undefined
-  | { error: string }
-  | {
-      done: boolean; added: number; failed: number; total: number; willAdd: number;
-      sample: { name: string; contact: string; tags: string[]; notes: string[] }[];
-      skipped: { row: number; reason: string }[];
-      columns: { used: string[]; sensitive: string[]; unknown: string[] };
-    };
-
-/** First call: shows what the file would do. With "confirm": does it. Imported people are never marked as agreeing to marketing. */
-export async function importClientsAction(_prev: ImportClientsState, form: FormData): Promise<ImportClientsState> {
-  const area = str(form, "area");
-  if (!isArea(area)) redirect("/login");
-  const ctx = await requirePrep(area, "clients.intake");
-  try {
-    const file = form.get("file");
-    if (!(file instanceof File) || file.size === 0) return { error: "Choose a CSV file to import." };
-    const csv = await file.text();
-    const r = await importClients(ctx.deps, ctx.scope, { csv, tag: str(form, "tag"), confirm: form.get("confirm") === "1" });
-    if (r.done) revalidatePath(ctx.base, "layout");
-    return {
-      done: r.done, added: r.added, failed: r.failed, total: r.plan.total, willAdd: r.plan.add.length,
-      sample: r.plan.add.slice(0, 8).map((p) => ({ name: p.full_name, contact: [p.email, p.phone].filter(Boolean).join(" · "), tags: p.tags, notes: p.notes })),
-      skipped: r.plan.skipped.slice(0, 50), columns: r.plan.columns,
-    };
-  } catch (e) {
-    unstable_rethrow(e);
-    return { error: failure(e) };
-  }
-}
