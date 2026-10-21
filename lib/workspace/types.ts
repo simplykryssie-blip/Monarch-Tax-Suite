@@ -54,7 +54,7 @@ export type PaymentRowInsert = Pick<PaymentRow, "import_id" | "row_no" | "posted
 export interface WorkspaceRepo {
   listClients(f?: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string }): Promise<Client[]>;
   getClient(id: string): Promise<Client | null>;
-  insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null }): Promise<Client>;
+  insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null; tags?: string[] }): Promise<Client>;
   updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null }): Promise<Client>;
 
   listReturns(f?: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string }): Promise<ClientReturn[]>;

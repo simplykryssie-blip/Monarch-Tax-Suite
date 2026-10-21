@@ -1,3 +1,4 @@
+import { ImportClients } from "@/components/prep/import-clients";
 import { PortalPanel } from "@/components/portal/panel";
 import Link from "next/link";
 import { Badge, EmptyRow, Flash } from "@/components/admin/ui";
@@ -43,6 +44,7 @@ export async function ClientsView({ ctx, sp }: { ctx: PrepContext; sp: Search })
           </tbody>
         </table></div>
       </section>
+      <ImportClients area={ctx.area} />
       <section className="monarch-panel" id="add" style={{ padding: 20 }}>
         <h2 style={{ marginTop: 0 }}>Add a client</h2>
         <form action={addClientAction} className="monarch-form">
