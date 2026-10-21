@@ -3,9 +3,10 @@ import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { accessOf, daysLate, deleteAfter, lateReminderDue, LATE_DAYS, mayContactClients, nextStep, precheckDue, RETENTION_DAYS, type Subscription } from "../lib/billing/access.ts";
 import { billingProblems, PAUSE_PLAN, PLANS } from "../lib/billing/plans.ts";
+import { billingView } from "../lib/billing/view.ts";
 import { cleanSignup, readSignup, signSignup } from "../lib/billing/signup.ts";
 import {
-  handleBillingEvent, pauseWorkspace, requestSignup, resumeWorkspace, runBillingSweep, startCheckout, startReactivation,
+  changePlan, handleBillingEvent, pauseWorkspace, previewPlanChange, requestSignup, resumeWorkspace, runBillingSweep, startCheckout, startReactivation,
   type BillingDeps, type BillingRepo, type BillingStripe, type Mail, type SubscriptionFacts,
 } from "../lib/billing/service.ts";
 import type { PracticeMember, PracticeRepo } from "../lib/practice/service.ts";
@@ -22,6 +23,7 @@ function setup(over: { now?: Date; captcha?: boolean; exists?: boolean } = {}) {
   const mails: { to: string; mail: Mail }[] = [];
   const hits = new Map<string, number>();
   const prices: { sub: string; key: string }[] = [];
+  const changes = { previews: [] as string[], applied: [] as { sub: string; key: string }[], quote: { dueCents: 17600, creditCents: 2300 }, cardFails: false };
   const members = new Map<string, PracticeMember[]>();
   const tenants = new Map<string, string>();
   const stripeState = { retry: "none" as "none" | "paid" | "failed", card: { ok: true } as { ok: true } | { ok: false; reason: string }, canceled: [] as string[], facts: { status: "active", currentPeriodEnd: iso(T0.getTime() + 30 * DAY), cancelAtPeriodEnd: false, lookupKey: "verexa_ptin_monthly", customerId: "cus_1" } as SubscriptionFacts };
@@ -40,6 +42,12 @@ function setup(over: { now?: Date; captcha?: boolean; exists?: boolean } = {}) {
     reactivateCheckout: async (i) => ({ url: `https://checkout.test/back/${i.tenantId}` }),
     portalUrl: async () => "https://portal.test",
     setPrice: async (sub, key) => { prices.push({ sub, key }); },
+    previewPlanChange: async (_sub, key) => { changes.previews.push(key); return changes.quote; },
+    changePlan: async (sub, key) => {
+      if (changes.cardFails) throw new Error("Your card was declined.");
+      changes.applied.push({ sub, key });
+      return { currentPeriodEnd: iso(T0.getTime() + 30 * DAY) };
+    },
     subscriptionFacts: async () => stripeState.facts,
     cardCheck: async () => stripeState.card,
     retryOpenInvoice: async () => stripeState.retry,
@@ -69,7 +77,7 @@ function setup(over: { now?: Date; captcha?: boolean; exists?: boolean } = {}) {
     captcha: async () => over.captcha !== false,
     termsVersion: "draft-test", now: () => now,
   };
-  return { deps, subs, mails, prices, members, stripeState, tick: (ms: number) => { now = new Date(now.getTime() + ms); }, set: (d: Date) => { now = d; } };
+  return { deps, subs, mails, prices, members, stripeState, changes, tick: (ms: number) => { now = new Date(now.getTime() + ms); }, set: (d: Date) => { now = d; } };
 }
 
 const completed = (id: string, subId = "sub_1", plan = "ptin") => ({
@@ -276,4 +284,57 @@ test("a reactivation payment can't revive another workspace or an account that i
   const { tenantId } = await handleBillingEvent(s.deps, completed("evt_1"));
   await handleBillingEvent(s.deps, { id: "evt_x", type: "checkout.session.completed", data: { object: { mode: "subscription", payment_status: "paid", subscription: "sub_9", customer: "cus_9", metadata: { kind: "reactivate", tenant_id: tenantId } } } });
   assert.equal(s.subs.get(tenantId!)!.stripe_subscription_id, "sub_1", "an active account isn't touched");
+});
+
+test("changing plan: the new plan starts today, the unused part of the old one is credited, and only open plans can be chosen", async () => {
+  const s = setup();
+  const { tenantId } = await handleBillingEvent(s.deps, completed("evt_1"));
+  const before = s.subs.get(tenantId!)!;
+  assert.equal(before.plan, "ptin");
+  // Today only the PTIN plan is open for self-serve, so there is nothing to switch to.
+  await assert.rejects(() => previewPlanChange(s.deps, tenantId!, "ero"), /isn't available to switch to yet/);
+  assert.equal(billingView(before, T0)!.can.changePlan, false);
+  PLANS.ero.selfServe = true;
+  try {
+    assert.equal(billingView(before, T0)!.can.changePlan, true);
+    const q = await previewPlanChange(s.deps, tenantId!, "ero");
+    assert.deepEqual([q.from, q.to, q.dueCents, q.creditCents], ["ptin", "ero", 17600, 2300], "the owner is shown what they pay today before confirming");
+    assert.deepEqual(s.changes.applied, [], "looking changes nothing");
+    await assert.rejects(() => changePlan(s.deps, tenantId!, "ptin"), /Choose a different plan/);
+    await assert.rejects(() => changePlan(s.deps, tenantId!, "nonsense"), /Choose a different plan/);
+    assert.equal(await changePlan(s.deps, tenantId!, "ero"), "ero");
+    assert.deepEqual(s.changes.applied, [{ sub: "sub_1", key: "verexa_ero_monthly" }]);
+    const after = s.subs.get(tenantId!)!;
+    assert.equal(after.plan, "ero");
+    assert.equal(after.current_period_end, iso(T0.getTime() + 30 * DAY), "the new monthly cycle starts today");
+    assert.match(s.mails.at(-1)!.mail.subject, /plan is now ERO/);
+    // A paused, late or cancelled account can't change plan.
+    for (const status of ["paused", "read_only", "canceled"] as const) {
+      s.subs.set(tenantId!, { ...after, status, ...(status === "canceled" ? { canceled_at: iso(T0.getTime()), delete_after: iso(T0.getTime() + 90 * DAY) } : {}) });
+      await assert.rejects(() => changePlan(s.deps, tenantId!, "bureau"), /resume|good standing/i, status);
+    }
+  } finally {
+    PLANS.ero.selfServe = false;
+  }
+});
+
+test("changing plan: if the card can't pay, the plan stays as it was", async () => {
+  const s = setup();
+  const { tenantId } = await handleBillingEvent(s.deps, completed("evt_1"));
+  PLANS.bureau.selfServe = true;
+  try {
+    s.changes.cardFails = true;
+    await assert.rejects(() => changePlan(s.deps, tenantId!, "bureau"), /declined/);
+    assert.equal(s.subs.get(tenantId!)!.plan, "ptin");
+  } finally {
+    PLANS.bureau.selfServe = false;
+  }
+});
+
+test("plan switching: production follows the self-serve flags; a Preview offers every plan for testing", async () => {
+  const { switchablePlans } = await import("../lib/billing/plans.ts");
+  assert.deepEqual(switchablePlans("ptin", { VERCEL_ENV: "production" }).map((p) => p.key), []);
+  assert.deepEqual(switchablePlans("ptin", {}).map((p) => p.key), []);
+  assert.deepEqual(switchablePlans("ptin", { VERCEL_ENV: "preview" }).map((p) => p.key), ["ero", "bureau"]);
+  assert.deepEqual(switchablePlans("ero", { VERCEL_ENV: "preview" }).map((p) => p.key), ["ptin", "bureau"]);
 });

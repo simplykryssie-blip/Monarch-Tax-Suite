@@ -15,6 +15,14 @@ export const PLANS: Record<PlanKey, Plan> = {
 /** The pause plan: keeps the data from being deleted while an account is not in use. */
 export const PAUSE_PLAN = { key: "pause" as const, label: "Paused", priceCents: 2700, lookupKey: "verexa_pause_monthly" };
 
+/**
+ * The plans a workspace may move to on its own: those open for self-serve, other than the one it is on. On a Preview
+ * deployment (Stripe test mode only) every plan is offered, so the credit and charge can be tried with test cards before
+ * ERO and Service Bureau open; production follows the self-serve flags.
+ */
+export const switchablePlans = (current: PlanKey, env: BillingEnv = process.env): Plan[] =>
+  PLAN_KEYS.filter((k) => k !== current && (PLANS[k].selfServe || env.VERCEL_ENV === "preview")).map((k) => PLANS[k]);
+
 export const isPlanKey = (v: unknown): v is PlanKey => typeof v === "string" && (PLAN_KEYS as string[]).includes(v);
 export const dollars = (cents: number) => `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
 

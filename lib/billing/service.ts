@@ -3,7 +3,7 @@ import { ValidationError } from "../commerce/validation.ts";
 import { hashToken, INVITE_DAYS, newToken } from "../office/service.ts";
 import { slugFor, type PracticeRepo } from "../practice/service.ts";
 import { deleteAfter, lateReminderDue, LATE_DAYS, nextStep, precheckDue, RETENTION_DAYS, type SubStatus, type Subscription } from "./access.ts";
-import { PAUSE_PLAN, PLANS, dollars, isPlanKey, type PlanKey } from "./plans.ts";
+import { PAUSE_PLAN, PLANS, dollars, isPlanKey, switchablePlans, type PlanKey } from "./plans.ts";
 import { cleanSignup, existingAccountEmail, signSignup, readSignup, verificationEmail, type SignupClaims } from "./signup.ts";
 
 // Subscriptions for workspaces: signing up, what a Stripe event changes, pausing, and the daily sweep that moves late
@@ -29,6 +29,10 @@ export interface BillingStripe {
   portalUrl(customerId: string, returnUrl: string): Promise<string>;
   /** Moves the subscription to another price (by lookup key) from the next renewal, with no charge now. */
   setPrice(subscriptionId: string, lookupKey: string): Promise<void>;
+  /** What a plan change would cost today: the new plan's full month, less credit for the unused part of the current one. */
+  previewPlanChange(subscriptionId: string, lookupKey: string): Promise<{ dueCents: number; creditCents: number }>;
+  /** Changes plan now. The new plan starts today and is charged in full, less credit for the unused time on the old one. Fails if the card can't pay (nothing changes then). */
+  changePlan(subscriptionId: string, lookupKey: string): Promise<{ currentPeriodEnd: string | null }>;
   subscriptionFacts(subscriptionId: string): Promise<SubscriptionFacts>;
   /** Whether the customer's card is good for the renewal date. */
   cardCheck(customerId: string, renewalIso: string): Promise<{ ok: true } | { ok: false; reason: string }>;
@@ -274,6 +278,40 @@ export async function resumeWorkspace(deps: BillingDeps, tenantId: string): Prom
   if (sub.status !== "paused" || !back || !subscriptionId) return fail("Your plan isn't paused.");
   await deps.stripe.setPrice(subscriptionId, PLANS[back].lookupKey);
   await deps.repo.update(tenantId, { status: "active", paused_from_plan: null });
+}
+
+// ------------------------------------------------------------ changing plan
+
+export type PlanChangePreview = { from: PlanKey; to: PlanKey; dueCents: number; creditCents: number };
+
+function planChangeTarget(sub: Subscription, to: unknown): PlanKey {
+  if (sub.status !== "active") fail(sub.status === "paused" ? "Resume your plan before changing it." : "Only an account in good standing can change plan.");
+  if (!sub.stripe_subscription_id) fail("This workspace has no subscription to change.");
+  if (!isPlanKey(to) || sub.plan === to) fail("Choose a different plan.");
+  if (!switchablePlans(sub.plan).some((p) => p.key === to)) fail("That plan isn't available to switch to yet.");
+  return to as PlanKey;
+}
+
+/** What changing plan would cost today, shown before the customer confirms. */
+export async function previewPlanChange(deps: BillingDeps, tenantId: string, to: unknown): Promise<PlanChangePreview> {
+  const sub = (await deps.repo.byTenant(tenantId)) ?? fail("This workspace has no subscription.");
+  const plan = planChangeTarget(sub, to);
+  const q = await deps.stripe.previewPlanChange(sub.stripe_subscription_id!, PLANS[plan].lookupKey);
+  return { from: sub.plan, to: plan, dueCents: q.dueCents, creditCents: q.creditCents };
+}
+
+/**
+ * Changes plan now (upgrade or downgrade alike). The new plan starts today and a new monthly cycle begins today. It is
+ * charged in full, less the credit for the unused days of the old plan, so the customer pays the difference. A credit
+ * that is larger than the new price (a downgrade) is kept on the account for the next invoice; it is never paid out.
+ */
+export async function changePlan(deps: BillingDeps, tenantId: string, to: unknown): Promise<PlanKey> {
+  const sub = (await deps.repo.byTenant(tenantId)) ?? fail("This workspace has no subscription.");
+  const plan = planChangeTarget(sub, to);
+  const r = await deps.stripe.changePlan(sub.stripe_subscription_id!, PLANS[plan].lookupKey);
+  await deps.repo.update(tenantId, { plan, current_period_end: r.currentPeriodEnd ?? sub.current_period_end, precheck_mark: null });
+  await tell(deps, tenantId, (name) => ({ subject: `Your Verexa HQ plan is now ${PLANS[plan].label}`, text: `Hi ${name},\n\nYour plan is now ${PLANS[plan].label} (${dollars(PLANS[plan].priceCents)} per month). It started today, and your monthly billing date is now ${r.currentPeriodEnd ? "each month on the same day as today" : "today's date"}. The unused part of your old plan was credited toward the new one. You can see the invoice from Billing.\n` }));
+  return plan;
 }
 
 /** A cancelled workspace's way back, within the retention period. */

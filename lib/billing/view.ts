@@ -1,6 +1,6 @@
 import type { AccessLevel, Subscription } from "./access.ts";
 import { accessOf, daysLate, LATE_DAYS, retentionDaysLeft } from "./access.ts";
-import { dollars, PAUSE_PLAN, PLANS } from "./plans.ts";
+import { dollars, PAUSE_PLAN, PLANS, switchablePlans } from "./plans.ts";
 
 // What the Billing page and the banner say about an account, in plain words.
 
@@ -8,7 +8,7 @@ const when = (iso: string) => new Intl.DateTimeFormat("en-US", { dateStyle: "lon
 
 export type BillingView = {
   level: AccessLevel; planLabel: string; price: string; statusLabel: string; renews: string | null; banner: { tone: "warn" | "info"; text: string } | null;
-  can: { portal: boolean; pause: boolean; resume: boolean; reactivate: boolean };
+  can: { portal: boolean; pause: boolean; resume: boolean; reactivate: boolean; changePlan: boolean };
 };
 
 function lateText(late: number | null): string {
@@ -33,6 +33,6 @@ export function billingView(sub: Subscription | null, now: Date = new Date()): B
     : null;
   return {
     level, planLabel: plan.label, price, statusLabel, renews: sub.current_period_end && sub.status !== "canceled" && sub.status !== "internal" ? when(sub.current_period_end) : null, banner,
-    can: { portal: Boolean(sub.stripe_customer_id) && sub.status !== "internal", pause: sub.status === "active", resume: paused, reactivate: sub.status === "canceled" },
+    can: { portal: Boolean(sub.stripe_customer_id) && sub.status !== "internal", pause: sub.status === "active", resume: paused, reactivate: sub.status === "canceled", changePlan: sub.status === "active" && Boolean(sub.stripe_subscription_id) && switchablePlans(sub.plan).length > 0 },
   };
 }

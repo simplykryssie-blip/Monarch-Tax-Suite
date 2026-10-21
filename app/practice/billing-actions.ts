@@ -6,7 +6,8 @@ import { appOrigin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { billingDeps } from "@/lib/billing/server";
-import { pauseWorkspace, resumeWorkspace, startReactivation } from "@/lib/billing/service.ts";
+import { changePlan, pauseWorkspace, resumeWorkspace, startReactivation } from "@/lib/billing/service.ts";
+import { PLANS } from "@/lib/billing/plans.ts";
 import { requirePractice } from "@/lib/practice/server";
 
 // Billing actions for a workspace's owner. Each one acts only on the signed-in owner's own workspace.
@@ -50,4 +51,17 @@ export async function resumeAction() {
 }
 export async function reactivateAction() {
   await run(async (ctx, deps) => (await startReactivation(deps, ctx.tenantId, ctx.email)).url);
+}
+
+/** Looks at the cost first: sends the owner back to the Billing page showing what they would pay. */
+export async function previewPlanChangeAction(form: FormData) {
+  await requirePractice();
+  const to = typeof form.get("plan") === "string" ? (form.get("plan") as string) : "";
+  redirect(`${BASE}?change=${encodeURIComponent(to)}`);
+}
+export async function changePlanAction(form: FormData) {
+  await run(async (ctx, deps) => {
+    const plan = await changePlan(deps, ctx.tenantId, form.get("plan"));
+    return go("notice", `Your plan is now ${PLANS[plan].label}.`);
+  });
 }

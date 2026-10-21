@@ -41,6 +41,32 @@ export function billingStripe(env: NodeJS.ProcessEnv = process.env): { stripe: S
       // From the next renewal, with no charge or credit today.
       await stripe.subscriptions.update(subscriptionId, { items: [{ id: item.id, price: await priceId(lookupKey) }], proration_behavior: "none" });
     },
+    async previewPlanChange(subscriptionId, lookupKey) {
+      const sub = await stripe.subscriptions.retrieve(subscriptionId);
+      const item = sub.items.data[0];
+      if (!item) throw new Error("The subscription has no plan item.");
+      const inv = await stripe.invoices.createPreview({
+        subscription: subscriptionId,
+        subscription_details: { items: [{ id: item.id, price: await priceId(lookupKey) }], proration_behavior: "always_invoice", billing_cycle_anchor: "now" },
+      });
+      // The credit for unused time is the negative proration lines; the rest is the new plan's charge.
+      const credit = inv.lines.data.filter((l) => l.amount < 0).reduce((n, l) => n - l.amount, 0);
+      return { dueCents: Math.max(0, inv.amount_due), creditCents: credit };
+    },
+    async changePlan(subscriptionId, lookupKey) {
+      const sub = await stripe.subscriptions.retrieve(subscriptionId);
+      const item = sub.items.data[0];
+      if (!item) throw new Error("The subscription has no plan item.");
+      // New plan today, charged in full less credit for the old plan's unused time; if the card can't pay, nothing changes.
+      const updated = await stripe.subscriptions.update(subscriptionId, {
+        items: [{ id: item.id, price: await priceId(lookupKey) }],
+        proration_behavior: "always_invoice",
+        billing_cycle_anchor: "now",
+        payment_behavior: "error_if_incomplete",
+      });
+      const end = updated.items.data[0]?.current_period_end;
+      return { currentPeriodEnd: end ? new Date(end * 1000).toISOString() : null };
+    },
     async subscriptionFacts(subscriptionId) {
       const sub = await stripe.subscriptions.retrieve(subscriptionId);
       const item = sub.items.data[0];
