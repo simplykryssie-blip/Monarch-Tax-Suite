@@ -4,9 +4,9 @@ import { cleanCustomHost, cleanLabel, dnsInstructions, isApex, labelFromName, pl
 import { classifyHost, cleanRequestHost } from "../lib/sites/host.ts";
 
 test("the platform domain is a setting with a safe default", () => {
-  assert.equal(platformDomain({}), "monarchtaxsuite.com");
+  assert.equal(platformDomain({}), "sites.verexahq.com");
   assert.equal(platformDomain({ PLATFORM_SITE_DOMAIN: " VerexaHQ.com " }), "verexahq.com");
-  assert.equal(platformDomain({ PLATFORM_SITE_DOMAIN: "not a domain" }), "monarchtaxsuite.com");
+  assert.equal(platformDomain({ PLATFORM_SITE_DOMAIN: "not a domain" }), "sites.verexahq.com");
   assert.equal(subdomainHost("smith-tax", "verexahq.com"), "smith-tax.verexahq.com");
 });
 
@@ -23,7 +23,7 @@ test("labels: made from names, checked, and the platform's own are reserved", ()
 test("custom domains: cleaned, and the platform's own, hosting addresses and IPs refused", () => {
   assert.equal(cleanCustomHost("https://WWW.Smith-Tax.com/about?x=1"), "www.smith-tax.com");
   assert.equal(cleanCustomHost("smith-tax.com:443"), "smith-tax.com");
-  for (const bad of ["", "nodots", "monarchtaxsuite.com", "x.monarchtaxsuite.com", "evil.vercel.app", "10.0.0.1", "a b.com", "-x.com", "x.c", "x.123", "foo.localhost", "foo.internal"]) assert.throws(() => cleanCustomHost(bad), /./, bad);
+  for (const bad of ["", "nodots", "sites.verexahq.com", "x.sites.verexahq.com", "verexahq.com", "app.verexahq.com", "evil.vercel.app", "10.0.0.1", "a b.com", "-x.com", "x.c", "x.123", "foo.localhost", "foo.internal"]) assert.throws(() => cleanCustomHost(bad), /./, bad);
   assert.equal(cleanCustomHost("shop.monarchtaxsuite.com.evil.com"), "shop.monarchtaxsuite.com.evil.com");
   assert.throws(() => cleanCustomHost("x.verexahq.com", "verexahq.com"), /made for you/);
 });
@@ -41,7 +41,7 @@ test("DNS instructions: A record for an apex, CNAME for a subdomain, TXT only wh
 });
 
 test("host routing: the app never serves a site; office subdomains and other hosts are looked up", () => {
-  const env = { NEXT_PUBLIC_APP_URL: "https://app.monarchtaxsuite.com" };
+  const env = { NEXT_PUBLIC_APP_URL: "https://app.monarchtaxsuite.com", PLATFORM_SITE_DOMAIN: "monarchtaxsuite.com" };
   assert.deepEqual(classifyHost("app.monarchtaxsuite.com", env), { kind: "app" });
   assert.deepEqual(classifyHost("monarchtaxsuite.com", env), { kind: "app" });
   assert.deepEqual(classifyHost("www.monarchtaxsuite.com", env), { kind: "app" });
@@ -58,4 +58,11 @@ test("host routing: the app never serves a site; office subdomains and other hos
   assert.deepEqual(classifyHost("smith-tax.verexahq.com", { PLATFORM_SITE_DOMAIN: "verexahq.com" }), { kind: "platform-subdomain", host: "smith-tax.verexahq.com", label: "smith-tax" });
   assert.equal(cleanRequestHost("evil host"), null);
   assert.equal(cleanRequestHost("a.com, b.com"), "a.com");
+});
+
+test("the platform site domain defaults to Verexa HQ's and can be overridden", () => {
+  assert.equal(platformDomain({}), "sites.verexahq.com");
+  assert.equal(platformDomain({ PLATFORM_SITE_DOMAIN: "Example.com" }), "example.com");
+  assert.deepEqual(classifyHost("smith-tax.sites.verexahq.com", { NEXT_PUBLIC_APP_URL: "https://app.verexahq.com" }), { kind: "platform-subdomain", host: "smith-tax.sites.verexahq.com", label: "smith-tax" });
+  assert.deepEqual(classifyHost("app.verexahq.com", { NEXT_PUBLIC_APP_URL: "https://app.verexahq.com" }), { kind: "app" });
 });

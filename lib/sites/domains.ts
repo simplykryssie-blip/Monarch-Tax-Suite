@@ -1,10 +1,12 @@
 import { ValidationError } from "../commerce/validation.ts";
+import { PLATFORM_DOMAIN } from "../platform-brand.ts";
 
-// Where a site answers. Every office gets <label>.<platform domain> automatically (the wildcard record is already in
-// DNS); an office can also connect its own domain. The platform domain is a setting, so when it moves to Verexa HQ
-// nothing here changes.
+// Where a site answers. Every office gets <label>.<platform domain> automatically (needs a wildcard DNS record for that
+// domain); an office can also connect its own domain. The platform domain defaults to Verexa HQ's and can be set with
+// PLATFORM_SITE_DOMAIN. It is a subdomain (sites.verexahq.com) so the wildcard can be delegated to Vercel on its own
+// without moving the rest of verexahq.com's DNS.
 
-export const DEFAULT_PLATFORM_DOMAIN = "monarchtaxsuite.com";
+export const DEFAULT_PLATFORM_DOMAIN = "sites.verexahq.com";
 
 /** The domain office subdomains live under. */
 export function platformDomain(env: Record<string, string | undefined> = process.env): string {
@@ -50,6 +52,7 @@ export function cleanCustomHost(raw: unknown, domain: string = platformDomain())
   if (!HOST.test(v) || v.length > 253) throw new ValidationError("That isn't a valid domain. Enter it like www.yourfirm.com (no https://, no path).");
   if (/^\d+(\.\d+)+$/.test(v)) throw new ValidationError("Enter a domain name, not an IP address.");
   if (v === domain || v.endsWith(`.${domain}`)) throw new ValidationError(`${domain} addresses are made for you automatically; connect a domain you own.`);
+  if (v === PLATFORM_DOMAIN || v.endsWith(`.${PLATFORM_DOMAIN}`)) throw new ValidationError(`${PLATFORM_DOMAIN} addresses belong to the platform; connect a domain you own.`);
   if (/(^|\.)(vercel\.app|vercel\.sh|vercel\.dev|now\.sh|localhost|local|internal|test|example)$/.test(v)) throw new ValidationError("That address can't be used as a website domain.");
   const tld = v.split(".").pop() ?? "";
   if (tld.length < 2 || /^\d+$/.test(tld)) throw new ValidationError("That isn't a valid domain.");
