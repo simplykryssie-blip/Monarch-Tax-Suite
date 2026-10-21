@@ -35,7 +35,7 @@ export async function runRenewalSweep(opts: { today?: string; sender?: EmailSend
   const db = tenantDb();
   const today = opts.today ?? todayIso();
   const sender = opts.sender ?? automationDeps().email;
-  const origin = opts.origin ?? process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://app.monarchtaxsuite.com";
+  const origin = opts.origin ?? process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://app.verexahq.com";
   const summary: SweepSummary = { tasksCreated: 0, tasksUpdated: 0, tasksCancelled: 0, reviewsOpened: 0, assignmentsExpired: 0, reminders: { sent: 0, failed: 0, skipped: 0, alreadySent: 0 }, emailReady: false };
 
   // Lapsed assignments (end date passed) expire; revoked/suspended ones are left alone.

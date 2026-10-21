@@ -10,11 +10,11 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 //  - Started inside HighLevel (no matching state): keep the approval in a short-lived encrypted cookie and ask for the license key.
 export async function GET(request: NextRequest) {
   // GoHighLevel may only allow the legacy Vercel callback URL while the Marketplace
-  // app is in review. The setup wizard, however, starts on app.monarchtaxsuite.com
+  // app is in review. The setup wizard, however, starts on the configured app host
   // and stores the one-time OAuth state in that host's HttpOnly cookie. Relay the
   // callback to the configured public host before reading cookies; keep the
   // original registered redirect URI for the later token exchange.
-  const canonicalOrigin = (process.env.NEXT_PUBLIC_APP_URL || "https://monarch-tax-suite.vercel.app").replace(/\/$/, "");
+  const canonicalOrigin = (process.env.NEXT_PUBLIC_APP_URL || "https://app.verexahq.com").replace(/\/$/, "");
   if (request.nextUrl.origin !== canonicalOrigin) {
     const canonicalCallback = new URL(request.nextUrl.pathname + request.nextUrl.search, canonicalOrigin);
     const response = NextResponse.redirect(canonicalCallback, 307);
