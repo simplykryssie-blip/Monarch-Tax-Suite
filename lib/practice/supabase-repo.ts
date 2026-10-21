@@ -29,6 +29,10 @@ export class SupabasePracticePlatform implements PracticePlatform {
   async createTenant(input: { slug: string; name: string; tier: "ptin" }) {
     return unwrap(await this.db.from("tenants").insert({ id: crypto.randomUUID(), ...input }).select("id").single()) as { id: string };
   }
+  /** A workspace found by its address label (used so a repeated signup event finds the workspace it already made). */
+  async tenantBySlug(slug: string) {
+    return unwrap(await this.db.from("tenants").select("id").eq("slug", slug).maybeSingle()) as { id: string } | null;
+  }
   /** Every independent PTIN workspace and its owner's invite/account, for the platform administrator's list. */
   async listWorkspaces() {
     const tenants = unwrap(await this.db.from("tenants").select("id, name, created_at").eq("tier", "ptin").order("created_at", { ascending: false })) as { id: string; name: string; created_at: string }[];

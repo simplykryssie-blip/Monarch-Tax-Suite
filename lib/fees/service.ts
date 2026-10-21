@@ -82,7 +82,7 @@ async function scheduleOffice(deps: FeesDeps, scheduleId: string): Promise<strin
   return (await deps.repo.listOfficeSchedules()).find((s) => s.id === scheduleId)?.organization_id ?? null;
 }
 
-/** Loads Monarch's template ($79 + $21 + $24 + $99) into an empty bureau schedule. Every amount stays editable. */
+/** Loads the starter template ($79 + $21 + $24 + $99) into an empty bureau schedule. Every amount stays editable. */
 export async function loadTemplate(deps: FeesDeps, actorId: string): Promise<void> {
   const schedule = await defaultSchedule(deps, actorId);
   if ((await deps.repo.listLines([schedule.id])).length) fail("The schedule already has fees. Edit them, or remove them first.");

@@ -1,4 +1,5 @@
 import "server-only";
+import { renderEmailHtml, type EmailAction } from "./email-html.ts";
 import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -97,7 +98,7 @@ export async function requireOffice(requestedOffice?: string): Promise<OfficeCon
 }
 
 /** Sends the invite email from the tenant's sending address. Returns null when sent, or why not. */
-export async function sendOfficeEmail(tenantId: string, to: string, mail: { subject: string; text: string }): Promise<string | null> {
+export async function sendOfficeEmail(tenantId: string, to: string, mail: { subject: string; text: string; action?: EmailAction }): Promise<string | null> {
   const auto = automationDeps(tenantId);
   if (auto.config.env !== "production" && !auto.config.testRecipients.map((r) => r.toLowerCase()).includes(to.toLowerCase())) return heldBack(auto, to);
   let sender;
@@ -106,8 +107,7 @@ export async function sendOfficeEmail(tenantId: string, to: string, mail: { subj
   } catch (e) {
     return sanitizeError(e, 200);
   }
-  const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-  const html = mail.text.split("\n").map((l) => (/^https?:\/\//.test(l) ? `<p><a href="${esc(l)}">${esc(l)}</a></p>` : l ? `<p>${esc(l)}</p>` : "")).join("");
+  const html = renderEmailHtml(mail.text, mail.action);
   const result = await auto.email.send({ ...sender, to, subject: mail.subject, text: mail.text, html, idempotencyKey: `office-invite:${createHash("sha256").update(to + mail.text).digest("hex").slice(0, 32)}` });
   return result.ok ? null : sanitizeError(result.message, 200);
 }

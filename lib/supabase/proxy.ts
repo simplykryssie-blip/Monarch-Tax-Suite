@@ -2,18 +2,21 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./database.types";
 import { LEGAL_PAGES_APPROVED, LEGAL_PATHS } from "../legal.ts";
+import { PLATFORM_LEGAL_APPROVED, PLATFORM_LEGAL_PATHS } from "../platform-legal.ts";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, supabaseConfigProblems } from "./config";
 
 // The Stripe webhook authenticates by signature, not session. /shop lists
 // published products only. /integrations authorizes each action with the buyer's license key; the
 // lead endpoint authorizes with a signed embed token.
-const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/stripe/connect-webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
+const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webhook", "/api/stripe/connect-webhook", "/api/stripe/billing-webhook", "/api/license/", "/install/", "/update", "/shop", "/integrations", "/api/integrations/crm/", "/api/leads",
   // Customer setup links (the token is the credential) and the retry runner (authorized by CRON_SECRET).
   "/setup", "/api/automation/run", "/api/automation/tick",
   // Buyer downloads: every file request is authorized by the buyer's license key and checked again on each click.
   "/downloads",
   // Secure document links sent by a firm: the link token is the credential, checked again on every request.
   "/d/", "/sign/",
+  // Self-serve signup: public, with an email check, a bot check and rate limits; the payment page is Stripe's.
+  "/signup",
   // Campaign emails and texts: the per-recipient link token is the credential (open pixel, click redirect, unsubscribe), and the
   // provider callbacks (Resend, Twilio) authenticate themselves.
   "/t/", "/u/", "/api/campaigns/", "/api/sms/",
@@ -31,6 +34,8 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   "/forgot-password", "/reset-password", "/auth/",
   // The draft legal pages are public only after the owner and counsel approve them (lib/legal.ts).
   ...(LEGAL_PAGES_APPROVED ? LEGAL_PATHS : []),
+  // Verexa HQ's own policies: public only once the owner approves final wording (lib/platform-legal.ts).
+  ...(PLATFORM_LEGAL_APPROVED ? PLATFORM_LEGAL_PATHS : []),
 ];
 
 /**
@@ -46,7 +51,7 @@ function configurationErrorResponse(problems: string[]) {
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Configuration required</title></head>` +
       `<body style="font-family:Arial,sans-serif;max-width:640px;margin:60px auto;padding:0 16px;color:#211f19">` +
       `<h1 style="font-size:22px">This deployment is not configured</h1>` +
-      `<p>Monarch Tax Suite cannot start because its database settings are missing or unsafe for this environment.</p><ul>${items}</ul>` +
+      `<p>Verexa HQ cannot start because its database settings are missing or unsafe for this environment.</p><ul>${items}</ul>` +
       `<p style="color:#69665d;font-size:13px">Set the variables for this environment in the Vercel project settings and redeploy.</p></body></html>`,
     { status: 503, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } },
   );
@@ -55,6 +60,10 @@ function configurationErrorResponse(problems: string[]) {
 export async function updateSession(request: NextRequest) {
   const problems = supabaseConfigProblems(process.env);
   if (problems.length) return configurationErrorResponse(problems);
+  // Server code (the workspace's billing gate) needs to know which page and method a request is for. Set here, always
+  // overwriting anything the browser sent.
+  request.headers.set("x-pathname", request.nextUrl.pathname);
+  request.headers.set("x-method", request.method);
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {

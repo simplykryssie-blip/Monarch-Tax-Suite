@@ -4,7 +4,7 @@ import { feesDeps } from "@/lib/fees/server";
 import { FeesNav } from "../parts";
 
 const ACTION: Record<string, string> = {
-  template_loaded: "Loaded Monarch's template", line_added: "Added a fee line", line_changed: "Changed a fee line", line_removed: "Removed a fee line",
+  template_loaded: "Loaded the starter template", line_added: "Added a fee line", line_changed: "Changed a fee line", line_removed: "Removed a fee line",
   override_set: "Set an office's amount", override_removed: "Back to the bureau amount", return_recorded: "Recorded a return", return_changed: "Changed a return",
   fees_reapplied: "Re-applied fees", return_archived: "Archived a return", return_restored: "Restored a return", marked_paid: "Marked paid by ERO",
   returns_imported: "Imported returns", bank_imported: "Imported a bank file", bank_row_linked: "Linked a bank row", statement_csv: "Exported a CSV statement", statement_pdf: "Exported a PDF statement",

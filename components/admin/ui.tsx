@@ -56,15 +56,15 @@ export function SetupRequired({ message, module }: { message: string; module?: "
       <div className="monarch-notice">
         <b>DATABASE SETUP REQUIRED</b> My Service Bureau needs its database tables, which have not been installed on this database yet. Run
         <code> supabase/migrations/20261011100000_efin_management.sql </code>  and then
-        <code> supabase/migrations/20261012090000_efin_management_update.sql </code> on the Monarch Supabase project, then reload. Nothing else in the app is affected. <small>({message})</small>
+        <code> supabase/migrations/20261012090000_efin_management_update.sql </code> on the Supabase project, then reload. Nothing else in the app is affected. <small>({message})</small>
       </div>
     );
   }
   return (
     <div className="monarch-notice">
-      <b>DATABASE SETUP REQUIRED</b> The Monarch commerce tables are not available yet. Apply
+      <b>DATABASE SETUP REQUIRED</b> The commerce tables are not available yet. Apply
       <code> supabase/migrations/20261009044133_monarch_commerce_licensing.sql </code>
-      to the Monarch Supabase project, then reload. <small>({message})</small>
+      to the Supabase project, then reload. <small>({message})</small>
     </div>
   );
 }

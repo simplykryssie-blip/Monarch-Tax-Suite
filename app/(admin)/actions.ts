@@ -116,7 +116,7 @@ export async function reconcilePurchaseAction(form: FormData) {
       platform_other: cleanNote(str(form, "platform_other"), 80),
       website_url: str(form, "website_url") ? normalizeWebsiteUrl(str(form, "website_url")) : null,
       target_location: str(form, "target_location") ? normalizeDomain(str(form, "target_location")) : null,
-      notes: cleanNote(legacyAccount ? `Paid in a previous Stripe account (not Monarch's current account); verified manually by an administrator. ${str(form, "notes")}`.trim() : str(form, "notes")),
+      notes: cleanNote(legacyAccount ? `Paid in a previous Stripe account (not the current account); verified manually by an administrator. ${str(form, "notes")}`.trim() : str(form, "notes")),
       admin_id: admin.userId,
       // A payment taken in a previous Stripe account cannot be looked up with Monarch's current key.
       stripe_payment: legacyAccount ? null : /^pi_/.test(paymentIntentId) ? await lookupStripePayment(paymentIntentId) : null,

@@ -106,7 +106,7 @@ export default async function EfinProfile({ params, searchParams }: { params: Pr
         <>
           <section className="monarch-panel" id="efin-details">
             <div className="monarch-panel-head">
-              <div><h2>EFIN</h2><p>What is recorded for this EFIN. Confirmation means someone recorded checking it; Monarch does not read live IRS status.</p></div>
+              <div><h2>EFIN</h2><p>What is recorded for this EFIN. Confirmation means someone recorded checking it; Verexa HQ does not read live IRS status.</p></div>
               {!efin.archived_at && <PopupLink className="efin-card-link" href={`${base}/edit?open=efin`} title="Edit EFIN">Edit</PopupLink>}
             </div>
             <dl className="efin-facts">

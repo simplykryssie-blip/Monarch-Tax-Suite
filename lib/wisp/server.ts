@@ -43,7 +43,7 @@ export function wispDeps(tenantId: string): WispDeps {
     const [domains, profile] = await Promise.all([senders.listDomains().catch(() => []), new SupabaseDocumentsRepo(db).getProfile().catch(() => null)]);
     const brands = brandsOf(domains);
     const only = brands.length === 1 ? brands[0] : null;
-    const name = only?.name ?? profile?.display_name ?? "Monarch Tax Suite";
+    const name = only?.name ?? profile?.display_name ?? "Your office";
     const origin = process.env.VERCEL_ENV === "production" && only?.linkHost ? `https://${only.linkHost}` : await appOrigin();
     return { name, origin };
   };

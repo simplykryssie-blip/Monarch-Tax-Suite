@@ -173,7 +173,7 @@ export function ProductEditor({ product, images, hasVersions }: { product?: Prod
         <label className="is-wide">Disclaimer<textarea name="disclaimer" rows={3} maxLength={5000} value={fields.disclaimer} onChange={set("disclaimer")} /></label>
 
         <h3 className="pe-section is-wide">Stripe mapping (internal)</h3>
-        <p className="monarch-muted is-wide">Saving only updates the Monarch catalog; it never calls Stripe. Use the Stripe panel to sync the Stripe product or create a new price.</p>
+        <p className="monarch-muted is-wide">Saving only updates your catalog; it never calls Stripe. Use the Stripe panel to sync the Stripe product or create a new price.</p>
         <label>Stripe product ID<input name="stripe_product_id" value={fields.stripe_product_id} onChange={set("stripe_product_id")} placeholder="prod_…" /></label>
         <label>Stripe price ID<input name="stripe_price_id" value={fields.stripe_price_id} onChange={set("stripe_price_id")} placeholder="price_…" /></label>
         <label className="is-wide">Product settings (one <code>key: value</code> per line)<textarea name="metadata" rows={3} value={fields.metadata} onChange={set("metadata")} placeholder="service_deliverable: …" /></label>

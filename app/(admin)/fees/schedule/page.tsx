@@ -27,8 +27,8 @@ export default async function FeeSchedulePage({ searchParams }: { searchParams: 
           <div className="efin-flow">
             {lines.length === 0 && (
               <section className="monarch-panel">
-                <div className="monarch-panel-head"><div><h2>Start from a template</h2><p>Monarch&apos;s own pricing, {MONARCH_TEMPLATE.map((t) => `${t.label.toLowerCase()} ${dollars(t.amount_cents)}`).join(", ")}: {dollars(MONARCH_TEMPLATE.reduce((s, t) => s + t.amount_cents, 0))} on every return. It&apos;s only a starting point; change or remove any line after loading it.</p></div></div>
-                <ActionForm action={loadTemplateAction} className="efin-actions"><button className="monarch-primary efin-small">Load Monarch&apos;s template</button></ActionForm>
+                <div className="monarch-panel-head"><div><h2>Start from a template</h2><p>A typical price list: {MONARCH_TEMPLATE.map((t) => `${t.label.toLowerCase()} ${dollars(t.amount_cents)}`).join(", ")}: {dollars(MONARCH_TEMPLATE.reduce((s, t) => s + t.amount_cents, 0))} on every return. It&apos;s only a starting point; change or remove any line after loading it.</p></div></div>
+                <ActionForm action={loadTemplateAction} className="efin-actions"><button className="monarch-primary efin-small">Load the starter template</button></ActionForm>
               </section>
             )}
             <section className="monarch-panel">

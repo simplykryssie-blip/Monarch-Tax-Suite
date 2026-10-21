@@ -25,10 +25,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   digital_product: "Digital book / template / guide",
   course: "Course & training",
   software_update: "Annual software update",
-  other: "Monarch product",
+  other: "Product",
 };
 
-export const categoryLabel = (c: string) => CATEGORY_LABELS[c] ?? "Monarch product";
+export const categoryLabel = (c: string) => CATEGORY_LABELS[c] ?? "Product";
 
 export function formatPrice(p: Pick<StorefrontProduct, "price_cents" | "currency" | "payment_type" | "billing_interval">) {
   if (p.price_cents === null) return "Price coming soon";
@@ -75,7 +75,7 @@ export function ProductView({ product, images, preview = false, purchase }: { pr
             ) : purchase ? (
               purchase
             ) : (
-              <a href={`mailto:support@monarchtaxsuite.com?subject=${encodeURIComponent(product.name)}`}>Contact us to purchase</a>
+              <a href={`mailto:support@verexahq.com?subject=${encodeURIComponent(product.name)}`}>Contact us to purchase</a>
             )}
             <small>{product.payment_type === "one_time" ? "One-time payment. No subscription." : `Billed every ${product.billing_interval}. Cancel anytime.`}</small>
           </div>

@@ -54,7 +54,7 @@ async function sendInvite(tenantId: string, officeName: string, who: Actor, inpu
   const deps = officeDeps(tenantId);
   const { member, token } = await invite(deps, who, input);
   const link = await inviteLink(token);
-  const brand = (await documentDeps(tenantId).repo.getProfile().catch(() => null))?.display_name || "Monarch Tax Suite";
+  const brand = (await documentDeps(tenantId).repo.getProfile().catch(() => null))?.display_name || "Your office";
   const problem = await sendOfficeEmail(tenantId, member.email, inviteEmail({ brand, office: officeName, name: member.full_name, role: input.role, link }));
   await deps.repo.addEvent({ organization_id: input.officeId, member_id: member.id, action: problem ? "invite_email_failed" : "invite_emailed", actor_id: who.userId, detail: problem ? { reason: problem.slice(0, 200) } : {} });
   revalidatePath("/office", "layout");

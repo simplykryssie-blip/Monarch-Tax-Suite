@@ -25,8 +25,8 @@ function reminderEmail(task: RenewalTaskRow, days: number, last4: string, link: 
   const when = days < 0 ? `passed ${-days} day${days === -1 ? "" : "s"} ago` : days === 0 ? "is today" : `is in ${days} day${days === 1 ? "" : "s"}`;
   const subject = days < 0 ? `Compliance review: EFIN ending ${last4} is past its recorded deadline` : `EFIN ending ${last4}: renewal deadline ${when}`;
   const body = `The recorded renewal deadline for the EFIN ending ${last4} (${task.due_on}) ${when}.`;
-  const caution = days < 0 ? "Please confirm its current status with the IRS e-Services account. Monarch has not changed or invalidated anything automatically." : "Please confirm the renewal with the IRS e-Services account and record the new verified date in Monarch.";
-  const text = `${body}\n\n${caution}\n\nOpen the task: ${link}\n\nThis date is what was recorded in Monarch, not a live IRS status.`;
+  const caution = days < 0 ? "Please confirm its current status with the IRS e-Services account. Verexa HQ has not changed or invalidated anything automatically." : "Please confirm the renewal with the IRS e-Services account and record the new verified date in Monarch.";
+  const text = `${body}\n\n${caution}\n\nOpen the task: ${link}\n\nThis date is what was recorded in Verexa HQ, not a live IRS status.`;
   const html = `<div style="font-family:Inter,Arial,sans-serif;color:#111;max-width:520px"><h2 style="font-family:Georgia,serif;margin:0 0 12px">EFIN renewal reminder</h2><p>${esc(body)}</p><p>${esc(caution)}</p><p><a href="${esc(link)}" style="display:inline-block;background:#111;color:#fff;border-radius:99px;padding:10px 20px;text-decoration:none">Open the task</a></p><p style="color:#666;font-size:12px">This date is what was recorded in Monarch, not a live IRS status.</p></div>`;
   return { subject, text, html };
 }

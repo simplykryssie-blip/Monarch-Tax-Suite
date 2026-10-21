@@ -24,7 +24,7 @@ export default async function WispPage({ searchParams }: { searchParams: Promise
   const { cancelled } = await searchParams;
   const tenantId = await requestTenant().catch(() => MONARCH_TENANT_ID);
   const brandName = await (async () => {
-    try { return (await wispDeps(tenantId).brand()).name; } catch { return "Monarch Tax Suite"; }
+    try { return (await wispDeps(tenantId).brand()).name; } catch { return "Verexa HQ"; }
   })();
   // Payment runs through the Monarch storefront's Stripe account, so only Monarch's builder can take it today.
   const canBuy = tenantId === MONARCH_TENANT_ID && LEGAL_PAGES_APPROVED && !!stripeClient();
