@@ -359,3 +359,23 @@ test("changing plan: the price shown is the price charged; an old or missing quo
     PLANS.ero.selfServe = false;
   }
 });
+
+test("changing plan: a quote that couldn't be tied to one moment (0) is still accepted and charged as of now", async () => {
+  const s = setup();
+  const { tenantId } = await handleBillingEvent(s.deps, completed("evt_1"));
+  PLANS.ero.selfServe = true;
+  try {
+    assert.equal(await changePlan(s.deps, tenantId!, "ero", "0"), "ero");
+    assert.equal(s.changes.applied[0].prorationDate, 0, "no fixed moment is sent to Stripe");
+  } finally {
+    PLANS.ero.selfServe = false;
+  }
+});
+
+test("the plan-change screen and the Stripe port say what went wrong instead of hiding it", async () => {
+  const { readFileSync } = await import("node:fs");
+  assert.match(readFileSync("app/practice/(area)/billing/page.tsx", "utf8"), /billing plan preview failed/);
+  const port = readFileSync("lib/billing/stripe-port.ts", "utf8");
+  assert.match(port, /StripeInvalidRequestError/);
+  assert.match(port, /\.\.\.\(prorationDate > 0 \? \{ proration_date: prorationDate \} : \{\}\)/);
+});

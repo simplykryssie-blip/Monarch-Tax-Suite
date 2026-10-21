@@ -3,6 +3,7 @@ import { billingView } from "@/lib/billing/view.ts";
 import { dollars, PAUSE_PLAN, PLANS, switchablePlans } from "@/lib/billing/plans.ts";
 import { billingDeps } from "@/lib/billing/server";
 import { previewPlanChange, type PlanChangePreview } from "@/lib/billing/service.ts";
+import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { requirePractice } from "@/lib/practice/server";
 import { tenantClient } from "@/lib/supabase/service";
 import type { Subscription } from "@/lib/billing/access.ts";
@@ -23,6 +24,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
       if (!deps) throw new Error("unavailable");
       preview = await previewPlanChange(deps, ctx.tenantId, sp.change);
     } catch (e) {
+      console.error(`billing plan preview failed: ${sanitizeError(e, 240)}`);
       previewError = e instanceof Error && e.name === "ValidationError" ? e.message : "We couldn't work out the cost just now. Please try again.";
     }
   }

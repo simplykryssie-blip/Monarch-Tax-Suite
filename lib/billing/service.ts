@@ -315,7 +315,8 @@ export async function changePlan(deps: BillingDeps, tenantId: string, to: unknow
   // charged is the amount shown, not a few cents different because the credit for unused days shrinks by the second.
   const asked = typeof quotedAt === "string" ? Number(quotedAt) : typeof quotedAt === "number" ? quotedAt : NaN;
   const nowSeconds = Math.floor(nowOf(deps).getTime() / 1000);
-  if (!Number.isInteger(asked) || asked > nowSeconds + 60 || asked < nowSeconds - QUOTE_MINUTES * 60) fail("That price is out of date. Look at what you'd pay again, then confirm.");
+  // 0 means the quote could not be tied to one moment (Stripe wouldn't take one); the change is then charged as of now.
+  if (!Number.isInteger(asked) || (asked !== 0 && (asked > nowSeconds + 60 || asked < nowSeconds - QUOTE_MINUTES * 60))) fail("That price is out of date. Look at what you'd pay again, then confirm.");
   const r = await deps.stripe.changePlan(sub.stripe_subscription_id!, PLANS[plan].lookupKey, asked);
   await deps.repo.update(tenantId, { plan, current_period_end: r.currentPeriodEnd ?? sub.current_period_end, precheck_mark: null });
   await tell(deps, tenantId, (name) => ({ subject: `Your Verexa HQ plan is now ${PLANS[plan].label}`, text: `Hi ${name},\n\nYour plan is now ${PLANS[plan].label} (${dollars(PLANS[plan].priceCents)} per month). It started today, and your monthly billing date is now ${r.currentPeriodEnd ? "each month on the same day as today" : "today's date"}. The unused part of your old plan was credited toward the new one. You can see the invoice from Billing.\n` }));
