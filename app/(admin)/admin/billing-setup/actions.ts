@@ -7,13 +7,14 @@ import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { explainStripeFailure } from "@/lib/billing/checkout-params.ts";
 import { runBillingSetup } from "@/lib/billing/setup.ts";
 import { billingSetupPort, billingStripe } from "@/lib/billing/stripe-port";
+import { recordPlatformAction } from "@/lib/platform-audit-server";
 
 const BASE = "/admin/billing-setup";
 const go = (key: "notice" | "error", message: string) => `${BASE}?${key}=${encodeURIComponent(message)}`;
 
 /** Creates the plan prices and the billing portal settings in Verexa HQ's Stripe account. Platform administrators only. */
 export async function setUpBillingAction(form: FormData) {
-  await requirePlatformAdmin();
+  const admin = await requirePlatformAdmin();
   let target: string;
   try {
     const s = billingStripe();
@@ -23,6 +24,7 @@ export async function setUpBillingAction(form: FormData) {
     } else {
       const report = await runBillingSetup(billingSetupPort(s.stripe));
       const created = report.plans.filter((p) => p.status === "created").length;
+      await recordPlatformAction(admin.userId, "platform_billing_setup_run", { detail: { created, existing: report.plans.length - created, mode: s.livemode ? "live" : "test" } });
       const wrong = report.plans.filter((p) => p.status === "wrong_amount").map((p) => p.lookupKey);
       target = wrong.length
         ? go("error", `Done, but ${wrong.join(", ")} already exist at a different price. Prices customers pay can't be edited; archive the old price in Stripe and run this again.`)

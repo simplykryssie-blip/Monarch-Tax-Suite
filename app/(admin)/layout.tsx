@@ -1,4 +1,6 @@
+import { headers } from "next/headers";
 import { AdminShell } from "@/components/admin/shell";
+import { PlatformShell } from "@/components/admin/platform-shell";
 import { isPlatformAdmin, onAdminHost, requireAdmin } from "@/lib/admin";
 import { adminSeparationOn } from "@/lib/admin-host.ts";
 import { loadAlerts } from "@/lib/attention";
@@ -23,6 +25,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const admin = await requireAdmin();
+  // Verexa HQ's own pages (/admin) get the platform's frame, not a workspace's: no workspace menu, brand or alerts.
+  const path = (await headers()).get("x-pathname") ?? "";
+  if (path === "/admin" || path.startsWith("/admin/")) return <PlatformShell email={admin.email}>{children}</PlatformShell>;
   const tier = await currentTier();
   const brand = await loadBrand(currentTenantId());
   // Alerts about parts of the app this tier doesn't have would lead nowhere.

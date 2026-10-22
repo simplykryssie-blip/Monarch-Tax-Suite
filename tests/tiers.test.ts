@@ -93,7 +93,7 @@ describe("the Admin area (platform administrators only)", () => {
     assert.ok(isBranch(admin));
     assert.equal(admin.label, "Admin");
     assert.equal(admin.section, "platform");
-    assert.deepEqual(admin.items.map((i) => i.label), ["Workspaces", "Billing setup", "Integrations"]);
+    assert.deepEqual(admin.items.map((i) => i.label), ["Workspaces", "Billing setup", "Integrations", "Legal & signup", "Activity"]);
     assert.ok(admin.items.every((i) => i.href?.startsWith("/admin/")));
   });
 

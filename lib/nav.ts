@@ -87,6 +87,8 @@ export const NAV: Entry[] = [
       { label: "Workspaces", icon: "customers", href: "/admin/workspaces" },
       { label: "Billing setup", icon: "card", href: "/admin/billing-setup" },
       { label: "Integrations", icon: "licenses", href: "/admin/integrations" },
+      { label: "Legal & signup", icon: "checklist", href: "/admin/legal" },
+      { label: "Activity", icon: "reports", href: "/admin/activity" },
     ],
   },
 ];

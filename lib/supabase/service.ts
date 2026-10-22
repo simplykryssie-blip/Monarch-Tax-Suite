@@ -23,7 +23,7 @@ export function tenantClient(tenantId: string) {
   });
 }
 
-export type PlatformAccessReason = "brand_host" | "admin_lookup" | "workspace_member" | "rate_limit" | "document_link" | "form_link" | "wisp_link" | "office_member" | "office_invite" | "sms_sweep" | "practice_member" | "practice_invite" | "practice_provision" | "scheduler_tick" | "portal_member" | "portal_invite" | "connect_webhook" | "site_host" | "campaign_token" | "suppression" | "sms_inbound" | "billing_webhook" | "billing_sweep" | "signup";
+export type PlatformAccessReason = "brand_host" | "admin_lookup" | "workspace_member" | "platform_audit" | "rate_limit" | "document_link" | "form_link" | "wisp_link" | "office_member" | "office_invite" | "sms_sweep" | "practice_member" | "practice_invite" | "practice_provision" | "scheduler_tick" | "portal_member" | "portal_invite" | "connect_webhook" | "site_host" | "campaign_token" | "suppression" | "sms_inbound" | "billing_webhook" | "billing_sweep" | "signup";
 
 /**
  * Platform access: the service role without a tenant, which bypasses row-level security. Only for platform-level

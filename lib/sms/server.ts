@@ -1,6 +1,6 @@
 import "server-only";
 import { platformClient, tenantClient } from "../supabase/service";
-import { currentTenantId, MONARCH_TENANT_ID } from "../tenants.ts";
+import { currentTenantId, MONARCH_TENANT_ID, PLATFORM_TENANT_ID } from "../tenants.ts";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { platformLogin, platformTwilio, TwilioAccounts, TwilioSmsSender, type SmsSender } from "../automation/twilio.ts";
 import { resolveSmsRoute, type SmsRoute } from "./route.ts";
@@ -121,7 +121,7 @@ export async function fulfilSmsSession(session: PaidSession): Promise<string> {
  * own tenant-scoped client; the platform read lists tenant ids only. One office's failure never stops the others.
  */
 export async function runSmsSweep(limit = 200): Promise<{ offices: number; renewals: Record<string, number>; errors: number }> {
-  const { data, error } = await platformClient("sms_sweep").from("tenants").select("id").neq("id", MONARCH_TENANT_ID).limit(limit);
+  const { data, error } = await platformClient("sms_sweep").from("tenants").select("id").neq("id", MONARCH_TENANT_ID).neq("id", PLATFORM_TENANT_ID).limit(limit);
   if (error) throw new Error(error.message);
   const renewals: Record<string, number> = {};
   let offices = 0;
