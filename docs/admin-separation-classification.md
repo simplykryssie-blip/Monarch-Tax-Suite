@@ -97,3 +97,8 @@ Legend: **P** = platform (Verexa HQ owns it; belongs behind admin.verexahq.com).
 8. `/offices` is a **tenant tool**.
 
 Status: classification approved. No build has started. The Part 1 build order and its per-step approvals are proposed separately.
+
+## H. Further owner decisions (2026-10-22)
+
+9. **Platform texting revenue belongs in Verexa's own billing Stripe account**, not Monarch's store account. Today the credit packs and setup fees are charged through the Monarch store account (found while building PR 4). PR 4 keeps that behavior; the reroute is a separate, later item (see the build plan, Step 8).
+10. **PR 4's production migration** (the `tenant_store_stripe` table) is approved and has been applied to production (empty, tenant isolation on, no anon or signed-in access).

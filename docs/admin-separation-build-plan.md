@@ -54,6 +54,7 @@ Proposed 2026-10-22. Nothing here has started. Every production action (merge, m
    - **Remove info@monarchtaxsuite.com from the platform-admin list.** Remove the transition rule.
 
 8. **Later, as scheduled by the owner:**
+   - **Reroute platform texting revenue (decision 2026-10-22).** Workspaces' texting purchases (credit packs, setup fees, renewals) are paid through the Monarch store Stripe account today (`smsPayments()` in `lib/sms/server.ts`, `app/(admin)/settings/sms/page.tsx`). Owner decision: that revenue belongs in **Verexa's own billing Stripe account**, not Monarch's. PR 4 keeps today's behavior; the reroute is its own item. Scope to design when scheduled: charge through the Verexa billing account (`STRIPE_BILLING_*`), a webhook path that fulfils texting purchases from that account, what happens to checkouts already in flight, and how past payments (already in Monarch's account) are accounted for. Needs a Preview test with test keys and its own production approvals.
    - Monarch's own Twilio subaccount, when Monarch's texting is funded (it involves a real Twilio account change and number registration).
    - The `MONARCH_` renames, done during the move, not as their own step.
 
