@@ -120,8 +120,12 @@ export async function checkStoreStripe(tenantId?: string): Promise<{ ok: boolean
     const verdict = judgeProductLookups(lookups);
     return verdict.ok ? { ok: true, message: `Stripe accepted the key (${st.mode} mode).${verdict.message}` } : { ok: false, message: verdict.message };
   } catch (e) {
-    const t = (e as { type?: string }).type;
-    if (t === "StripeAuthenticationError") return { ok: false, message: "Stripe rejected the key. Check that it is the right key for this Stripe account." };
+    const err = e as { type?: string; code?: string; statusCode?: number };
+    const t = err.type;
+    // What Stripe actually said, for whoever is diagnosing: the error's type, code and HTTP status only. Never the key,
+    // never Stripe's message (which can quote part of the key).
+    console.warn(JSON.stringify({ event: "store_stripe_check_failed", type: t ?? "unknown", code: err.code ?? null, status: err.statusCode ?? null, source: st.secretKeySource, mode: st.mode, key_chars: st.secretKey?.length ?? null }));
+    if (t === "StripeAuthenticationError") return { ok: false, message: "Stripe rejected the key. Check that it is the right key for this Stripe account, and that it was copied completely: use Stripe's copy button and paste it, rather than retyping it." };
     if (t === "StripePermissionError") return { ok: false, message: "The key works but lacks permission to read prices. A restricted key needs read access to Prices." };
     return { ok: false, message: "Couldn't reach Stripe just now. Try again in a moment." };
   }

@@ -155,6 +155,13 @@ describe("wiring", () => {
     assert.ok(/type="password"/.test(page));
   });
 
+  test("a failed check logs the error's type, code, status and the key's length, never the key or Stripe's message", () => {
+    const src = read(join(root, "lib/store-stripe/server.ts"));
+    const line = src.slice(src.indexOf("store_stripe_check_failed") - 60, src.indexOf("store_stripe_check_failed") + 260);
+    assert.match(line, /key_chars: st\.secretKey\?\.length/);
+    assert.ok(!/message|st\.secretKey\b(?!Source|\?\.length)|st\.webhookSecret/.test(line), "no key, secret or message in the log line");
+  });
+
   test("the migration is additive, has the ciphertext check and the tenant policies", () => {
     const sql = read(join(root, "supabase/migrations/20261118100000_tenant_store_stripe.sql")).replace(/--.*$/gm, "");
     assert.ok(!/drop |truncate|delete from/i.test(sql));
