@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
-import { accessOf, deleteAfter, GRACE_DAYS, mayContactClients, nextStep, precheckDue, READ_ONLY_DAYS, RETENTION_DAYS, type Subscription } from "../lib/billing/access.ts";
+import { accessOf, daysLate, deleteAfter, lateReminderDue, LATE_DAYS, mayContactClients, nextStep, precheckDue, RETENTION_DAYS, type Subscription } from "../lib/billing/access.ts";
 import { billingProblems, PAUSE_PLAN, PLANS } from "../lib/billing/plans.ts";
 import { cleanSignup, readSignup, signSignup } from "../lib/billing/signup.ts";
 import {
@@ -87,15 +87,18 @@ test("plans: three tiers at the owner's prices; only PTIN is open for self-serve
 test("access: the owner's late-payment timeline", () => {
   const sub = (status: Subscription["status"], suspended_at: string | null = null) => ({ status, suspended_at });
   assert.equal(accessOf(null), "full");
-  assert.deepEqual(["active", "internal", "suspended", "read_only", "paused", "canceled"].map((s) => accessOf({ status: s as Subscription["status"] })), ["full", "full", "grace", "read_only", "contacts_only", "closed"]);
+  assert.deepEqual(["active", "internal", "suspended", "read_only", "paused", "canceled"].map((s) => accessOf({ status: s as Subscription["status"] })), ["full", "full", "read_only", "read_only", "contacts_only", "closed"]);
   assert.equal(mayContactClients("full"), true);
-  assert.equal(mayContactClients("grace"), false);
+  assert.equal(mayContactClients("read_only"), false);
   const t = T0.getTime();
-  assert.equal(nextStep(sub("suspended", iso(t - 6 * DAY)), T0), null);
-  assert.equal(nextStep(sub("suspended", iso(t - GRACE_DAYS * DAY)), T0), "read_only");
-  assert.equal(nextStep(sub("read_only", iso(t - (GRACE_DAYS + READ_ONLY_DAYS - 1) * DAY)), T0), null);
-  assert.equal(nextStep(sub("read_only", iso(t - (GRACE_DAYS + READ_ONLY_DAYS) * DAY)), T0), "canceled");
-  assert.equal(nextStep(sub("suspended", iso(t - 40 * DAY)), T0), "canceled", "a missed sweep never skips the end");
+  assert.equal(LATE_DAYS, 14, "retries and notices run for about two weeks at most");
+  assert.equal(nextStep(sub("read_only", iso(t - 1 * DAY)), T0), null);
+  assert.equal(nextStep(sub("read_only", iso(t - (LATE_DAYS - 1) * DAY)), T0), null);
+  assert.equal(nextStep(sub("read_only", iso(t - LATE_DAYS * DAY)), T0), "canceled");
+  assert.equal(nextStep(sub("suspended", iso(t - 40 * DAY)), T0), "canceled", "a missed sweep never skips the end, and an old 'suspended' row is treated the same");
+  assert.equal(daysLate(sub("read_only", iso(t - 5.5 * DAY)), T0), 5);
+  assert.equal(daysLate(sub("active", iso(t - 5 * DAY)), T0), null);
+  assert.deepEqual([6, 7, 8, 12, 13].map((d) => lateReminderDue(sub("read_only", iso(t - d * DAY)), T0)), [null, 7, null, 12, null]);
   assert.equal(nextStep(sub("active"), T0), null);
   assert.equal(deleteAfter(T0), iso(t + RETENTION_DAYS * DAY));
 });
@@ -175,34 +178,41 @@ test("a paid signup makes the workspace once, even if Stripe repeats the event",
   assert.equal((await handleBillingEvent(s.deps, { id: "evt_3", type: "charge.refunded", data: { object: {} } })).status, "ignored");
 });
 
-test("a renewal that fails suspends; payment restores; the first payment is ignored", async () => {
+test("a renewal that fails makes the workspace read-only at once; payment restores; the first payment is ignored", async () => {
   const s = setup();
   const { tenantId } = await handleBillingEvent(s.deps, completed("evt_1"));
   const failed = (id: string, reason: string) => ({ id, type: "invoice.payment_failed", data: { object: { subscription: "sub_1", customer: "cus_1", billing_reason: reason } } });
   await handleBillingEvent(s.deps, failed("evt_a", "subscription_create"));
   assert.equal(s.subs.get(tenantId!)!.status, "active");
   await handleBillingEvent(s.deps, failed("evt_b", "subscription_cycle"));
-  assert.equal(s.subs.get(tenantId!)!.status, "suspended");
+  assert.equal(s.subs.get(tenantId!)!.status, "read_only");
   assert.equal(s.subs.get(tenantId!)!.suspended_at, T0.toISOString());
   assert.match(s.mails.at(-1)!.mail.subject, /payment didn't go through/);
+  assert.match(s.mails.at(-1)!.mail.text, /read-only/);
+  assert.match(s.mails.at(-1)!.mail.text, /Billing page still works/);
   await handleBillingEvent(s.deps, { id: "evt_c", type: "invoice.paid", data: { object: { subscription: "sub_1", customer: "cus_1" } } });
   assert.equal(s.subs.get(tenantId!)!.status, "active");
   assert.equal(s.subs.get(tenantId!)!.suspended_at, null);
 });
 
-test("sweep: suspended → read-only → cancelled with the 90 day clock, retrying payment each day", async () => {
+test("sweep: read-only → reminders on days 7 and 12 → cancelled at day 14 with the 90 day clock, retrying payment each day", async () => {
   const s = setup();
   const { tenantId } = await handleBillingEvent(s.deps, completed("evt_1"));
   await handleBillingEvent(s.deps, { id: "evt_b", type: "invoice.payment_failed", data: { object: { subscription: "sub_1", customer: "cus_1", billing_reason: "subscription_cycle" } } });
   s.stripeState.retry = "failed";
   s.tick(3 * DAY);
   let rep = await runBillingSweep(s.deps);
-  assert.deepEqual([rep.readOnly, rep.canceled, rep.retried], [0, 0, 1]);
-  s.tick((GRACE_DAYS - 3) * DAY);
-  rep = await runBillingSweep(s.deps);
+  assert.deepEqual([rep.warned, rep.canceled, rep.retried], [0, 0, 1]);
   assert.equal(s.subs.get(tenantId!)!.status, "read_only");
-  assert.equal(rep.readOnly, 1);
-  s.tick(READ_ONLY_DAYS * DAY);
+  s.tick(4 * DAY);
+  rep = await runBillingSweep(s.deps);
+  assert.deepEqual([rep.warned, rep.canceled, rep.retried], [1, 0, 1], "day 7 reminder");
+  assert.match(s.mails.at(-1)!.mail.subject, /Reminder/);
+  s.tick(5 * DAY);
+  rep = await runBillingSweep(s.deps);
+  assert.deepEqual([rep.warned, rep.canceled], [1, 0], "day 12 final notice");
+  assert.match(s.mails.at(-1)!.mail.subject, /Final notice/);
+  s.tick((LATE_DAYS - 12) * DAY);
   rep = await runBillingSweep(s.deps);
   const sub = s.subs.get(tenantId!)!;
   assert.equal(sub.status, "canceled");

@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import { hashToken, INVITE_DAYS, newToken } from "../office/service.ts";
 import { slugFor, type PracticeRepo } from "../practice/service.ts";
-import { deleteAfter, nextStep, precheckDue, RETENTION_DAYS, type SubStatus, type Subscription } from "./access.ts";
+import { deleteAfter, lateReminderDue, LATE_DAYS, nextStep, precheckDue, RETENTION_DAYS, type SubStatus, type Subscription } from "./access.ts";
 import { PAUSE_PLAN, PLANS, dollars, isPlanKey, type PlanKey } from "./plans.ts";
 import { cleanSignup, existingAccountEmail, signSignup, readSignup, verificationEmail, type SignupClaims } from "./signup.ts";
 
 // Subscriptions for workspaces: signing up, what a Stripe event changes, pausing, and the daily sweep that moves late
-// accounts along (suspended → read-only → cancelled) and warns before a renewal that may fail. Everything reaches the
+// accounts along (read-only → cancelled) and warns before a renewal that may fail. Everything reaches the
 // outside world through the ports below, so the rules can be tested without Stripe, a database or email.
 
 export interface BillingRepo {
@@ -226,8 +226,9 @@ async function onPaymentFailed(deps: BillingDeps, o: Record<string, unknown>): P
   // Only a renewal that fails puts the account in the late-payment timeline; the first payment can't fail (it is the signup).
   if (str(o.billing_reason) !== "subscription_cycle") return sub.tenant_id;
   if (sub.status === "active" || sub.status === "paused") {
-    await deps.repo.update(sub.tenant_id, { status: "suspended", suspended_at: nowOf(deps).toISOString() });
-    await tell(deps, sub.tenant_id, (name) => suspendedEmail(name));
+    // Read-only at once; the Billing page keeps working so the card can be fixed. Payment is retried daily until the window ends.
+    await deps.repo.update(sub.tenant_id, { status: "read_only", suspended_at: nowOf(deps).toISOString() });
+    await tell(deps, sub.tenant_id, (name) => paymentFailedEmail(name));
   }
   return sub.tenant_id;
 }
@@ -289,31 +290,30 @@ export async function startReactivation(deps: BillingDeps, tenantId: string, ema
 
 // --------------------------------------------------------------- daily sweep
 
-export type SweepReport = { checked: number; readOnly: number; canceled: number; warned: number; retried: number; errors: number };
+export type SweepReport = { checked: number; canceled: number; warned: number; retried: number; errors: number };
 
 export async function runBillingSweep(deps: BillingDeps): Promise<SweepReport> {
-  const report: SweepReport = { checked: 0, readOnly: 0, canceled: 0, warned: 0, retried: 0, errors: 0 };
+  const report: SweepReport = { checked: 0, canceled: 0, warned: 0, retried: 0, errors: 0 };
   const now = nowOf(deps);
   for (const sub of await deps.repo.sweepList()) {
     report.checked++;
     try {
-      // A late account moves along the timeline.
-      const step = nextStep(sub, now);
-      if (step === "canceled") {
+      // A late account is cancelled once its window is over.
+      if (nextStep(sub, now) === "canceled") {
         if (sub.stripe_subscription_id) await deps.stripe.cancelNow(sub.stripe_subscription_id).catch(() => undefined);
         await cancel(deps, sub);
         report.canceled++;
         continue;
       }
-      if (step === "read_only") {
-        await deps.repo.update(sub.tenant_id, { status: "read_only" });
-        await tell(deps, sub.tenant_id, (name) => readOnlyEmail(name));
-        report.readOnly++;
-      }
-      // Late accounts: try the unpaid invoice again each day.
+      // Late accounts: try the unpaid invoice again each day, and remind the owner on the set days.
       if ((sub.status === "suspended" || sub.status === "read_only") && sub.stripe_subscription_id) {
         const r = await deps.stripe.retryOpenInvoice(sub.stripe_subscription_id);
         if (r !== "none") report.retried++;
+        const reminder = lateReminderDue(sub, now);
+        if (reminder !== null) {
+          await tell(deps, sub.tenant_id, (name) => lateReminderEmail(name, LATE_DAYS - reminder));
+          report.warned++;
+        }
         continue;
       }
       // Good accounts: 7, 5 and 3 days before renewal, check the card and warn if it won't work.
@@ -351,13 +351,13 @@ export function welcomeEmail(i: { name: string; workspace: string; plan: PlanKey
     ].join("\n"),
   };
 }
-export const suspendedEmail = (name: string): Mail => ({
+export const paymentFailedEmail = (name: string): Mail => ({
   subject: "Action needed: your Verexa HQ payment didn't go through",
-  text: `Hi ${name},\n\nWe couldn't collect your renewal payment, so your account is suspended. For now everything still works except sending messages. If it isn't resolved your workspace becomes read-only, then is cancelled.\n\nPlease update your card from Billing inside your workspace and we'll collect the payment right away.\n`,
+  text: `Hi ${name},\n\nWe couldn't collect your renewal payment, so your workspace is now read-only: you can look at everything but not change it, and no messages are sent. The Billing page still works. Update your card there and we'll collect the payment right away and restore everything.\n\nWe'll keep trying and send you reminders. If it isn't paid within ${LATE_DAYS} days the account is cancelled, and your data is kept for ${RETENTION_DAYS} days after that.\n`,
 });
-export const readOnlyEmail = (name: string): Mail => ({
-  subject: "Your Verexa HQ workspace is now read-only",
-  text: `Hi ${name},\n\nWe still haven't been able to collect your payment, so your workspace is read-only: you can look at everything and export it, but not change it. Update your card from Billing to restore full access. If payment isn't made soon the account will be cancelled.\n`,
+export const lateReminderEmail = (name: string, daysLeft: number): Mail => ({
+  subject: daysLeft <= 3 ? "Final notice: your Verexa HQ account will be cancelled soon" : "Reminder: your Verexa HQ payment is still unpaid",
+  text: `Hi ${name},\n\nYour renewal payment is still unpaid and your workspace is read-only. If it isn't paid in about ${daysLeft} day${daysLeft === 1 ? "" : "s"} the account is cancelled (your data is then kept for ${RETENTION_DAYS} days). Update your card from Billing and we'll collect the payment right away.\n`,
 });
 export const canceledEmail = (name: string, deleteOn: Date): Mail => ({
   subject: "Your Verexa HQ account has been cancelled",
@@ -365,7 +365,7 @@ export const canceledEmail = (name: string, deleteOn: Date): Mail => ({
 });
 export const cardWarningEmail = (name: string, renewsOn: Date, daysOut: number, reason: string): Mail => ({
   subject: `Your card may not work for your Verexa HQ renewal on ${when(renewsOn)}`,
-  text: `Hi ${name},\n\nYour plan renews in about ${daysOut} days (${when(renewsOn)}) and ${reason}. Please update your card from Billing so the payment goes through and your account isn't suspended.\n`,
+  text: `Hi ${name},\n\nYour plan renews in about ${daysOut} days (${when(renewsOn)}) and ${reason}. Please update your card from Billing so the payment goes through and your workspace doesn't become read-only.\n`,
 });
 
 export type { SubStatus };
