@@ -64,3 +64,19 @@ export function describeKey(label: string, source: KeySource, hint: string | nul
   if (source === "environment") return `${label}: still read from the server's environment settings${mode ? ` (${mode} mode)` : ""}. Save it here, check it works, then remove it from Vercel.`;
   return `${label}: not set.`;
 }
+
+/** What Stripe said when asked for one of the store's own prices with this key. */
+export type PriceLookup = "found" | "missing" | "error";
+
+/**
+ * A key can be valid and still belong to the wrong Stripe account (or the other mode), in which case none of the store's
+ * prices exist for it and every checkout would fail. Asking for a few of the store's own prices tells these apart.
+ */
+export function judgeProductLookups(lookups: PriceLookup[]): { ok: boolean; message: string } {
+  if (lookups.length === 0) return { ok: true, message: "" };
+  if (lookups.some((l) => l === "missing")) {
+    return { ok: false, message: "Stripe accepts the key, but it can't find your store's products. This key belongs to a different Stripe account (or the other mode, test or live) than the one your products are in. Use the key from the account that holds them." };
+  }
+  if (lookups.every((l) => l === "found")) return { ok: true, message: " It also found your store's products." };
+  return { ok: true, message: " The key works; your store's products couldn't be checked just now." };
+}

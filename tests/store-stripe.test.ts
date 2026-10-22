@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CrmSecrets } from "../lib/crm/crypto.ts";
-import { describeKey, keyHint, modeOfKey, parseSecretKey, parseWebhookSecret, resolveKeys } from "../lib/store-stripe/keys.ts";
+import { describeKey, judgeProductLookups, keyHint, modeOfKey, parseSecretKey, parseWebhookSecret, resolveKeys } from "../lib/store-stripe/keys.ts";
 
 // A workspace's storefront Stripe keys live in its own settings (encrypted). Only Monarch may still fall back to the server's
 // environment while the move is made, and no page or log ever carries a key.
@@ -79,6 +79,23 @@ describe("where the keys come from", () => {
     assert.match(describeKey("Secret key", "settings", "x9Z1", "live"), /ends x9Z1.*live mode/);
     assert.match(describeKey("Secret key", "environment", null, "test"), /remove it from Vercel/);
     assert.match(describeKey("Secret key", null, null, null), /not set/);
+  });
+});
+
+describe("is it the right Stripe account", () => {
+  test("a key that can't see the store's own products is reported as the wrong account or mode", () => {
+    const r = judgeProductLookups(["missing", "missing"]);
+    assert.equal(r.ok, false);
+    assert.match(r.message, /different Stripe account \(or the other mode/);
+    assert.equal(judgeProductLookups(["found", "missing"]).ok, false, "one missing price is enough to refuse");
+  });
+
+  test("found products confirm it; no products or a lookup hiccup never block a working key", () => {
+    assert.deepEqual(judgeProductLookups(["found", "found"]), { ok: true, message: " It also found your store's products." });
+    assert.deepEqual(judgeProductLookups([]), { ok: true, message: "" });
+    const hiccup = judgeProductLookups(["error", "found"]);
+    assert.ok(hiccup.ok);
+    assert.match(hiccup.message, /couldn't be checked/);
   });
 });
 

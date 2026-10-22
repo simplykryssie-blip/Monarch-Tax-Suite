@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { tenantClient } from "../supabase/service";
 import { currentTenantId, MONARCH_TENANT_ID } from "../tenants.ts";
-import { modeOfKey, parseSecretKey, parseWebhookSecret, resolveKeys, type KeySource, type SavedKeys, type StripeMode } from "./keys.ts";
+import { judgeProductLookups, modeOfKey, parseSecretKey, parseWebhookSecret, resolveKeys, type KeySource, type PriceLookup, type SavedKeys, type StripeMode } from "./keys.ts";
 
 // A workspace's own storefront Stripe keys: read, decrypt, save, remove. Values stay on the server; what leaves this file for a
 // page is only which keys are set, where they come from, their last four characters, and the mode.
@@ -106,7 +106,19 @@ export async function checkStoreStripe(tenantId?: string): Promise<{ ok: boolean
   if (!st.stripe) return { ok: false, message: "No usable Stripe secret key is set." };
   try {
     await st.stripe.prices.list({ limit: 1 });
-    return { ok: true, message: `Stripe accepted the key (${st.mode} mode).` };
+    // Is it the right account? Ask for a few of the store's own prices.
+    const { data } = await tenantClient(tenantId ?? currentTenantId()).from("products").select("stripe_price_id").not("stripe_price_id", "is", null).limit(3);
+    const lookups: PriceLookup[] = [];
+    for (const row of (data ?? []) as { stripe_price_id: string }[]) {
+      try {
+        await st.stripe.prices.retrieve(row.stripe_price_id);
+        lookups.push("found");
+      } catch (e) {
+        lookups.push((e as { code?: string }).code === "resource_missing" ? "missing" : "error");
+      }
+    }
+    const verdict = judgeProductLookups(lookups);
+    return verdict.ok ? { ok: true, message: `Stripe accepted the key (${st.mode} mode).${verdict.message}` } : { ok: false, message: verdict.message };
   } catch (e) {
     const t = (e as { type?: string }).type;
     if (t === "StripeAuthenticationError") return { ok: false, message: "Stripe rejected the key. Check that it is the right key for this Stripe account." };
