@@ -44,7 +44,7 @@ Proposed 2026-10-22. Nothing here has started. Every production action (merge, m
    - c. DNS record for `admin.verexahq.com` (where verexahq.com DNS is managed).
    - d. Create the `info@verexahq.com` sign-in; Krystal sets the password and two-step sign-in herself.
    - e. Add it to the platform-admin list.
-   - f. Update the host settings (`APP_HOSTS`, admin host).
+   - f. Update the host settings (`APP_HOSTS`, admin host). **Check before the first invite is sent:** `NEXT_PUBLIC_APP_URL` is `https://app.verexahq.com` (the tenant address), and `ADMIN_HOSTS` is `admin.verexahq.com` only. Every emailed link (invites, resets, receipts) is built on `NEXT_PUBLIC_APP_URL` in production; the admin address serves only `/admin` and sign-in, so an invite link on it would answer "Not found".
    - g. Merge PRs 1 to 4 and apply the two migrations (each a separate approval).
 
 7. **Cutover — each asked separately:**
