@@ -119,3 +119,17 @@ Nothing here has been changed.
 4. **Search finds the work:** clients, leads, returns, invoices, appointments, documents, not only store items.
 
 Order: Part 1 (separation) is built first; Part 2 follows. The Messages inbox is a new build (inbound texts are not stored on clients today).
+
+## I. Owner inputs for the design (2026-10-22), and how today's code measures against them
+
+Input only; the Part 2 build starts after Part 1 Step 7. The full text is in the brief, section 2.2a.
+
+**Automations run on events and facts, never on tags.** Today (read-only check of `lib/automation`):
+- **Conflicts with the rule:** two *tag triggers* exist, `contact.tag_added` and `contact.tag_removed` (`events.ts`, `emit.ts`). A rule can start from a tag change.
+- **Allowed, but needs care:** a tag *condition* ("has the tag" / "doesn't have the tag") is permitted as one visible condition. Tag *steps* (add or remove a tag) are labeling and are fine, but a step that adds a tag feeding another rule's tag trigger recreates the chain the owner wants gone.
+- **Silent-break risk today:** tags are plain labels on records with no tag list behind them. A rule stores the tag as text, so renaming a tag on people leaves the rule pointing at the old name and it simply stops matching, with no warning. Design needs: show "used by N automations" wherever a tag is renamed or deleted, and rename in the rules together with the people.
+- **Proposal for the revamp:** retire the two tag triggers (existing rules migrated or flagged for the owner, never silently changed), keep the tag condition, and offer fact conditions (service, office, balance, dates) as the first choice.
+
+**What the previous CRM did well, mapped to this map:** Daily-first grouped menu and "everything daily one click" (Section F gaps: Messages, Tasks, Documents, Invoices); command-center home with a "waiting on you" queue and count badge (the earlier Today mock-up; there are two review-style lists today to merge, not duplicate); global client search on every page (Section B: search is store-only); one name per function (Section D); platform templates as tenant-chosen installable products (new idea for the automation and form libraries).
+
+**Its tangles, checked against today:** platform admin gating the firm owner and platform-wide tenant setup (Part 1 addresses the admin side; texting is already per-tenant here); tags as backbone (above); one hub object (today's client page is a hub of tabs but nothing depends on it as a single hook; keep it that way); duplicate dashboards (My Workspace, Home and the office dashboard overlap; merge); switches that don't switch (audit every Settings toggle in the design pass, flagged for the Part 2 audit).

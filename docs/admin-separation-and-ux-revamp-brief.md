@@ -47,6 +47,12 @@ Produce a current-state map for owner review: every tenant-facing screen, where 
 - Consistent placement across all tenant surfaces; mobile (390px) parity with desktop.
 - Visual changes only where the layout changes. Brand stays Verexa HQ in the platform/tenant app; Monarch workspace branding rules are unchanged.
 
+### 2.2a Added 2026-10-22 (owner)
+- **Automations run on happenings and facts, never on tags.** Triggers are events (form submitted, payment landed, pipeline stage changed, document signed, date arrived). Conditions check facts (service, office, balance, dates). Tags are labels for finding and sorting people only; a tag may appear as one visible condition inside a rule, but deleting or renaming a tag must never silently break an automation.
+- **Take back from the previous CRM (Verexa Tax Office v2):** one left menu grouped by frequency (Daily first), everything daily one click from anywhere; a command-center home (money this month, a "waiting on you" review queue with a count badge, quick actions); a global "search clients" box on every page; one name per function everywhere; platform templates offered as installable products that the tenant chooses.
+- **Do not repeat its tangles:** platform admin locked even to the firm owner, and tenant setup (SMS) decided platform-wide and invisible to the tenant; tags as the automation backbone ("delete one thing, break five"); everything hanging off one hub object; duplicated features (two review queues, two dashboards); settings switches that showed "off" while the feature still ran; the service-bureau network woven into every surface instead of a separable layer.
+- **Guardrails:** no invisible controls, no single hook everything hangs from, no switches that don't switch.
+
 ### 2.3 Out of scope for this pass
 - Phase 7 items beyond the admin-shell foundation (staff/support view, per-plan first-time setup flows)
 - Data export, pipelines import, forms/automations rebuild (already parked separately)
