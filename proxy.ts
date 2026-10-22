@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
+import { adminRouteVerdict } from "@/lib/admin-host.ts";
 import { frameAncestors, hostFromHeader } from "@/lib/commerce/embed.ts";
 import { loadEmbedDecision } from "@/lib/embed-server";
 import { classifyHost, cleanRequestHost } from "@/lib/sites/host.ts";
@@ -11,6 +12,10 @@ const SITE_PASSTHROUGH = ["/book/", "/f/", "/media/", "/t/", "/u/"];
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  // The platform admin has its own address: /admin is served only there, and that address serves nothing else.
+  const verdict = adminRouteVerdict(request.headers.get("x-forwarded-host") ?? request.headers.get("host"), path);
+  if (verdict.action === "deny") return new NextResponse(verdict.message, { status: verdict.status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+  if (verdict.action === "redirect") return NextResponse.redirect(new URL(verdict.to, request.url));
   const hostKind = classifyHost(request.headers.get("x-forwarded-host") ?? request.headers.get("host"));
   if (hostKind.kind === "app") {
     // The website renderer is reachable through a website address only (the proxy sets x-site-host itself). Outside
