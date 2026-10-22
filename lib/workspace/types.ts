@@ -6,6 +6,8 @@ export type Client = {
   archived_at: string | null; created_by: string | null; created_at: string; updated_at: string;
   /** The preparer who owns the client (people see their own clients), and the office whose team entered them (null = the account's own). */
   owner_id: string | null; organization_id: string | null;
+  /** Labels on the client (the column has been there since automations; older rows may not carry it). */
+  tags?: string[] | null;
 };
 export type ClientInput = Pick<Client, "full_name" | "email" | "phone" | "ssn_last4" | "address">;
 
@@ -54,7 +56,7 @@ export type PaymentRowInsert = Pick<PaymentRow, "import_id" | "row_no" | "posted
 export interface WorkspaceRepo {
   listClients(f?: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string }): Promise<Client[]>;
   getClient(id: string): Promise<Client | null>;
-  insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null }): Promise<Client>;
+  insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null; tags?: string[] }): Promise<Client>;
   updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null }): Promise<Client>;
 
   listReturns(f?: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string }): Promise<ClientReturn[]>;

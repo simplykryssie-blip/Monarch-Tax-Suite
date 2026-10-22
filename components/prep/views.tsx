@@ -1,3 +1,4 @@
+import { ImportPanel } from "@/components/imports/import-panel";
 import { PortalPanel } from "@/components/portal/panel";
 import Link from "next/link";
 import { Badge, EmptyRow, Flash } from "@/components/admin/ui";
@@ -28,14 +29,15 @@ export async function ClientsView({ ctx, sp }: { ctx: PrepContext; sp: Search })
           <form method="get" className="monarch-inline-form"><input name="q" type="search" defaultValue={q} placeholder="Search name, email or phone" aria-label="Search clients" maxLength={80} /><button className="monarch-secondary">Search</button>{q && <Link href={`${ctx.base}/clients`}>Clear</Link>}</form>
         </div>
         <div className="monarch-table-wrap"><table>
-          <thead><tr><th>CLIENT</th><th>CONTACT</th><th>RETURNS</th></tr></thead>
+          <thead><tr><th>CLIENT</th><th>CONTACT</th><th>TAGS</th><th>RETURNS</th></tr></thead>
           <tbody>
-            {clients.length === 0 ? <EmptyRow colSpan={3}>{q ? "No clients match that search." : "No clients yet. Add your first one below."}</EmptyRow> : clients.map((c) => {
+            {clients.length === 0 ? <EmptyRow colSpan={4}>{q ? "No clients match that search." : "No clients yet. Add your first one below."}</EmptyRow> : clients.map((c) => {
               const years = [...new Set(returns.filter((r) => r.client_id === c.id).map((r) => r.tax_year))].sort().reverse();
               return (
                 <tr key={c.id}>
                   <td><Link href={`${ctx.base}/clients/${c.id}`}><b>{c.full_name}</b></Link></td>
                   <td>{c.email ?? "—"}{c.phone && <small className="monarch-subcell">{c.phone}</small>}</td>
+                  <td>{c.tags?.length ? c.tags.join(", ") : "—"}</td>
                   <td>{years.length ? years.join(", ") : "—"}</td>
                 </tr>
               );
@@ -43,6 +45,7 @@ export async function ClientsView({ ctx, sp }: { ctx: PrepContext; sp: Search })
           </tbody>
         </table></div>
       </section>
+      <ImportPanel scope={ctx.area} destinations={["clients"]} />
       <section className="monarch-panel" id="add" style={{ padding: 20 }}>
         <h2 style={{ marginTop: 0 }}>Add a client</h2>
         <form action={addClientAction} className="monarch-form">
@@ -62,10 +65,15 @@ export async function ClientsView({ ctx, sp }: { ctx: PrepContext; sp: Search })
 export async function ClientView({ ctx, id, sp }: { ctx: PrepContext; id: string; sp: Search }) {
   const client = await loadClient(ctx.deps, ctx.scope, id);
   const returns = (await visibleReturns(ctx.deps, ctx.scope, { clientId: client.id })).sort((a, b) => b.tax_year - a.tax_year);
+  // Notes and the message history (including what was imported). The client was already checked as one this person may see.
+  const [notes, messages] = await Promise.all([ctx.deps.ws.listNotes(client.id).catch(() => []), ctx.deps.ws.listMessages(client.id).catch(() => [])]);
+  const when = (iso: string) => new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" }).format(new Date(iso));
+  const CHANNEL = { email: "Email", sms: "Text", call: "Call", other: "Other" } as const;
   return (
     <>
       <Link className="monarch-back" href={`${ctx.base}/clients`}>← My Clients</Link>
       <h1 className="office-h1">{client.full_name}</h1>
+      {client.tags?.length ? <p aria-label="Tags">{client.tags.map((t) => <span key={t} className="monarch-badge" style={{ marginRight: 6 }}>{t}</span>)}</p> : null}
       <Flash notice={sp.notice} error={sp.error} />
       <section className="monarch-panel" style={{ padding: 20 }}>
         <h2 style={{ marginTop: 0 }}>Details</h2>
@@ -81,6 +89,24 @@ export async function ClientView({ ctx, id, sp }: { ctx: PrepContext; id: string
         </form>
       </section>
       <PortalPanel area={ctx.area === "practice" ? "practice" : "office"} tenantId={ctx.tenantId} clientId={client.id} email={client.email} />
+      <section className="monarch-panel" id="notes" style={{ padding: 20 }}>
+        <h2 style={{ marginTop: 0 }}>Notes</h2>
+        {notes.length === 0 ? <p className="monarch-muted">No notes yet. Notes you import appear here.</p> : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>{notes.map((n) => <li key={n.id}><small className="monarch-muted">{when(n.created_at)}</small><div style={{ whiteSpace: "pre-wrap" }}>{n.body}</div></li>)}</ul>
+        )}
+      </section>
+      <section className="monarch-panel" id="messages" style={{ padding: 20 }}>
+        <h2 style={{ marginTop: 0 }}>Messages</h2>
+        {messages.length === 0 ? <p className="monarch-muted">No messages yet. Messages you import appear here as history only.</p> : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>{messages.map((m) => (
+            <li key={m.id}>
+              <small className="monarch-muted">{when(m.occurred_at)} · {m.direction === "in" ? "From the client" : "To the client"} · {CHANNEL[m.channel]}{m.status === "logged" ? " · logged" : ""}</small>
+              {m.subject && <div><b>{m.subject}</b></div>}
+              <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
+            </li>
+          ))}</ul>
+        )}
+      </section>
       <section className="monarch-panel">
         <div className="monarch-panel-head"><div><h2>Returns</h2></div></div>
         <div className="monarch-table-wrap"><table>

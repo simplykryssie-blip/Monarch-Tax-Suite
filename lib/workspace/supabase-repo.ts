@@ -22,7 +22,7 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
     return unwrap(await q) as Client[];
   }
   async getClient(id: string) { return unwrap(await this.db.from("clients").select("*").eq("id", id).maybeSingle()) as Client | null; }
-  async insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null }) { return unwrap(await this.db.from("clients").insert(input).select("*").single()) as Client; }
+  async insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null; tags?: string[] }) { return unwrap(await this.db.from("clients").insert(input).select("*").single()) as Client; }
   async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null }) { return unwrap(await this.db.from("clients").update(patch).eq("id", id).select("*").single()) as Client; }
 
   async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) {
