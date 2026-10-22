@@ -56,9 +56,17 @@ describe("platform admin shell", () => {
 
   test("pages under /admin get the platform frame, never a workspace's", () => {
     const layout = read("app/(admin)/layout.tsx");
-    assert.match(layout, /path === "\/admin" \|\| path\.startsWith\("\/admin\/"\)\) return <PlatformShell/);
+    assert.match(layout, /path === "\/admin" \|\| path\.startsWith\("\/admin\/"\)\) \{/);
     assert.ok(layout.indexOf("<PlatformShell") < layout.indexOf("loadAlerts("), "no workspace data is loaded for the platform frame");
     assert.ok(!/loadBrand|loadAlerts|currentTier|AdminShell/.test(read("components/admin/platform-shell.tsx")), "the platform frame uses no workspace data");
+  });
+
+  test("the platform frame is drawn only after the platform-admin check, never after the workspace gate", () => {
+    const layout = read("app/(admin)/layout.tsx");
+    const branch = layout.slice(layout.indexOf('if (path === "/admin"'), layout.indexOf("<PlatformShell"));
+    assert.match(branch, /requirePlatformAdmin\(\)/);
+    assert.ok(layout.indexOf("requirePlatformAdmin()") < layout.indexOf("<PlatformShell"));
+    assert.ok(layout.indexOf('path === "/admin"') < layout.indexOf("requireAdmin()"), "a /admin path never reaches the workspace gate first");
   });
 
   test("the new screens are platform-admin only and read-only", () => {
