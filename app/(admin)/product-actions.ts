@@ -3,13 +3,14 @@
 import { DELETE_NOTICE } from "@/lib/storage/window.ts";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { appOrigin, commerceRepo, imageStore, requireAdmin, stripeClient } from "@/lib/admin";
+import { appOrigin, commerceRepo, imageStore, requireAdmin } from "@/lib/admin";
 import { createProduct, duplicateProduct, editProduct, setProductStatus } from "@/lib/commerce/catalog.ts";
 import { removeProductImage, setPrimaryImage, updateImageAlt, uploadProductImage } from "@/lib/commerce/images.ts";
 import { createStripePrice, createStripeProduct, syncStripeProductInfo, type StripePort, type SyncResult } from "@/lib/commerce/stripe-sync.ts";
 import { parseProductForm, ValidationError } from "@/lib/commerce/validation.ts";
 import { checkVersionPrice, createVersionPrice, linkVersionPrice, verifyCatalogProduct, type StripeCatalogPort } from "@/lib/commerce/stripe-verify.ts";
 import { fixWebhook, stripeAvailabilityNote, stripeCatalogPort, stripeSyncPort } from "@/lib/stripe-catalog";
+import { loadStoreStripe, storeStripeClient } from "@/lib/store-stripe/server";
 
 // Product editor, image and Stripe actions. Every action re-checks
 // administrator access server-side before touching data or storage.
@@ -137,10 +138,10 @@ async function stripeAction(form: FormData, run: (port: StripePort, productId: s
   await requireAdmin();
   const productId = uuid(form, "id");
   const back = `/products/${productId}`;
-  const stripe = stripeClient();
+  const stripe = await storeStripeClient();
   let target: string;
   if (!stripe) {
-    target = notice(back, "error", "Stripe is not connected: STRIPE_SECRET_KEY is not configured, so nothing was sent to Stripe.");
+    target = notice(back, "error", "Stripe is not connected: add your Stripe secret key in Settings, Store payments. Nothing was sent to Stripe.");
   } else {
     try {
       const result = await run(stripeSyncPort(stripe), productId);
@@ -155,7 +156,7 @@ async function stripeAction(form: FormData, run: (port: StripePort, productId: s
 }
 
 export async function syncStripeProductInfoAction(form: FormData) {
-  await stripeAction(form, async (port, productId) => syncStripeProductInfo(commerceRepo(), imageStore(await appOrigin()), port, productId, stripeCatalogPort()));
+  await stripeAction(form, async (port, productId) => syncStripeProductInfo(commerceRepo(), imageStore(await appOrigin()), port, productId, await stripeCatalogPort()));
 }
 
 export async function createStripeProductAction(form: FormData) {
@@ -172,12 +173,12 @@ async function verifyAction(form: FormData, run: (port: StripeCatalogPort, produ
   await requireAdmin();
   const productId = uuid(form, "product_id");
   const back = `/products/${productId}`;
-  const port = stripeCatalogPort();
+  const port = await stripeCatalogPort();
   let target: string;
   if (!port) {
-    target = notice(back, "error", process.env.STRIPE_SECRET_KEY
-      ? "STRIPE_SECRET_KEY is set but is not a Stripe secret (sk_) or restricted (rk_) key, so nothing was checked."
-      : "Stripe is not connected: STRIPE_SECRET_KEY is not configured on the server, so nothing was checked.");
+    target = notice(back, "error", (await loadStoreStripe()).secretKey
+      ? "The saved Stripe key is not a secret (sk_) or restricted (rk_) key, so nothing was checked. Fix it in Settings, Store payments."
+      : "Stripe is not connected: add your Stripe secret key in Settings, Store payments. Nothing was checked.");
   } else {
     try {
       target = notice(back, "notice", await run(port, productId));

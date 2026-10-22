@@ -2,7 +2,7 @@
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { appOrigin, commerceRepo, stripeClient } from "@/lib/admin";
+import { appOrigin, commerceRepo } from "@/lib/admin";
 import { clientAddress, hashClient } from "@/lib/commerce/rate-limit.ts";
 import { startStorefrontCheckout } from "@/lib/commerce/storefront-checkout.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
@@ -15,6 +15,7 @@ import { requestTenant, wispDeps } from "@/lib/wisp/server";
 import { WISP_COOKIE } from "@/lib/wisp/cookie.ts";
 import { captureAuditLead, captureAuditStart, captureBuilderStart, LeadInputError } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
+import { storeStripeClient } from "@/lib/store-stripe/server";
 
 // Public WISP Generator actions. The tenant comes from the web address the page was opened on. Every action is
 // limited per visitor; answers are checked again on the server.
@@ -104,8 +105,8 @@ export async function startWispCheckoutAction(input: { answers: unknown; email: 
     const tenantId = await requestTenant();
     if (input.acknowledgePurchase !== true) throw new ValidationError("Please tick the box to confirm you understand the purchase terms.");
     if (!input.acceptTerms) throw new ValidationError("Please confirm that you accept the Terms of Service and the Refund Policy.");
-    const stripe = stripeClient();
-    const catalog = stripeCatalogPort();
+    const stripe = await storeStripeClient();
+    const catalog = await stripeCatalogPort();
     // The storefront and its Stripe account are Monarch's; other firms' WISP builders can't take payment yet.
     if (!stripe || !catalog || !LEGAL_PAGES_APPROVED || tenantId !== MONARCH_TENANT_ID) throw new ValidationError("Online checkout is not available yet. Please contact us to get your WISP.");
     const deps = wispDeps(tenantId);

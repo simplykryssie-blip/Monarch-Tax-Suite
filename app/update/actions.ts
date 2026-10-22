@@ -6,7 +6,8 @@ import { lookupUpdate } from "@/lib/commerce/versions.ts";
 import { startUpdateCheckout, type CheckoutSessionPort } from "@/lib/commerce/update-checkout.ts";
 import { stripeCatalogPort } from "@/lib/stripe-catalog";
 import { ValidationError } from "@/lib/commerce/validation.ts";
-import { appOrigin, stripeClient, tenantDb } from "@/lib/admin";
+import { appOrigin, tenantDb } from "@/lib/admin";
+import { storeStripeClient } from "@/lib/store-stripe/server";
 
 export type UpdateState = {
   error?: string;
@@ -39,8 +40,8 @@ export async function checkUpdateAction(_prev: UpdateState, form: FormData): Pro
  * confirms payment.
  */
 export async function startUpdateCheckoutAction(form: FormData) {
-  const stripe = stripeClient();
-  const catalog = stripeCatalogPort();
+  const stripe = await storeStripeClient();
+  const catalog = await stripeCatalogPort();
   let url: string;
   try {
     if (!stripe || !catalog) throw new ValidationError("Online updates are not available yet. Please contact Monarch Tax Suite.");

@@ -69,6 +69,7 @@ export const NAV: Entry[] = [
       { label: "Email sending", icon: "bell", href: "/settings/email" },
       { label: "Business hours", icon: "checklist", href: "/settings/business-hours" },
       { label: "Payments", icon: "card", href: "/settings/payments" },
+      { label: "Store payments", icon: "card", href: "/settings/store-payments", section: "store" },
       { label: "Text messaging", icon: "bell", href: "/settings/sms" },
       { label: "Import data", icon: "reports", href: "/settings/import" },
       { label: "Package attributes", icon: "checklist", href: "/settings/package-attributes" },

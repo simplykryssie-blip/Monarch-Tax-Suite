@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { SubmitOnce } from "@/components/admin/submit-once";
-import { appOrigin, imageStore, stripeClient, tenantDb } from "@/lib/admin";
+import { appOrigin, imageStore, tenantDb } from "@/lib/admin";
 import { platformTwilio, platformSendProblems, type AvailableNumber } from "@/lib/automation/twilio.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
@@ -12,6 +12,7 @@ import { fulfilSmsSession, smsAccount, smsSetupDeps, tenantSms } from "@/lib/sms
 import type { CreditKind } from "@/lib/sms/types.ts";
 import { currentTenantId, MONARCH_TENANT_ID } from "@/lib/tenants.ts";
 import { buySmsCreditsAction, checkSmsStatusAction, chooseSmsNumberAction, saveSmsSetupAction, startSmsSetupCheckoutAction } from "../actions";
+import { storeStripeClient } from "@/lib/store-stripe/server";
 
 const KIND: Record<CreditKind, string> = { purchase: "Credits bought", send: "Text sent", send_reversal: "Text not sent: credits returned", renewal: "Number, monthly", forfeit: "Forfeited after 30 days without renewal" };
 const REGISTRATION = { not_started: "Not submitted yet", submitted: "Submitted: carriers are reviewing it", approved: "Approved: you can text clients", rejected: "Rejected" } as const;
@@ -19,7 +20,7 @@ const REGISTRATION = { not_started: "Not submitted yet", submitted: "Submitted: 
 /** Comes back from Stripe Checkout: Stripe is asked directly whether it's paid, then it's honoured (once). */
 async function confirmReturn(sessionId: string | undefined): Promise<{ notice?: string; error?: string }> {
   if (!sessionId || !/^cs_(test|live)_[A-Za-z0-9]{10,200}$/.test(sessionId)) return {};
-  const stripe = stripeClient();
+  const stripe = await storeStripeClient();
   if (!stripe) return {};
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId);

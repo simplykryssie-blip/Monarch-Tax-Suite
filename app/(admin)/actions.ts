@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { appOrigin, commerceRepo, requireAdmin, stripeClient } from "@/lib/admin";
+import { appOrigin, commerceRepo, requireAdmin } from "@/lib/admin";
 import { closeOpenCheckoutsNote, stripeAvailabilityNote } from "@/lib/stripe-catalog";
 import { setProductStatus } from "@/lib/commerce/catalog.ts";
 import {
@@ -35,6 +35,7 @@ import {
   parseProductStatus,
   ValidationError,
 } from "@/lib/commerce/validation.ts";
+import { storeStripeClient } from "@/lib/store-stripe/server";
 
 // Every action re-checks administrator access server-side; hiding buttons in
 // the UI is not relied on for authorization.
@@ -86,7 +87,7 @@ export async function setProductStatusAction(form: FormData) {
 // ------------------------------------------------------------ reconciliation
 
 async function lookupStripePayment(paymentIntentId: string): Promise<StripePaymentCheck | null> {
-  const stripe = stripeClient();
+  const stripe = await storeStripeClient();
   if (!stripe) return null;
   try {
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] });

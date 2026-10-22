@@ -143,7 +143,6 @@ export type IntegrationStatus = {
   /** The owner's Twilio account: tenant #1 texts from it, and it is the parent of every office's subaccount. */
   twilio: { canSend: boolean; canManage: boolean; problems: string[] };
   highlevel: { appConfigured: boolean };
-  stripe: { secretKey: boolean; webhookSecret: boolean; mode: "test" | "live" | "unknown" };
   app: { encryptionKey: boolean; appUrl: string | null; schedulerSecret: boolean; environment: string; testRecipients: number };
 };
 
@@ -151,12 +150,10 @@ export type IntegrationStatus = {
 export function integrationStatus(): IntegrationStatus {
   const e = env();
   const cfg = emailConfig(e);
-  const sk = e.STRIPE_SECRET_KEY ?? "";
   return {
     resend: { configured: emailConfigProblems(cfg).length === 0, keySource: cfg.keySource, sender: cfg.from, replyTo: cfg.replyTo, problems: emailConfigProblems(cfg) },
     twilio: { canSend: platformSendProblems(platformTwilio(e)).length === 0, canManage: platformProblems(platformTwilio(e)).length === 0, problems: platformSendProblems(platformTwilio(e)) },
     highlevel: { appConfigured: Boolean(e.HIGHLEVEL_CLIENT_ID && e.HIGHLEVEL_CLIENT_SECRET) },
-    stripe: { secretKey: Boolean(sk), webhookSecret: Boolean(e.STRIPE_WEBHOOK_SECRET), mode: /^(sk|rk)_test_/.test(sk) ? "test" : /^(sk|rk)_live_/.test(sk) ? "live" : "unknown" },
     app: { encryptionKey: CrmSecrets.fromBase64(e.MONARCH_ENCRYPTION_KEY) !== null, appUrl: e.NEXT_PUBLIC_APP_URL ?? null, schedulerSecret: Boolean(e.CRON_SECRET), environment: automationConfig().env, testRecipients: automationConfig().testRecipients.length },
   };
 }

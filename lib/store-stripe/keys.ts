@@ -1,0 +1,66 @@
+// A workspace's own storefront Stripe keys (secret key and webhook signing secret). Pure rules, so they can be tested;
+// the database and encryption are in server.ts. Today only Monarch sells through the storefront.
+//
+// Where the keys come from, in order: the workspace's own saved settings, then (Monarch only, until the move is done and
+// the old environment variables are removed) the server's environment. Values are never returned to a page.
+
+export type StripeMode = "test" | "live";
+
+export type ParsedKey = { ok: true; value: string; mode: StripeMode; hint: string } | { ok: false; error: string };
+
+const SECRET = /^(sk|rk)_(test|live)_[A-Za-z0-9]{16,250}$/;
+const WEBHOOK = /^whsec_[A-Za-z0-9+/=_-]{16,200}$/;
+
+/** The last four characters, so the owner can tell which key is saved without the key ever being shown. */
+export const keyHint = (value: string) => value.slice(-4);
+
+export function parseSecretKey(raw: unknown): ParsedKey {
+  const v = typeof raw === "string" ? raw.trim() : "";
+  if (!v) return { ok: false, error: "Enter the Stripe secret key." };
+  if (/^pk_/.test(v)) return { ok: false, error: "That is a publishable key (pk_…). Use the secret key (sk_…) or a restricted key (rk_…)." };
+  const m = SECRET.exec(v);
+  if (!m) return { ok: false, error: "That doesn't look like a Stripe secret key. It starts with sk_test_ / sk_live_ (or rk_test_ / rk_live_ for a restricted key)." };
+  return { ok: true, value: v, mode: m[2] as StripeMode, hint: keyHint(v) };
+}
+
+export type ParsedSecret = { ok: true; value: string; hint: string } | { ok: false; error: string };
+
+export function parseWebhookSecret(raw: unknown): ParsedSecret {
+  const v = typeof raw === "string" ? raw.trim() : "";
+  if (!v) return { ok: false, error: "Enter the webhook signing secret." };
+  if (!WEBHOOK.test(v)) return { ok: false, error: "That doesn't look like a webhook signing secret. It starts with whsec_ and is shown on the webhook's page in Stripe." };
+  return { ok: true, value: v, hint: keyHint(v) };
+}
+
+export const modeOfKey = (key: string | null | undefined): StripeMode | null => {
+  const m = /^(?:sk|rk)_(test|live)_/.exec(key ?? "");
+  return m ? (m[1] as StripeMode) : null;
+};
+
+export type SavedKeys = { secretKey: string | null; webhookSecret: string | null };
+export type KeySource = "settings" | "environment" | null;
+export type ResolvedKeys = { secretKey: string | null; webhookSecret: string | null; secretKeySource: KeySource; webhookSecretSource: KeySource };
+
+/**
+ * Settings win. Only the Monarch workspace may still fall back to the server's environment, which keeps the live store
+ * working until its keys are entered in settings; any other workspace has no fallback and so never borrows Monarch's keys.
+ */
+export function resolveKeys(saved: SavedKeys | null, env: Record<string, string | undefined>, isMonarch: boolean): ResolvedKeys {
+  const envKey = isMonarch ? env.STRIPE_SECRET_KEY?.trim() || null : null;
+  const envHook = isMonarch ? env.STRIPE_WEBHOOK_SECRET?.trim() || null : null;
+  const secretKey = saved?.secretKey ?? envKey;
+  const webhookSecret = saved?.webhookSecret ?? envHook;
+  return {
+    secretKey,
+    webhookSecret,
+    secretKeySource: saved?.secretKey ? "settings" : envKey ? "environment" : null,
+    webhookSecretSource: saved?.webhookSecret ? "settings" : envHook ? "environment" : null,
+  };
+}
+
+/** The owner-facing line for one setting. */
+export function describeKey(label: string, source: KeySource, hint: string | null, mode: StripeMode | null): string {
+  if (source === "settings") return `${label}: saved here${hint ? ` (ends ${hint})` : ""}${mode ? `, ${mode} mode` : ""}.`;
+  if (source === "environment") return `${label}: still read from the server's environment settings${mode ? ` (${mode} mode)` : ""}. Save it here, check it works, then remove it from Vercel.`;
+  return `${label}: not set.`;
+}

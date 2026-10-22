@@ -27,6 +27,7 @@ const ROUTES: [string, Section][] = [
   ["/store", "store"], ["/customers", "store"], ["/orders", "store"], ["/products", "store"], ["/licenses", "store"], ["/installations", "store"], ["/service-orders", "store"],
   ["/automation", "operations"], ["/forms", "operations"], ["/calendar", "operations"], ["/sites", "operations"], ["/campaigns", "operations"],
   ["/settings/integrations", "bureau"],
+  ["/settings/store-payments", "store"],
   ["/settings", "settings"],
   ["/admin", "platform"],
 ];
