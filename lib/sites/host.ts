@@ -1,3 +1,4 @@
+import { isAdminHost } from "../admin-host.ts";
 import { platformDomain, RESERVED_LABELS } from "./domains.ts";
 
 // Which requests are for a website rather than for the application. Decided from the Host header alone, so the proxy
@@ -18,6 +19,7 @@ export function classifyHost(rawHost: string | null | undefined, env: Record<str
   if (/(^|\.)(vercel\.app|vercel\.sh|vercel\.dev|now\.sh)$/.test(host)) return { kind: "app" };
   const configured = cleanRequestHost(safeHost(env.NEXT_PUBLIC_APP_URL));
   if (configured && host === configured) return { kind: "app" };
+  if (isAdminHost(host, env)) return { kind: "app" };
   const extra = (env.APP_HOSTS ?? "").split(",").map((h) => cleanRequestHost(h)).filter(Boolean);
   if (extra.includes(host)) return { kind: "app" };
   const domain = platformDomain(env);
