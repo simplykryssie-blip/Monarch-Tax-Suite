@@ -30,9 +30,9 @@ export interface BillingStripe {
   /** Moves the subscription to another price (by lookup key) from the next renewal, with no charge now. */
   setPrice(subscriptionId: string, lookupKey: string): Promise<void>;
   /** What a plan change would cost today: the new plan's full month, less credit for the unused part of the current one. */
-  previewPlanChange(subscriptionId: string, lookupKey: string): Promise<{ dueCents: number; creditCents: number; /** The moment the quote was worked out at (unix seconds); the change is charged as of the same moment. */ prorationDate: number }>;
+  previewPlanChange(subscriptionId: string, lookupKey: string): Promise<{ dueCents: number; creditCents: number }>;
   /** Changes plan now. The new plan starts today and is charged in full, less credit for the unused time on the old one. Fails if the card can't pay (nothing changes then). */
-  changePlan(subscriptionId: string, lookupKey: string, prorationDate: number): Promise<{ currentPeriodEnd: string | null }>;
+  changePlan(subscriptionId: string, lookupKey: string): Promise<{ currentPeriodEnd: string | null }>;
   subscriptionFacts(subscriptionId: string): Promise<SubscriptionFacts>;
   /** Whether the customer's card is good for the renewal date. */
   cardCheck(customerId: string, renewalIso: string): Promise<{ ok: true } | { ok: false; reason: string }>;
@@ -282,10 +282,15 @@ export async function resumeWorkspace(deps: BillingDeps, tenantId: string): Prom
 
 // ------------------------------------------------------------ changing plan
 
-export type PlanChangePreview = { from: PlanKey; to: PlanKey; dueCents: number; creditCents: number; prorationDate: number };
+export type PlanChangePreview = { from: PlanKey; to: PlanKey; dueCents: number; creditCents: number; /** When the price was worked out (unix seconds). */ quotedAt: number };
 
-/** How long a quoted price can be confirmed: after this the person is shown the price again. */
-export const QUOTE_MINUTES = 30;
+/**
+ * How long a quoted price can be confirmed, and how far the price may have moved by then. The credit for unused days
+ * shrinks by the second, so the amount charged can differ from the quote by a few cents; past this much the person is
+ * shown the new price first. (Stripe won't fix the moment for a change that also resets the billing cycle.)
+ */
+export const QUOTE_MINUTES = 10;
+export const QUOTE_DRIFT_CENTS = 10;
 
 function planChangeTarget(sub: Subscription, to: unknown): PlanKey {
   if (sub.status !== "active") fail(sub.status === "paused" ? "Resume your plan before changing it." : "Only an account in good standing can change plan.");
@@ -300,7 +305,7 @@ export async function previewPlanChange(deps: BillingDeps, tenantId: string, to:
   const sub = (await deps.repo.byTenant(tenantId)) ?? fail("This workspace has no subscription.");
   const plan = planChangeTarget(sub, to);
   const q = await deps.stripe.previewPlanChange(sub.stripe_subscription_id!, PLANS[plan].lookupKey);
-  return { from: sub.plan, to: plan, dueCents: q.dueCents, creditCents: q.creditCents, prorationDate: q.prorationDate };
+  return { from: sub.plan, to: plan, dueCents: q.dueCents, creditCents: q.creditCents, quotedAt: Math.floor(nowOf(deps).getTime() / 1000) };
 }
 
 /**
@@ -308,16 +313,17 @@ export async function previewPlanChange(deps: BillingDeps, tenantId: string, to:
  * charged in full, less the credit for the unused days of the old plan, so the customer pays the difference. A credit
  * that is larger than the new price (a downgrade) is kept on the account for the next invoice; it is never paid out.
  */
-export async function changePlan(deps: BillingDeps, tenantId: string, to: unknown, quotedAt: unknown): Promise<PlanKey> {
+export async function changePlan(deps: BillingDeps, tenantId: string, to: unknown, quotedAt: unknown, quotedDueCents: unknown): Promise<PlanKey> {
   const sub = (await deps.repo.byTenant(tenantId)) ?? fail("This workspace has no subscription.");
   const plan = planChangeTarget(sub, to);
-  // The price on the screen was worked out as of one moment. The change is charged as of that same moment, so the amount
-  // charged is the amount shown, not a few cents different because the credit for unused days shrinks by the second.
-  const asked = typeof quotedAt === "string" ? Number(quotedAt) : typeof quotedAt === "number" ? quotedAt : NaN;
+  // The price on the screen must be recent, and still about right: it is worked out again just before the charge.
+  const at = Number(quotedAt);
+  const shown = Number(quotedDueCents);
   const nowSeconds = Math.floor(nowOf(deps).getTime() / 1000);
-  // 0 means the quote could not be tied to one moment (Stripe wouldn't take one); the change is then charged as of now.
-  if (!Number.isInteger(asked) || (asked !== 0 && (asked > nowSeconds + 60 || asked < nowSeconds - QUOTE_MINUTES * 60))) fail("That price is out of date. Look at what you'd pay again, then confirm.");
-  const r = await deps.stripe.changePlan(sub.stripe_subscription_id!, PLANS[plan].lookupKey, asked);
+  if (!Number.isInteger(at) || !Number.isInteger(shown) || at > nowSeconds + 60 || at < nowSeconds - QUOTE_MINUTES * 60) fail("That price is out of date. Look at what you'd pay again, then confirm.");
+  const now = await deps.stripe.previewPlanChange(sub.stripe_subscription_id!, PLANS[plan].lookupKey);
+  if (Math.abs(now.dueCents - shown) > QUOTE_DRIFT_CENTS) fail(`The price changed from ${dollars(shown)} to ${dollars(now.dueCents)} since you looked. Look at it again, then confirm.`);
+  const r = await deps.stripe.changePlan(sub.stripe_subscription_id!, PLANS[plan].lookupKey);
   await deps.repo.update(tenantId, { plan, current_period_end: r.currentPeriodEnd ?? sub.current_period_end, precheck_mark: null });
   await tell(deps, tenantId, (name) => ({ subject: `Your Verexa HQ plan is now ${PLANS[plan].label}`, text: `Hi ${name},\n\nYour plan is now ${PLANS[plan].label} (${dollars(PLANS[plan].priceCents)} per month). It started today, and your monthly billing date is now ${r.currentPeriodEnd ? "each month on the same day as today" : "today's date"}. The unused part of your old plan was credited toward the new one. You can see the invoice from Billing.\n` }));
   return plan;
@@ -384,7 +390,8 @@ export async function runBillingSweep(deps: BillingDeps): Promise<SweepReport> {
 
 // ----------------------------------------------------------------- emails
 
-const when = (d: Date) => new Intl.DateTimeFormat("en-US", { dateStyle: "long", timeZone: "UTC" }).format(d);
+// Dates are shown in Central time, the platform's own, so they match what the Stripe dashboard shows the owner.
+const when = (d: Date) => new Intl.DateTimeFormat("en-US", { dateStyle: "long", timeZone: "America/Chicago" }).format(d);
 
 export function welcomeEmail(i: { name: string; workspace: string; plan: PlanKey; link: string }): Mail {
   return {

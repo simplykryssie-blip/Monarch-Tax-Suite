@@ -4,7 +4,8 @@ import { dollars, PAUSE_PLAN, PLANS, switchablePlans } from "./plans.ts";
 
 // What the Billing page and the banner say about an account, in plain words.
 
-const when = (iso: string) => new Intl.DateTimeFormat("en-US", { dateStyle: "long", timeZone: "UTC" }).format(new Date(iso));
+// Central time, the platform's own, so dates match what the Stripe dashboard shows (a renewal late in the evening is the same day).
+const when = (iso: string) => new Intl.DateTimeFormat("en-US", { dateStyle: "long", timeZone: "America/Chicago" }).format(new Date(iso));
 
 export type BillingView = {
   level: AccessLevel; planLabel: string; price: string; statusLabel: string; renews: string | null; banner: { tone: "warn" | "info"; text: string } | null;

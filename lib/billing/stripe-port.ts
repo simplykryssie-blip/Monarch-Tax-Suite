@@ -45,30 +45,16 @@ export function billingStripe(env: NodeJS.ProcessEnv = process.env): { stripe: S
       const sub = await stripe.subscriptions.retrieve(subscriptionId);
       const item = sub.items.data[0];
       if (!item) throw new Error("The subscription has no plan item.");
-      // One fixed moment, remembered and used again when the change is made, so the quote and the charge agree to the cent.
-      const prorationDate = Math.floor(Date.now() / 1000);
-      const price = await priceId(lookupKey);
-      const preview = (fixed: boolean) => stripe.invoices.createPreview({
+      // Stripe won't take a fixed proration moment together with a billing-cycle reset, so the quote is as of now.
+      const inv = await stripe.invoices.createPreview({
         subscription: subscriptionId,
-        subscription_details: { items: [{ id: item.id, price }], proration_behavior: "always_invoice", billing_cycle_anchor: "now", ...(fixed ? { proration_date: prorationDate } : {}) },
+        subscription_details: { items: [{ id: item.id, price: await priceId(lookupKey) }], proration_behavior: "always_invoice", billing_cycle_anchor: "now" },
       });
-      let inv: Stripe.Invoice;
-      let fixedMoment = true;
-      try {
-        inv = await preview(true);
-      } catch (e) {
-        // If Stripe won't take a fixed moment together with a billing-cycle reset, quote without it (0 = not fixed): the
-        // price shown is then close to, not exactly, the price charged. Anything else is a real failure.
-        if (!(e instanceof Stripe.errors.StripeInvalidRequestError) || !/proration_date|billing_cycle_anchor/i.test(e.message)) throw e;
-        console.warn(`billing: Stripe refused a fixed proration moment (${e.message.slice(0, 120)}); quoting without it`);
-        inv = await preview(false);
-        fixedMoment = false;
-      }
       // The credit for unused time is the negative proration lines; the rest is the new plan's charge.
       const credit = inv.lines.data.filter((l) => l.amount < 0).reduce((n, l) => n - l.amount, 0);
-      return { dueCents: Math.max(0, inv.amount_due), creditCents: credit, prorationDate: fixedMoment ? prorationDate : 0 };
+      return { dueCents: Math.max(0, inv.amount_due), creditCents: credit };
     },
-    async changePlan(subscriptionId, lookupKey, prorationDate) {
+    async changePlan(subscriptionId, lookupKey) {
       const sub = await stripe.subscriptions.retrieve(subscriptionId);
       const item = sub.items.data[0];
       if (!item) throw new Error("The subscription has no plan item.");
@@ -77,7 +63,6 @@ export function billingStripe(env: NodeJS.ProcessEnv = process.env): { stripe: S
         items: [{ id: item.id, price: await priceId(lookupKey) }],
         proration_behavior: "always_invoice",
         billing_cycle_anchor: "now",
-        ...(prorationDate > 0 ? { proration_date: prorationDate } : {}),
         payment_behavior: "error_if_incomplete",
       });
       const end = updated.items.data[0]?.current_period_end;

@@ -7,7 +7,7 @@ import { billingView } from "../lib/billing/view.ts";
 import type { Subscription } from "../lib/billing/access.ts";
 
 const BILLING = { STRIPE_BILLING_SECRET_KEY: "sk_test_abc", STRIPE_BILLING_WEBHOOK_SECRET: "whsec_x", MONARCH_ENCRYPTION_KEY: "k" };
-const sub = (over: Partial<Subscription>): Subscription => ({ tenant_id: "t", plan: "ptin", status: "active", stripe_customer_id: "cus_1", stripe_subscription_id: "sub_1", current_period_end: "2026-12-01T00:00:00Z", cancel_at_period_end: false, paused_from_plan: null, suspended_at: null, canceled_at: null, delete_after: null, precheck_mark: null, created_at: "", updated_at: "", ...over });
+const sub = (over: Partial<Subscription>): Subscription => ({ tenant_id: "t", plan: "ptin", status: "active", stripe_customer_id: "cus_1", stripe_subscription_id: "sub_1", current_period_end: "2026-12-01T18:00:00Z", cancel_at_period_end: false, paused_from_plan: null, suspended_at: null, canceled_at: null, delete_after: null, precheck_mark: null, created_at: "", updated_at: "", ...over });
 
 test("gate: a good account can do everything", () => {
   assert.deepEqual(gateFor("full", "/practice/clients", "POST"), { allowed: true });
