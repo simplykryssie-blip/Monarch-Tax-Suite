@@ -18,7 +18,11 @@ Pre-merge check on production (read-only, done 2026-10-22): the platform-admin l
 | A6 | Builder | On the test project: add *admin* to the platform-admin list and as Monarch owner; add *owner* as Monarch owner only; add *staff* as Monarch staff only. Confirms with a read-back. |
 
 ## Preview address note (found in B4)
-Invite links, and every other emailed link, are built on the deployment's **own address** on Preview (`VERCEL_BRANCH_URL`), and on the configured app address (`NEXT_PUBLIC_APP_URL`) everywhere else. In steps A3/A4 the branch URL was chosen as the admin address, so Preview invite links pointed at the admin address, which serves only `/admin` and sign-in (the invite page answers there with "Not found"). This is a Preview-config artifact, not a code fault. For a faithful retest, swap the roles: set `ADMIN_HOSTS` to `preview.verexahq.com` and treat the branch URL as the tenant address; links are then built on the tenant address.
+Invite links, and every other emailed link, are built on the deployment's **own address** on Preview (`VERCEL_BRANCH_URL`), and on the configured app address (`NEXT_PUBLIC_APP_URL`) everywhere else. In steps A3/A4 the branch URL was chosen as the admin address, so Preview invite links pointed at the admin address, which serves only `/admin` and sign-in (the invite page answers there with "Not found"). This is a Preview-config artifact, not a code fault. **Do not swap the roles** (an earlier version of this note suggested it): every provider callback (Stripe, Resend, Twilio) must reach the tenant address, `preview.verexahq.com`, which is public; the branch URL is behind Vercel's sign-in so providers cannot reach it, and the admin address serves only `/admin` and sign-in. On Preview, finish invite checks by replacing the link's host with `preview.verexahq.com`.
+
+**Webhooks on Preview:** register provider webhooks at `https://preview.verexahq.com/api/...`, never the branch URL (the Store payments screen prints the deployment's own address, which on Preview is the protected branch URL; on production it prints the public app address and is right).
+
+**Store webhook events (test mode):** `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`, `charge.dispute.created`.
 
 ## B. Tests
 
