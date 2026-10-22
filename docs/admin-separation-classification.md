@@ -1,4 +1,4 @@
-# Part 1 — Platform vs tenant classification (DRAFT for owner review)
+# Part 1 — Platform vs tenant classification (owner decisions recorded 2026-10-22)
 
 Prepared 2026-10-22 from a read-only pass over the code at `bd01830` (default branch). Nothing has been moved, renamed or built. Per the owner brief, nothing is reclassified silently: every row below is a proposal until Krystal marks it.
 
@@ -84,3 +84,16 @@ Legend: **P** = platform (Verexa HQ owns it; belongs behind admin.verexahq.com).
 6. **Platform legal switch.** Today `PLATFORM_LEGAL_APPROVED` is only an environment variable. Do you want a read-only status screen in Admin (like Integrations), or keep it as a deploy-time switch?
 7. **Renames.** Rename `MONARCH_ENCRYPTION_KEY`, `MONARCH_SUPPORT_EMAIL` (value unchanged, new name) in a later step, or leave the names alone. Renaming touches Vercel settings on both environments.
 8. **Office access.** Confirm `/offices` is the bureau's own office management (tenant), not a platform tool.
+
+## G. Owner decisions (Krystal, 2026-10-22) — all eight as recommended
+
+1. Monarch's owner becomes an ordinary tenant member; **info@verexahq.com is the only platform admin**.
+2. Production setup (the admin.verexahq.com domain and DNS, and creating the info@verexahq.com sign-in) is **approved in principle; each step is asked again separately before it is executed**.
+3. Platform system mail sender: **support@verexahq.com**.
+4. Twilio: **Monarch gets its own subaccount**, like any tenant.
+5. Monarch's store Stripe keys move into **Monarch's own tenant settings during the Part 1 build**.
+6. The legal switch gets a **read-only status screen in Admin**.
+7. The `MONARCH_` renames happen **later, during the move**, not as their own step.
+8. `/offices` is a **tenant tool**.
+
+Status: classification approved. No build has started. The Part 1 build order and its per-step approvals are proposed separately.
