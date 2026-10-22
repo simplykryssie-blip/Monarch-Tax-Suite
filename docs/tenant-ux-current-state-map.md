@@ -110,3 +110,12 @@ Menu: Home, Documents, Invoices, Sign, Messages, Security. Compact and consisten
 4. What search should find.
 
 Nothing here has been changed.
+
+## H. Owner marks (Krystal, 2026-10-22) — recommended defaults on all four
+
+1. **Move to the main menu:** Document library, Client Tasks, a real Messages inbox, and a named Invoices item. **Import** moves next to Clients and Leads. **Pipelines stay under Automation** (configuration).
+2. **ERO office and PTIN areas get the working basics:** Calendar, client Invoices, Messages, Search. Marketing and growth features stay plan-gated as they are today.
+3. **One shared menu structure and one vocabulary across all four areas.** "Billing" stops meaning two things.
+4. **Search finds the work:** clients, leads, returns, invoices, appointments, documents, not only store items.
+
+Order: Part 1 (separation) is built first; Part 2 follows. The Messages inbox is a new build (inbound texts are not stored on clients today).
