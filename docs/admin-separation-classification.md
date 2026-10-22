@@ -24,7 +24,7 @@ Legend: **P** = platform (Verexa HQ owns it; belongs behind admin.verexahq.com).
 | `STRIPE_BILLING_SECRET_KEY`, `STRIPE_BILLING_WEBHOOK_SECRET` | Verexa's own subscription billing account | P | |
 | `STRIPE_CONNECT_SECRET_KEY`, `STRIPE_CONNECT_CLIENT_ID`, `STRIPE_CONNECT_WEBHOOK_SECRET`, `STRIPE_CONNECT_REDIRECT_BASE` | Verexa's Connect platform; tenants link their own Stripe through it | P | Each tenant's linked account is tenant data (T) |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Signup bot check | P | |
-| `PLATFORM_LEGAL_APPROVED` | Switch that publishes platform legal pages and opens signup | P | |
+| `PLATFORM_LEGAL_APPROVED` | Switch that publishes platform legal pages and opens signup | P | **Correction (2026-10-22):** this is a constant in `lib/platform-legal.ts`, not an environment variable; it changes only by a reviewed code change, which also redeploys |
 | `RESEND_API_KEY` / `RESEND_SECRET_KEY`, `RESEND_WEBHOOK_SECRET` | The one Resend account that hosts every tenant's verified sending domains | P | Each tenant's domains/addresses are T |
 | `HIGHLEVEL_CLIENT_ID`, `HIGHLEVEL_CLIENT_SECRET`, `HIGHLEVEL_VERSION_ID`, `HIGHLEVEL_REDIRECT_URI`, `HIGHLEVEL_CONNECT_ENABLED` | Verexa's GoHighLevel marketplace app | P | Each tenant's connection is T |
 | `TWILIO_PRIMARY_CUSTOMER_PROFILE_SID` | Primary business profile all number registrations link to | P | |
@@ -44,7 +44,7 @@ Legend: **P** = platform (Verexa HQ owns it; belongs behind admin.verexahq.com).
 | `/admin/workspaces` | Admin tab | P | Move to admin.verexahq.com |
 | `/admin/billing-setup` | Admin tab | P | |
 | `/admin/integrations` | Admin tab; read-only status of platform connections | P | |
-| Platform legal / signup switch (`PLATFORM_LEGAL_APPROVED`) | Env only, no screen | P | Brief lists it under admin; today it has no screen (decision 6) |
+| Platform legal / signup switch (`PLATFORM_LEGAL_APPROVED`) | A code constant, no screen | P | Brief lists it under admin; today it has no screen (decision 6) |
 | `/settings/integrations` ("Calculator setup links") | Settings | T | Monarch's own product; bureau tier |
 | `/settings/payments` | Settings | T | Tenant connects own Stripe via platform Connect |
 | `/settings/email` | Settings | T | Tenant's own domains and addresses |
@@ -81,7 +81,7 @@ Legend: **P** = platform (Verexa HQ owns it; belongs behind admin.verexahq.com).
 3. **Platform email sender.** Platform emails (welcome, payment failed, reminders, cancellation) should come from a platform sender, not through Monarch. Proposal: a platform "system mail" sender separate from Monarch's own tenant sender, and `MONARCH_EMAIL_FROM` becomes Monarch's tenant setting. Which address should system mail come from (today it is support@verexahq.com on the Resend side)?
 4. **Twilio.** Keep one parent account (platform) and give Monarch its own subaccount like any tenant, or keep Monarch on the parent. The first matches "Monarch is an ordinary tenant" but means Monarch's number and registration move under a subaccount.
 5. **Monarch's store Stripe keys.** Move them from global environment variables into Monarch's own tenant settings (the way Connect works for tenants), or leave them as variables for now. Moving them is a build item.
-6. **Platform legal switch.** Today `PLATFORM_LEGAL_APPROVED` is only an environment variable. Do you want a read-only status screen in Admin (like Integrations), or keep it as a deploy-time switch?
+6. **Platform legal switch.** Today `PLATFORM_LEGAL_APPROVED` is a constant in the code (not an environment variable; corrected). Do you want a read-only status screen in Admin (like Integrations), or keep it as a deploy-time switch?
 7. **Renames.** Rename `MONARCH_ENCRYPTION_KEY`, `MONARCH_SUPPORT_EMAIL` (value unchanged, new name) in a later step, or leave the names alone. Renaming touches Vercel settings on both environments.
 8. **Office access.** Confirm `/offices` is the bureau's own office management (tenant), not a platform tool.
 
