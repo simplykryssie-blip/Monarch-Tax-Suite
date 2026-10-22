@@ -5,7 +5,7 @@ Decided by the owner on 2026-10-21. Companion to `docs/verexa-hq-policy-review.m
 1. **Legal entity:** its own entity, formed in Louisiana; address 5520 Johnston Street, Lafayette, LA 70503 (virtual). Entity suffix (LLC / Inc.) to be confirmed with counsel.
 2. **Refunds:** only a duplicate or double payment of the platform subscription. No partial-month refunds. Refunds stay manual in Stripe.
 3. **Cancelling:** access continues to the end of the paid period.
-4. **Plan changes:** customers can change plans. First payment after a change is the full new-plan monthly amount plus the prorated amount for the days left in the current cycle. **Open question: see "Open" below. Build not done.**
+4. **Plan changes:** customers can change plans. First payment after a change is the full new-plan monthly amount plus the prorated amount for the days left in the current cycle. **Answered: the unused part of the old plan is credited and the customer pays the difference; the new plan and billing month start the day of the change. Built in PR #75.**
 5. **Paused plan ($27):** contacts-only access, data preserved, full restore on resume.
 6. **Failed payments:** read-only at once, Billing page fully working, retries and notices for at most about 14 days, then cancelled; 90-day retention from cancellation; paying within 90 days reactivates. **Built** (see below).
 7. **Credits:** never refunded, transferred or exchanged, including accidental or duplicate purchases. Separate from the subscription both ways.
@@ -30,6 +30,6 @@ Gap recommendations 1 to 6 approved (websites and Custom HTML; Pub. 1345 and Saf
 
 ## Open
 
-- **Decision 4 charging rule needs one clarification** (is the unused part of the old plan credited?) and the build: portal plan switching is still off.
+- Decision 4 is built (PR #75). On production the Change plan section stays hidden until ERO and Service Bureau signup open.
 - Decision 7: the credit system should be checked to confirm a failed subscription payment never touches credit balances and the reverse (text credits exist; email credits may not).
 - 90-day deletion job is not built yet (separate approval).

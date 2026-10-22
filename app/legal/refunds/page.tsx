@@ -23,7 +23,7 @@ export default function RefundsPage() {
         <p>You can cancel at any time from your billing page, and your access continues to the end of the period you have paid for. After cancellation your data is kept for 90 days and then deleted. See the Terms of Service.</p>
       </Section>
       <Section heading="5. Changing plans and pausing">
-        <p>You can change plans from your billing page. [To confirm: the exact charge when you change plan.] A paused plan costs $27 per month and keeps your data from being deleted.</p>
+        <p>You can change plans from your billing page. The new plan starts the day you change it and is charged in full, less a credit for the unused days of your old plan, so you pay the difference. If the credit is more than the new price, the leftover stays as credit on your account for your next invoice and is never paid out as cash. [To confirm with counsel: wording of the plan-change credit.] A paused plan costs $27 per month and keeps your data from being deleted.</p>
       </Section>
       <Section heading="6. Disputes">
         <p>Please contact us before disputing a charge with your bank. A chargeback can lead to your account being suspended while it is reviewed.</p>
