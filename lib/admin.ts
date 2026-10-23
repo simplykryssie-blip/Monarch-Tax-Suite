@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import Stripe from "stripe";
 import { createClient } from "./supabase/server";
 import { platformClient, tenantClient } from "./supabase/service";
-import { currentTenantId } from "./tenants.ts";
+import { currentTenantId, MONARCH_TENANT_ID } from "./tenants.ts";
+import { adminSeparationOn, isAdminHost, roleOpensWorkspace } from "./admin-host.ts";
 import { decideAdmin } from "./commerce/authz.ts";
 import { SupabaseCommerceRepo, SupabaseImageStore } from "./commerce/supabase-repo.ts";
 import { SupabaseFileStore, SupabaseProductFilesRepo } from "./commerce/supabase-files.ts";
@@ -63,9 +64,27 @@ export async function isAdminUser(userId: string): Promise<boolean> {
   return (await lookupAdmin(userId)) === "yes";
 }
 
+/** Whether this account is an owner or admin of the Monarch workspace (a tenant member, not a platform administrator). */
+async function isMonarchMember(userId: string): Promise<boolean> {
+  const { data, error } = await platformClient("workspace_member").from("tenant_members").select("role").eq("tenant_id", MONARCH_TENANT_ID).eq("user_id", userId).maybeSingle();
+  if (error) return false;
+  return roleOpensWorkspace((data as { role?: string } | null)?.role);
+}
+
+/** Whether this request arrived on the platform admin's own address. False whenever the separation is not switched on. */
+export async function onAdminHost(): Promise<boolean> {
+  if (!adminSeparationOn()) return false;
+  const h = await headers();
+  return isAdminHost(h.get("x-forwarded-host") ?? h.get("host"));
+}
+
 export type AdminSession = { userId: string; email: string };
 
-/** Verifies the signed-in user is a platform administrator. Use in every admin page and server action. */
+/**
+ * Verifies the signed-in user may use the Monarch workspace: an owner or admin of the Monarch tenant, or (until the
+ * cutover to separate platform-admin sign-ins) an account still on the platform-admin list. Use in every workspace page
+ * and server action. The platform's own pages use requirePlatformAdmin below.
+ */
 export const requireAdmin = cache(async (): Promise<AdminSession> => {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -73,7 +92,7 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
   const decision = await decideAdmin(user, async (id) => {
     const result = await lookupAdmin(id);
     setupMissing = result === "setup_missing";
-    return result === "yes";
+    return result === "yes" || (result === "no" && (await isMonarchMember(id)));
   });
   if (!decision.allowed) {
     if (decision.reason === "unauthenticated") redirect("/login");
@@ -103,7 +122,13 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
  */
 export const requirePlatformAdmin = cache(async (): Promise<AdminSession> => {
   const session = await requireAdmin();
-  if (!(await isAdminUser(session.userId))) redirect("/");
+  const separated = adminSeparationOn();
+  // With the separation on, the proxy already serves /admin only on the admin address; this is the second lock.
+  if (separated && !(await onAdminHost())) redirect("/login?error=" + encodeURIComponent("The platform admin is not available at this address."));
+  if (!(await isAdminUser(session.userId))) {
+    // A workspace member on the admin address is told so (the login page shows the message), never sent in circles.
+    redirect(separated ? "/login?error=" + encodeURIComponent("This account is not a platform administrator.") : "/");
+  }
   return session;
 });
 
