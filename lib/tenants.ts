@@ -2,6 +2,9 @@
 // 20261013110000_service_orders.sql). Every tenant table carries tenant_id (migration 20261014090000_tenant_foundation).
 export const MONARCH_TENANT_ID = "00000000-0000-4000-8000-000000000001";
 
+/** Verexa HQ itself: the home of audit entries for platform-wide actions. Not a workspace (see migration 20261118090000). */
+export const PLATFORM_TENANT_ID = "00000000-0000-4000-8000-000000000002";
+
 /** Request header that tells the database which tenant a server request acts for (see public.pgrst_pre_request). */
 export const TENANT_HEADER = "x-tenant-id";
 

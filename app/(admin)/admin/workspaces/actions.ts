@@ -9,6 +9,7 @@ import { PLATFORM } from "@/lib/platform-brand";
 import { provisionWorkspace, reissueInvite, setSuspended, withdrawInvite } from "@/lib/practice/service.ts";
 import { practiceInviteLink, practicePlatform, practiceRepo } from "@/lib/practice/server";
 import { sendPlatformEmail } from "@/lib/platform-mail-server";
+import { recordPlatformAction } from "@/lib/platform-audit-server";
 import { inviteEmail } from "@/lib/practice/service.ts";
 
 // Platform administrator only: create an independent PTIN holder's workspace and invite its owner. There is no
@@ -38,6 +39,7 @@ export async function createWorkspaceAction(input: { workspaceName: string; full
   try {
     const admin = await requirePlatformAdmin();
     const made = await provisionWorkspace(practicePlatform(), practiceRepo, admin.userId, { workspaceName: String(input.workspaceName ?? ""), fullName: String(input.fullName ?? ""), email: String(input.email ?? "") });
+    await recordPlatformAction(admin.userId, "platform_workspace_created", { tenantId: made.tenantId, subjectType: "practice_member", subjectId: made.member.id, detail: { workspace: String(input.workspaceName || input.fullName) } });
     return await send(made.tenantId, String(input.workspaceName || input.fullName), made.member, made.token, admin.userId);
   } catch (e) {
     unstable_rethrow(e);
@@ -50,6 +52,7 @@ export async function resendInviteAction(input: { tenantId: string; memberId: st
     const admin = await requirePlatformAdmin();
     if (!UUID.test(input.tenantId) || !UUID.test(input.memberId)) throw new ValidationError("Not found.");
     const { member, token } = await reissueInvite({ repo: practiceRepo(input.tenantId) }, admin.userId, input.memberId);
+    await recordPlatformAction(admin.userId, "platform_invite_resent", { tenantId: input.tenantId, subjectType: "practice_member", subjectId: member.id });
     return await send(input.tenantId, input.workspace, member, token, admin.userId);
   } catch (e) {
     unstable_rethrow(e);
@@ -64,6 +67,7 @@ export async function holderAccessAction(input: { tenantId: string; memberId: st
     const deps = { repo: practiceRepo(input.tenantId) };
     if (input.change === "withdraw") await withdrawInvite(deps, admin.userId, input.memberId);
     else await setSuspended(deps, admin.userId, input.memberId, input.change === "suspend");
+    await recordPlatformAction(admin.userId, "platform_access_changed", { tenantId: input.tenantId, subjectType: "practice_member", subjectId: input.memberId, detail: { change: input.change } });
     revalidatePath("/admin/workspaces");
     return { ok: true };
   } catch (e) {

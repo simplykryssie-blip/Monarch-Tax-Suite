@@ -10,6 +10,7 @@ import { campaignDeps } from "@/lib/campaigns/server";
 import { runCampaigns } from "@/lib/campaigns/service.ts";
 import { SupabaseBillingRepo } from "@/lib/billing/supabase-repo";
 import { platformClient } from "@/lib/supabase/service";
+import { PLATFORM_TENANT_ID } from "@/lib/tenants";
 
 // The five-minute tick (vercel.json). Same protection as the daily endpoint: CRON_SECRET as a Bearer token.
 // It carries the time-sensitive work; the slow once-a-day sweeps stay on /api/automation/run.
@@ -36,7 +37,7 @@ async function handle(request: Request) {
     // Messages and automations stop for workspaces whose payment is late, paused or cancelled. If the billing table can't be
     // read, nothing is skipped (a billing outage must not stop everyone's reminders).
     const restricted = await new SupabaseBillingRepo().restrictedTenantIds().catch(() => new Set<string>());
-    const ids = ((data ?? []) as { id: string }[]).map((t) => t.id).filter((id) => !restricted.has(id));
+    const ids = ((data ?? []) as { id: string }[]).map((t) => t.id).filter((id) => id !== PLATFORM_TENANT_ID && !restricted.has(id));
     const report = await runTick(rotate(ids, Math.floor(Date.now() / 300_000)), JOBS, { log: (l) => console.error(l) });
     return Response.json(report);
   } catch (e) {
