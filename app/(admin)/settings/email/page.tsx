@@ -4,7 +4,7 @@ import { SubmitOnce } from "@/components/admin/submit-once";
 import { defaultLinkHost } from "@/lib/brands.ts";
 import { senderAddress } from "@/lib/automation/senders.ts";
 import { Badge, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
-import { addSenderAction, archiveSenderAction, checkDomainAction, connectDomainAction, defaultSenderAction, removeDomainAction, saveBrandAction } from "../actions";
+import { addSenderAction, archiveSenderAction, checkDomainAction, connectDomainAction, defaultSenderAction, removeDomainAction, saveBrandAction, testSenderAction } from "../actions";
 
 export default async function EmailSendingPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
   await requireAdmin();
@@ -32,6 +32,7 @@ export default async function EmailSendingPage({ searchParams }: { searchParams:
                       <td>{d?.domain} {d && <Badge value={d.status} />}</td>
                       <td style={{ display: "flex", gap: 8 }}>
                         {!s.is_default && <form action={defaultSenderAction}><input type="hidden" name="id" value={s.id} /><button className="monarch-secondary">Make default</button></form>}
+                        <form action={testSenderAction}><input type="hidden" name="id" value={s.id} /><button className="monarch-secondary" title="Sends one test email to your own sign-in address from this address">Send a test to me</button></form>
                         <form action={archiveSenderAction}><input type="hidden" name="id" value={s.id} /><button className="monarch-secondary is-danger">Remove</button></form>
                       </td>
                     </tr>
