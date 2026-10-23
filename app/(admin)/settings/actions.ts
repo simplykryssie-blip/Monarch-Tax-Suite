@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { ValidationError } from "@/lib/commerce/validation.ts";
-import { automationDeps } from "@/lib/automation/server";
+import { automationDeps, tenantEmailSender } from "@/lib/automation/server";
 import { emailConfig } from "@/lib/automation/email.ts";
+import { sendSenderTest } from "@/lib/automation/admin.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { addSender, AlreadyRegisteredError, cleanAttribute, removeDomain, cleanDomain, cleanFromName, cleanLocalPart, ResendDomains } from "@/lib/automation/senders.ts";
 import { randomUUID } from "node:crypto";
@@ -215,6 +216,17 @@ export async function defaultSenderAction(form: FormData) {
     if (!UUID.test(id)) throw new ValidationError("Not found.");
     await automationDeps().senders!.setDefaultSender(id);
     return "Default sending address changed.";
+  });
+}
+
+export async function testSenderAction(form: FormData) {
+  const admin = await requireAdmin();
+  await act("/settings/email", async () => {
+    const id = str(form, "id");
+    if (!UUID.test(id)) throw new ValidationError("Not found.");
+    const deps = automationDeps();
+    const label = await sendSenderTest(deps.repo, deps.senders!, tenantEmailSender(), { id: admin.userId, email: admin.email }, id);
+    return `Test sent to ${admin.email} from ${label}. Check your inbox to see who it arrives from.`;
   });
 }
 

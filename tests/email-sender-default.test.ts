@@ -1,6 +1,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { MemoryAutomationRepo } from "./automation-memory.ts";
+import { sendSenderTest } from "../lib/automation/admin.ts";
+import type { SendersRepo, SenderRow, EmailDomainRow } from "../lib/automation/senders.ts";
 import { emailConfig, emailKeyProblems, ResendEmailSender, withDefaultSender, type EmailMessage, type EmailSender, type SendResult } from "../lib/automation/email.ts";
 
 // Email no longer depends on an environment "from" address: each email carries its own sender, or the workspace's saved default.
@@ -74,5 +77,36 @@ describe("wiring", () => {
   });
   test("the platform's own mail still never reads the Monarch sender settings", () => {
     assert.ok(!/MONARCH_EMAIL_FROM|MONARCH_EMAIL_REPLY_TO|senderFor|fallbackSender/.test(read("lib/platform-mail.ts") + read("lib/platform-mail-server.ts")));
+  });
+});
+
+describe("sender test-send", () => {
+  const domain = { id: "d1", domain: "example.com", status: "verified" } as EmailDomainRow;
+  const sender = { id: "s1", domain_id: "d1", from_name: "Fake Firm", local_part: "support", reply_to: "support@example.com", is_default: true, archived_at: null } as SenderRow;
+  const senders = { getSender: async (id: string) => (id === "s1" ? sender : null), getDomain: async () => domain, listSenders: async () => [sender] } as unknown as SendersRepo;
+  const actor = { id: "admin-1", email: "admin@example.com" };
+
+  test("sends one message to the administrator only, from the chosen sender", async () => {
+    const { sent, sender: email } = recorder();
+    const label = await sendSenderTest(new MemoryAutomationRepo(), senders, email, actor, "s1");
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].to, "admin@example.com");
+    assert.equal(sent[0].from, '"Fake Firm" <support@example.com>');
+    assert.equal(sent[0].replyTo, "support@example.com");
+    assert.match(sent[0].subject, /^\[TEST\]/);
+    assert.match(label, /support@example\.com/);
+  });
+  test("a removed sender or an unverified domain is refused before anything is sent", async () => {
+    const { sent, sender: email } = recorder();
+    await assert.rejects(sendSenderTest(new MemoryAutomationRepo(), senders, email, actor, "gone"), /removed/);
+    const pending = { ...senders, getDomain: async () => ({ ...domain, status: "pending" }) } as unknown as SendersRepo;
+    await assert.rejects(sendSenderTest(new MemoryAutomationRepo(), pending, email, actor, "s1"), /not verified/);
+    assert.equal(sent.length, 0);
+  });
+  test("limited to ten a hour", async () => {
+    const { sender: email } = recorder();
+    const repo = new MemoryAutomationRepo();
+    for (let i = 0; i < 10; i++) await sendSenderTest(repo, senders, email, actor, "s1");
+    await assert.rejects(sendSenderTest(repo, senders, email, actor, "s1"), /Too many/);
   });
 });
