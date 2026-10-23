@@ -2,11 +2,10 @@ import "server-only";
 import { appOrigin } from "../admin";
 import { hashClient } from "../commerce/rate-limit.ts";
 import { CrmSecrets } from "../crm/crypto.ts";
-import { sendOfficeEmail } from "../office/server";
+import { sendPlatformEmail } from "../platform-mail-server";
 import { practicePlatform, practiceRepo, practiceInviteLink } from "../practice/server";
 import { rateLimitStore } from "../rate-limit-server";
 import { platformClient, tenantClient } from "../supabase/service";
-import { MONARCH_TENANT_ID } from "../tenants.ts";
 import { PLATFORM_LEGAL_VERSION } from "../platform-legal.ts";
 import { verifyCaptcha } from "./captcha.ts";
 import { billingProblems } from "./plans.ts";
@@ -62,7 +61,7 @@ export function billingDeps(): BillingDeps | null {
       const { data } = await tenantClient(tenantId).from("practice_members").select("email, full_name").eq("role", "owner").limit(1).maybeSingle();
       return data ? { email: data.email as string, name: data.full_name as string } : null;
     },
-    mail: (to, mail) => sendOfficeEmail(MONARCH_TENANT_ID, to, mail),
+    mail: (to, mail) => sendPlatformEmail(to, mail),
     hit: (bucket) => store.hit(bucket, hourWindow()),
     captcha: (token, ip) => verifyCaptcha(process.env, token, ip),
     termsVersion: PLATFORM_LEGAL_VERSION,
