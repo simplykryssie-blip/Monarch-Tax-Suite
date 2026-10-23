@@ -12,13 +12,13 @@ import { inputFields } from "../forms/definition.ts";
 import { emailBrandOf } from "../branding/brand.ts";
 import { loadBrand } from "../branding/server";
 import { SupabaseSendersRepo } from "./supabase-senders.ts";
-import type { ResolvedSender } from "./senders.ts";
+import { resolveSender, type ResolvedSender } from "./senders.ts";
 import type { WorkflowCatalog } from "./validate.ts";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { SupabaseCrmRepo } from "../crm/supabase-repo.ts";
 import type { AutomationConfig, AutomationDeps, EmitInput } from "./engine.ts";
 import { emitEvent, runDue } from "./engine.ts";
-import { emailConfig, emailConfigProblems, ResendEmailSender } from "./email.ts";
+import { emailConfig, emailConfigProblems, ResendEmailSender, withDefaultSender, type EmailSender } from "./email.ts";
 import { platformProblems, platformSendProblems, platformTwilio } from "./twilio.ts";
 import { sanitizeError } from "./sanitize.ts";
 import { SupabaseAutomationRepo } from "./supabase-repo.ts";
@@ -48,6 +48,11 @@ export function automationConfig(): AutomationConfig {
 function platformSender(tenantId: string): ResolvedSender | null {
   const from = emailConfig(env()).from;
   return tenantId === MONARCH_TENANT_ID && from ? { from, replyTo: emailConfig(env()).replyTo, label: from } : null;
+}
+
+/** An email sender that, for an email naming no "from", uses this workspace's default sender (then the platform fallback, Monarch only). */
+export function tenantEmailSender(tenantId: string = currentTenantId()): EmailSender {
+  return withDefaultSender(new ResendEmailSender(emailConfig(env())), () => resolveSender(new SupabaseSendersRepo(tenantClient(tenantId)), null, platformSender(tenantId)));
 }
 
 export function automationDeps(tenantId: string = currentTenantId()): AutomationDeps {

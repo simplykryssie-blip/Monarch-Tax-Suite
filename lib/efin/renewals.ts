@@ -1,5 +1,5 @@
 import "server-only";
-import { automationConfig, automationDeps, integrationStatus } from "../automation/server";
+import { automationConfig, integrationStatus, tenantEmailSender } from "../automation/server";
 import type { EmailSender } from "../automation/email.ts";
 import { esc } from "../automation/template.ts";
 import { sanitizeError } from "../automation/sanitize.ts";
@@ -34,7 +34,7 @@ function reminderEmail(task: RenewalTaskRow, days: number, last4: string, link: 
 export async function runRenewalSweep(opts: { today?: string; sender?: EmailSender; origin?: string } = {}): Promise<SweepSummary> {
   const db = tenantDb();
   const today = opts.today ?? todayIso();
-  const sender = opts.sender ?? automationDeps().email;
+  const sender = opts.sender ?? tenantEmailSender();
   const origin = opts.origin ?? process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://app.verexahq.com";
   const summary: SweepSummary = { tasksCreated: 0, tasksUpdated: 0, tasksCancelled: 0, reviewsOpened: 0, assignmentsExpired: 0, reminders: { sent: 0, failed: 0, skipped: 0, alreadySent: 0 }, emailReady: false };
 
