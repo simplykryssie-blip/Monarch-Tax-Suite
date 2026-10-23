@@ -9,7 +9,7 @@ export default async function ForgotPasswordPage({ searchParams }: { searchParam
       <form action={requestPasswordReset}>
         <h1>Reset your password</h1>
         <p className="mt-login-sub">Enter your email and we will send you a link to choose a new password.</p>
-        {sent && <p className="mt-login-notice" role="status">If that email belongs to an account, a reset link is on its way. It expires in about an hour. Check your spam folder too.</p>}
+        {sent && <p className="mt-login-notice" role="status">If that email belongs to an account, a reset link is on its way. It expires in about an hour. Open it in this same browser (copy the link into the address bar if your mail app opens its own). Check your spam folder too.</p>}
         {error && <p className="mt-login-error" role="alert">{error}</p>}
         <label htmlFor="email">Email</label>
         <input id="email" name="email" type="email" autoComplete="email" required />

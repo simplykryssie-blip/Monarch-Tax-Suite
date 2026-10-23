@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { isTokenHash, RESET_LINK_EXPIRED, RESET_LINK_INVALID } from "./auth-links.ts";
 import { clientAddress, hashClient, windowStart } from "./commerce/rate-limit.ts";
 import { rateLimitStore } from "./rate-limit-server";
 import { createClient } from "./supabase/server";
@@ -78,4 +79,18 @@ export async function updatePassword(formData: FormData) {
   const { error } = await supabase.auth.updateUser({ password });
   if (error) back(error.message.includes("same") ? "Choose a password you have not used before." : "The password could not be updated. Try a longer or less common password.");
   redirect("/?notice=" + encodeURIComponent("Your password was updated."));
+}
+
+/**
+ * Redeems the token in an emailed reset link (/auth/confirm). Unlike the one-time code on /auth/callback it needs nothing from
+ * the browser that asked for the reset, so it works from a phone's mail app. It runs only when the person presses the button
+ * on the confirm page, so a mail scanner that merely fetches the link cannot use it up.
+ */
+export async function confirmRecoveryLink(formData: FormData) {
+  const tokenHash = formData.get("token_hash");
+  if (!isTokenHash(tokenHash)) redirect("/forgot-password?error=" + encodeURIComponent(RESET_LINK_INVALID));
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({ type: "recovery", token_hash: tokenHash });
+  if (error) redirect("/forgot-password?error=" + encodeURIComponent(RESET_LINK_EXPIRED));
+  redirect("/reset-password");
 }
