@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
+import { connectFailureMessage } from "@/lib/connect/errors.ts";
 import { connectReturnPath, finishConnect, readState } from "@/lib/connect/service.ts";
 import { connectDeps, connectStateKey } from "@/lib/connect/server";
 import { connectBase } from "@/lib/connect/redirect";
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
     const conn = await finishConnect(deps, admin.userId, url.searchParams.get("code") ?? "");
     return to("notice", conn.charges_enabled ? (state.back === "store-payments" ? "Stripe connected. Your store and your clients' invoice payments now use this account." : "Stripe connected. Clients can pay invoices online.") : "Stripe connected, but Stripe says the account can't take payments yet. Finish setting it up in Stripe, then refresh here.");
   } catch (e) {
-    if (!(e instanceof ValidationError)) console.error(`stripe-connect: callback failed: ${sanitizeError(e, 200)}`);
-    return to("error", e instanceof ValidationError ? e.message : "Stripe couldn't connect that account. Nothing was changed. Try again.");
+    if (!(e instanceof ValidationError)) console.error(`stripe-connect: callback failed (${(e as { type?: string }).type ?? "error"}): ${sanitizeError(e, 200)}`);
+    return to("error", connectFailureMessage(e));
   }
 }

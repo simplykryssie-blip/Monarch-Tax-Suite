@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
+import { ValidationError } from "../lib/commerce/validation.ts";
 import { connectPlatformKey } from "../lib/connect/config.ts";
+import { connectFailureMessage } from "../lib/connect/errors.ts";
 import { connectedUse, describeKey, resolveStoreStripe, type ConnectionFacts } from "../lib/store-stripe/keys.ts";
 
 // The storefront's Stripe access: a connected Stripe account first (Stripe Connect, the click-to-connect path), then keys saved
@@ -77,6 +79,27 @@ describe("the platform key", () => {
     assert.equal(connectPlatformKey({ STRIPE_CONNECT_SECRET_KEY: ` ${PLATFORM_TEST} ` }), PLATFORM_TEST);
     for (const bad of [undefined, "", "pk_test_x", "whsec_abc", "sk_prod_" + "a".repeat(24)]) assert.equal(connectPlatformKey({ STRIPE_CONNECT_SECRET_KEY: bad }), null, String(bad));
     assert.equal(connectPlatformKey({ STRIPE_SECRET_KEY: PLATFORM_TEST }), null, "the storefront's own key is never mistaken for the platform's");
+  });
+});
+
+describe("when connecting fails", () => {
+  test("a message we wrote is shown as is", () => {
+    assert.equal(connectFailureMessage(new ValidationError("That is a live Stripe account, but this deployment uses test mode.")), "That is a live Stripe account, but this deployment uses test mode.");
+  });
+  test("Stripe rejecting the platform's own key says so, and who fixes it, without Stripe's text or any key", () => {
+    const m = connectFailureMessage({ type: "StripeAuthenticationError", message: "No such API key: sk_test_51abc***def" });
+    assert.match(m, /platform key/);
+    assert.match(m, /platform administrator/);
+    assert.doesNotMatch(m, /sk_|No such API key/);
+  });
+  test("anything else stays generic", () => {
+    assert.match(connectFailureMessage(new Error("boom")), /Try again/);
+    assert.match(connectFailureMessage(null), /Try again/);
+  });
+  test("the callback uses it and logs the error type", () => {
+    const route = src("app/api/stripe/connect/callback/route.ts");
+    assert.match(route, /return to\("error", connectFailureMessage\(e\)\)/);
+    assert.match(route, /callback failed \(\$\{\(e as \{ type\?: string \}\)\.type \?\? "error"\}\)/);
   });
 });
 
