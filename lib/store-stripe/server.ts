@@ -4,7 +4,8 @@ import Stripe from "stripe";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { tenantClient } from "../supabase/service";
 import { currentTenantId, MONARCH_TENANT_ID } from "../tenants.ts";
-import { judgeProductLookups, modeOfKey, parseSecretKey, parseWebhookSecret, resolveKeys, type KeySource, type PriceLookup, type SavedKeys, type StripeMode } from "./keys.ts";
+import { connectPlatformKey } from "../connect/config.ts";
+import { judgeProductLookups, parseSecretKey, parseWebhookSecret, resolveStoreStripe, type ConnectionFacts, type KeySource, type PriceLookup, type SavedKeys, type StripeMode } from "./keys.ts";
 
 // A workspace's own storefront Stripe keys: read, decrypt, save, remove. Values stay on the server; what leaves this file for a
 // page is only which keys are set, where they come from, their last four characters, and the mode.
@@ -24,12 +25,26 @@ export type StoreStripe = {
   webhookSecretSource: KeySource;
   secretKeyHint: string | null;
   webhookSecretHint: string | null;
+  /** The connected Stripe account the storefront runs on, when it does (Stripe Connect). */
+  connectedAccount: string | null;
+  /** Why a connection that exists is not being used, in plain words; null when there is none or it is in use. */
+  connectionNote: string | null;
+  /** What the workspace's saved connection says, for its screen (whether or not it is in use). */
+  connection: ConnectionFacts | null;
 };
 
 async function readRow(tenantId: string): Promise<Row | null> {
   // A table that isn't there yet (migration not applied) or can't be read means "nothing saved": the environment still works.
   const { data, error } = await tenantClient(tenantId).from("tenant_store_stripe").select(COLUMNS).maybeSingle();
   return error ? null : ((data as Row | null) ?? null);
+}
+
+async function readConnection(tenantId: string): Promise<ConnectionFacts | null> {
+  // The same connection row that serves client invoice payments. A table that isn't there yet means "not connected".
+  const { data, error } = await tenantClient(tenantId).from("payment_connections").select("stripe_account_id, livemode, status, charges_enabled").maybeSingle();
+  if (error || !data) return null;
+  const d = data as { stripe_account_id: string; livemode: boolean; status: "connected" | "disconnected"; charges_enabled: boolean };
+  return { accountId: d.stripe_account_id, livemode: d.livemode, status: d.status, chargesEnabled: d.charges_enabled };
 }
 
 function saved(row: Row | null, tenantId: string): SavedKeys | null {
@@ -46,17 +61,26 @@ function saved(row: Row | null, tenantId: string): SavedKeys | null {
   }
 }
 
-/** The workspace's storefront Stripe setup. Cached for the length of one request. */
+/**
+ * The workspace's storefront Stripe setup. Cached for the length of one request. Order of use: the connected Stripe account
+ * (Verexa's Connect platform key, with the workspace's account named on every call), then keys saved in its settings, then
+ * (Monarch only) the server's environment.
+ */
 export const loadStoreStripe = cache(async (tenantId: string = currentTenantId()): Promise<StoreStripe> => {
-  const row = await readRow(tenantId);
-  const r = resolveKeys(saved(row, tenantId), process.env, tenantId === MONARCH_TENANT_ID);
-  const mode = modeOfKey(r.secretKey);
+  const [row, connection] = await Promise.all([readRow(tenantId), readConnection(tenantId)]);
+  const r = resolveStoreStripe({ connection, platformKey: connectPlatformKey(process.env), saved: saved(row, tenantId), env: process.env, isMonarch: tenantId === MONARCH_TENANT_ID });
   return {
-    stripe: r.secretKey && mode ? new Stripe(r.secretKey) : null,
-    ...r,
-    mode,
+    stripe: r.secretKey && r.mode ? new Stripe(r.secretKey, r.connectedAccount ? { stripeAccount: r.connectedAccount } : undefined) : null,
+    secretKey: r.secretKey,
+    webhookSecret: r.webhookSecret,
+    mode: r.mode,
+    secretKeySource: r.secretKeySource,
+    webhookSecretSource: r.webhookSecretSource,
     secretKeyHint: r.secretKeySource === "settings" ? row?.secret_key_hint ?? null : null,
     webhookSecretHint: r.webhookSecretSource === "settings" ? row?.webhook_secret_hint ?? null : null,
+    connectedAccount: r.connectedAccount,
+    connectionNote: r.connectionNote,
+    connection,
   };
 });
 
@@ -118,13 +142,14 @@ export async function checkStoreStripe(tenantId?: string): Promise<{ ok: boolean
       }
     }
     const verdict = judgeProductLookups(lookups);
-    return verdict.ok ? { ok: true, message: `Stripe accepted the key (${st.mode} mode).${verdict.message}` } : { ok: false, message: verdict.message };
+    return verdict.ok ? { ok: true, message: `Stripe accepted ${st.connectedAccount ? "the connected account" : "the key"} (${st.mode} mode).${verdict.message}` } : { ok: false, message: verdict.message };
   } catch (e) {
     const err = e as { type?: string; code?: string; statusCode?: number };
     const t = err.type;
     // What Stripe actually said, for whoever is diagnosing: the error's type, code and HTTP status only. Never the key,
     // never Stripe's message (which can quote part of the key).
     console.warn(JSON.stringify({ event: "store_stripe_check_failed", type: t ?? "unknown", code: err.code ?? null, status: err.statusCode ?? null, source: st.secretKeySource, mode: st.mode, key_chars: st.secretKey?.length ?? null }));
+    if (st.connectedAccount && (t === "StripeAuthenticationError" || t === "StripePermissionError")) return { ok: false, message: "Stripe no longer accepts the connection to your account (it may have been disconnected from Stripe's side). Disconnect here and connect again." };
     if (t === "StripeAuthenticationError") return { ok: false, message: "Stripe rejected the key. Check that it is the right key for this Stripe account, and that it was copied completely: use Stripe's copy button and paste it, rather than retyping it." };
     if (t === "StripePermissionError") return { ok: false, message: "The key works but lacks permission to read prices. A restricted key needs read access to Prices." };
     return { ok: false, message: "Couldn't reach Stripe just now. Try again in a moment." };

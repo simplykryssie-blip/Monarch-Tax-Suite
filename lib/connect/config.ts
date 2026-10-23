@@ -20,3 +20,12 @@ export function connectProblems(env: ConnectEnv): string[] {
   if (!env.STRIPE_CONNECT_WEBHOOK_SECRET) problems.push("STRIPE_CONNECT_WEBHOOK_SECRET (the Connect webhook's signing secret) is not set.");
   return problems;
 }
+
+/**
+ * Verexa HQ's Connect platform key, when it is set and valid. The storefront of a connected workspace runs on this key with
+ * the workspace's account named on every call; nothing else is needed for that (the client id is for the connect button).
+ */
+export function connectPlatformKey(env: ConnectEnv): string | null {
+  const key = env.STRIPE_CONNECT_SECRET_KEY?.trim();
+  return key && connectMode(key) ? key : null;
+}

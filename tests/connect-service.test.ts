@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
 import { connectMode, connectProblems } from "../lib/connect/config.ts";
 import {
-  canTakePayments, disconnect, finishConnect, handleConnectEvent, readState, refreshConnection, signState, startInvoiceCheckout,
+  canTakePayments, connectReturnPath, disconnect, finishConnect, handleConnectEvent, readState, refreshConnection, signState, startInvoiceCheckout,
   type AppliedInvoice, type Connection, type ConnectDeps, type ConnectEvent, type ConnectRepo, type ConnectStripe, type InvoicePayment, type PayableInvoice,
 } from "../lib/connect/service.ts";
 
@@ -91,7 +91,7 @@ describe("OAuth state", () => {
   const key = Buffer.alloc(32, 9);
   test("round-trips for the same office and person; expires; refuses tampering", () => {
     const s = signState(key, { tenantId: TENANT, userId: "u1" }, NOW);
-    assert.deepEqual(readState(key, s, new Date(NOW.getTime() + 60_000)), { tenantId: TENANT, userId: "u1" });
+    assert.deepEqual(readState(key, s, new Date(NOW.getTime() + 60_000)), { tenantId: TENANT, userId: "u1", back: "payments" });
     assert.equal(readState(key, s, new Date(NOW.getTime() + 16 * 60_000)), null);
     assert.equal(readState(Buffer.alloc(32, 1), s, NOW), null);
     const [body, mac] = s.split(".");
@@ -100,6 +100,25 @@ describe("OAuth state", () => {
     assert.equal(readState(key, `${body}.${mac}.x`, NOW), null);
     assert.equal(readState(key, undefined, NOW), null);
     assert.equal(readState(key, "x".repeat(700), NOW), null);
+  });
+});
+
+describe("OAuth state: where the person returns to", () => {
+  const key = Buffer.alloc(32, 9);
+  test("the store screen's return is carried and signed; anything else falls back to Payments", () => {
+    const s = signState(key, { tenantId: TENANT, userId: "u1", back: "store-payments" }, NOW);
+    assert.equal(readState(key, s, NOW)?.back, "store-payments");
+    assert.equal(connectReturnPath("store-payments"), "/settings/store-payments");
+    assert.equal(connectReturnPath("payments"), "/settings/payments");
+    assert.equal(connectReturnPath(undefined), "/settings/payments");
+    // A state that names some other place is read as the default: the state never carries a free-form address.
+    const body = Buffer.from(JSON.stringify({ t: TENANT, u: "u1", e: NOW.getTime() + 1e6, b: "https://evil.example" })).toString("base64url");
+    const mac = createHmac("sha256", key).update(`connect-state:v1:${body}`).digest("base64url");
+    assert.equal(readState(key, `${body}.${mac}`, NOW)?.back, "payments");
+    // The return cannot be switched without breaking the signature.
+    const [b0, m0] = s.split(".");
+    const swapped = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(b0, "base64url").toString()), b: "payments" })).toString("base64url");
+    assert.equal(readState(key, `${swapped}.${m0}`, NOW), null);
   });
 });
 
