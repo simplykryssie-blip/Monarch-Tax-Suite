@@ -28,6 +28,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   await requireAdmin();
   const { id } = await params;
   const repo = commerceRepo();
+  const stripe = await stripeConfig();
   const result = await load(async () => {
     const product = await repo.getProduct(id);
     if (!product) return { product: null, versions: [], changes: {}, images: [] };
@@ -85,9 +86,9 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
           <ProductEditor key={product.updated_at} product={product} images={toStorefrontImages(images)} hasVersions={versions.length > 0} />
         </section>
       )}
-      <StripePanel product={product} stripeConfigured={stripeConfig().keyModeRecognized} config={stripeConfig()} />
+      <StripePanel product={product} stripeConfigured={stripe.keyModeRecognized} config={stripe} />
       <ProductFilesPanel product={product} />
-      <VersionsPanel productId={product.id} versions={versions} changes={changes} stripeReady={stripeConfig().keyModeRecognized} />
+      <VersionsPanel productId={product.id} versions={versions} changes={changes} stripeReady={stripe.keyModeRecognized} />
       {reviews && <ReviewsPanel productId={product.id} reviews={reviews} />}
       <ArchivePanel entity="product" id={product.id} />
     </>

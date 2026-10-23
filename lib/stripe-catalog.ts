@@ -1,6 +1,6 @@
 import "server-only";
 import type Stripe from "stripe";
-import { appOrigin, commerceRepo, stripeClient } from "./admin";
+import { appOrigin, commerceRepo } from "./admin";
 import { assessWebhooks, expectedWebhookUrl, webhookFix, type WebhookHealth } from "./commerce/webhook-health.ts";
 import { ValidationError } from "./commerce/validation.ts";
 import { modeFromKey, StripeLookupError, type StripeCatalogPort } from "./commerce/stripe-verify.ts";
@@ -8,24 +8,25 @@ import type { StripePriceFacts } from "./commerce/types.ts";
 import { isPurchasable } from "./commerce/catalog.ts";
 import { expireOpenCheckouts, type StorefrontSessionPort } from "./commerce/storefront-checkout.ts";
 import { syncStripeAvailability, type StripePort } from "./commerce/stripe-sync.ts";
+import { loadStoreStripe, storeStripeClient } from "./store-stripe/server";
 
-// Server-only adapter from the Stripe SDK to StripeCatalogPort. The secret
-// key stays in process.env on the server; only its mode (live/test) is used
-// for display and checks.
+// Server-only adapter from the Stripe SDK to StripeCatalogPort. The workspace's secret key stays on the server (saved
+// encrypted in its settings; see lib/store-stripe); only its mode (live/test) is used for display and checks.
 
-export function stripeConfig() {
-  const mode = modeFromKey(process.env.STRIPE_SECRET_KEY);
+export async function stripeConfig() {
+  const st = await loadStoreStripe();
+  const mode = modeFromKey(st.secretKey);
   return {
-    secretKey: Boolean(process.env.STRIPE_SECRET_KEY),
+    secretKey: Boolean(st.secretKey),
     keyModeRecognized: mode !== null,
     mode,
-    webhookSecret: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+    webhookSecret: Boolean(st.webhookSecret),
   };
 }
 
-function mapError(e: unknown, what: string): StripeLookupError {
+function mapError(e: unknown, what: string, mode: "test" | "live" | null): StripeLookupError {
   const err = e as { type?: string; code?: string; statusCode?: number; message?: string };
-  if (err?.code === "resource_missing" || err?.statusCode === 404) return new StripeLookupError("not_found", `${what} was not found in this Stripe account (${modeFromKey(process.env.STRIPE_SECRET_KEY) ?? "unknown"} mode).`);
+  if (err?.code === "resource_missing" || err?.statusCode === 404) return new StripeLookupError("not_found", `${what} was not found in this Stripe account (${mode ?? "unknown"} mode).`);
   if (err?.type === "StripeAuthenticationError") return new StripeLookupError("auth", "Invalid Stripe key.");
   if (err?.type === "StripePermissionError") return new StripeLookupError("permission", "Missing Stripe permission.");
   if (err?.type === "StripeConnectionError" || err?.type === "StripeAPIError") return new StripeLookupError("connection", "Stripe unavailable.");
@@ -49,10 +50,11 @@ function facts(price: Stripe.Price): StripePriceFacts {
   };
 }
 
-/** Null when STRIPE_SECRET_KEY is missing or not a recognizable Stripe secret/restricted key. */
-export function stripeCatalogPort(): StripeCatalogPort | null {
-  const stripe = stripeClient();
-  const mode = modeFromKey(process.env.STRIPE_SECRET_KEY);
+/** Null when no Stripe secret key is set, or it isn't a recognizable secret/restricted key. */
+export async function stripeCatalogPort(): Promise<StripeCatalogPort | null> {
+  const st = await loadStoreStripe();
+  const stripe = st.stripe;
+  const mode = modeFromKey(st.secretKey);
   if (!stripe || !mode) return null;
   return {
     mode,
@@ -61,14 +63,14 @@ export function stripeCatalogPort(): StripeCatalogPort | null {
         const p = await stripe.products.retrieve(id);
         return { id: p.id, name: p.name, active: p.active, livemode: p.livemode };
       } catch (e) {
-        throw mapError(e, `Stripe product ${id}`);
+        throw mapError(e, `Stripe product ${id}`, mode);
       }
     },
     async getPrice(id) {
       try {
         return facts(await stripe.prices.retrieve(id, { expand: ["product"] }));
       } catch (e) {
-        throw mapError(e, `Stripe price ${id}`);
+        throw mapError(e, `Stripe price ${id}`, mode);
       }
     },
     async listActivePrices(productId) {
@@ -76,7 +78,7 @@ export function stripeCatalogPort(): StripeCatalogPort | null {
         const list = await stripe.prices.list({ product: productId, active: true, limit: 100, expand: ["data.product"] });
         return list.data.map(facts);
       } catch (e) {
-        throw mapError(e, `Prices of ${productId}`);
+        throw mapError(e, `Prices of ${productId}`, mode);
       }
     },
     async createOneTimePrice({ productId, unitAmount, currency, idempotencyKey, metadata }) {
@@ -84,7 +86,7 @@ export function stripeCatalogPort(): StripeCatalogPort | null {
         const price = await stripe.prices.create({ product: productId, unit_amount: unitAmount, currency, metadata }, { idempotencyKey });
         return facts(await stripe.prices.retrieve(price.id, { expand: ["product"] }));
       } catch (e) {
-        throw mapError(e, `New price on ${productId}`);
+        throw mapError(e, `New price on ${productId}`, mode);
       }
     },
   };
@@ -109,9 +111,9 @@ export function stripeSyncPort(stripe: Stripe): StripePort {
  * append to the administrator's notice; the status change itself always stands.
  */
 export async function stripeAvailabilityNote(productId: string): Promise<string> {
-  const stripe = stripeClient();
+  const stripe = await storeStripeClient();
   if (!stripe) return "";
-  const result = await syncStripeAvailability(commerceRepo(), stripeSyncPort(stripe), productId, stripeCatalogPort());
+  const result = await syncStripeAvailability(commerceRepo(), stripeSyncPort(stripe), productId, await stripeCatalogPort());
   if (!result) return "";
   return result.ok ? ` ${result.message}` : ` Warning: ${result.message} Payments may still be accepted in Stripe until this is fixed; use "Update Stripe product info" to try again.`;
 }
@@ -145,7 +147,7 @@ export function stripeStorefrontSessions(stripe: Stripe): StorefrontSessionPort 
  * administrator's notice (empty when there was nothing to close).
  */
 export async function closeOpenCheckoutsNote(productId: string): Promise<string> {
-  const stripe = stripeClient();
+  const stripe = await storeStripeClient();
   if (!stripe) return "";
   const product = await commerceRepo().getProduct(productId);
   if (!product || isPurchasable(product)) return "";
@@ -163,7 +165,7 @@ export async function closeOpenCheckoutsNote(productId: string): Promise<string>
  * Preview (test key) can never repoint an endpoint at an address it does not own.
  */
 export async function loadWebhookHealth(): Promise<{ health: WebhookHealth; canFix: boolean } | { error: string }> {
-  const stripe = stripeClient();
+  const stripe = await storeStripeClient();
   if (!stripe) return { error: "Stripe is not connected, so the webhook cannot be checked." };
   try {
     const list = await stripe.webhookEndpoints.list({ limit: 100 });
@@ -178,7 +180,7 @@ export async function loadWebhookHealth(): Promise<{ health: WebhookHealth; canF
 
 /** Repoints the existing endpoint at this app (and adds missing events). Keeps the signing secret. */
 export async function fixWebhook(): Promise<string> {
-  const stripe = stripeClient();
+  const stripe = await storeStripeClient();
   const loaded = await loadWebhookHealth();
   if (!stripe || "error" in loaded) throw new ValidationError("error" in loaded ? loaded.error : "Stripe is not connected.");
   if (!loaded.canFix || loaded.health.state !== "fixable") throw new ValidationError(loaded.health.state === "ok" ? "The webhook is already correct." : "This webhook cannot be fixed automatically here; follow the steps shown.");

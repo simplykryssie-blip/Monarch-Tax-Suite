@@ -4,11 +4,12 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { clientAddress, hashClient, windowStart } from "@/lib/commerce/rate-limit.ts";
 import { rateLimitStore } from "@/lib/rate-limit-server";
-import { appOrigin, commerceRepo, stripeClient } from "@/lib/admin";
+import { appOrigin, commerceRepo } from "@/lib/admin";
 import { startStorefrontCheckout } from "@/lib/commerce/storefront-checkout.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { LEGAL_PAGES_APPROVED, LEGAL_VERSION } from "@/lib/legal";
 import { stripeCatalogPort, stripeStorefrontSessions } from "@/lib/stripe-catalog";
+import { storeStripeClient } from "@/lib/store-stripe/server";
 
 const text = (form: FormData, name: string) => {
   const v = form.get(name);
@@ -30,8 +31,8 @@ export async function startCheckoutAction(form: FormData) {
       const hits = await rateLimitStore().hit(`shop-checkout:ip:${hashClient(ip, process.env.MONARCH_ENCRYPTION_KEY)}`, windowStart(Date.now()).startIso).catch(() => 0);
       if (hits > 10) throw new ValidationError("Too many checkout attempts. Please wait a minute and try again.");
     }
-    const stripe = stripeClient();
-    const catalog = stripeCatalogPort();
+    const stripe = await storeStripeClient();
+    const catalog = await stripeCatalogPort();
     if (!stripe || !catalog || !LEGAL_PAGES_APPROVED) throw new ValidationError("Online checkout is not available yet. Please contact Monarch Tax Suite.");
     ({ url } = await startStorefrontCheckout(commerceRepo(), catalog, stripeStorefrontSessions(stripe), {
       slug,

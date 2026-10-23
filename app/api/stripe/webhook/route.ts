@@ -1,16 +1,17 @@
-import { stripeClient } from "@/lib/admin";
 import { handleStripeEvent } from "@/lib/commerce/fulfillment.ts";
 import { checkEventMode } from "@/lib/commerce/stripe-verify.ts";
 import { stripeFulfillmentDeps } from "@/lib/stripe-fulfillment";
+import { loadStoreStripe } from "@/lib/store-stripe/server";
 
 // Stripe webhook: the only path that grants paid access automatically. The
 // signature is verified against the raw body before anything is read, and
 // processing is idempotent per event id and per payment intent.
 export async function POST(request: Request) {
-  const stripe = stripeClient();
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  // The storefront's keys are the workspace's own (saved in its settings; Monarch's still fall back to the server's
+  // environment until they are moved). This endpoint serves the Monarch storefront.
+  const { stripe, webhookSecret: secret, secretKey } = await loadStoreStripe();
   if (!stripe || !secret) {
-    console.error("stripe-webhook: STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET is not configured");
+    console.error("stripe-webhook: the Stripe secret key or the webhook signing secret is not set");
     return new Response("Webhook not configured", { status: 503 });
   }
 
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
 
   // Test-mode events must never fulfil orders on a live deployment (or the
   // reverse), even when correctly signed. Ids and the reason code only are logged.
-  const modeCheck = checkEventMode(event.livemode, process.env.STRIPE_SECRET_KEY);
+  const modeCheck = checkEventMode(event.livemode, secretKey ?? undefined);
   if (!modeCheck.ok) {
     console.warn(`stripe-webhook: ${event.id} ${event.type} rejected (${modeCheck.reason})`);
     return new Response("Event mode does not match this deployment", { status: 400 });

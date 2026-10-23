@@ -41,12 +41,6 @@ export function productFilesDeps() {
   return { commerce: new SupabaseCommerceRepo(db), files: new SupabaseProductFilesRepo(db), store: new SupabaseFileStore(db) };
 }
 
-/** Stripe client, or null when STRIPE_SECRET_KEY is not configured. */
-export function stripeClient(): Stripe | null {
-  const key = process.env.STRIPE_SECRET_KEY;
-  return key ? new Stripe(key) : null;
-}
-
 type AdminLookup = "yes" | "no" | "setup_missing";
 
 async function lookupAdmin(userId: string): Promise<AdminLookup> {

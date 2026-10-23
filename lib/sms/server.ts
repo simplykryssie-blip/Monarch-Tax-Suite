@@ -11,9 +11,9 @@ import { SupabaseDocumentsRepo } from "../documents/supabase-repo.ts";
 import { SupabaseBrandRepo } from "../branding/supabase-repo.ts";
 import { emailConfig, emailConfigProblems, ResendEmailSender } from "../automation/email.ts";
 import { PLATFORM } from "../platform-brand.ts";
-import { stripeClient } from "../admin";
 import { ValidationError } from "../commerce/validation.ts";
 import type { SmsAccount, SmsAccountsRepo } from "./types.ts";
+import { storeStripeClient } from "../store-stripe/server";
 
 // Server wiring for per-tenant texting. The owner's Twilio credentials (Vercel) are tenant #1's account and the parent
 // of every tenant subaccount; nothing here ever returns a credential.
@@ -90,7 +90,7 @@ export async function smsSetupDeps(tenantId: string = currentTenantId()): Promis
 export function smsPayments(): Payments {
   return {
     async createCheckout(input) {
-      const stripe = stripeClient();
+      const stripe = await storeStripeClient();
       if (!stripe) throw new ValidationError("Card payments aren't set up yet. Try again later.");
       const session = await stripe.checkout.sessions.create({
         mode: "payment",

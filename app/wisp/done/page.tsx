@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { stripeClient } from "@/lib/admin";
 import { confirmCheckoutFromStripe } from "@/lib/stripe-fulfillment";
 import { MONARCH_TENANT_ID } from "@/lib/tenants";
 import { DISCLAIMER, DONE_DISCLAIMER } from "@/lib/wisp/content.ts";
@@ -8,6 +7,7 @@ import { deliver, planForBuyer, type WispPlan } from "@/lib/wisp/service.ts";
 import { requestTenant, wispDeps } from "@/lib/wisp/server";
 import { WISP_COOKIE } from "@/lib/wisp/cookie.ts";
 import { resendWispAction } from "../actions";
+import { storeStripeClient } from "@/lib/store-stripe/server";
 
 export const metadata: Metadata = { title: "Your WISP", robots: { index: false, follow: false } };
 
@@ -20,7 +20,7 @@ export const metadata: Metadata = { title: "Your WISP", robots: { index: false, 
  * does, so the buyer isn't left waiting when the webhook is late or can't reach this deployment.
  */
 async function confirmPayment(deps: ReturnType<typeof wispDeps>, plan: WispPlan | null): Promise<WispPlan | null> {
-  const stripe = stripeClient();
+  const stripe = await storeStripeClient();
   if (!plan || plan.status !== "draft" || !plan.stripe_session_id || plan.tenant_id !== MONARCH_TENANT_ID || !stripe) return plan;
   try {
     if (!(await confirmCheckoutFromStripe(stripe, plan.stripe_session_id))) return plan;

@@ -1,12 +1,13 @@
-import { commerceRepo, requireAdmin, stripeClient } from "@/lib/admin";
+import { commerceRepo, requireAdmin } from "@/lib/admin";
 import { reconcilePurchaseAction } from "../../actions";
 import { PLATFORM_GUIDES, PLATFORM_ORDER } from "@/lib/commerce/platforms.ts";
 import { Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
+import { storeStripeClient } from "@/lib/store-stripe/server";
 
 export default async function ReconcilePage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
   await requireAdmin();
   const result = await load(() => commerceRepo().listProducts());
-  const stripeConfigured = stripeClient() !== null;
+  const stripeConfigured = (await storeStripeClient()) !== null;
   return (
     <>
       <PageTitle title="Reconcile a purchase" back={{ href: "/orders", label: "Orders" }}>
