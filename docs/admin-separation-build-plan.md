@@ -58,6 +58,11 @@ Proposed 2026-10-22. Nothing here has started. Every production action (merge, m
    - Monarch's own Twilio subaccount, when Monarch's texting is funded (it involves a real Twilio account change and number registration).
    - The `MONARCH_` renames, done during the move, not as their own step.
 
+## Findings from Preview testing (2026-10-22/23)
+- **The server-wide Stripe variables on Preview belong to a different Stripe account than the one that holds the Monarch store's products.** The new "Check the connection" (which asks Stripe for the store's own prices) reported "can't find your store's products" for the environment key. Do not assume the Production variables are Monarch's either: at the cutover, enter the keys from the account that holds the store's products and let the check confirm it before the old variables are removed.
+- **Saving a webhook signing secret alone only works when a key is already saved.** With nothing saved, enter the secret key and the signing secret together.
+- **For production, prefer a restricted key** with only what the store uses (Checkout Sessions, Prices, Products, Payment Intents, Charges: write where the code writes, read elsewhere) over a full-access key. To be settled at the cutover.
+
 ## Questions for Krystal
 1. Audit table: OK to seed an internal "Verexa HQ (platform)" tenant row for platform-wide audit entries?
 2. Does the `info@verexahq.com` mailbox exist and can she receive mail there (sign-in links and password reset need it)?
