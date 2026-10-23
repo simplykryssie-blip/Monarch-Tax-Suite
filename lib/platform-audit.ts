@@ -8,6 +8,7 @@ export const PLATFORM_ACTIONS = [
   "platform_invite_resent",
   "platform_access_changed",
   "platform_billing_setup_run",
+  "platform_two_step_enrolled",
 ] as const;
 export type PlatformAction = (typeof PLATFORM_ACTIONS)[number];
 
@@ -19,6 +20,7 @@ export const PLATFORM_ACTION_LABEL: Record<PlatformAction, string> = {
   platform_invite_resent: "Invite re-sent",
   platform_access_changed: "Access changed",
   platform_billing_setup_run: "Billing setup run",
+  platform_two_step_enrolled: "Two-step sign-in set up",
 };
 
 /** A short, safe detail object: strings only, trimmed, no more than a few keys (nothing secret is ever passed in). */

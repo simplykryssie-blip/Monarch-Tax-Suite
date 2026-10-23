@@ -3,11 +3,11 @@ import { configuredOrigin } from "./origin.ts";
 import { cache } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import Stripe from "stripe";
 import { createClient } from "./supabase/server";
 import { platformClient, tenantClient } from "./supabase/service";
 import { currentTenantId, MONARCH_TENANT_ID } from "./tenants.ts";
 import { adminSeparationOn, isAdminHost, roleOpensWorkspace } from "./admin-host.ts";
+import { ADMIN_TWO_STEP_PATH, adminTwoStepGate } from "./admin-two-step.ts";
 import { decideAdmin } from "./commerce/authz.ts";
 import { SupabaseCommerceRepo, SupabaseImageStore } from "./commerce/supabase-repo.ts";
 import { SupabaseFileStore, SupabaseProductFilesRepo } from "./commerce/supabase-files.ts";
@@ -123,6 +123,11 @@ export const requirePlatformAdmin = cache(async (): Promise<AdminSession> => {
     // A workspace member on the admin address is told so (the login page shows the message), never sent in circles.
     redirect(separated ? "/login?error=" + encodeURIComponent("This account is not a platform administrator.") : "/");
   }
+  // Two-step sign-in is required here (not in the Monarch workspace): a code entered in this session, or the screen to set one up.
+  const supabase = await createClient();
+  const [{ data: aal }, { data: factors }] = await Promise.all([supabase.auth.mfa.getAuthenticatorAssuranceLevel(), supabase.auth.mfa.listFactors()]);
+  const hasFactor = (factors?.totp ?? []).some((f) => f.status === "verified");
+  if (adminTwoStepGate({ level: aal?.currentLevel ?? "aal1", hasFactor }) !== "ok") redirect(ADMIN_TWO_STEP_PATH);
   return session;
 });
 
