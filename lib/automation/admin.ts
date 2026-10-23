@@ -2,6 +2,7 @@ import { ValidationError } from "../commerce/validation.ts";
 import { renderTemplate, SAMPLE_VALUES } from "./template.ts";
 import { validateTemplateInput, validateWorkflowInput, type WorkflowCatalog, type WorkflowFormInput } from "./validate.ts";
 import type { EmailSender } from "./email.ts";
+import { resolveSender, type SendersRepo } from "./senders.ts";
 import type { AutomationRepo, Execution, Template, Workflow } from "./types.ts";
 
 // Administrator operations. Every function writes an audit entry; callers must have checked requireAdmin.
@@ -138,4 +139,19 @@ export async function dashboardStats(repo: AutomationRepo): Promise<DashboardSta
     emailsSent: real.reduce((n, e) => n + e.action_log.filter((a) => a.type === "send_email" && a.status === "ok").length, 0),
     recent: executions.slice(0, 15),
   };
+}
+
+/**
+ * Sends one plain test message from a chosen sending address to the administrator's own address, so a person can see
+ * exactly which sender it arrives from. Nothing else is sent, and the same hourly limit as template tests applies.
+ */
+export async function sendSenderTest(repo: AutomationRepo, senders: SendersRepo, email: EmailSender, actor: Actor, senderId: string): Promise<string> {
+  const from = await resolveSender(senders, senderId, null);
+  const since = new Date(Date.now() - 3_600_000).toISOString();
+  if ((await repo.countAuditSince(actor.id, "sender_test_sent", since)) >= MAX_TEST_SENDS_PER_HOUR) throw new ValidationError("Too many test emails this hour. Try again later.");
+  const text = `*** TEST EMAIL ***\n\nThis checks a sending address. It was sent from ${from.label}.\nReplies go to ${from.replyTo ?? "that same address"}.\n\nNothing else was sent, and no client received it.`;
+  const result = await email.send({ to: actor.email, from: from.from, replyTo: from.replyTo, subject: "[TEST] Sending address check", text, html: `<p>${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>")}</p>`, idempotencyKey: `test-sender:${senderId}:${Date.now()}` });
+  await repo.addAudit({ actor_id: actor.id, action: "sender_test_sent", target_type: "sender", target_id: senderId, detail: { ok: result.ok, ...(result.ok ? { message_id: result.id } : { kind: result.kind }) } });
+  if (!result.ok) throw new ValidationError(result.message);
+  return from.label;
 }

@@ -11,7 +11,7 @@ import { addNoteAction, addReturnAction, addTaskAction, archiveClientAction, cre
 import { SMS_MAX } from "@/lib/automation/sms.ts";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
-import { emailConfig, emailConfigProblems } from "@/lib/automation/email.ts";
+import { emailConfig, emailKeyProblems } from "@/lib/automation/email.ts";
 import { WorkspaceSetup } from "../../setup";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -109,7 +109,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       )}
 
       {tab === "messages" && (() => {
-        const emailProblem = emailConfigProblems(emailConfig(process.env))[0] ?? null;
+        const emailProblem = emailKeyProblems(emailConfig(process.env))[0] ?? null;
         const smsProblem = !sms ? "Text messaging could not be checked." : sms.route.ok ? null : sms.route.problem;
         const mobile = toE164(client.phone);
         return (
