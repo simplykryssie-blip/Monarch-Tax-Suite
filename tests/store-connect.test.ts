@@ -87,6 +87,12 @@ describe("what the screen says", () => {
 });
 
 describe("wiring", () => {
+  test("after Stripe's screen the person returns to the same base Stripe was sent to, not to wherever the deployment's own address points", () => {
+    const route = src("app/api/stripe/connect/callback/route.ts");
+    assert.match(route, /const origin = await connectBase\(\)/);
+    assert.doesNotMatch(route, /appOrigin/);
+    assert.match(src("lib/connect/redirect.ts"), /STRIPE_CONNECT_REDIRECT_BASE \|\| \(await appOrigin\(\)\)/);
+  });
   test("the client names the connected account on every call, only when connected", () => {
     const server = src("lib/store-stripe/server.ts");
     assert.match(server, /new Stripe\(r\.secretKey, r\.connectedAccount \? \{ stripeAccount: r\.connectedAccount \} : undefined\)/);

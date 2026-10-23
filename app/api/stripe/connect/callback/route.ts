@@ -3,7 +3,7 @@ import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { connectReturnPath, finishConnect, readState } from "@/lib/connect/service.ts";
 import { connectDeps, connectStateKey } from "@/lib/connect/server";
-import { appOrigin } from "@/lib/admin";
+import { connectBase } from "@/lib/connect/redirect";
 import { currentTenantId } from "@/lib/tenants.ts";
 
 // Stripe sends the person back here after they authorize (or refuse) the connection. The signed state must name this
@@ -12,7 +12,7 @@ import { currentTenantId } from "@/lib/tenants.ts";
 export async function GET(request: Request) {
   const admin = await requireAdmin();
   const url = new URL(request.url);
-  const origin = (await appOrigin()).replace(/\/$/, "");
+  const origin = await connectBase();
   const key = connectStateKey();
   const state = key ? readState(key, url.searchParams.get("state")) : null;
   const to = (k: "notice" | "error", message: string) => Response.redirect(`${origin}${connectReturnPath(state?.back)}?${k}=${encodeURIComponent(message)}`, 303);
