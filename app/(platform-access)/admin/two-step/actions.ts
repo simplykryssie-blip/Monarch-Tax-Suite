@@ -1,12 +1,11 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { factorToCheck } from "@/lib/admin-two-step.ts";
 import { isAdminUser } from "@/lib/admin";
 import { startMfaEnrollAction } from "@/app/office/actions";
 import { mfaState } from "@/lib/office/server";
 import { recordPlatformAction } from "@/lib/platform-audit-server";
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function startAdminTwoStepAction() {
   return startMfaEnrollAction();
@@ -24,8 +23,7 @@ export async function verifyAdminTwoStepAction(input: { factorId?: string; code:
   if (!user) redirect("/login?next=/admin/two-step");
   const { data: factors } = await supabase.auth.mfa.listFactors();
   const verified = factors?.totp.find((f) => f.status === "verified");
-  const pending = input.factorId && UUID.test(input.factorId) ? factors?.totp.find((f) => f.id === input.factorId && f.status !== "verified") : undefined;
-  const factorId = verified?.id ?? pending?.id;
+  const factorId = factorToCheck(factors, input.factorId);
   if (!factorId) return { ok: false, error: "Set up two-step sign-in first." };
   const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code });
   if (error) return { ok: false, error: "That code didn't match. Check the time on your phone and try the newest code." };

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { adminRouteVerdict } from "../lib/admin-host.ts";
-import { ADMIN_TWO_STEP_PATH, adminTwoStepGate, twoStepScreen } from "../lib/admin-two-step.ts";
+import { ADMIN_TWO_STEP_PATH, adminTwoStepGate, factorToCheck, twoStepScreen } from "../lib/admin-two-step.ts";
 import { callbackFailureMessage, isTokenHash, RESET_LINK_EXPIRED, RESET_LINK_INVALID, RESET_LINK_OTHER_BROWSER } from "../lib/auth-links.ts";
 import { isPlatformAction, PLATFORM_ACTION_LABEL } from "../lib/platform-audit.ts";
 
@@ -61,10 +61,14 @@ describe("the two-step screen", () => {
     assert.match(page, /redirect\("\/login\?next=\/admin\/two-step"\)/);
   });
   test("checks a code against the authenticator already set up, never a newly added one, then records first-time setup", () => {
-    assert.match(actions, /const factorId = verified\?\.id \?\? pending\?\.id/);
+    assert.match(actions, /const factorId = factorToCheck\(factors, input\.factorId\)/);
     assert.match(actions, /challengeAndVerify\(\{ factorId, code \}\)/);
     assert.match(actions, /if \(!verified\) await recordPlatformAction\(user\.id, "platform_two_step_enrolled"/);
     assert.match(actions, /isAdminUser\(user\.id\)\) \? "\/admin\/workspaces" : "\/admin\/two-step"/);
+  });
+  test("a person on the screen can always sign out, so a setup that cannot be finished never traps the session", () => {
+    assert.equal((page.match(/<form action=\{signOut\}>/g) ?? []).length, 2, "setup/verify and the confirmation both have it");
+    assert.match(page, /import \{ signOut \} from "@\/lib\/auth-actions"/);
   });
   test("setup is recorded in the platform activity log", () => {
     assert.ok(isPlatformAction("platform_two_step_enrolled"));
@@ -100,5 +104,28 @@ describe("password-reset links", () => {
   });
   test("/auth/confirm is reachable without a session, like the callback", () => {
     assert.match(src("lib/supabase/proxy.ts"), /"\/forgot-password", "\/reset-password", "\/auth\/"/);
+  });
+});
+
+describe("which authenticator a code is checked against", () => {
+  // The shape Supabase returns: `totp` holds VERIFIED factors only; a setup in progress is only in `all`.
+  const pending = { id: "11111111-1111-4111-8111-111111111111", factor_type: "totp", status: "unverified" };
+  const verified = { id: "22222222-2222-4222-8222-222222222222", factor_type: "totp", status: "verified" };
+
+  test("first-time setup checks the factor just created, which is only in the full list", () => {
+    assert.equal(factorToCheck({ all: [pending], totp: [] }, pending.id), pending.id);
+  });
+  test("a code with no setup in progress and nothing verified has nothing to check", () => {
+    assert.equal(factorToCheck({ all: [], totp: [] }, undefined), null);
+    assert.equal(factorToCheck({ all: [pending], totp: [] }, undefined), null);
+    assert.equal(factorToCheck(null, pending.id), null);
+  });
+  test("a submitted id that is not the person's own pending authenticator is ignored", () => {
+    assert.equal(factorToCheck({ all: [pending], totp: [] }, "99999999-9999-4999-8999-999999999999"), null);
+    assert.equal(factorToCheck({ all: [{ ...pending, factor_type: "phone" }], totp: [] }, pending.id), null);
+  });
+  test("with a verified authenticator its code is always required, even if another factor id is submitted", () => {
+    assert.equal(factorToCheck({ all: [verified, pending], totp: [verified] }, undefined), verified.id);
+    assert.equal(factorToCheck({ all: [verified, pending], totp: [verified] }, pending.id), verified.id);
   });
 });

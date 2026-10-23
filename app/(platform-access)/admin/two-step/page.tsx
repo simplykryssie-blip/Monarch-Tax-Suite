@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { AuthFrame } from "@/components/auth-frame";
 import { MfaSetup } from "@/components/office/mfa-setup";
 import { isAdminUser } from "@/lib/admin";
+import { signOut } from "@/lib/auth-actions";
 import { twoStepScreen } from "@/lib/admin-two-step.ts";
 import { mfaState } from "@/lib/office/server";
 import { startAdminTwoStepAction, verifyAdminTwoStepAction } from "./actions";
@@ -26,6 +27,7 @@ export default async function AdminTwoStepPage() {
         <div>
           <h1>Two-step sign-in is on</h1>
           <p className="mt-login-sub">Signed in as {user.email}. Your authenticator is set up. This account is not a platform administrator yet; once it is, you will enter a code from your authenticator app at each sign-in.</p>
+          <form action={signOut}><button type="submit" className="monarch-link">Sign out</button></form>
         </div>
       </AuthFrame>
     );
@@ -39,6 +41,8 @@ export default async function AdminTwoStepPage() {
           ? "The platform administrator signs in with a password and a code from an authenticator app. This is required and cannot be skipped."
           : "Enter the code from your authenticator app to open the platform admin."}</p>
         <MfaSetup hasFactor={!enroll} actions={{ start: startAdminTwoStepAction, verify: verifyAdminTwoStepAction }} />
+        {/* Never trapped on this screen: a person who cannot finish setup can still sign out. */}
+        <form action={signOut}><button type="submit" className="monarch-link">Sign out</button></form>
       </div>
     </AuthFrame>
   );

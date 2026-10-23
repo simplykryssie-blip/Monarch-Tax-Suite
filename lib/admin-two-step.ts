@@ -27,3 +27,18 @@ export function twoStepScreen(state: TwoStepState, isPlatformAdmin: boolean): "e
   if (gate !== "ok") return gate;
   return isPlatformAdmin ? "open" : "done";
 }
+
+export type FactorRow = { id: string; factor_type?: string; status: string };
+
+/**
+ * Which authenticator a submitted code is checked against. `verified` must come from the verified list only (Supabase's
+ * `listFactors().totp` holds verified factors alone) and `all` from the full list, because a setup in progress exists only
+ * in `all`. With a verified authenticator its code is always required, whatever factor id was submitted, so a password-only
+ * session cannot enroll a second authenticator and use it to get through.
+ */
+export function factorToCheck(factors: { all?: FactorRow[]; totp?: FactorRow[] } | null | undefined, submittedId: string | undefined): string | null {
+  const verified = (factors?.totp ?? []).find((f) => f.status === "verified");
+  if (verified) return verified.id;
+  const pending = submittedId ? (factors?.all ?? []).find((f) => f.id === submittedId && f.factor_type === "totp" && f.status !== "verified") : undefined;
+  return pending?.id ?? null;
+}
