@@ -9,7 +9,7 @@ import { inboundUrlForNumbers } from "./inbound";
 import { advanceRegistration, ensureInbound, fulfilSmsCheckout, provision, runRenewal, type Notify, type PaidSession, type Payments, type SetupDeps } from "./service.ts";
 import { SupabaseDocumentsRepo } from "../documents/supabase-repo.ts";
 import { SupabaseBrandRepo } from "../branding/supabase-repo.ts";
-import { emailConfig, emailConfigProblems, ResendEmailSender } from "../automation/email.ts";
+import { sendPlatformEmail } from "../platform-mail-server";
 import { PLATFORM } from "../platform-brand.ts";
 import { ValidationError } from "../commerce/validation.ts";
 import type { SmsAccount, SmsAccountsRepo } from "./types.ts";
@@ -53,15 +53,12 @@ async function officeProfile(tenantId: string) {
 function emailNotify(tenantId: string, to: string | null): Notify {
   return async (subject, text) => {
     try {
-      const cfg = emailConfig(process.env);
-      if (!to || emailConfigProblems(cfg).length) {
-        console.warn(`sms-notice: not emailed (${!to ? "no office email" : "email not configured"}): ${subject}`);
+      if (!to) {
+        console.warn(`sms-notice: not emailed (no office email): ${subject}`);
         return;
       }
-      const day = new Date().toISOString().slice(0, 10);
-      const html = `<p style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5">${text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</p>`;
-      const r = await new ResendEmailSender(cfg).send({ to, subject: `${PLATFORM.name}: ${subject}`, html, text, idempotencyKey: `sms-notice:${tenantId}:${subject}:${day}` });
-      if (!r.ok) console.warn(`sms-notice: ${r.kind}: ${r.message.slice(0, 160)}`);
+      const problem = await sendPlatformEmail(to, { subject: `${PLATFORM.name}: ${subject}`, text });
+      if (problem) console.warn(`sms-notice: not emailed: ${problem.slice(0, 160)}`);
     } catch (e) {
       console.warn(`sms-notice failed: ${e instanceof Error ? e.message.slice(0, 160) : "unknown"}`);
     }

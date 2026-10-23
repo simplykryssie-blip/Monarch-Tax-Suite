@@ -19,7 +19,7 @@ import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
 import { formDeps } from "@/lib/forms/server";
 import { readSettings } from "@/lib/forms/settings.ts";
 import { brandRepo } from "@/lib/branding/server";
-import { automationDeps, workflowCatalog } from "@/lib/automation/server";
+import { automationDeps, tenantEmailSender, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { installDefaults } from "@/lib/automation/defaults.ts";
 import { createTemplate, createWorkflow, duplicateWorkflow, sendTemplateTest, setTemplateActive, setWorkflowStatus, updateTemplate, updateWorkflow } from "@/lib/automation/admin.ts";
@@ -127,7 +127,7 @@ export async function templateActiveAction(form: FormData) {
 export async function testTemplateAction(form: FormData) {
   await mutate(`/automation/templates/${str(form, "id")}`, async (a) => {
     const deps = automationDeps();
-    await sendTemplateTest(deps.repo, deps.email, deps.config.supportEmail, a, id(form));
+    await sendTemplateTest(deps.repo, tenantEmailSender(), deps.config.supportEmail, a, id(form));
     return { notice: `Test email sent to ${a.email} with sample data.` };
   });
 }

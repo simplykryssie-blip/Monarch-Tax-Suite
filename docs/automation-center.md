@@ -35,7 +35,7 @@ The customer's email contains `/setup?t=<token>`. The token is random (256-bit),
 | Variable | Needed for | Notes |
 | --- | --- | --- |
 | `RESEND_API_KEY` | Sending email | Existing variable. (`RESEND_SECRET_KEY` is accepted as a fallback.) Server only. |
-| `MONARCH_EMAIL_FROM` | Sender | **Required.** e.g. `Monarch Tax Suite <notifications@your-verified-domain>`. No default is assumed. |
+| `MONARCH_EMAIL_FROM` | Sender | **Optional last resort.** Each workspace sends from its own default sender (Settings → Email sending). This address is used only for Monarch, and only when no default sender is set. |
 | `MONARCH_EMAIL_REPLY_TO` | Replies | Optional. |
 | `MONARCH_SUPPORT_EMAIL` | Footer/support address | Optional, defaults to support@monarchtaxsuite.com. |
 | `AUTOMATION_ADMIN_EMAIL` | "Send to support" steps | Optional, defaults to the support address. |

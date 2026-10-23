@@ -33,7 +33,16 @@ const FROM = /^(?:[^<>\r\n]{1,80}\s)?<[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+>$|^[^\s@<>]
 export const isEmailAddress = (v: string) => v.length <= 254 && ADDRESS.test(v);
 export const isFromHeader = (v: string) => FROM.test(v);
 
-/** What is missing before email can be sent. Empty means ready to try. */
+/**
+ * What is missing before any email can be sent: the provider key. A sending address is not required here, because each
+ * email normally carries its own (the workspace's saved sender, or the platform's); see `emailConfigProblems` for the
+ * environment-wide fallback address.
+ */
+export function emailKeyProblems(c: EmailConfig): string[] {
+  return c.apiKey ? [] : ["Set RESEND_API_KEY in Vercel (server-side)."];
+}
+
+/** What is missing before email can be sent with only the environment's fallback address. Empty means ready to try. */
 export function emailConfigProblems(c: EmailConfig): string[] {
   const problems: string[] = [];
   if (!c.apiKey) problems.push("Set RESEND_API_KEY in Vercel (server-side).");
@@ -41,6 +50,24 @@ export function emailConfigProblems(c: EmailConfig): string[] {
   else if (!FROM.test(c.from)) problems.push("MONARCH_EMAIL_FROM is not a valid sender address.");
   if (c.replyTo && !isEmailAddress(c.replyTo)) problems.push("MONARCH_EMAIL_REPLY_TO is not a valid email address.");
   return problems;
+}
+
+/**
+ * Wraps a sender so an email that names no "from" is sent from the workspace's own default sender (resolved when it is
+ * sent), not from an environment variable. A message that carries its own sender is passed through untouched.
+ */
+export function withDefaultSender(inner: EmailSender, resolve: () => Promise<{ from: string; replyTo: string | null }>): EmailSender {
+  return {
+    async send(m) {
+      if (m.from) return inner.send(m);
+      try {
+        const s = await resolve();
+        return inner.send({ ...m, from: s.from, replyTo: m.replyTo ?? s.replyTo });
+      } catch (e) {
+        return { ok: false, kind: "config", message: sanitizeError(e instanceof Error ? e.message : "No sending address is set up.", 240) };
+      }
+    },
+  };
 }
 
 export const senderDomain = (from: string | null) => from?.match(/@([A-Za-z0-9.-]+)>?$/)?.[1]?.toLowerCase() ?? null;
@@ -54,8 +81,13 @@ export class ResendEmailSender implements EmailSender {
   }
 
   async send(m: EmailMessage): Promise<SendResult> {
-    const problems = emailConfigProblems(this.config);
-    if (problems.length) return { ok: false, kind: "config", message: `Email is not configured. ${problems[0]}` };
+    const keyProblems = emailKeyProblems(this.config);
+    if (keyProblems.length) return { ok: false, kind: "config", message: `Email is not configured. ${keyProblems[0]}` };
+    if (!m.from) {
+      // Only the environment's fallback address is used when the email carries none, so it has to be usable.
+      const problems = emailConfigProblems(this.config);
+      if (problems.length) return { ok: false, kind: "config", message: `Email is not configured. ${problems[0]}` };
+    }
     if (!isEmailAddress(m.to)) return { ok: false, kind: "permanent", message: "The recipient email address is not valid." };
     if (m.from && !FROM.test(m.from)) return { ok: false, kind: "config", message: "The sending address for this email is not valid." };
     if (m.replyTo && !isEmailAddress(m.replyTo)) return { ok: false, kind: "config", message: "The reply-to address for this email is not valid." };
