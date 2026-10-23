@@ -1,8 +1,10 @@
 // A workspace's own storefront Stripe keys (secret key and webhook signing secret). Pure rules, so they can be tested;
 // the database and encryption are in server.ts. Today only Monarch sells through the storefront.
 //
-// Where the keys come from, in order: the workspace's own saved settings, then (Monarch only, until the move is done and
-// the old environment variables are removed) the server's environment. Values are never returned to a page.
+// Where the storefront's Stripe access comes from, in order: the workspace's connected Stripe account (Stripe Connect, the
+// click-to-connect path), then the keys saved in its own settings, then (Monarch only, until the move is done and the old
+// environment variables are removed) the server's environment. The keys path stays as the permanent fallback. Values are
+// never returned to a page.
 
 export type StripeMode = "test" | "live";
 
@@ -38,7 +40,7 @@ export const modeOfKey = (key: string | null | undefined): StripeMode | null => 
 };
 
 export type SavedKeys = { secretKey: string | null; webhookSecret: string | null };
-export type KeySource = "settings" | "environment" | null;
+export type KeySource = "connected" | "settings" | "environment" | null;
 export type ResolvedKeys = { secretKey: string | null; webhookSecret: string | null; secretKeySource: KeySource; webhookSecretSource: KeySource };
 
 /**
@@ -60,6 +62,7 @@ export function resolveKeys(saved: SavedKeys | null, env: Record<string, string 
 
 /** The owner-facing line for one setting. */
 export function describeKey(label: string, source: KeySource, hint: string | null, mode: StripeMode | null): string {
+  if (source === "connected") return `${label}: not needed. Your connected Stripe account is used${mode ? ` (${mode} mode)` : ""}; keys saved here stay as a fallback.`;
   if (source === "settings") return `${label}: saved here${hint ? ` (ends ${hint})` : ""}${mode ? `, ${mode} mode` : ""}.`;
   if (source === "environment") return `${label}: still read from the server's environment settings${mode ? ` (${mode} mode)` : ""}. Save it here, check it works, then remove it from Vercel.`;
   return `${label}: not set.`;
@@ -79,4 +82,47 @@ export function judgeProductLookups(lookups: PriceLookup[]): { ok: boolean; mess
   }
   if (lookups.every((l) => l === "found")) return { ok: true, message: " It also found your store's products." };
   return { ok: true, message: " The key works; your store's products couldn't be checked just now." };
+}
+
+// --------------------------------------------------------------- connected account (Stripe Connect)
+
+/** What the workspace's saved Connect connection says (the payment_connections row). */
+export type ConnectionFacts = { accountId: string; livemode: boolean; status: "connected" | "disconnected"; chargesEnabled: boolean };
+
+export type ConnectedUse = { usable: true; mode: StripeMode } | { usable: false; note: string | null };
+
+/**
+ * Whether the connected account can run the storefront right now. Not usable, it falls back to the saved keys (and then the
+ * environment), so a half-finished connection never takes the store down; the note says why, for the owner's screen.
+ * `platformMode` is the mode of Verexa's Connect platform key on this deployment, or null when that key is not set.
+ */
+export function connectedUse(conn: ConnectionFacts | null, platformMode: StripeMode | null): ConnectedUse {
+  if (!conn || conn.status !== "connected") return { usable: false, note: null };
+  if (!platformMode) return { usable: false, note: "A Stripe account is connected, but this deployment has no Stripe Connect platform key, so it can't be used yet." };
+  const mode: StripeMode = conn.livemode ? "live" : "test";
+  if (mode !== platformMode) return { usable: false, note: `The connected Stripe account is ${mode}, but this deployment's Stripe Connect platform is ${platformMode}. Connect a ${platformMode} account.` };
+  if (!conn.chargesEnabled) return { usable: false, note: "Your Stripe account is connected but can't take payments yet. Finish setting it up in Stripe, then refresh here." };
+  return { usable: true, mode };
+}
+
+export type StoreResolved = ResolvedKeys & { mode: StripeMode | null; connectedAccount: string | null; connectionNote: string | null };
+
+/**
+ * The storefront's Stripe access, in order: the connected account (a usable connection, on Verexa's platform key), then
+ * saved keys, then the environment (Monarch only). The webhook signing secret is resolved on its own (saved, then
+ * environment) because the connected account's events arrive on the Connect webhook instead.
+ */
+export function resolveStoreStripe(input: {
+  connection: ConnectionFacts | null;
+  platformKey: string | null;
+  saved: SavedKeys | null;
+  env: Record<string, string | undefined>;
+  isMonarch: boolean;
+}): StoreResolved {
+  const keys = resolveKeys(input.saved, input.env, input.isMonarch);
+  const use = connectedUse(input.connection, modeOfKey(input.platformKey));
+  if (use.usable && input.platformKey && input.connection) {
+    return { ...keys, secretKey: input.platformKey, secretKeySource: "connected", mode: use.mode, connectedAccount: input.connection.accountId, connectionNote: null };
+  }
+  return { ...keys, mode: modeOfKey(keys.secretKey), connectedAccount: null, connectionNote: use.usable ? null : use.note };
 }

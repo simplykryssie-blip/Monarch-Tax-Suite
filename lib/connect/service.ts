@@ -53,12 +53,17 @@ const fail = (m: string): never => { throw new ValidationError(m); };
 // ------------------------------------------------------------ OAuth state
 
 const STATE_MINUTES = 15;
+/** Where the person is sent back to after Stripe's authorization screen. A fixed list: the state never carries a free-form address. */
+export const CONNECT_RETURNS = ["payments", "store-payments"] as const;
+export type ConnectReturn = (typeof CONNECT_RETURNS)[number];
+export const connectReturnPath = (back: ConnectReturn | undefined): string => (back === "store-payments" ? "/settings/store-payments" : "/settings/payments");
+
 /** A signed, short-lived value that ties Stripe's redirect back to the office and the person who started it. */
-export function signState(key: Buffer, input: { tenantId: string; userId: string }, now: Date = new Date()): string {
-  const body = Buffer.from(JSON.stringify({ t: input.tenantId, u: input.userId, e: now.getTime() + STATE_MINUTES * 60_000 })).toString("base64url");
+export function signState(key: Buffer, input: { tenantId: string; userId: string; back?: ConnectReturn }, now: Date = new Date()): string {
+  const body = Buffer.from(JSON.stringify({ t: input.tenantId, u: input.userId, e: now.getTime() + STATE_MINUTES * 60_000, ...(input.back ? { b: input.back } : {}) })).toString("base64url");
   return `${body}.${createHmac("sha256", key).update(`connect-state:v1:${body}`).digest("base64url")}`;
 }
-export function readState(key: Buffer, state: unknown, now: Date = new Date()): { tenantId: string; userId: string } | null {
+export function readState(key: Buffer, state: unknown, now: Date = new Date()): { tenantId: string; userId: string; back: ConnectReturn } | null {
   if (typeof state !== "string" || state.length > 600) return null;
   const [body, mac, extra] = state.split(".");
   if (!body || !mac || extra !== undefined) return null;
@@ -67,9 +72,10 @@ export function readState(key: Buffer, state: unknown, now: Date = new Date()): 
   try { got = Buffer.from(mac, "base64url"); } catch { return null; }
   if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
   try {
-    const v = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as { t?: unknown; u?: unknown; e?: unknown };
+    const v = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as { t?: unknown; u?: unknown; e?: unknown; b?: unknown };
     if (typeof v.t !== "string" || typeof v.u !== "string" || typeof v.e !== "number" || v.e < now.getTime()) return null;
-    return { tenantId: v.t, userId: v.u };
+    const back = (CONNECT_RETURNS as readonly unknown[]).includes(v.b) ? (v.b as ConnectReturn) : "payments";
+    return { tenantId: v.t, userId: v.u, back };
   } catch {
     return null;
   }

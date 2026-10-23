@@ -150,7 +150,7 @@ describe("wiring", () => {
     const page = read(join(root, "app/(admin)/settings/store-payments/page.tsx"));
     const actions = read(join(root, "app/(admin)/settings/store-payments/actions.ts"));
     assert.match(page, /requireSection\("store"\)/);
-    assert.equal((actions.match(/requireSection\("store"\)/g) ?? []).length, 3);
+    assert.equal((actions.match(/requireSection\("store"\)/g) ?? []).length, 6, "every action, including connect, refresh and disconnect, re-checks access");
     assert.ok(!/secretKey|webhookSecret\b/.test(page.replace(/st\.secretKeySource|st\.webhookSecretSource|st\.secretKeyHint|st\.webhookSecretHint/g, "")), "the page reads only sources, hints and mode");
     assert.ok(/type="password"/.test(page));
   });
