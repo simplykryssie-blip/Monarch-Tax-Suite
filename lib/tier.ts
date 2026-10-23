@@ -20,7 +20,7 @@ export const allows = (tier: Tier, section: Section) => section !== "platform" &
 
 /** Where each section lives. The first prefix that matches a path decides. */
 const ROUTES: [string, Section][] = [
-  ["/workspace", "workspace"], ["/documents", "workspace"],
+  ["/workspace", "workspace"], ["/documents", "workspace"], ["/contacts", "workspace"],
   ["/ero", "ero"],
   ["/efin", "bureau"], ["/fees", "bureau"], ["/offices", "bureau"], ["/compliance", "bureau"], ["/bureau", "bureau"],
   ["/leads", "leads"],

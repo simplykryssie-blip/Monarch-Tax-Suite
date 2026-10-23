@@ -14,6 +14,7 @@ export const NAV: Entry[] = [
     icon: "office",
     items: [
       { label: "Home", icon: "dashboard", href: "/", section: "bureau" },
+      { label: "Contacts", icon: "user", href: "/contacts", section: "workspace" },
       { label: "Leads", icon: "user", href: "/leads", section: "leads" },
       { label: "My Workspace", icon: "firms", href: "/workspace", section: "workspace" },
       { label: "ERO Dashboard", icon: "licenses", href: "/ero", section: "ero" },
