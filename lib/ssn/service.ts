@@ -22,6 +22,8 @@ export interface SsnRepo {
   deleteCiphertext(clientId: string): Promise<void>;
   setLast4(clientId: string, last4: string | null): Promise<void>;
   audit(e: { action: string; clientId: string; actorId: string | null }): Promise<void>;
+  /** The most recent audit entries for one client's number, newest first. */
+  listAudit(clientId: string, limit: number): Promise<{ action: string; actorId: string | null; at: string }[]>;
 }
 export type SsnDeps = {
   tenantId: string;
@@ -36,9 +38,9 @@ const aadFor = (tenantId: string, clientId: string) => `ssn:${tenantId}:${client
 /** Nine digits, with or without dashes or spaces. Returns the digits, or throws without echoing the input. */
 export function checkSsn(raw: unknown): string {
   const digits = typeof raw === "string" ? raw.replace(/[\s-]/g, "") : "";
-  if (!/^\d{9}$/.test(digits)) throw new ValidationError("Enter the nine digits of the Social Security number.");
+  if (!/^\d{9}$/.test(digits)) throw new ValidationError("Enter the nine digits of the Social Security number or ITIN.");
   const area = digits.slice(0, 3);
-  if (area === "000" || area === "666" || digits.slice(3, 5) === "00" || digits.slice(5) === "0000") throw new ValidationError("That isn't a valid Social Security number.");
+  if (area === "000" || area === "666" || digits.slice(3, 5) === "00" || digits.slice(5) === "0000") throw new ValidationError("That isn't a valid Social Security number or ITIN.");
   return digits;
 }
 export const formatSsn = (d: string) => `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
@@ -155,4 +157,22 @@ export async function rewrapTenantKey(deps: SsnDeps): Promise<boolean> {
   const w = k.wrap(key, deps.tenantId);
   await deps.repo.saveWrappedKey(deps.tenantId, { master_version: w.version, wrapped_key: w.wrapped });
   return true;
+}
+
+const ACTIVITY: Record<string, string> = {
+  "ssn.stored": "Number saved or replaced",
+  "ssn.cleared": "Number removed",
+  "ssn.revealed": "Number revealed",
+  "ssn.reveal_wrong_password": "Reveal tried with a wrong password",
+  "ssn.reveal_refused": "Reveal refused",
+  "ssn.reveal_limited": "Reveal blocked: too many attempts",
+  "ssn.reveal_failed": "Number could not be read",
+};
+export type NumberActivity = { label: string; actorId: string | null; at: string };
+
+/** Who saved, revealed or tried to reveal this client's number, newest first. Never includes the number. */
+export async function numberActivity(deps: SsnDeps, clientId: string, limit = 6): Promise<NumberActivity[]> {
+  if (!UUID.test(clientId)) return [];
+  const rows = await deps.repo.listAudit(clientId, limit);
+  return rows.filter((r) => ACTIVITY[r.action]).map((r) => ({ label: ACTIVITY[r.action], actorId: r.actorId, at: r.at }));
 }

@@ -14,15 +14,19 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "defaultValue" | "value
 export function FormattedInput({ kind, defaultValue, secret, type, ...rest }: Props) {
   const format = FORMATTERS[kind];
   const [value, setValue] = useState(() => format(defaultValue ?? ""));
+  const [shown, setShown] = useState(false);
   return (
-    <input
-      {...rest}
-      type={secret ? "password" : type === "tel" || kind === "phone" ? "tel" : "text"}
-      inputMode={INPUT_MODE[kind]}
-      maxLength={MAX_LENGTH[kind]}
-      autoCapitalize={kind === "ptin" ? "characters" : undefined}
-      value={value}
-      onChange={(e) => setValue(format(e.target.value))}
-    />
+    <>
+      <input
+        {...rest}
+        type={secret && !shown ? "password" : type === "tel" || kind === "phone" ? "tel" : "text"}
+        inputMode={INPUT_MODE[kind]}
+        maxLength={MAX_LENGTH[kind]}
+        autoCapitalize={kind === "ptin" ? "characters" : undefined}
+        value={value}
+        onChange={(e) => setValue(format(e.target.value))}
+      />
+      {secret && <button type="button" className="monarch-link" aria-pressed={shown} onClick={() => setShown((s) => !s)}>{shown ? "Hide what I typed" : "Show what I typed"}</button>}
+    </>
   );
 }
