@@ -10,7 +10,7 @@ import { loadAudit, loadSnapshot } from "@/lib/efin/service";
 import { Kpi, orgName, Verified } from "./parts";
 
 // One colour per status, in the brand palette: ink, gold, deep gold, light gold, grey. Every slice is also listed in text.
-const COLOR: Record<StatusBucket, string> = { active: "#111111", expiring: "#c8a24a", review: "#8a6a1c", pending: "#e3d3a1", inactive: "#bdbdbd" };
+const COLOR: Record<StatusBucket, string> = { active: "#111111", expiring: "#4782cb", review: "#194d8d", pending: "#9fbfe5", inactive: "#bdbdbd" };
 
 export default async function EfinDashboard({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
   await requireAdmin();

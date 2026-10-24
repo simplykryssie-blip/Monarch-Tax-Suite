@@ -17,7 +17,7 @@ describe("clients and returns", () => {
     assert.throws(() => checkClient({ full_name: "A", email: "nope" }), /email/);
     assert.throws(() => checkClient({ full_name: "A", ssn_last4: "123-45-6789" }), /last 4 digits/);
     const c = checkClient({ full_name: " Casey   Client ", email: "CASEY@Example.com", phone: "(337) 555-0100", ssn_last4: "1234" });
-    assert.deepEqual(c, { full_name: "Casey Client", email: "casey@example.com", phone: "(337) 555-0100", ssn_last4: "1234", address: null });
+    assert.deepEqual(c, { full_name: "Casey Client", first_name: "Casey", last_name: "Client", email: "casey@example.com", phone: "(337) 555-0100", ssn_last4: "1234", address: null });
   });
 
   test("one original and one extension per client per year; amendments can repeat; extension and amendment cards link to the original", () => {

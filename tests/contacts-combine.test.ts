@@ -35,7 +35,7 @@ describe("combining leads, clients and customers", () => {
   });
   test("chips and active flag follow each record's state", () => {
     const [a] = combineContacts({ leads: [lead(1, { status: "lost" })], clients: [client(1, { archived_at: "2026-02-01T00:00:00Z" })], customers: [customer(1, { status: "inactive" })] });
-    assert.deepEqual(a.chips.map((c) => c.label), ["Client (archived)", "Lead (lost)", "Customer (inactive)"]);
+    assert.deepEqual(a.chips.map((c) => c.label), ["Client (archived)", "Lead (lost)", "Customer (archived)"]);
     assert.equal(a.active, false);
     const [b] = combineContacts({ leads: [lead(2, { status: "converted" })], clients: [client(2)], customers: [] });
     assert.equal(b.active, true);

@@ -30,6 +30,7 @@ class SsnMemory implements SsnRepo {
   async deleteCiphertext(id: string) { this.ct.delete(id); }
   async setLast4() {}
   async audit(e: { action: string }) { this.audits.push(e.action); }
+  async listAudit() { return []; }
 }
 
 async function setup(fields: string[]) {

@@ -89,7 +89,7 @@ export async function addMyClient(deps: PrepDeps, scope: Scope, raw: Record<stri
 
 export async function saveMyClient(deps: PrepDeps, scope: Scope, id: string, raw: Record<string, unknown>): Promise<Client> {
   const c = await loadClient(deps, scope, id);
-  const saved = await saveClient(deps.ws, c.id, raw);
+  const saved = await saveClient(deps.ws, c.id, raw, { id: scope.userId });
   await deps.audit({ actor_id: scope.userId, action: "client_updated", subject_type: "client", subject_id: c.id });
   return saved;
 }

@@ -4,6 +4,8 @@ import { currentTier } from "@/lib/tier-server";
 import { allows } from "@/lib/tier.ts";
 import { PageTitle, SetupRequired } from "@/components/admin/ui";
 import { HomeGrid } from "@/components/home/home-grid";
+import { AddContact } from "@/components/contacts/add-contact";
+import { contactKinds } from "@/lib/contacts/kinds.ts";
 import { buildHome, type AgendaSource, type LeadLite } from "@/lib/home/model.ts";
 import { appointmentDeps } from "@/lib/appointments/server";
 import { addDays, atLocal, parseYmd, ymdString } from "@/lib/calendar/business.ts";
@@ -56,7 +58,7 @@ export default async function Home() {
     <>
       <PageTitle title={greeting}>What needs you today. Open a card to go to its list, or press Edit layout to arrange Home your way.</PageTitle>
       <div className="hm-quick">
-        <Link className="monarch-secondary" href="/workspace/clients">Add client</Link>
+        <AddContact kinds={contactKinds(tier)} className="monarch-secondary" />
         <Link className="monarch-secondary" href="/workspace/work">Add return</Link>
         <Link className="monarch-primary" href="/workspace/billing">New invoice</Link>
       </div>

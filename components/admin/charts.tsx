@@ -16,8 +16,8 @@ export function Sparkline({ values, label }: { values: number[]; label: string }
   const last = pts[pts.length - 1];
   return (
     <svg className="mt-spark" viewBox={`0 0 ${w} ${h}`} role="img" aria-label={label}>
-      <path d={flat ? `M${pad} ${h - pad} L${w - pad} ${h - pad}` : line} fill="none" stroke={flat ? "#d9d5c8" : "#b8902f"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      {!flat && last && <circle cx={last[0]} cy={last[1]} r={3} fill="#fff" stroke="#b8902f" strokeWidth={2} />}
+      <path d={flat ? `M${pad} ${h - pad} L${w - pad} ${h - pad}` : line} fill="none" stroke={flat ? "#d9d5c8" : "#2c6cbb"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      {!flat && last && <circle cx={last[0]} cy={last[1]} r={3} fill="#fff" stroke="#2c6cbb" strokeWidth={2} />}
     </svg>
   );
 }
@@ -39,7 +39,7 @@ export function AreaChart({ points, format, label }: { points: SeriesPoint[]; fo
           <text x={L - 10} y={y(t) + 4} textAnchor="end">{format(t)}</text>
         </g>
       ))}
-      <path d={line} fill="none" stroke="#b8902f" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={line} fill="none" stroke="#2c6cbb" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" />
       {points.map((p, i) => (
         <g key={p.key}>
           {(i % 2 === 0 || points.length <= 7) && <text x={x(i)} y={H - 10} textAnchor="middle">{p.label}</text>}

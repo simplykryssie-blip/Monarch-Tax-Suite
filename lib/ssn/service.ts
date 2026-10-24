@@ -1,7 +1,7 @@
 import { ValidationError } from "../commerce/validation.ts";
 import type { Keyring } from "./keyring.ts";
 
-// Full Social Security numbers for clients: stored encrypted, shown only to the account owner, one client at a time,
+// Full Social Security numbers for clients: stored encrypted, shown only to people who work in the workspace, one client at a time,
 // after they re-enter their password, for 30 seconds. The number is never in a URL, a log, an email, an event, an
 // export or the audit trail; the audit trail records only who looked at whose, and when.
 
@@ -22,6 +22,8 @@ export interface SsnRepo {
   deleteCiphertext(clientId: string): Promise<void>;
   setLast4(clientId: string, last4: string | null): Promise<void>;
   audit(e: { action: string; clientId: string; actorId: string | null }): Promise<void>;
+  /** The most recent audit entries for clients' numbers (one client's, or all when null), newest first. */
+  listAudit(clientId: string | null, limit: number): Promise<{ action: string; clientId: string; actorId: string | null; at: string }[]>;
 }
 export type SsnDeps = {
   tenantId: string;
@@ -36,9 +38,9 @@ const aadFor = (tenantId: string, clientId: string) => `ssn:${tenantId}:${client
 /** Nine digits, with or without dashes or spaces. Returns the digits, or throws without echoing the input. */
 export function checkSsn(raw: unknown): string {
   const digits = typeof raw === "string" ? raw.replace(/[\s-]/g, "") : "";
-  if (!/^\d{9}$/.test(digits)) throw new ValidationError("Enter the nine digits of the Social Security number.");
+  if (!/^\d{9}$/.test(digits)) throw new ValidationError("Enter the nine digits of the Social Security number or ITIN.");
   const area = digits.slice(0, 3);
-  if (area === "000" || area === "666" || digits.slice(3, 5) === "00" || digits.slice(5) === "0000") throw new ValidationError("That isn't a valid Social Security number.");
+  if (area === "000" || area === "666" || digits.slice(3, 5) === "00" || digits.slice(5) === "0000") throw new ValidationError("That isn't a valid Social Security number or ITIN.");
   return digits;
 }
 export const formatSsn = (d: string) => `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
@@ -78,8 +80,8 @@ export async function clearSsn(deps: SsnDeps, input: { clientId: string; actorId
 
 export type RevealGate = {
   actorId: string;
-  /** Whether this person is the account owner of the workspace. Resolved by the caller from the session, never from the request. */
-  isOwner: boolean;
+  /** Whether this person works in the workspace (owner or staff). Resolved by the caller from the session, never from the request. */
+  isMember: boolean;
   /** Re-checks the password the person just typed. */
   verifyPassword: (password: string) => Promise<boolean>;
   /** Counts this attempt; false when the person has tried too many times. */
@@ -88,14 +90,14 @@ export type RevealGate = {
 export type Revealed = { ssn: string; expiresAt: string; seconds: number };
 
 /**
- * Shows one client's full number to the account owner. Anyone else is refused; the password is re-checked every time;
+ * Shows one client's full number to an owner or staff member of the workspace. Anyone else is refused; the password is re-checked every time;
  * attempts are limited; every attempt, allowed or not, is recorded without the number.
  */
 export async function revealSsn(deps: SsnDeps, gate: RevealGate, input: { clientId: string; password: unknown }): Promise<Revealed> {
   if (!UUID.test(input.clientId)) throw new ValidationError("That client wasn't found.");
-  if (!gate.isOwner) {
+  if (!gate.isMember) {
     await deps.repo.audit({ action: "ssn.reveal_refused", clientId: input.clientId, actorId: gate.actorId });
-    throw new ValidationError("Only the account owner can view a full Social Security number.");
+    throw new ValidationError("Only people who work in this workspace can view a full Social Security number.");
   }
   if (!(await gate.allowAttempt())) {
     await deps.repo.audit({ action: "ssn.reveal_limited", clientId: input.clientId, actorId: gate.actorId });
@@ -154,5 +156,36 @@ export async function rewrapTenantKey(deps: SsnDeps): Promise<boolean> {
   const key = k.unwrap(row.master_version, row.wrapped_key, deps.tenantId);
   const w = k.wrap(key, deps.tenantId);
   await deps.repo.saveWrappedKey(deps.tenantId, { master_version: w.version, wrapped_key: w.wrapped });
+  return true;
+}
+
+const ACTIVITY: Record<string, string> = {
+  "ssn.stored": "Number saved or replaced",
+  "ssn.cleared": "Number removed",
+  "ssn.revealed": "Number revealed",
+  "ssn.reveal_wrong_password": "Reveal tried with a wrong password",
+  "ssn.reveal_refused": "Reveal refused",
+  "ssn.reveal_limited": "Reveal blocked: too many attempts",
+  "ssn.reveal_failed": "Number could not be read",
+};
+export type NumberActivity = { label: string; clientId: string; actorId: string | null; at: string };
+
+/** Who saved, revealed or tried to reveal a client's number (every client's when none is named), newest first. Never includes the number. */
+export async function numberActivity(deps: SsnDeps, clientId: string | null, limit = 200): Promise<NumberActivity[]> {
+  if (clientId !== null && !UUID.test(clientId)) return [];
+  const rows = await deps.repo.listAudit(clientId, limit);
+  return rows.filter((r) => ACTIVITY[r.action]).map((r) => ({ label: ACTIVITY[r.action], clientId: r.clientId, actorId: r.actorId, at: r.at }));
+}
+
+/** Seals the number held for one client under another client (used when two clients are merged). The original is left as it is. */
+export async function copySsn(deps: SsnDeps, input: { from: string; to: string; actorId: string | null }): Promise<boolean> {
+  if (!UUID.test(input.from) || !UUID.test(input.to)) throw new ValidationError("That client wasn't found.");
+  const sealed = await deps.repo.getCiphertext(input.from);
+  const key = sealed ? await dataKey(deps, false) : null;
+  if (!sealed || !key) return false;
+  const digits = ring(deps).open(key, sealed, aadFor(deps.tenantId, input.from));
+  await deps.repo.putCiphertext(input.to, ring(deps).seal(key, digits, aadFor(deps.tenantId, input.to)), input.actorId);
+  await deps.repo.setLast4(input.to, digits.slice(-4));
+  await deps.repo.audit({ action: "ssn.stored", clientId: input.to, actorId: input.actorId });
   return true;
 }

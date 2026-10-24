@@ -10,7 +10,6 @@ import { deliveryPathFor } from "@/lib/documents/service.ts";
 import { documentEmail } from "@/lib/documents/emails.ts";
 import { sendForSignature } from "@/lib/portal/signing.ts";
 import { ssnDeps } from "@/lib/ssn/server";
-import { clearSsn, storeSsn } from "@/lib/ssn/service.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { loadBrand } from "@/lib/branding/server";
 import { ValidationError } from "@/lib/commerce/validation.ts";
@@ -49,7 +48,7 @@ async function staffFor(form: FormData): Promise<Staff> {
     const admin = await requireAdmin();
     const client = await workspaceRepo().getClient(clientId);
     if (!client) throw new ValidationError("That client wasn't found.");
-    return { tenantId: currentTenantId(), userId: admin.userId, client, back: `/workspace/clients/${clientId}?tab=portal` };
+    return { tenantId: currentTenantId(), userId: admin.userId, client, back: `/workspace/clients/${clientId}?tab=documents` };
   }
   if (!isArea(area)) throw new ValidationError("That client wasn't found.");
   const ctx = await requirePrep(area, "clients.intake");
@@ -155,16 +154,3 @@ export async function sendSignatureAction(form: FormData) {
   });
 }
 
-export async function saveSsnAction(form: FormData) {
-  await run(form, async (s) => {
-    await storeSsn(ssnDeps(s.tenantId), { clientId: s.client.id, ssn: form.get("ssn"), actorId: s.userId });
-    return "Social Security number saved (encrypted).";
-  });
-}
-
-export async function clearSsnAction(form: FormData) {
-  await run(form, async (s) => {
-    await clearSsn(ssnDeps(s.tenantId), { clientId: s.client.id, actorId: s.userId });
-    return "Stored Social Security number removed.";
-  });
-}

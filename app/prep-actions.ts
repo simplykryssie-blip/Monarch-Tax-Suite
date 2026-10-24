@@ -8,6 +8,8 @@ import { firstReturnStage, handoffMail, isArea, requirePrep, type PrepContext, t
 import {
   addChecklistItem, addMyClient, assignReturn, handOff, removeChecklistItem, savePrepNotes, saveMyClient, setChecklistDone, setPrepStatus, startReturn,
 } from "@/lib/prep/service.ts";
+import { checkSsn, storeSsn } from "@/lib/ssn/service.ts";
+import { ssnDeps } from "@/lib/ssn/server";
 import type { PrepStatus } from "@/lib/workspace/types.ts";
 
 // Client intake and return-prep actions, shared by the PTIN holder's workspace and the office area. Each re-checks who
@@ -45,9 +47,14 @@ async function act(form: FormData, feature: PrepFeature, back: (ctx: PrepContext
 const clientPath = (ctx: PrepContext, id: string) => `${ctx.base}/clients/${id}`;
 const returnPath = (ctx: PrepContext, id: string) => `${ctx.base}/prep/${id}`;
 
+/** The full number typed in the form, checked before anything is saved so a bad number never leaves a half-saved client. */
+const typedSsn = (form: FormData): string | null => (str(form, "ssn").trim() ? checkSsn(str(form, "ssn")) : null);
+
 export async function addClientAction(form: FormData) {
   await act(form, "clients.intake", (c) => `${c.base}/clients`, async (ctx) => {
+    const ssn = typedSsn(form);
     const c = await addMyClient(ctx.deps, ctx.scope, raw(form));
+    if (ssn) await storeSsn(ssnDeps(ctx.tenantId), { clientId: c.id, ssn, actorId: ctx.scope.userId });
     return { to: clientPath(ctx, c.id), notice: "Client added." };
   });
 }
@@ -55,7 +62,9 @@ export async function addClientAction(form: FormData) {
 export async function saveClientAction(form: FormData) {
   const id = str(form, "id");
   await act(form, "clients.intake", (c) => clientPath(c, id), async (ctx) => {
+    const ssn = typedSsn(form);
     await saveMyClient(ctx.deps, ctx.scope, id, raw(form));
+    if (ssn) await storeSsn(ssnDeps(ctx.tenantId), { clientId: id, ssn, actorId: ctx.scope.userId });
     return { notice: "Saved." };
   });
 }

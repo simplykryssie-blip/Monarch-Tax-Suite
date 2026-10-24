@@ -27,3 +27,11 @@ export function invoiceNoticeEmail(input: { office: string; name: string; number
     ].join("\n"),
   };
 }
+
+/** The email that tells a client they have a new message waiting in their portal. The message itself is read in the portal. */
+export function portalMessageEmail(input: { office: string; name: string; link: string }) {
+  return {
+    subject: `New message from ${input.office}`,
+    text: [`Hi ${input.name},`, "", `${input.office} sent you a message in your client portal.`, "", "Read it here:", input.link].join("\n"),
+  };
+}

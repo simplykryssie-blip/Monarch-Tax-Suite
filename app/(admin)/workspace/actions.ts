@@ -9,8 +9,9 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
-import { emitInvoicePaid, emitReturnStage } from "@/lib/automation/emit";
-import { addClient, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveClient, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
+import { emitInvoicePaid, emitReturnStage, emitTagChanges } from "@/lib/automation/emit";
+import { yesNo } from "@/lib/workspace/rules.ts";
+import { addBusiness, addClient, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
 import { loadBrand } from "@/lib/branding/server";
@@ -18,7 +19,15 @@ import { canTakePayments } from "@/lib/connect/service.ts";
 import { connectDeps } from "@/lib/connect/server";
 import { invoiceNoticeEmail } from "@/lib/portal/invoices.ts";
 import { portalLink, portalMemberRepo, sendPortalEmail } from "@/lib/portal/server";
+import { portalMessageEmail } from "@/lib/portal/invoices.ts";
+import { createLead } from "@/lib/leads/service.ts";
+import { leadsDeps } from "@/lib/leads/server";
+import { commerceRepo } from "@/lib/admin";
+import { currentTier } from "@/lib/tier-server";
+import { allows } from "@/lib/tier.ts";
 import { currentTenantId } from "@/lib/tenants.ts";
+import { checkSsn, copySsn, hasStoredSsn, revealSsn, storeSsn } from "@/lib/ssn/service.ts";
+import { revealGate, ssnDeps } from "@/lib/ssn/server";
 import type { Invoice } from "@/lib/workspace/types";
 
 // My Workspace actions. Each re-checks administrator access and acts only on the current tenant's rows.
@@ -64,23 +73,73 @@ async function onlinePaymentsOn(): Promise<boolean> {
   return deps ? canTakePayments(await deps.repo.getConnection(), deps.stripe.livemode) : false;
 }
 
+/** The signed-in person, for the record of who changed what. */
+const whoIs = async (): Promise<Actor> => { const a = await requireAdmin(); return { id: a.userId, email: a.email }; };
+
 const clientPage = (id: string, tab = "overview") => `/workspace/clients/${id}?tab=${tab}`;
 
 // ---- clients
 
+/** The full number typed in the form, checked before anything is saved so a bad number never leaves a half-saved client. */
+const typedSsn = (form: FormData): string | null => (str(form, "ssn").trim() ? checkSsn(str(form, "ssn")) : null);
+
 export async function addClientAction(form: FormData) {
   await act("/workspace/clients", async (adminId) => {
-    const c = await addClient(workspaceRepo(), raw(form), adminId);
+    const ssn = typedSsn(form);
+    const c = await addClient(workspaceRepo(), raw(form), adminId, null, await whoIs());
+    if (ssn) await storeSsn(ssnDeps(), { clientId: c.id, ssn, actorId: adminId });
     return { to: clientPage(c.id), notice: "Client added." };
   });
 }
 
-export async function saveClientAction(form: FormData) {
-  const id = str(form, "id");
-  await act(clientPage(id), async () => {
-    await saveClient(workspaceRepo(), id, raw(form));
-    return { notice: "Saved." };
-  });
+/** The one Add button: a client, a lead or (on plans with the store) a customer. Errors come back to the popup so nothing typed is lost. */
+export async function addContactAction(form: FormData): Promise<{ error: string; field?: string } | undefined> {
+  const admin = await requireAdmin();
+  let to: string;
+  try {
+    const kind = str(form, "kind");
+    const fields = raw(form);
+    const name = [str(form, "first_name"), str(form, "last_name")].map((s) => s.trim()).filter(Boolean).join(" ");
+    const tier = await currentTier();
+    if (kind === "client") {
+      const ssn = typedSsn(form);
+      const c = await addClient(workspaceRepo(), fields, admin.userId, null, { id: admin.userId, email: admin.email });
+      if (ssn) await storeSsn(ssnDeps(), { clientId: c.id, ssn, actorId: admin.userId });
+      to = clientPage(c.id);
+    } else if (kind === "lead") {
+      if (!allows(tier, "leads")) throw new ValidationError("Leads aren't part of this plan.");
+      if (!str(form, "first_name").trim()) throw new ValidationError("Enter the first name.");
+      const lead = await createLead(leadsDeps(), { ...fields, full_name: name }, admin.userId);
+      to = `/leads/${lead.id}`;
+    } else if (kind === "customer") {
+      if (!allows(tier, "store")) throw new ValidationError("Customers aren't part of this plan.");
+      const email = str(form, "email").trim().toLowerCase();
+      if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ValidationError("A customer needs a name and an email address.");
+      const c = await commerceRepo().createCustomer({ email, full_name: name, stripe_customer_id: null });
+      to = `/customers/${c.id}`;
+    } else {
+      throw new ValidationError("Choose client, lead or customer.");
+    }
+  } catch (e) {
+    unstable_rethrow(e);
+    return { error: failure(e) };
+  }
+  revalidatePath("/contacts");
+  revalidatePath("/workspace", "layout");
+  redirect(to);
+}
+
+/** Shows one client's full SSN or ITIN for a few seconds after the person types their password again. Every try is recorded. */
+export async function revealClientSsnAction(clientId: string, password: string): Promise<{ ssn?: string; seconds?: number; error?: string }> {
+  try {
+    const admin = await requireAdmin();
+    const gate = await revealGate({ userId: admin.userId, email: admin.email });
+    const r = await revealSsn(ssnDeps(), gate, { clientId, password });
+    return { ssn: r.ssn, seconds: r.seconds };
+  } catch (e) {
+    unstable_rethrow(e);
+    return { error: failure(e) };
+  }
 }
 
 export async function archiveClientAction(form: FormData) {
@@ -159,12 +218,133 @@ export async function sendMessageAction(form: FormData) {
   });
 }
 
+/** A message written to the client's portal, with an email telling them it is waiting. */
+export async function sendPortalMessageAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id, "messages"), async (adminId) => {
+    const tenantId = currentTenantId();
+    const repo = workspaceRepo();
+    const client = await repo.getClient(id);
+    if (!client) throw new ValidationError("That client wasn't found.");
+    if (client.archived_at) throw new ValidationError("This client is archived. Restore them to send messages.");
+    const body = str(form, "body").replace(/\r\n/g, "\n").trim().slice(0, 4000);
+    if (!body) throw new ValidationError("Write the message.");
+    const member = await portalMemberRepo(tenantId).getForClient(id);
+    if (!member || member.status !== "active") throw new ValidationError("This client doesn't have portal access yet. Use Send invite at the top of this page.");
+    const subject = str(form, "subject").replace(/\s+/g, " ").trim().slice(0, 200);
+    await repo.insertMessage({ client_id: id, direction: "out", channel: "portal", subject: subject || null, body, occurred_at: new Date().toISOString(), created_by: adminId, status: "sent", sent_to: member.email });
+    const office = (await loadBrand(tenantId)).name;
+    const problem = await sendPortalEmail(tenantId, member.email, portalMessageEmail({ office, name: member.full_name, link: await portalLink("/messages") }));
+    return { notice: problem ? `The message is in the portal, but the email telling them didn't go out (${problem}).` : `Message sent to ${member.email}'s portal.` };
+  });
+}
+
 export async function logMessageAction(form: FormData) {
   const id = str(form, "client_id");
   await act(clientPage(id, "messages"), async (adminId) => {
     await logMessage(workspaceRepo(), id, raw(form), adminId);
     return { notice: "Message logged." };
   });
+}
+
+// ---- household: spouse, dependents, businesses
+
+export async function linkSpouseAction(form: FormData) {
+  const id = str(form, "id");
+  await act(clientPage(id), async () => { await linkSpouse(workspaceRepo(), id, str(form, "spouse_id"), await whoIs(), yesNo(form.get("filed_last_year"))); return { notice: "Spouse linked." }; });
+}
+export async function unlinkSpouseAction(form: FormData) {
+  const id = str(form, "id");
+  await act(clientPage(id), async () => { await unlinkSpouse(workspaceRepo(), id, await whoIs()); return { notice: "Spouse unlinked." }; });
+}
+export async function saveSpouseAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async () => { await saveSpouse(workspaceRepo(), raw(form), await whoIs()); return { notice: "Spouse saved." }; });
+}
+export async function removeSpouseAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async () => { await removeSpouse(workspaceRepo(), id, await whoIs()); return { notice: "Spouse removed." }; });
+}
+export async function addDependentAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async (adminId) => { await addDependent(workspaceRepo(), raw(form), adminId, await whoIs()); return { notice: "Dependent added." }; });
+}
+export async function removeDependentAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async () => { await removeDependent(workspaceRepo(), id, str(form, "id"), await whoIs()); return { notice: "Dependent removed." }; });
+}
+export async function addBusinessAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async (adminId) => { await addBusiness(workspaceRepo(), raw(form), adminId, await whoIs()); return { notice: "Business added." }; });
+}
+export async function removeBusinessAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async () => { await removeBusiness(workspaceRepo(), id, str(form, "id"), await whoIs()); return { notice: "Business removed." }; });
+}
+
+/** The Details card's Save: on a problem the card stays open with what was typed and says what is wrong. */
+export async function saveClientDetailsAction(form: FormData): Promise<{ error: string; field?: string } | undefined> {
+  const id = str(form, "id");
+  let notice: string;
+  try {
+    const admin = await requireAdmin();
+    const ssn = typedSsn(form);
+    const { changes } = await saveClientWithChanges(workspaceRepo(), id, raw(form), { id: admin.userId, email: admin.email });
+    if (ssn) await storeSsn(ssnDeps(), { clientId: id, ssn, actorId: admin.userId });
+    const names = [...changes.map((c) => c.field), ...(ssn ? ["Social Security number"] : [])];
+    notice = names.length ? `Saved. Updated ${names.join(", ")}.` : "Nothing was changed.";
+  } catch (e) {
+    unstable_rethrow(e);
+    return { error: failure(e) };
+  }
+  revalidatePath("/workspace", "layout");
+  redirect(to(clientPage(id), "notice", notice));
+}
+
+/** Saves the tags on a contact's card, then tells Automation which were added or removed. */
+export async function saveClientTagsAction(form: FormData) {
+  const id = str(form, "id");
+  await act(clientPage(id), async (adminId) => {
+    const admin = await requireAdmin();
+    const { before, after } = await saveClientTags(workspaceRepo(), id, str(form, "tags"), { id: adminId, email: admin.email });
+    await emitTagChanges({ type: "client", id }, before, after);
+    return { notice: before.join() === after.join() ? "Tags are unchanged." : "Tags saved." };
+  });
+}
+
+/** Merges a duplicate into the client being kept: everything moves over, the duplicate is archived. */
+export async function mergeClientsAction(form: FormData) {
+  const keep = str(form, "keep");
+  const drop = str(form, "drop");
+  await act(clientPage(keep), async (adminId) => {
+    const ssn = ssnDeps();
+    if (!(await hasStoredSsn(ssn, keep)) && (await hasStoredSsn(ssn, drop))) await copySsn(ssn, { from: drop, to: keep, actorId: adminId });
+    const moved = await mergeClients(workspaceRepo(), keep, drop, await whoIs());
+    const parts = Object.entries(moved).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`);
+    return { notice: `Merged. ${parts.length ? `Moved ${parts.join(", ")}.` : "Nothing needed moving."} The other record is archived.` };
+  });
+}
+
+/** Merges a duplicate lead into a client: the lead's details are kept as a note on the client and the lead is marked converted. */
+export async function mergeLeadIntoClientAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  const leadId = str(form, "lead_id");
+  await act(clientPage(clientId), async (adminId) => {
+    const leads = leadsDeps().repo;
+    const lead = await leads.getLead(leadId);
+    if (!lead) throw new ValidationError("That lead wasn't found.");
+    const repo = workspaceRepo();
+    if (!(await repo.getClient(clientId))) throw new ValidationError("That client wasn't found.");
+    const detail = [`Merged from lead ${lead.full_name}`, lead.email, lead.phone, lead.source ? `Source: ${lead.source}` : "", lead.notes ?? ""].filter(Boolean).join("\n");
+    await repo.insertNote({ client_id: clientId, body: detail.slice(0, 4000), created_by: adminId });
+    await leads.updateLead(leadId, { status: "converted" });
+    return { notice: `Lead ${lead.full_name} merged into this client and marked converted.` };
+  });
+}
+
+/** Saves the standard invoice fees (Settings). */
+export async function saveStandardFeesAction(form: FormData) {
+  await act("/settings/invoice-fees", async (adminId) => { await saveStandardFees(workspaceRepo(), raw(form), adminId); return { notice: "Standard fees saved. New invoices start from these." }; });
 }
 
 // ---- documents (uploaded straight to private storage, then checked)

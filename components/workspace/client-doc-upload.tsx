@@ -38,8 +38,8 @@ export function ClientDocUpload({ clientId, returns }: { clientId: string; retur
 
   return (
     <div className="monarch-form">
-      <label>Title (optional)<input ref={title} maxLength={200} placeholder="For example W-2 2025" /></label>
-      {returns.length > 0 && <label>For return (optional)<select ref={ret} defaultValue=""><option value="">The client in general</option>{returns.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></label>}
+      <label>Name of the document<input ref={title} maxLength={200} placeholder="For example W-2 2025" /></label>
+      {returns.length > 0 && <label>Which tax return is this for?<select ref={ret} defaultValue=""><option value="">None, keep it with the client</option>{returns.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></label>}
       <label>File (PDF or Word, up to 25 MB)<input ref={file} type="file" accept=".pdf,.docx" /></label>
       <div className="is-wide"><button type="button" className="monarch-primary" onClick={go} disabled={busy}>{busy ? "Uploading…" : "Upload"}</button></div>
       {msg && <p className={msg.ok ? "monarch-alert" : "monarch-alert is-error"} role={msg.ok ? "status" : "alert"}>{msg.text}</p>}

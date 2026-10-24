@@ -39,7 +39,7 @@ export default async function MyWork({ searchParams }: { searchParams: Promise<{
             <WorkBoard key={`${year}-${total}`} columns={columns} />
             <section className="monarch-panel" id="add-return" style={{ padding: 20 }}>
               <h2>Add a return</h2>
-              {active.length === 0 ? <p className="monarch-muted">Add a client first. <Link href="/workspace/clients#add">Add a client</Link></p> : (
+              {active.length === 0 ? <p className="monarch-muted">Add a client first. <Link href="/contacts">Add a client</Link></p> : (
                 <form action={addReturnAction} className="monarch-form">
                   <input type="hidden" name="back" value={`/workspace/work?year=${year}`} />
                   <label>Client *<select name="client_id" required defaultValue=""><option value="" disabled>Choose a client…</option>{active.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}</select></label>

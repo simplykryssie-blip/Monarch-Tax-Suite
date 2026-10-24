@@ -1,3 +1,4 @@
+import { FormattedInput } from "@/components/forms/formatted-input";
 import { commerceRepo, requireAdmin } from "@/lib/admin";
 import { createInternalLicenseAction } from "../../actions";
 import { PLATFORM_GUIDES, PLATFORM_ORDER } from "@/lib/commerce/platforms.ts";
@@ -23,7 +24,7 @@ export default async function InternalLicensePage({ searchParams }: { searchPara
           <form action={createInternalLicenseAction} className="monarch-form">
             <label>Customer name<input name="full_name" required maxLength={120} /></label>
             <label>Customer email<input name="email" type="email" required maxLength={254} /></label>
-            <label>Telephone (kept in the order notes)<input name="phone" type="tel" maxLength={30} /></label>
+            <label>Telephone (kept in the order notes)<FormattedInput kind="phone" name="phone" /></label>
             <label>Product
               <select name="product_id" required>
                 {result.data.filter((p) => p.status !== "archived" && p.access_type === "license").map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}

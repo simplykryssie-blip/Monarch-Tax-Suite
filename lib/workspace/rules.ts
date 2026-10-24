@@ -1,7 +1,9 @@
 import { ValidationError } from "../commerce/validation.ts";
+import { digitsOf, formatAddress, formatEin, formatPhone, formatZip } from "../format/ids.ts";
+import { STATE_CODES } from "../format/states.ts";
 import { parseCsv } from "../leads/csv.ts";
 import { MONARCH_TEMPLATE, parseMoney } from "../fees/engine.ts";
-import { RETURN_KINDS, type Client, type ClientInput, type ClientReturn, type Invoice, type InvoiceLine, type MatchKind, type PaymentRowInsert, type ReturnKind } from "./types.ts";
+import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS, type BusinessInput, type Client, type ClientInput, type DependentInput, type SpouseInput, type ClientReturn, type Invoice, type InvoiceLine, type MatchKind, type PaymentRowInsert, type ReturnKind } from "./types.ts";
 
 // The pure rules of My Workspace: what a client, return, task and invoice may contain, how the My Work board groups
 // returns, how an invoice's balance and overdue state are worked out, and how a bank statement row is read and matched.
@@ -18,16 +20,149 @@ const day = (v: unknown, label: string): string | null => {
 
 // ---------------------------------------------------------------- clients
 
+/** "Ada Byron King" is first name "Ada Byron", last name "King"; a single word is a first name only. */
+export function splitName(full: string): { first: string; last: string | null } {
+  const s = full.replace(/\s+/g, " ").trim();
+  const at = s.lastIndexOf(" ");
+  return at < 0 ? { first: s, last: null } : { first: s.slice(0, at), last: s.slice(at + 1) };
+}
+
+/** The one-line address, built from its parts (or kept as the person wrote it when there are no parts). */
+export function addressLine(p: { address_line1?: string | null; address_line2?: string | null; city?: string | null; state?: string | null; zip?: string | null }): string {
+  const street = [p.address_line1, p.address_line2].filter(Boolean).join(", ");
+  const place = [p.city, [p.state, p.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  return [street, place].filter(Boolean).join(", ");
+}
+
+/** A state as typed: any case, two letters, and a real state. Empty is allowed. */
+function stateCode(v: unknown, what: string): string {
+  const s = one(v, 20).toUpperCase();
+  if (s && !STATE_CODES.has(s)) throw new ValidationError(`${what} isn't a state. Choose it from the list.`);
+  return s;
+}
+
+/** A Yes/No answer: true, false, or null when it wasn't answered. */
+export const yesNo = (v: unknown): boolean | null => (v === "yes" ? true : v === "no" ? false : null);
+
+const has = (raw: Record<string, unknown>, ...keys: string[]) => keys.some((k) => Object.hasOwn(raw, k));
+const dayOrNull = (v: unknown, label: string): string | null => {
+  const s = one(v, 10);
+  if (!s) return null;
+  if (!isDay(s)) throw new ValidationError(`${label} isn't a valid date.`);
+  return s;
+};
+
+/**
+ * What a client record may contain. Only the parts a form actually sent are returned, so a form that doesn't carry the date
+ * of birth or the address parts (an older intake form) never wipes them. Name, address and phone are written the standard way.
+ */
 export function checkClient(raw: Record<string, unknown>): ClientInput {
-  const full_name = one(raw.full_name, 200);
-  if (!full_name) throw new ValidationError("Enter the client's name.");
+  const first = one(raw.first_name, 100);
+  const last = one(raw.last_name, 100);
+  let full_name = one(raw.full_name, 200);
+  let names: { first_name: string; last_name: string | null } | null = null;
+  if (has(raw, "first_name", "last_name")) {
+    full_name = [first, last].filter(Boolean).join(" ");
+    names = { first_name: first, last_name: last || null };
+  } else if (full_name) {
+    const s = splitName(full_name);
+    names = { first_name: s.first, last_name: s.last };
+  }
+  if (!full_name) throw new ValidationError(has(raw, "first_name", "last_name") ? "Enter the client's first name." : "Enter the client's name.");
+  if (names && !names.first_name) throw new ValidationError("Enter the client's first name.");
   const email = one(raw.email, 254).toLowerCase();
   if (email && !EMAIL.test(email)) throw new ValidationError("That email address doesn't look right.");
   const phone = one(raw.phone, 40);
   if (phone && phone.replace(/\D/g, "").length < 10) throw new ValidationError("That phone number doesn't look right.");
-  const last4 = one(raw.ssn_last4, 10).replace(/\D/g, "");
-  if (one(raw.ssn_last4, 10) && last4.length !== 4) throw new ValidationError("Enter only the last 4 digits of the Social Security number.");
-  return { full_name, email: email || null, phone: phone || null, ssn_last4: last4 || null, address: one(raw.address, 300) || null };
+  // A full number (SSN or ITIN) gives the last four; the number itself is sealed separately, never kept in this row.
+  const full = digitsOf(one(raw.ssn, 20));
+  if (full && full.length !== 9) throw new ValidationError("A Social Security number or ITIN is nine digits.");
+  const last4 = full ? full.slice(-4) : one(raw.ssn_last4, 10).replace(/\D/g, "");
+  if (!full && one(raw.ssn_last4, 10) && last4.length !== 4) throw new ValidationError("Enter only the last 4 digits of the Social Security number.");
+  const out: ClientInput = { full_name, email: email || null, phone: phone ? formatPhone(phone) : null, ssn_last4: last4 || null, address: null, ...(names ?? {}) };
+
+  if (has(raw, "dob")) out.dob = dayOrNull(raw.dob, "The date of birth");
+  if (has(raw, "dl_number", "dl_state", "dl_issued_on", "dl_expires_on")) {
+    const dlState = stateCode(raw.dl_state, "The state that issued the license");
+    const issued = dayOrNull(raw.dl_issued_on, "The license issue date");
+    const expires = dayOrNull(raw.dl_expires_on, "The license expiration date");
+    if (issued && expires && expires < issued) throw new ValidationError("The license expires before it was issued. Check the dates.");
+    out.dl_number = one(raw.dl_number, 40).toUpperCase() || null;
+    out.dl_state = dlState || null;
+    out.dl_issued_on = issued;
+    out.dl_expires_on = expires;
+  }
+  if (has(raw, "address_line1", "address_line2", "city", "state", "zip")) {
+    const state = stateCode(raw.state, "The state");
+    const zipDigits = digitsOf(one(raw.zip, 20));
+    if (zipDigits && zipDigits.length !== 5 && zipDigits.length !== 9) throw new ValidationError("A ZIP code is five digits, or nine with the extension.");
+    const parts = { address_line1: formatAddress(one(raw.address_line1, 150)) || null, address_line2: formatAddress(one(raw.address_line2, 100)) || null, city: formatAddress(one(raw.city, 80)) || null, state: state || null, zip: zipDigits ? formatZip(zipDigits) : null };
+    Object.assign(out, parts);
+    out.address = addressLine(parts).slice(0, 300) || null;
+  } else {
+    out.address = formatAddress(one(raw.address, 300)) || null;
+  }
+  // Was this the address on last year's return? If not, the old address is kept alongside it.
+  if (has(raw, "same_address")) {
+    const same = one(raw.same_address, 5) !== "no";
+    out.address_same_as_last_year = same;
+    const state = same ? "" : stateCode(raw.prior_state, "The old address's state");
+    const zipDigits = digitsOf(one(raw.prior_zip, 20));
+    if (!same && zipDigits && zipDigits.length !== 5 && zipDigits.length !== 9) throw new ValidationError("The old address's ZIP code is five digits, or nine with the extension.");
+    out.prior_address_line1 = same ? null : formatAddress(one(raw.prior_address_line1, 150)) || null;
+    out.prior_address_line2 = same ? null : formatAddress(one(raw.prior_address_line2, 100)) || null;
+    out.prior_city = same ? null : formatAddress(one(raw.prior_city, 80)) || null;
+    out.prior_state = same ? null : state || null;
+    out.prior_zip = same || !zipDigits ? null : formatZip(zipDigits);
+    if (!same && !out.prior_address_line1) throw new ValidationError("Enter the street of the address used on last year's return.");
+  }
+  return out;
+}
+
+/** A person claimed on a client's return. The last four of the number are kept, never the whole number. */
+export function checkDependent(raw: Record<string, unknown>): Pick<DependentInput, "first_name" | "last_name" | "dob" | "relationship" | "ssn_last4"> {
+  const first_name = one(raw.first_name, 100);
+  if (!first_name) throw new ValidationError("Enter the dependent's first name.");
+  const relationship = one(raw.relationship, 30) || "child";
+  if (!(relationship in RELATIONSHIPS)) throw new ValidationError("Choose how they are related.");
+  const digits = digitsOf(one(raw.ssn, 20));
+  if (digits && digits.length !== 9 && digits.length !== 4) throw new ValidationError("Enter the nine digits, or only the last four.");
+  return { first_name, last_name: one(raw.last_name, 100) || null, dob: dayOrNull(raw.dob, "The date of birth"), relationship: relationship as keyof typeof RELATIONSHIPS, ssn_last4: digits ? digits.slice(-4) : null };
+}
+
+/** A business a client owns. */
+export function checkBusiness(raw: Record<string, unknown>): Pick<BusinessInput, "name" | "entity_type" | "ein" | "phone" | "email" | "address"> {
+  const name = one(raw.name, 200);
+  if (!name) throw new ValidationError("Enter the business name.");
+  const entity_type = one(raw.entity_type, 30) || "sole_proprietor";
+  if (!(entity_type in ENTITY_TYPES)) throw new ValidationError("Choose the kind of business.");
+  const ein = digitsOf(one(raw.ein, 20));
+  if (ein && ein.length !== 9) throw new ValidationError("An EIN is nine digits.");
+  const phone = one(raw.phone, 40);
+  if (phone && phone.replace(/\D/g, "").length < 10) throw new ValidationError("That phone number doesn't look right.");
+  const email = one(raw.email, 254).toLowerCase();
+  if (email && !EMAIL.test(email)) throw new ValidationError("That business email address doesn't look right.");
+  return { name, entity_type: entity_type as keyof typeof ENTITY_TYPES, ein: ein ? formatEin(ein) : null, phone: phone ? formatPhone(phone) : null, email: email || null, address: formatAddress(one(raw.address, 300)) || null };
+}
+
+/** A spouse entered by hand, for a spouse who isn't a client. */
+export function checkSpouse(raw: Record<string, unknown>): Pick<SpouseInput, "first_name" | "last_name" | "dob" | "phone" | "email" | "ssn_last4" | "dl_number" | "dl_state" | "dl_issued_on" | "dl_expires_on"> & { filed_last_year: boolean | null } {
+  const first_name = one(raw.first_name, 100);
+  if (!first_name) throw new ValidationError("Enter the spouse's first name.");
+  const email = one(raw.email, 254).toLowerCase();
+  if (email && !EMAIL.test(email)) throw new ValidationError("That email address doesn't look right.");
+  const phone = one(raw.phone, 40);
+  if (phone && phone.replace(/\D/g, "").length < 10) throw new ValidationError("That phone number doesn't look right.");
+  const digits = digitsOf(one(raw.ssn, 20));
+  if (digits && digits.length !== 9 && digits.length !== 4) throw new ValidationError("Enter the nine digits, or only the last four.");
+  const issued = dayOrNull(raw.dl_issued_on, "The license issue date");
+  const expires = dayOrNull(raw.dl_expires_on, "The license expiration date");
+  if (issued && expires && expires < issued) throw new ValidationError("The license expires before it was issued. Check the dates.");
+  return {
+    first_name, last_name: one(raw.last_name, 100) || null, dob: dayOrNull(raw.dob, "The date of birth"), phone: phone ? formatPhone(phone) : null, email: email || null, ssn_last4: digits ? digits.slice(-4) : null,
+    dl_number: one(raw.dl_number, 40).toUpperCase() || null, dl_state: stateCode(raw.dl_state, "The state that issued the license") || null, dl_issued_on: issued, dl_expires_on: expires,
+    filed_last_year: yesNo(raw.filed_last_year),
+  };
 }
 
 // ---------------------------------------------------------------- returns and the My Work board
