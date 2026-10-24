@@ -30,11 +30,10 @@ export default async function MyWork({ searchParams }: { searchParams: Promise<{
         return (
           <>
             <div className="monarch-page-actions">
-              <form method="get" className="monarch-inline-form">
-                <label>Tax year <select name="year" defaultValue={String(year)}>{(years.includes(year) ? years : [year, ...years]).map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
-                <button className="monarch-secondary">Show</button>
-              </form>
-              <span className="monarch-muted">{total} {total === 1 ? "return" : "returns"} for {year} · <Link href="/automation/pipelines">Edit the stages</Link></span>
+              <nav className="subtabs" aria-label="Tax year">
+                {(years.includes(year) ? years : [year, ...years]).map((y) => <Link key={y} href={`/workspace/work?year=${y}`} className={"subtab" + (y === year ? " is-on" : "")} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
+              </nav>
+              <span className="monarch-muted">{total} {total === 1 ? "return" : "returns"} for {year}</span>
             </div>
             <WorkBoard key={`${year}-${total}`} columns={columns} />
             <section className="monarch-panel" id="add-return" style={{ padding: 20 }}>
