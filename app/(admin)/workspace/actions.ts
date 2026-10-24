@@ -13,6 +13,7 @@ import { emitInvoicePaid, emitReturnStage, emitTagChanges, emitWorkStage } from 
 import { yesNo } from "@/lib/workspace/rules.ts";
 import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
+import { setWorkflowTaskDone } from "@/lib/workspace/workflow-tasks";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
 import { loadBrand } from "@/lib/branding/server";
 import { canTakePayments } from "@/lib/connect/service.ts";
@@ -226,7 +227,8 @@ export async function addTaskAction(form: FormData) {
 export async function toggleTaskAction(form: FormData) {
   const back = str(form, "back").startsWith("/workspace") ? str(form, "back") : "/workspace";
   await act(back, async () => {
-    await setTaskDone(workspaceRepo(), str(form, "id"), str(form, "done") === "yes");
+    if (str(form, "source") === "workflow") await setWorkflowTaskDone(str(form, "id"), str(form, "done") === "yes");
+    else await setTaskDone(workspaceRepo(), str(form, "id"), str(form, "done") === "yes");
     return { notice: str(form, "done") === "yes" ? "Task done." : "Task reopened." };
   });
 }

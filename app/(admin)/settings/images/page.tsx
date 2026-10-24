@@ -3,7 +3,7 @@ import { EmptyRow, Flash, load, PageTitle, when } from "@/components/admin/ui";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { emailMarkdown } from "@/lib/images/service.ts";
 import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
-import { deleteLibraryImageAction, uploadLibraryImageAction } from "../actions";
+import { deleteLibraryImageAction, uploadLibraryImageAction } from "../../automation/actions";
 
 const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 

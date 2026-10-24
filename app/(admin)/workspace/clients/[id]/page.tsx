@@ -19,6 +19,8 @@ import { standardFees } from "@/lib/workspace/service.ts";
 import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
 import { hasStoredSsn } from "@/lib/ssn/service.ts";
 import { ssnDeps } from "@/lib/ssn/server";
+import type { ClientTask } from "@/lib/workspace/types";
+import { workflowTasksFor } from "@/lib/workspace/workflow-tasks";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 import { TagInput } from "@/app/(admin)/leads/tag-input";
@@ -49,16 +51,18 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     const repo = workspaceRepo();
     const client = await repo.getClient(id);
     if (!client) return null;
-    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines] = await Promise.all([
+    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines, workflowTasks] = await Promise.all([
       repo.listReturns({ clientId: id }), repo.listDocs(id), repo.listMessages(id), repo.listTasks({ clientId: id }), repo.listNotes(id), repo.listInvoices({ clientId: id }), boardStages(),
       repo.listClients({ includeArchived: false }), repo.listDependents(id).catch(() => null), repo.listBusinesses(id).catch(() => null),
       portalMemberRepo(client.tenant_id).getForClient(id).catch(() => null), repo.getSpouse(id).catch(() => null), repo.listClientEvents(id, 200).catch(() => []), standardFees(repo), repo.listWork({ clientId: id }).catch(() => []), pipelinesRepo().list().catch(() => []),
+      workflowTasksFor(id),
     ]);
-    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines };
+    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines, workflowTasks };
   });
   if (result.ok && !result.data) notFound();
   if (!result.ok) return <><PageTitle title="Client" back={{ href: "/contacts", label: "Contacts" }} /><WorkspaceSetup message={result.message} /></>;
-  const { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines } = result.data!;
+  const { client, returns, docs, messages, tasks: ownTasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines, workflowTasks } = result.data!;
+  const tasks: (ClientTask & { source?: "workflow" })[] = [...ownTasks, ...workflowTasks];
   // The office's own texting account, and its prepaid credits when it has them (tenant #1 pays Twilio directly).
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
@@ -264,7 +268,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 {openTasks.length === 0 ? <p className="monarch-muted cl-empty">None open</p> : (
                   <ul className="cl-list">{openTasks.slice(0, FIVE).map((x) => (
                     <li key={x.id}><span><b>{x.title}</b>{x.due_on && <small className={`monarch-subcell${x.due_on < today ? " wb-late" : ""}`}>due {x.due_on}</small>}</span>
-                      <form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form></li>
+                      <form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} />{x.source && <input type="hidden" name="source" value={x.source} />}<input type="hidden" name="back" value={back} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form></li>
                   ))}</ul>
                 )}
               </section>
@@ -445,7 +449,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                     <td style={x.done_at ? { textDecoration: "line-through" } : undefined}><b>{x.title}</b></td>
                     <td className={!x.done_at && x.due_on && x.due_on < today ? "wb-late" : undefined}>{x.due_on ?? "—"}</td>
                     <td>{x.return_id ? (() => { const r = returns.find((y) => y.id === x.return_id); return r ? returnLabel(r) : "—"; })() : "—"}</td>
-                    <td><form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="done" value={x.done_at ? "no" : "yes"} /><button className="monarch-link">{x.done_at ? "Reopen" : "Done"}</button></form></td>
+                    <td><form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} />{x.source && <input type="hidden" name="source" value={x.source} />}<input type="hidden" name="back" value={back} /><input type="hidden" name="done" value={x.done_at ? "no" : "yes"} /><button className="monarch-link">{x.done_at ? "Reopen" : "Done"}</button></form></td>
                   </tr>
                 ))}
               </tbody>

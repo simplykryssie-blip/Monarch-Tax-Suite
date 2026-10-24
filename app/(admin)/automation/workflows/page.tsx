@@ -2,21 +2,24 @@ import Link from "next/link";
 import { Badge, EmptyRow, Flash, load, PageTitle, when } from "@/components/admin/ui";
 import { EVENTS } from "@/lib/automation/events.ts";
 import { automationDeps } from "@/lib/automation/server";
+import { currentTier } from "@/lib/tier-server";
+import { allows } from "@/lib/tier.ts";
+import { FollowUpsSection, TemplatesSection } from "../sections";
 import { missingDefaults } from "@/lib/automation/defaults.ts";
 import { duplicateWorkflowAction, installDefaultsAction, workflowStatusAction } from "../actions";
 import { ArchiveRowButton, ArchiveTabs } from "@/components/admin/archive";
 import { inView, viewCounts, viewOf } from "@/lib/archive.ts";
 
-export default async function WorkflowsPage({ searchParams }: { searchParams: Promise<{ view?: string; notice?: string; error?: string }> }) {
-  const { notice, error, view: rawView } = await searchParams;
+export default async function WorkflowsPage({ searchParams }: { searchParams: Promise<{ view?: string; show?: string; notice?: string; error?: string }> }) {
+  const { notice, error, view: rawView, show } = await searchParams;
   const view = viewOf(rawView);
   const deps = automationDeps();
   const result = await load(() => deps.repo.listWorkflows()).catch(() => null);
   const rows = result?.ok ? inView(result.data, view) : [];
-  const missing = result?.ok ? await missingDefaults(deps.repo).catch(() => null) : null;
+  const missing = result?.ok ? await missingDefaults(deps.repo, allows(await currentTier(), "store") ? "verexa" : "office").catch(() => null) : null;
   return (
     <>
-      <PageTitle title="Workflows">Each workflow says: when this happens, do these steps.</PageTitle>
+      <PageTitle title="Automation">Workflows say: when this happens, do these steps. The messages they send are below.</PageTitle>
       <Flash notice={notice} error={error} />
       {missing && (missing.templates.length > 0 || missing.workflows.length > 0) && (
         <section className="monarch-panel" style={{ padding: 20 }}>
@@ -53,6 +56,8 @@ export default async function WorkflowsPage({ searchParams }: { searchParams: Pr
           </table>
         </div>
       </section>
+      <FollowUpsSection all={show === "all"} />
+      <TemplatesSection />
     </>
   );
 }

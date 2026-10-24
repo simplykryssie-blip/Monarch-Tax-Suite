@@ -146,7 +146,7 @@ export default async function SmsSettingsPage({ searchParams }: { searchParams: 
           <label className="is-wide">Where they agree *<select name="opt_in_type" defaultValue={reg.opt_in_type}>{Object.entries(OPT_IN_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
           <label className="is-wide">Describe it *<textarea name="opt_in_description" required rows={3} maxLength={1000} defaultValue={reg.opt_in_description} /><small className="monarch-muted">Say where they agree, what the wording says, and that they can reply STOP.</small></label>
           <div className="is-wide" style={{ display: "grid", gap: 6 }}>
-            <span className="field-label">A picture of where they agree * <small className="monarch-muted">(a photo or screenshot of the checkbox on your form). <Link href="/automation/images">Upload one to your Images</Link>, then choose it here.</small></span>
+            <span className="field-label">A picture of where they agree * <small className="monarch-muted">(a photo or screenshot of the checkbox on your form). <Link href="/settings/images">Upload one to your Images</Link>, then choose it here.</small></span>
             {images.length === 0 ? <p className="monarch-muted">You have no pictures yet.</p> : (
               <div className="img-pick" role="radiogroup" aria-label="Picture of where clients agree">
                 {images.map((img) => {

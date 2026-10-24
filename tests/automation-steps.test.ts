@@ -1,3 +1,4 @@
+import { installDefaults, missingDefaults } from "../lib/automation/defaults.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -320,4 +321,19 @@ test("a move-to-a-stage step moves the return it is about", async () => {
   assert.equal(done.status, "succeeded");
   assert.deepEqual(contacts.moves, [{ pipelineId: "p1", stageId: "s3" }]);
   assert.match(done.action_log[0].detail ?? "", /Moved from New to Done/);
+});
+
+test("a tax office gets its own starter set, with nothing about licenses or installations", async () => {
+  const { repo } = await setup();
+  const missing = await missingDefaults(repo, "office");
+  assert.deepEqual(missing.workflows.map((w) => w.key).sort(), ["office_accepted", "office_docs_reminder_14", "office_efiled", "office_review_request"]);
+  assert.equal(missing.workflows.every((w) => w.status === "paused"), true);
+  assert.equal(missing.templates.some((t) => /license|install|GoHighLevel|calculator/i.test(t.name)), false);
+  const done = await installDefaults(repo, null, "office");
+  assert.deepEqual(done, { templates: 4, workflows: 4 });
+  assert.deepEqual(await installDefaults(repo, null, "office"), { templates: 0, workflows: 0 });
+  const review = (await repo.listWorkflows()).find((w) => w.workflow_key === "office_review_request")!;
+  assert.deepEqual(review.steps?.map((s) => s.type), ["wait", "send_email"]);
+  const reminder = (await repo.listWorkflows()).find((w) => w.workflow_key === "office_docs_reminder_14")!;
+  assert.equal(reminder.trigger_config?.offset_days, -14);
 });

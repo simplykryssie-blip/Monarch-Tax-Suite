@@ -20,6 +20,8 @@ import { brandRepo } from "@/lib/branding/server";
 import { automationDeps, tenantEmailSender, workflowCatalog } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { installDefaults } from "@/lib/automation/defaults.ts";
+import { currentTier } from "@/lib/tier-server";
+import { allows } from "@/lib/tier.ts";
 import { createTemplate, createWorkflow, duplicateWorkflow, sendTemplateTest, setTemplateActive, setWorkflowStatus, updateTemplate, updateWorkflow } from "@/lib/automation/admin.ts";
 import type { WorkflowFormInput } from "@/lib/automation/validate.ts";
 
@@ -147,7 +149,7 @@ export async function revokeLinkAction(form: FormData) {
 
 export async function installDefaultsAction() {
   await mutate("/automation/workflows", async (a) => {
-    const r = await installDefaults(automationDeps().repo, a.id);
+    const r = await installDefaults(automationDeps().repo, a.id, allows(await currentTier(), "store") ? "verexa" : "office");
     return { notice: r.workflows || r.templates ? `Added ${r.templates} template${r.templates === 1 ? "" : "s"} and ${r.workflows} workflow${r.workflows === 1 ? "" : "s"}, each with the status listed before you added it. Existing templates and workflows were not changed.` : "The standard templates and workflows are already installed." };
   });
 }
@@ -197,7 +199,7 @@ async function libraryUpload(form: FormData, actorId: string) {
 }
 
 export async function uploadLibraryImageAction(form: FormData) {
-  await mutate("/automation/images", async (a) => {
+  await mutate("/settings/images", async (a) => {
     await libraryUpload(form, a.id);
     return { notice: "Picture uploaded. Copy its email code, or add it from the Picture button in any email template." };
   });
@@ -208,7 +210,7 @@ export async function uploadEmailImageAction(form: FormData): Promise<{ ok: true
   const session = await requireAdmin();
   try {
     const image = await libraryUpload(form, session.userId);
-    revalidatePath("/automation/images");
+    revalidatePath("/settings/images");
     return { ok: true, url: mediaUrl(await appOrigin(), currentTenantId(), image.storage_path) };
   } catch (e) {
     if (e instanceof ValidationError) return { ok: false, error: e.message };
@@ -229,7 +231,7 @@ async function libraryImageUses(imageId: string): Promise<string[]> {
 }
 
 export async function deleteLibraryImageAction(form: FormData) {
-  await mutate("/automation/images", async () => {
+  await mutate("/settings/images", async () => {
     const uses = await libraryImageUses(id(form));
     if (uses.length) throw new ValidationError(`This picture is still shown by ${uses.join(", ")}. Choose a different picture there first, then delete it.`);
     await deleteLibraryImage(imagesRepo(), imageStore(), id(form));
@@ -238,7 +240,7 @@ export async function deleteLibraryImageAction(form: FormData) {
 }
 
 export async function completeTaskAction(form: FormData) {
-  await mutate("/automation/tasks", async () => {
+  await mutate("/automation/workflows", async () => {
     const { error } = await tenantClient(currentTenantId()).from("automation_tasks").update({ done_at: new Date().toISOString() }).eq("id", str(form, "id")).is("done_at", null);
     if (error) throw new Error(error.message);
     return { notice: "Task marked done." };
