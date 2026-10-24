@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addDependent, addBusiness, linkSpouse, unlinkSpouse, addClient, saveClientTags, addWork, moveWork, addFeeProduct, billingSettings, feeProducts, saveBillingSettings } from "../lib/workspace/service.ts";
+import { addDependent, addBusiness, linkSpouse, unlinkSpouse, addClient, saveClientTags, addWork, moveWork, addFeeProduct, billingSettings, feeProducts, saveBillingSettings, recordPayment, receiptsFor } from "../lib/workspace/service.ts";
 import { buildWorkBoard, addressLine, checkBusiness, checkClient, checkDependent, splitName } from "../lib/workspace/rules.ts";
 import { MemoryWorkspace } from "./workspace-memory.ts";
 
@@ -244,4 +244,17 @@ test("an invoice takes its fees from the tax software and bank product, adds sal
   assert.equal((await createInvoice(repo, { ...base, bank_id: bankId }, "u1")).bank_name, "Santa Barbara");
   await assert.rejects(createInvoice(repo, { ...base, bank_id: "00000000-0000-4000-8000-000000000000" }, "u1"), /bank product wasn't found/);
   await assert.rejects(saveBillingSettings(repo, { tax_percent: "30" }, "u1"), /0% to 25%/);
+});
+
+test("each payment keeps how it was paid, capped to what the invoice could take", async () => {
+  const repo = new MemoryWorkspace();
+  const c = await addClient(repo, { full_name: "Ada King" }, "u1");
+  const inv = await createInvoice(repo, { client_id: c.id, tax_year: "2025", status: "sent", include_standard: "no", payer: "bank_product", line_label_0: "Prep", line_amount_0: "100" }, "u1");
+  await recordPayment(repo, inv.id, "40", "2026-02-01", new Date("2026-02-02"), { method: "check", reference: "#1042", actorId: "u1" });
+  const half = await recordPayment(repo, inv.id, "100", "2026-02-10", new Date("2026-02-11"), { actorId: "u1" });
+  assert.equal(half.status, "paid");
+  const lines = await receiptsFor(repo, [inv.id]);
+  assert.deepEqual(lines.map((r) => [r.method, r.amount_cents, r.reference]).sort(), [["bank_product", 6000, null], ["check", 4000, "#1042"]]);
+  assert.equal(lines.reduce((n, r) => n + r.amount_cents, 0), half.paid_cents, "the lines add up to what the invoice shows paid");
+  await assert.rejects(recordPayment(repo, inv.id, "abc", "", new Date(), { method: "cash" }), /amount received/);
 });

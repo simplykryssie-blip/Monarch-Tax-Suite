@@ -3,6 +3,8 @@ import { Badge, EmptyRow, Flash, PageTitle } from "@/components/admin/ui";
 import { PAYERS } from "@/lib/workspace/types.ts";
 import { balance, dollars, invoiceView, totals, type InvoiceView } from "@/lib/workspace/rules.ts";
 import { InvoiceLink, loadSheetContext } from "@/components/contacts/invoice-sheet";
+import { RecordPayment } from "@/components/contacts/record-payment";
+import { paymentsFor } from "@/lib/workspace/receipts";
 import { AutoSelect } from "@/components/contacts/auto-select";
 import { NewInvoice } from "@/components/contacts/new-invoice";
 import { todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
@@ -19,14 +21,15 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const result = await workspaceLoad(async () => {
     const repo = workspaceRepo();
     const [invoices, clients] = await Promise.all([repo.listInvoices(), repo.listClients({ includeArchived: true })]);
-    return { invoices, clients };
+    const paid = await paymentsFor(repo, invoices.filter((i) => i.paid_cents > 0).map((i) => i.id));
+    return { invoices, clients, paid };
   });
   return (
     <>
       <PageTitle title="Billing">Invoices for the returns you prepare. Import your bank statement to match payments to invoices automatically, then review each one before it is applied.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <WorkspaceSetup message={result.message} /> : (() => {
-        const { invoices, clients } = result.data;
+        const { invoices, clients, paid } = result.data;
         const names = new Map(clients.map((c) => [c.id, c.full_name]));
         const thisTaxYear = new Date().getUTCFullYear() - 1;
         // Every year that has an invoice, plus the last four tax years, so a new season is there before its first invoice.
@@ -59,7 +62,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                 <tbody>
                   {shown.length === 0 ? <EmptyRow colSpan={9}>{invoices.length === 0 ? "No invoices yet. Create one below, or from a client's Billing tab." : "No invoices match."}</EmptyRow> : shown.map((i) => (
                     <tr key={i.id}>
-                      <td><b><InvoiceLink invoice={i} clientName={names.get(i.client_id) ?? "Client"} ctx={sheetCtx} /></b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
+                      <td><b><InvoiceLink invoice={i} clientName={names.get(i.client_id) ?? "Client"} ctx={sheetCtx} payments={paid.filter((p) => p.invoice_id === i.id)} /></b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
                       <td><Link href={`/workspace/clients/${i.client_id}?tab=billing`}>{names.get(i.client_id) ?? "Unknown"}</Link></td>
                       <td>{i.tax_year}</td><td>{dollars(i.total_cents)}</td><td>{dollars(i.paid_cents)}</td><td>{i.status === "void" ? "—" : dollars(balance(i))}</td>
                       <td><Badge value={invoiceView(i, today)} /></td>
@@ -68,8 +71,9 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                         <form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={i.id} />
                           {i.status === "draft" && <button name="do" value="send" className="monarch-link">Send to client</button>}
-                          {i.status !== "paid" && i.status !== "void" && <><input name="amount" aria-label="Amount received" size={9} defaultValue={(balance(i) / 100).toFixed(2)} /><button name="do" value="pay" className="monarch-link">Record payment</button></>}
+                          
                         </form>
+                        {i.status !== "paid" && i.status !== "void" && <RecordPayment invoice={i} back="/workspace/billing" today={today} />}
                       </td>
                     </tr>
                   ))}

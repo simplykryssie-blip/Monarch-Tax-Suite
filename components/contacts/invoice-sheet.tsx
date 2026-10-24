@@ -4,7 +4,8 @@ import { Modal } from "@/components/ui/modal";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { balance, dollars } from "@/lib/workspace/rules.ts";
 import { billingSettings } from "@/lib/workspace/service.ts";
-import { PAYERS, type Invoice } from "@/lib/workspace/types.ts";
+import type { PaymentLine } from "@/lib/workspace/receipts";
+import { PAYERS, RECEIPT_METHODS, type Invoice } from "@/lib/workspace/types.ts";
 
 /** The top and bottom of an invoice, from Firm profile, Branding and Invoice settings. Load once per page. */
 export type SheetContext = { header: { name: string; logoUrl: string | null; address: string | null; phone: string | null; email: string | null }; footer: { refund: string | null; terms: string | null } };
@@ -20,7 +21,7 @@ export async function loadSheetContext(): Promise<SheetContext> {
 const day = (d: string) => new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
 
 /** The invoice as the client gets it. */
-export function InvoiceSheet({ invoice: i, clientName, ctx }: { invoice: Invoice; clientName: string; ctx: SheetContext }) {
+export function InvoiceSheet({ invoice: i, clientName, ctx, payments = [] }: { invoice: Invoice; clientName: string; ctx: SheetContext; payments?: PaymentLine[] }) {
   const { header, footer } = ctx;
   const tax = i.tax_cents ?? 0;
   return (
@@ -51,6 +52,12 @@ export function InvoiceSheet({ invoice: i, clientName, ctx }: { invoice: Invoice
           {i.status !== "paid" && i.status !== "void" && <tr><th>Balance</th><th>{dollars(balance(i))}</th></tr>}
         </tfoot>
       </table>
+      {payments.length > 0 && (
+        <div className="ni-pays">
+          <b>Payments</b>
+          <ul>{payments.map((p) => <li key={p.id}><span>{day(p.received_on)} · {RECEIPT_METHODS[p.method]}{p.reference ? ` · ${p.reference}` : ""}</span><b>{dollars(p.amount_cents)}</b></li>)}</ul>
+        </div>
+      )}
       {i.notes && <p className="monarch-muted">{i.notes}</p>}
       {(footer.refund || footer.terms) && (
         <div className="ni-foot">
@@ -63,6 +70,6 @@ export function InvoiceSheet({ invoice: i, clientName, ctx }: { invoice: Invoice
 }
 
 /** The invoice number as a button that opens the invoice in a popup. */
-export function InvoiceLink({ invoice, clientName, ctx }: { invoice: Invoice; clientName: string; ctx: SheetContext }) {
-  return <Modal label={invoice.number} title={`Invoice ${invoice.number}`} className="monarch-link ni-numlink" wide><InvoiceSheet invoice={invoice} clientName={clientName} ctx={ctx} /></Modal>;
+export function InvoiceLink({ invoice, clientName, ctx, payments }: { invoice: Invoice; clientName: string; ctx: SheetContext; payments?: PaymentLine[] }) {
+  return <Modal label={invoice.number} title={`Invoice ${invoice.number}`} className="monarch-link ni-numlink" wide><InvoiceSheet invoice={invoice} clientName={clientName} ctx={ctx} payments={payments} /></Modal>;
 }

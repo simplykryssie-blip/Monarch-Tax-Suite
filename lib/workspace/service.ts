@@ -4,6 +4,7 @@ import { parseMoney } from "../fees/engine.ts";
 import { parseTags, TAG_MAX } from "../leads/tags.ts";
 import { changedFields, type FieldChange } from "./activity.ts";
 import { balance, checkBillingSettings, checkBusiness, checkClient, checkFeeProduct, checkWork, taxOn, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
+import { RECEIPT_METHODS, type InvoiceReceipt, type ReceiptMethod } from "./types.ts";
 import type { BillingSettings, ClientWork, FeeProduct, Payer, Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
 // My Workspace orchestration: each function checks its input with the rules, then uses the repository. Nothing here
@@ -206,17 +207,27 @@ export async function voidInvoice(repo: WorkspaceRepo, id: string): Promise<Invo
 }
 
 /** Records a payment by hand (cash, check, or anything not in a bank import). Pays the invoice off when it covers the balance. */
-export async function recordPayment(repo: WorkspaceRepo, id: string, rawAmount: unknown, rawDate: unknown, now = new Date()): Promise<Invoice> {
+export async function recordPayment(repo: WorkspaceRepo, id: string, rawAmount: unknown, rawDate: unknown, now = new Date(), how: { method?: unknown; reference?: unknown; actorId?: string | null } = {}): Promise<Invoice> {
   const i = await repo.getInvoice(uuid(id, "That invoice"));
   if (!i) throw new ValidationError("That invoice wasn't found.");
   if (i.status === "void") throw new ValidationError("This invoice is void.");
   const cents = parseMoney(typeof rawAmount === "string" ? rawAmount : "");
   if (cents === null || cents === 0) throw new ValidationError("Enter the amount received, like 223 or 223.00.");
-  return applyToInvoice(repo, i, cents, typeof rawDate === "string" && isDay(rawDate) ? rawDate : now.toISOString().slice(0, 10));
+  const method = typeof how.method === "string" && Object.hasOwn(RECEIPT_METHODS, how.method) ? (how.method as ReceiptMethod) : i.payer === "bank_product" ? "bank_product" : "other";
+  const reference = clean(how.reference, 80) || null;
+  return applyToInvoice(repo, i, cents, typeof rawDate === "string" && isDay(rawDate) ? rawDate : now.toISOString().slice(0, 10), { method, reference, source: "manual", actorId: how.actorId ?? null });
 }
 
-async function applyToInvoice(repo: WorkspaceRepo, i: Invoice, cents: number, paidOn: string): Promise<Invoice> {
+/** The payments recorded against these invoices (by hand or from a bank statement), newest first. */
+export async function receiptsFor(repo: WorkspaceRepo, invoiceIds?: string[]): Promise<InvoiceReceipt[]> {
+  return repo.listReceipts(invoiceIds).catch(() => []);
+}
+
+async function applyToInvoice(repo: WorkspaceRepo, i: Invoice, cents: number, paidOn: string, how: { method: ReceiptMethod; reference: string | null; source: "manual" | "bank_import"; actorId: string | null }): Promise<Invoice> {
   const paid = Math.min(i.total_cents, i.paid_cents + cents);
+  // The line saying how it was paid is kept for what was actually applied, so the lines always add up to what the invoice shows paid.
+  const applied = paid - i.paid_cents;
+  if (applied > 0) await repo.insertReceipt({ invoice_id: i.id, client_id: i.client_id, amount_cents: applied, method: how.method, reference: how.reference, received_on: paidOn, source: how.source, created_by: how.actorId });
   const done = paid >= i.total_cents;
   return repo.updateInvoice(i.id, { paid_cents: paid, status: done ? "paid" : i.status === "draft" ? "sent" : i.status, paid_on: done ? paidOn : i.paid_on });
 }
@@ -275,7 +286,7 @@ export async function applyImport(repo: WorkspaceRepo, importId: string, rowIds:
     const inv = await repo.getInvoice(row.invoice_id);
     if (!inv || inv.status === "void") throw new ValidationError(`Row ${row.row_no}: that invoice can't take a payment.`);
     if (row.amount_cents > balance(inv)) overpaid++;
-    await applyToInvoice(repo, inv, row.amount_cents, row.posted_on ?? now.toISOString().slice(0, 10));
+    await applyToInvoice(repo, inv, row.amount_cents, row.posted_on ?? now.toISOString().slice(0, 10), { method: "bank_transfer", reference: clean(row.description, 80) || null, source: "bank_import", actorId: null });
     await repo.updateImportRow(row.id, { status: "applied" });
     applied++;
   }

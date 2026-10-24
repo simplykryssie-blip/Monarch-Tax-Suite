@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, BillingSettings, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, BillingSettings, InvoiceReceipt, ReceiptInsert, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
 
 // Workspace rows for one tenant, on the tenant client: the database's tenant policies scope every query.
 const unwrap = <T>(r: { data: T | null; error: { message: string } | null }): T => {
@@ -36,6 +36,12 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   async saveInvoiceDefaults(lines: InvoiceLine[], actorId: string | null) {
     unwrap(await this.db.from("invoice_defaults").upsert({ lines, updated_by: actorId, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" }).select("tenant_id"));
   }
+  async listReceipts(invoiceIds?: string[]) {
+    let q = this.db.from("invoice_receipts").select("*").order("received_on", { ascending: false }).limit(5000);
+    if (invoiceIds) q = q.in("invoice_id", invoiceIds);
+    return unwrap(await q) as InvoiceReceipt[];
+  }
+  async insertReceipt(input: ReceiptInsert) { return unwrap(await this.db.from("invoice_receipts").insert(input).select("*").single()) as InvoiceReceipt; }
   async getBillingSettings() {
     const row = unwrap(await this.db.from("billing_settings").select("refund_policy, terms, tax_percent").maybeSingle()) as { refund_policy: string | null; terms: string | null; tax_percent: number | string } | null;
     return row ? { refund_policy: row.refund_policy, terms: row.terms, tax_percent: Number(row.tax_percent) } : null;

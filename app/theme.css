@@ -912,3 +912,4 @@ html[data-popup] body{background:#fff}
 .pl-card[draggable=true]{cursor:grab}.pl-card.is-over,.pl-crumbs a.is-over{outline:2px dashed var(--gold);outline-offset:2px;background:rgba(27,111,224,.08)}
 .ni-from{display:grid;gap:2px}.ni-foot{margin-top:14px;padding-top:10px;border-top:1px solid #e3e8f0;font-size:11px;line-height:1.5;color:#4b5563}.ni-foot p{margin:0 0 8px;white-space:pre-line}
 .ni-numlink{font-size:inherit;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.ni-pays{margin-top:12px;font-size:12px}.ni-pays ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}.ni-pays li{display:flex;justify-content:space-between;gap:10px}

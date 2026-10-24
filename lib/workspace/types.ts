@@ -83,6 +83,12 @@ export type Payer = "bank_product" | "self";
 export const PAYERS: Record<Payer, string> = { bank_product: "Bank product", self: "Out of pocket" };
 export type InvoiceInsert = Pick<Invoice, "client_id" | "return_id" | "number" | "tax_year" | "status" | "lines" | "total_cents" | "issued_on" | "due_on" | "notes"> & Partial<Pick<Invoice, "tax_percent" | "tax_cents" | "payer" | "software_name" | "bank_name">> & { created_by: string | null };
 
+/** How a payment arrived. Payments made online through Stripe are recorded by Stripe and show as card payments. */
+export const RECEIPT_METHODS = { cash: "Cash", check: "Check", card: "Card", bank_transfer: "Bank transfer", cash_app: "Cash App", zelle: "Zelle", venmo: "Venmo", bank_product: "Bank product payout", other: "Other" } as const;
+export type ReceiptMethod = keyof typeof RECEIPT_METHODS;
+export type InvoiceReceipt = { id: string; tenant_id: string; invoice_id: string; client_id: string; amount_cents: number; method: ReceiptMethod; reference: string | null; received_on: string; source: "manual" | "bank_import"; created_by: string | null; created_at: string };
+export type ReceiptInsert = Pick<InvoiceReceipt, "invoice_id" | "client_id" | "amount_cents" | "method" | "reference" | "received_on" | "source"> & { created_by: string | null };
+
 /** What goes at the bottom of every invoice, and the sales tax percent. */
 export type BillingSettings = { refund_policy: string | null; terms: string | null; tax_percent: number };
 /** A tax software or a bank product, with the standard fees it charges. */
@@ -114,6 +120,8 @@ export interface WorkspaceRepo {
   /** The standard fee lines an invoice starts from. Null until the office has saved its own. */
   getInvoiceDefaults(): Promise<InvoiceLine[] | null>;
   saveInvoiceDefaults(lines: InvoiceLine[], actorId: string | null): Promise<void>;
+  listReceipts(invoiceIds?: string[]): Promise<InvoiceReceipt[]>;
+  insertReceipt(input: ReceiptInsert): Promise<InvoiceReceipt>;
   getBillingSettings(): Promise<BillingSettings | null>;
   saveBillingSettings(s: BillingSettings, actorId: string | null): Promise<void>;
   listFeeProducts(): Promise<FeeProduct[]>;

@@ -449,7 +449,7 @@ export async function createInvoiceAction(form: FormData) {
 
 export async function invoiceStatusAction(form: FormData) {
   const back = str(form, "back").startsWith("/workspace") ? str(form, "back") : "/workspace/billing";
-  await act(back, async () => {
+  await act(back, async (adminId) => {
     const repo = workspaceRepo();
     if (str(form, "do") === "send") {
       const i = await sendInvoice(repo, str(form, "id"));
@@ -459,7 +459,7 @@ export async function invoiceStatusAction(form: FormData) {
       return { notice: `${i.number} sent to the client's portal${told ? " and they were emailed" : ""}.${online ? "" : " Online payment is off, so there's no pay button yet (Settings → Payments)."}` };
     }
     if (str(form, "do") === "void") { const i = await voidInvoice(repo, str(form, "id")); return { notice: `${i.number} voided.` }; }
-    const i = await recordPayment(repo, str(form, "id"), str(form, "amount"), str(form, "paid_on"));
+    const i = await recordPayment(repo, str(form, "id"), str(form, "amount"), str(form, "paid_on"), new Date(), { method: str(form, "method"), reference: str(form, "reference"), actorId: adminId });
     await emitInvoicePaid(i.id);
     return { notice: i.status === "paid" ? `${i.number} is paid.` : `Payment recorded on ${i.number}.` };
   });
