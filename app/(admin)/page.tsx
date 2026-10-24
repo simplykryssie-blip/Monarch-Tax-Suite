@@ -43,7 +43,7 @@ export default async function Home() {
     const typeName = new Map(types.map((t) => [t.id, t.name]));
     const appointments: AgendaSource[] = appts.filter((a) => a.status !== "cancelled").map((a) => ({ id: a.id, day: localDay(a.starts_at, tz), time: clock(a.starts_at, tz), who: a.contact_name, title: typeName.get(a.type_id) ?? "Appointment" }));
     const leadRows: LeadLite[] | null = leads ? leads.map((l) => ({ id: l.id, full_name: l.full_name, source: l.source, status: l.status, created_at: l.created_at, last_contacted_at: l.last_contacted_at })) : null;
-    // The same default year as My Work: the newest year that has returns, or last year.
+    // The same default year as Returns: the newest year that has returns, or last year.
     const years = [...new Set(returns.map((r) => r.tax_year))].sort((a, b) => b - a);
     const year = years[0] ?? Number(today.slice(0, 4)) - 1;
     return { tz, today, tomorrow: ymdString(addDays(first, 1)), year, clients, returns, invoices, tasks, stages, appointments, leads: leadRows };
@@ -59,7 +59,6 @@ export default async function Home() {
         <Link className="monarch-secondary" href="/workspace/clients">Add client</Link>
         <Link className="monarch-secondary" href="/workspace/work">Add return</Link>
         <Link className="monarch-primary" href="/workspace/billing">New invoice</Link>
-        {allows(tier, "store") && <Link className="monarch-secondary" href="/store/overview">Store overview</Link>}
       </div>
       {!result.ok ? <SetupRequired message={result.message} /> : (
         <HomeGrid

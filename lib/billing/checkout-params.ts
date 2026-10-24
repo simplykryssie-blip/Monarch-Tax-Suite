@@ -1,4 +1,4 @@
-import { PLANS, type PlanKey } from "./plans.ts";
+import type { PlanKey } from "./plans.ts";
 
 // The parts of a Stripe Checkout request that this app decides, kept apart from the Stripe library so they can be tested.
 // Stripe is strict about some fields (a client_reference_id may only hold letters, digits, dashes and underscores, so an
@@ -38,8 +38,6 @@ export function reactivateSessionParams(i: ReactivateCheckoutInput, priceId: str
     cancel_url: i.cancelUrl,
   };
 }
-
-export const lookupKeyFor = (plan: PlanKey) => PLANS[plan].lookupKey;
 
 /** What a Stripe failure means for whoever is setting this up, in plain words (never a key). */
 export function explainStripeFailure(error: { type?: string; code?: string; message?: string; param?: string }): string {

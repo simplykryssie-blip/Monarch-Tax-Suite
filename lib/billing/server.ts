@@ -8,7 +8,6 @@ import { rateLimitStore } from "../rate-limit-server";
 import { platformClient, tenantClient } from "../supabase/service";
 import { PLATFORM_LEGAL_VERSION } from "../platform-legal.ts";
 import { verifyCaptcha } from "./captcha.ts";
-import { billingProblems } from "./plans.ts";
 import type { BillingDeps } from "./service.ts";
 import { billingStripe } from "./stripe-port";
 import { SupabaseBillingRepo } from "./supabase-repo";
@@ -17,12 +16,6 @@ import { SupabaseBillingRepo } from "./supabase-repo";
 export function signupKey(env: NodeJS.ProcessEnv = process.env): Buffer | null {
   const s = CrmSecrets.fromBase64(env.MONARCH_ENCRYPTION_KEY);
   return s ? Buffer.from(s.hashIdentifier("signup-link-key", "v1"), "hex") : null;
-}
-
-/** Signup is open when billing is set up, and (in production) once the owner has approved the policies and the bot check is on. */
-export function billingReady(env: NodeJS.ProcessEnv = process.env): { ok: true } | { ok: false; problems: string[] } {
-  const problems = billingProblems(env);
-  return problems.length ? { ok: false, problems } : { ok: true };
 }
 
 const hourWindow = () => new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000).toISOString();

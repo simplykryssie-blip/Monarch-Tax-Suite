@@ -9,7 +9,7 @@ import { requireOffice } from "@/lib/office/server";
 import { brandName, complianceDeps, ctxFor } from "@/lib/compliance/server";
 import {
   acknowledge, attest, buildWisp, closeIncident, create8879, createItem, delete8879, deleteDocument, deleteItem, finishUpload, markStep, recordRenewal,
-  reopenIncident, saveSettings, setItemDone, startIncident, startUpload, update8879, updateIncident, updateItem, UUID,
+  reopenIncident, saveSettings, setItemDone, startIncident, startUpload, update8879, updateIncident, UUID,
 } from "@/lib/compliance/service.ts";
 import { ALL_FIELDS } from "@/lib/wisp/content.ts";
 
@@ -194,13 +194,6 @@ export async function createItemAction(form: FormData): Promise<FormResult> {
   return act("/office/compliance/items", async ({ ctx, deps }) => {
     await createItem(deps, ctx, fields(form));
     return "Added to your checklist.";
-  });
-}
-
-export async function updateItemAction(form: FormData): Promise<FormResult> {
-  return act("/office/compliance/items", async ({ ctx, deps }) => {
-    await updateItem(deps, ctx, idOf(form), fields(form));
-    return "Saved.";
   });
 }
 

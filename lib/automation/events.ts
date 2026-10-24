@@ -168,5 +168,4 @@ export const EVENTS: Record<string, EventDef> = {
 /** Condition fields whose values are a tenant's own records (checked against them when a workflow is saved). */
 export const RECORD_FIELDS: Record<string, "document" | "form"> = { document_id: "document", form_id: "form" };
 
-export const EVENT_TYPES = Object.keys(EVENTS);
 export const isEventType = (v: string) => Object.prototype.hasOwnProperty.call(EVENTS, v);

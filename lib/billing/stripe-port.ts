@@ -1,6 +1,6 @@
 import "server-only";
 import Stripe from "stripe";
-import { billingKey, billingMode, PAUSE_PLAN, PLANS, type PlanKey } from "./plans.ts";
+import { billingKey, billingMode, PLANS, type PlanKey } from "./plans.ts";
 import { reactivateSessionParams, signupSessionParams } from "./checkout-params.ts";
 import type { BillingStripe } from "./service.ts";
 import type { SetupStripe } from "./setup.ts";
@@ -115,7 +115,6 @@ export function billingStripe(env: NodeJS.ProcessEnv = process.env): { stripe: S
 }
 
 export type { PlanKey };
-export const PAUSE_LOOKUP_KEY = PAUSE_PLAN.lookupKey;
 
 /** The Stripe calls behind the one-time plan setup (the same ones scripts/billing-setup.mjs makes). */
 export function billingSetupPort(stripe: Stripe): SetupStripe {

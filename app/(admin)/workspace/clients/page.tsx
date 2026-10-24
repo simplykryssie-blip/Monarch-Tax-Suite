@@ -15,7 +15,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   });
   return (
     <>
-      <PageTitle title="My Clients">The people and businesses you prepare returns for. Open a client for their documents, messages, work, billing, tasks and notes.</PageTitle>
+      <PageTitle title="Clients">The people and businesses you prepare returns for. Open a client for their documents, messages, work, billing, tasks and notes.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <WorkspaceSetup message={result.message} /> : (
         <>

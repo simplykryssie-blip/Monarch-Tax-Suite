@@ -7,7 +7,7 @@ import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/works
 import { addReturnAction } from "../actions";
 import { WorkspaceSetup } from "../setup";
 
-/** My Work: a board of every return for a tax year, a column per stage of your tax-return pipeline. */
+/** Returns: a board of every return for a tax year, a column per stage of your tax-return pipeline. */
 export default async function MyWork({ searchParams }: { searchParams: Promise<{ year?: string; notice?: string; error?: string }> }) {
   const sp = await searchParams;
   const result = await workspaceLoad(async () => {
@@ -17,7 +17,7 @@ export default async function MyWork({ searchParams }: { searchParams: Promise<{
   });
   return (
     <>
-      <PageTitle title="My Work">Drag a return to the next stage as you work on it. Extensions and amendments are cards of their own. Click a card to open the client.</PageTitle>
+      <PageTitle title="Returns">Drag a return to the next stage as you work on it. Extensions and amendments are cards of their own. Click a card to open the client.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <WorkspaceSetup message={result.message} /> : (() => {
         const { stages, returns, clients } = result.data;

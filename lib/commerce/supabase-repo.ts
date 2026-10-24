@@ -240,8 +240,6 @@ export class SupabaseCommerceRepo implements CommerceRepo {
   }
 }
 
-export const PRODUCT_IMAGE_BUCKET = LEGACY_IMAGE_BUCKET;
-
 /**
  * Product images in the tenant's own private bucket (images/products/...), shown through /media. Images uploaded before
  * per-tenant buckets keep their old products/... path in the shared bucket until moved; they are still shown, copied

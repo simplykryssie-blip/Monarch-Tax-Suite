@@ -185,7 +185,7 @@ describe("creating a pipeline twice", () => {
     assert.equal(await repo.get(p.id), null);
     await assert.rejects(deletePipeline(repo, p.id), /wasn't found/);
     // The default returns pipeline can be neither archived nor deleted.
-    await assert.rejects(archivePipeline(repo, returns.id, true), /runs the My Work board/);
+    await assert.rejects(archivePipeline(repo, returns.id, true), /runs the Returns board/);
     await assert.rejects(deletePipeline(repo, returns.id), /Archive the pipeline first/);
   });
 });

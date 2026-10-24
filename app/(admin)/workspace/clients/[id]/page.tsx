@@ -33,7 +33,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     return { client, returns, docs, messages, tasks, notes, invoices, stages };
   });
   if (result.ok && !result.data) notFound();
-  if (!result.ok) return <><PageTitle title="Client" back={{ href: "/workspace/clients", label: "My Clients" }} /><WorkspaceSetup message={result.message} /></>;
+  if (!result.ok) return <><PageTitle title="Client" back={{ href: "/workspace/clients", label: "Clients" }} /><WorkspaceSetup message={result.message} /></>;
   const { client, returns, docs, messages, tasks, notes, invoices, stages } = result.data!;
   // The office's own texting account, and its prepaid credits when it has them (tenant #1 pays Twilio directly).
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
@@ -44,7 +44,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const back = `/workspace/clients/${id}?tab=${tab}`;
   return (
     <>
-      <PageTitle title={client.full_name} back={{ href: "/workspace/clients", label: "My Clients" }}>
+      <PageTitle title={client.full_name} back={{ href: "/workspace/clients", label: "Clients" }}>
         {[client.email, client.phone].filter(Boolean).join(" · ") || "No contact details yet"}{client.archived_at ? " · Archived" : ""}
       </PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
