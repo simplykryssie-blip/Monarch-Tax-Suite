@@ -158,6 +158,11 @@ export const EVENTS: Record<string, EventDef> = {
     description: "A client's return moved to another stage on the returns board. Conditions can test the stage_id it moved to.",
     fields: { stage_id: [] },
   },
+  "work.stage_changed": {
+    label: "Work moved to a new stage",
+    description: "A piece of work (planning, bookkeeping, payroll...) moved to another stage on the Work board. Conditions can test the stage_id it moved to and the pipeline_id it is in.",
+    fields: { stage_id: [], pipeline_id: [] },
+  },
   "date.return_due": {
     label: "Days before or after a return's due date",
     description: "Starts a set number of days before (negative) or after the due date of each open return. Choose the number of days when you set up the workflow.",

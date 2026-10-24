@@ -21,7 +21,7 @@ export function AddWorkForm({ clients, pipelines, pipelineId, year, back }: { cl
           <label>Kind<select name="kind" defaultValue="original">{Object.entries(RETURN_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
         </>
       ) : (
-        <label>Label<input name="title" maxLength={200} placeholder="October books" /></label>
+        <label>What is the work?<input name="title" maxLength={200} placeholder="Tax planning meeting, quarterly estimates, IRS notice response" /></label>
       )}
       <label>Due date<input name="due_on" type="date" /></label>
       <div className="is-wide"><button className="monarch-primary">Add</button></div>

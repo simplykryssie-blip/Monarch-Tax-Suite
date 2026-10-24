@@ -9,7 +9,7 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
-import { emitInvoicePaid, emitReturnStage, emitTagChanges } from "@/lib/automation/emit";
+import { emitInvoicePaid, emitReturnStage, emitTagChanges, emitWorkStage } from "@/lib/automation/emit";
 import { yesNo } from "@/lib/workspace/rules.ts";
 import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
@@ -189,6 +189,7 @@ export async function moveWorkAction(workId: string, stageId: string): Promise<{
     const pipeline = work ? (await pipelinesRepo().list()).find((p) => p.id === work.pipeline_id) : null;
     if (!pipeline) throw new ValidationError("That work wasn't found.");
     await moveWork(workspaceRepo(), workId, stageId, pipeline.stages.map((s) => s.id));
+    if (work) await emitWorkStage(work.id, work.client_id, work.pipeline_id, stageId);
     revalidatePath("/workspace", "layout");
     return { ok: true };
   } catch (e) {

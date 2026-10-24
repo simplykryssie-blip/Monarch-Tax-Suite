@@ -20,6 +20,11 @@ export async function emitReturnStage(returnId: string, stageId: string): Promis
   await safeEmit({ type: "return.stage_changed", key: `return.stage_changed:${returnId}:${stageId}:${Math.floor(Date.now() / 60_000)}`, subject: { type: "return", id: returnId }, data: { stage_id: stageId } });
 }
 
+/** Work other than a tax return moved to a new stage. The workflow runs for the client the work belongs to. */
+export async function emitWorkStage(workId: string, clientId: string, pipelineId: string, stageId: string): Promise<void> {
+  await safeEmit({ type: "work.stage_changed", key: `work.stage_changed:${workId}:${stageId}:${Math.floor(Date.now() / 60_000)}`, subject: { type: "client", id: clientId }, data: { stage_id: stageId, pipeline_id: pipelineId, work_id: workId } });
+}
+
 /** Tags that were added or removed between two lists, one event each. Tags a workflow changes don't come through here. */
 export async function emitTagChanges(subject: { type: Extract<SubjectType, "lead" | "client">; id: string }, before: string[], after: string[]): Promise<void> {
   const stamp = Math.floor(Date.now() / 60_000);

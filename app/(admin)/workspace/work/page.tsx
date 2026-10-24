@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Flash, PageTitle } from "@/components/admin/ui";
 import { Modal } from "@/components/ui/modal";
 import { AddWorkForm } from "@/components/workspace/add-work-form";
+import { PipelinePicker } from "@/components/workspace/pipeline-picker";
 import { WorkBoard } from "@/components/workspace/work-board";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { buildBoard, buildWorkBoard } from "@/lib/workspace/rules.ts";
@@ -38,11 +39,7 @@ export default async function MyWork({ searchParams }: { searchParams: Promise<{
         return (
           <>
             <div className="monarch-page-actions">
-              {pipelines.length > 1 && (
-                <nav className="subtabs" aria-label="Pipeline">
-                  {pipelines.map((p) => <Link key={p.id} href={`/workspace/work?pipeline=${p.id}`} className={"subtab" + (p.id === chosen.id ? " is-on" : "")} aria-current={p.id === chosen.id ? "page" : undefined}>{p.name}</Link>)}
-                </nav>
-              )}
+              {pipelines.length > 1 && <PipelinePicker pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))} current={chosen.id} />}
               {isReturns && (
                 <nav className="subtabs" aria-label="Tax year">
                   {(years.includes(year) ? years : [year, ...years]).map((y) => <Link key={y} href={`/workspace/work?pipeline=${chosen.id}&year=${y}`} className={"subtab" + (y === year ? " is-on" : "")} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
