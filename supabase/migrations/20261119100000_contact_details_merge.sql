@@ -152,8 +152,8 @@ begin
 
   update public.clients set archived_at = coalesce(archived_at, now()) where id = p_drop;
 
-  insert into public.workspace_audit_events (actor_id, action, subject_type, subject_id, detail)
-  values (p_actor, 'client.merged', 'client', p_keep, jsonb_build_object('merged_name', drop_row.full_name, 'merged_id', p_drop, 'moved', moved));
+  insert into public.workspace_audit_events (tenant_id, actor_id, action, subject_type, subject_id, detail)
+  values (keep_row.tenant_id, p_actor, 'client.merged', 'client', p_keep, jsonb_build_object('merged_name', drop_row.full_name, 'merged_id', p_drop, 'moved', moved));
 
   return moved;
 end $$;
