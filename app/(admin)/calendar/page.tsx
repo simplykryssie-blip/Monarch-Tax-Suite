@@ -4,6 +4,8 @@ import { Badge, Flash, load, PageTitle, SetupRequired } from "@/components/admin
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { appointmentDeps } from "@/lib/appointments/server";
 import { addDays, parseYmd, ymdString, atLocal } from "@/lib/calendar/business.ts";
+import { tasksDueBetween } from "@/lib/workspace/workflow-tasks";
+import { toggleTaskAction } from "@/app/(admin)/workspace/actions";
 import { cancelAction, moveAction, outcomeAction } from "./actions";
 
 type SP = { view?: string; date?: string; notice?: string; error?: string };
@@ -27,8 +29,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     const days = VIEWS[view];
     const from = atLocal(first, 0, cal.timeZone);
     const to = atLocal(addDays(first, days), 0, cal.timeZone);
-    const [appts, types] = await Promise.all([deps.repo.listAppointments(from, to), deps.repo.listTypes()]);
-    return { tz: cal.timeZone, today, first, days, appts, types };
+    const [appts, types, tasks] = await Promise.all([deps.repo.listAppointments(from, to), deps.repo.listTypes(), tasksDueBetween(ymdString(first), ymdString(addDays(first, days)))]);
+    return { tz: cal.timeZone, today, first, days, appts, types, tasks };
   });
   const base = (v: View, date?: string) => `/calendar?view=${v}${date ? `&date=${date}` : ""}`;
   return (
@@ -36,7 +38,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <PageTitle title="Calendar">Appointments booked online or by your staff, in your office&apos;s time zone.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <SetupRequired message={result.message} /> : (() => {
-        const { tz, today, first, days, appts, types } = result.data;
+        const { tz, today, first, days, appts, types, tasks } = result.data;
+        const tasksByDay = new Map<string, typeof tasks>();
+        for (const t of tasks) tasksByDay.set(t.due_on, [...(tasksByDay.get(t.due_on) ?? []), t]);
         const typeName = new Map(types.map((t) => [t.id, t.name]));
         const dates = Array.from({ length: days }, (_, i) => ymdString(addDays(first, i)));
         const byDay = new Map<string, typeof appts>();
@@ -55,10 +59,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               <Link className="monarch-secondary" href="/calendar/types">Appointment types</Link>
               <Link className="monarch-secondary" href="/calendar/availability">Availability</Link>
             </div>
-            {(view === "agenda" ? dates.filter((d) => byDay.has(d)) : dates).map((d) => (
+            {(view === "agenda" ? dates.filter((d) => byDay.has(d) || tasksByDay.has(d)) : dates).map((d) => (
               <section key={d} className="monarch-panel" style={{ padding: 16, marginBottom: 12 }}>
                 <h2 style={{ marginTop: 0 }}>{heading(d)}{d === today ? " · Today" : ""}</h2>
-                {(byDay.get(d) ?? []).length === 0 ? <p className="monarch-muted">Nothing booked.</p> : (
+                {(byDay.get(d) ?? []).length === 0 && !tasksByDay.has(d) ? <p className="monarch-muted">Nothing booked.</p> : (byDay.get(d) ?? []).length === 0 ? null : (
                   <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
                     {byDay.get(d)!.map((a) => (
                       <li key={a.id} style={{ borderTop: "1px solid var(--monarch-line, #e5e7eb)", paddingTop: 10, opacity: a.status === "cancelled" ? 0.6 : 1 }}>
@@ -101,9 +105,21 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                     ))}
                   </ul>
                 )}
+                {(tasksByDay.get(d) ?? []).length > 0 && (
+                  <ul style={{ listStyle: "none", padding: 0, margin: "10px 0 0", display: "grid", gap: 8 }}>
+                    {tasksByDay.get(d)!.map((t) => (
+                      <li key={t.id} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
+                        <span className="monarch-muted">Task</span> <strong>{t.title}</strong>
+                        {t.clientId ? <Link href={`/workspace/clients/${t.clientId}`}>{t.clientName}</Link> : <span>{t.clientName}</span>}
+                        <span style={{ flex: 1 }} />
+                        <form action={toggleTaskAction}><input type="hidden" name="id" value={t.id} /><input type="hidden" name="source" value={t.source === "workflow" ? "workflow" : ""} /><input type="hidden" name="back" value={`/calendar?view=${view}&date=${ymdString(first)}`} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
             ))}
-            {view === "agenda" && byDay.size === 0 && <p className="monarch-muted">No appointments in the next 30 days.</p>}
+            {view === "agenda" && byDay.size === 0 && tasksByDay.size === 0 && <p className="monarch-muted">No appointments in the next 30 days.</p>}
             <p className="monarch-muted">Times are shown in {tz.replace(/_/g, " ")}. {types.length === 0 ? "Add an appointment type to start taking bookings." : ""}</p>
           </>
         );

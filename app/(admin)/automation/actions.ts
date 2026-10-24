@@ -1,7 +1,6 @@
 "use server";
 
 import { deletedNotice } from "@/lib/storage/window.ts";
-import { tenantClient } from "@/lib/supabase/service";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
@@ -239,18 +238,3 @@ export async function deleteLibraryImageAction(form: FormData) {
   });
 }
 
-export async function completeTaskAction(form: FormData) {
-  await mutate("/automation/workflows", async () => {
-    const { error } = await tenantClient(currentTenantId()).from("automation_tasks").update({ done_at: new Date().toISOString() }).eq("id", str(form, "id")).is("done_at", null);
-    if (error) throw new Error(error.message);
-    return { notice: "Task marked done." };
-  });
-}
-
-export async function reopenTaskAction(form: FormData) {
-  await mutate("/automation/tasks?show=all", async () => {
-    const { error } = await tenantClient(currentTenantId()).from("automation_tasks").update({ done_at: null }).eq("id", str(form, "id"));
-    if (error) throw new Error(error.message);
-    return { notice: "Task reopened." };
-  });
-}

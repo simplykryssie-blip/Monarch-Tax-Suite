@@ -16,3 +16,22 @@ export async function setWorkflowTaskDone(id: string, done: boolean): Promise<vo
   const { error } = await tenantClient(currentTenantId()).from("automation_tasks").update({ done_at: done ? new Date().toISOString() : null }).eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+export type DueTask = { id: string; title: string; due_on: string; clientId: string | null; clientName: string; source: "workflow" | "client" };
+
+/** Open tasks with a due date inside [from, to): the client's own and those a workflow made, for the Calendar. */
+export async function tasksDueBetween(from: string, to: string): Promise<DueTask[]> {
+  const { workspaceRepo } = await import("./server");
+  const repo = workspaceRepo();
+  const [own, clients, auto] = await Promise.all([
+    repo.listTasks({ openOnly: true }).catch(() => []),
+    repo.listClients({ includeArchived: true }).catch(() => []),
+    tenantClient(currentTenantId()).from("automation_tasks").select("id, title, due_on, contact_name, client_id").is("done_at", null).gte("due_on", from).lt("due_on", to).limit(500).then((r) => r.data ?? []),
+  ]);
+  const name = new Map(clients.map((c) => [c.id, c.full_name]));
+  const inRange = (d: string | null): d is string => Boolean(d && d >= from && d < to);
+  return [
+    ...own.filter((t) => inRange(t.due_on)).map((t): DueTask => ({ id: t.id, title: t.title, due_on: t.due_on!, clientId: t.client_id, clientName: name.get(t.client_id) ?? "Client", source: "client" })),
+    ...auto.filter((t) => inRange(t.due_on)).map((t): DueTask => ({ id: t.id, title: t.title, due_on: t.due_on!, clientId: t.client_id, clientName: (t.client_id && name.get(t.client_id)) || t.contact_name || "Contact", source: "workflow" })),
+  ].sort((a, b) => a.due_on.localeCompare(b.due_on) || a.title.localeCompare(b.title));
+}

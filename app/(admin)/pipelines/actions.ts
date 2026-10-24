@@ -7,6 +7,8 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { archivePipeline, createFolder, createPipeline, DEFAULT_RETURN_STAGES, deleteFolder, deletePipeline, makeDefault, moveFolder, movePipeline, renameFolder, savePipeline, saveDetails, setPublished } from "@/lib/pipelines/service.ts";
 import { pipelinesRepo } from "@/lib/pipelines/server";
+import { workflowsUsing } from "@/lib/pipelines/usage.ts";
+import { automationDeps } from "@/lib/automation/server";
 
 // Every action re-checks administrator access on the server.
 
@@ -87,9 +89,18 @@ export async function movePipelineAction(form: FormData) {
   });
 }
 
+/** Refuses to go ahead (unless the person has confirmed) when a workflow still uses the pipeline, and names the workflows. */
+async function requireConfirmedIfUsed(form: FormData, what: string) {
+  const p = await pipelinesRepo().get(id(form));
+  if (!p || str(form, "used_ok") === "yes") return;
+  const used = workflowsUsing(p, await automationDeps().repo.listWorkflows().catch(() => []));
+  if (used.length) throw new ValidationError(`${what} "${p.name}" is used by ${used.map((w) => `"${w.name}"`).join(", ")}. Nothing was changed. Use the button on the pipeline's card to confirm.`);
+}
+
 export async function archivePipelineAction(form: FormData) {
   await mutate(here(form), async () => {
     const archive = str(form, "archive") === "yes";
+    if (archive) await requireConfirmedIfUsed(form, "Archiving");
     await archivePipeline(pipelinesRepo(), id(form), archive);
     return { notice: archive ? "Pipeline archived. It's listed under Archived pipelines, where you can restore or delete it." : "Pipeline restored." };
   });
@@ -97,6 +108,7 @@ export async function archivePipelineAction(form: FormData) {
 
 export async function deletePipelineAction(form: FormData) {
   await mutate(here(form), async () => {
+    await requireConfirmedIfUsed(form, "Deleting");
     const p = await deletePipeline(pipelinesRepo(), id(form));
     return { notice: `Pipeline "${p.name}" deleted.` };
   });

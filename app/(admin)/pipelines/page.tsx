@@ -5,6 +5,8 @@ import { pipelinesRepo } from "@/lib/pipelines/server";
 import { DEFAULT_RETURN_STAGES, STAGE_COLORS } from "@/lib/pipelines/service.ts";
 import type { Pipeline, PipelineFolder } from "@/lib/pipelines/types.ts";
 import { SubmitOnce } from "@/components/admin/submit-once";
+import { automationDeps } from "@/lib/automation/server";
+import { workflowsUsing } from "@/lib/pipelines/usage.ts";
 import { DragCard, DropLink } from "@/components/pipelines/dnd";
 import { archivePipelineAction, createFolderAction, createPipelineAction, deleteFolderAction, deletePipelineAction, movePipelineAction, publishPipelineAction, renameFolderAction } from "./actions";
 
@@ -14,6 +16,22 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function folderPaths(folders: PipelineFolder[]): { id: string; path: string }[] {
   const path = (f: PipelineFolder): string => (f.parent_id ? `${path(folders.find((x) => x.id === f.parent_id) ?? f)} / ${f.name}` : f.name);
   return folders.map((f) => ({ id: f.id, path: path(f) })).sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** Shown instead of a plain button when a workflow still uses the pipeline: names them and asks again. */
+function UsedWarning({ names, action, verb, pipelineId, folder, extra }: { names: string[]; action: (form: FormData) => Promise<void>; verb: string; pipelineId: string; folder?: string; extra?: React.ReactNode }) {
+  return (
+    <form action={action} className="monarch-form">
+      <input type="hidden" name="id" value={pipelineId} />
+      <input type="hidden" name="used_ok" value="yes" />
+      {folder && <input type="hidden" name="folder" value={folder} />}
+      {extra}
+      <p className="is-wide"><b>This pipeline is used by {names.length === 1 ? "a workflow" : `${names.length} workflows`}:</b></p>
+      <ul className="is-wide">{names.map((n) => <li key={n}>{n}</li>)}</ul>
+      <p className="is-wide">Their steps that use it will stop working and say so in the run history. Do you still want to {verb.toLowerCase()} it?</p>
+      <div className="is-wide"><button className="monarch-primary is-danger">{verb} anyway</button></div>
+    </form>
+  );
 }
 
 function Swatches({ name = "color" }: { name?: string }) {
@@ -28,14 +46,15 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
   const sp = await searchParams;
   const result = await load(async () => {
     const repo = pipelinesRepo();
-    const [pipelines, folders] = await Promise.all([repo.list(), repo.listFolders().catch(() => [] as PipelineFolder[])]);
-    return { pipelines, folders };
+    const [pipelines, folders, workflows] = await Promise.all([repo.list(), repo.listFolders().catch(() => [] as PipelineFolder[]), automationDeps().repo.listWorkflows().catch(() => [])]);
+    return { pipelines, folders, workflows };
   });
   const folders = result.ok ? result.data.folders : [];
   const current = UUID.test(sp.folder ?? "") ? folders.find((f) => f.id === sp.folder) ?? null : null;
   const inHere = (p: Pipeline) => (p.folder_id ?? null) === (current?.id ?? null);
   const all = result.ok ? result.data.pipelines : [];
   const list = all.filter((p) => !p.archived_at && inHere(p));
+  const workflows = result.ok ? result.data.workflows : [];
   const archived = all.filter((p) => p.archived_at);
   const hasReturns = all.some((p) => p.kind === "returns" && !p.archived_at);
   const subfolders = folders.filter((f) => (f.parent_id ?? null) === (current?.id ?? null));
@@ -98,6 +117,7 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
             <div className="pl-grid">
               {list.map((p) => {
                 const live = p.published !== false;
+                const used = workflowsUsing(p, workflows);
                 return (
                   <DragCard key={p.id} kind="pipeline" id={p.id} className="monarch-panel pl-card" style={{ borderTopColor: p.color ?? undefined }}>
                     <Link className="pl-name" href={`/pipelines/${p.id}`}>{p.name}</Link>
@@ -117,8 +137,12 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
                             <div className="is-wide"><button className="monarch-primary">Move</button></div></form>
                         </Modal>
                       )}
-                      {!p.is_default && <form action={archivePipelineAction}>{here}<input type="hidden" name="id" value={p.id} /><input type="hidden" name="archive" value="yes" /><button className="monarch-link">Archive</button></form>}
-                      {!p.is_default && <form action={deletePipelineAction}>{here}<input type="hidden" name="id" value={p.id} /><button className="monarch-link is-danger">Delete</button></form>}
+                      {!p.is_default && (used.length > 0
+                        ? <Modal label="Archive" title={`Archive ${p.name}?`} className="monarch-link"><UsedWarning names={used.map((w) => w.name)} action={archivePipelineAction} verb="Archive" pipelineId={p.id} folder={current?.id} extra={<input type="hidden" name="archive" value="yes" />} /></Modal>
+                        : <form action={archivePipelineAction}>{here}<input type="hidden" name="id" value={p.id} /><input type="hidden" name="archive" value="yes" /><button className="monarch-link">Archive</button></form>)}
+                      {!p.is_default && (used.length > 0
+                        ? <Modal label="Delete" title={`Delete ${p.name}?`} className="monarch-link is-danger"><UsedWarning names={used.map((w) => w.name)} action={deletePipelineAction} verb="Delete" pipelineId={p.id} folder={current?.id} /></Modal>
+                        : <form action={deletePipelineAction}>{here}<input type="hidden" name="id" value={p.id} /><button className="monarch-link is-danger">Delete</button></form>)}
                     </span>
                   </DragCard>
                 );

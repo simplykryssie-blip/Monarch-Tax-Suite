@@ -225,7 +225,7 @@ export async function addTaskAction(form: FormData) {
 }
 
 export async function toggleTaskAction(form: FormData) {
-  const back = str(form, "back").startsWith("/workspace") ? str(form, "back") : "/workspace";
+  const back = /^\/(workspace|calendar)/.test(str(form, "back")) ? str(form, "back") : "/workspace";
   await act(back, async () => {
     if (str(form, "source") === "workflow") await setWorkflowTaskDone(str(form, "id"), str(form, "done") === "yes");
     else await setTaskDone(workspaceRepo(), str(form, "id"), str(form, "done") === "yes");

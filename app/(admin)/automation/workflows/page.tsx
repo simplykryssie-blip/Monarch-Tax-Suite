@@ -4,14 +4,14 @@ import { EVENTS } from "@/lib/automation/events.ts";
 import { automationDeps } from "@/lib/automation/server";
 import { currentTier } from "@/lib/tier-server";
 import { allows } from "@/lib/tier.ts";
-import { FollowUpsSection, TemplatesSection } from "../sections";
+import { TemplatesSection } from "../sections";
 import { missingDefaults } from "@/lib/automation/defaults.ts";
 import { duplicateWorkflowAction, installDefaultsAction, workflowStatusAction } from "../actions";
 import { ArchiveRowButton, ArchiveTabs } from "@/components/admin/archive";
 import { inView, viewCounts, viewOf } from "@/lib/archive.ts";
 
-export default async function WorkflowsPage({ searchParams }: { searchParams: Promise<{ view?: string; show?: string; notice?: string; error?: string }> }) {
-  const { notice, error, view: rawView, show } = await searchParams;
+export default async function WorkflowsPage({ searchParams }: { searchParams: Promise<{ view?: string; notice?: string; error?: string }> }) {
+  const { notice, error, view: rawView } = await searchParams;
   const view = viewOf(rawView);
   const deps = automationDeps();
   const result = await load(() => deps.repo.listWorkflows()).catch(() => null);
@@ -56,7 +56,6 @@ export default async function WorkflowsPage({ searchParams }: { searchParams: Pr
           </table>
         </div>
       </section>
-      <FollowUpsSection all={show === "all"} />
       <TemplatesSection />
     </>
   );

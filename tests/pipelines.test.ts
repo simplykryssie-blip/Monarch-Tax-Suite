@@ -1,5 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { workflowsUsing } from "../lib/pipelines/usage.ts";
 import { archivePipeline, checkStages, createFolder, createPipeline, deleteFolder, deletePipeline, moveFolder, DEFAULT_RETURN_STAGES, isLive, makeDefault, movePipeline, returnsStages, savePipeline, setPublished } from "../lib/pipelines/service.ts";
 import type { Pipeline, PipelineFolder, PipelineInput, PipelinePatch, PipelinesRepo } from "../lib/pipelines/types.ts";
 import { checkSms, smsSegments } from "../lib/automation/sms.ts";
@@ -255,5 +256,22 @@ describe("pipeline folders, type and publishing", () => {
     await assert.rejects(moveFolder(repo, a.id, b.id), /inside itself/);
     await assert.rejects(moveFolder(repo, a.id, a.id), /inside itself/);
     assert.equal((await moveFolder(repo, b.id, "")).parent_id, null);
+  });
+});
+
+describe("which workflows use a pipeline", () => {
+  const wf = (over: Record<string, unknown>) => ({ id: "w", name: "W", trigger_event: "work.stage_changed", conditions: [], actions: [], steps: [], archived_at: null, ...over }) as never;
+  const books = { id: "p-books", kind: "custom" as const, stages: [{ id: "s1", name: "To do", color: "#000", done: false }, { id: "s2", name: "Done", color: "#000", done: true }] };
+  const returns = { id: "p-ret", kind: "returns" as const, stages: [{ id: "efiled", name: "E-filed", color: "#000", done: false }, { id: "complete", name: "Complete", color: "#000", done: true }] };
+  test("a move step, a pipeline condition, or a stage condition on the matching trigger counts; an archived workflow does not", () => {
+    const flows = [
+      wf({ id: "a", name: "Moves", steps: [{ type: "branch", conditions: [], then: [{ type: "move_stage", pipeline_id: "p-books", stage_id: "s2" }], else: [] }] }),
+      wf({ id: "b", name: "Watches", conditions: [{ field: "pipeline_id", op: "eq", value: "p-books" }] }),
+      wf({ id: "c", name: "Efiled mail", trigger_event: "return.stage_changed", conditions: [{ field: "stage_id", op: "eq", value: "efiled" }] }),
+      wf({ id: "d", name: "Old", archived_at: "2026-01-01", steps: [{ type: "move_stage", pipeline_id: "p-books", stage_id: "s1" }] }),
+      wf({ id: "e", name: "Unrelated", conditions: [{ field: "stage_id", op: "eq", value: "zzz" }] }),
+    ];
+    assert.deepEqual(workflowsUsing(books, flows).map((w) => w.name).sort(), ["Moves", "Watches"]);
+    assert.deepEqual(workflowsUsing(returns, flows).map((w) => w.name), ["Efiled mail"]);
   });
 });
