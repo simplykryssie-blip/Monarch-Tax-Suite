@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import { parseMoney } from "../fees/engine.ts";
-import { balance, checkClient, checkLines, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
+import { balance, checkBusiness, checkClient, checkDependent, checkLines, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
 import type { Client, ClientReturn, Invoice, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
 // My Workspace orchestration: each function checks its input with the rules, then uses the repository. Nothing here
@@ -203,4 +203,40 @@ export async function discardImport(repo: WorkspaceRepo, importId: string): Prom
   if (!imp) throw new ValidationError("That import wasn't found.");
   if (imp.status === "applied") throw new ValidationError("Payments from this import were already applied.");
   await repo.updateImport(imp.id, { status: "discarded" });
+}
+
+// ---------------------------------------------------------------- household: spouse, dependents, businesses
+
+/** Links two clients as spouses, on both records. Each can have only one spouse. */
+export async function linkSpouse(repo: WorkspaceRepo, id: string, spouseId: string): Promise<void> {
+  const a = await repo.getClient(uuid(id, "That client"));
+  const b = await repo.getClient(uuid(spouseId, "The spouse"));
+  if (!a || !b) throw new ValidationError("That client wasn't found.");
+  if (a.id === b.id) throw new ValidationError("A client can't be their own spouse.");
+  if (a.spouse_id && a.spouse_id !== b.id) throw new ValidationError(`${a.full_name} is already linked to another spouse. Unlink them first.`);
+  if (b.spouse_id && b.spouse_id !== a.id) throw new ValidationError(`${b.full_name} is already linked to another spouse. Unlink them first.`);
+  await repo.updateClient(a.id, { spouse_id: b.id });
+  await repo.updateClient(b.id, { spouse_id: a.id });
+}
+
+/** Removes the link on both records. */
+export async function unlinkSpouse(repo: WorkspaceRepo, id: string): Promise<void> {
+  const a = await repo.getClient(uuid(id, "That client"));
+  if (!a) throw new ValidationError("That client wasn't found.");
+  if (!a.spouse_id) return;
+  const b = await repo.getClient(a.spouse_id);
+  await repo.updateClient(a.id, { spouse_id: null });
+  if (b && b.spouse_id === a.id) await repo.updateClient(b.id, { spouse_id: null });
+}
+
+export async function addDependent(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string) {
+  const clientId = uuid(raw.client_id, "That client");
+  if (!(await repo.getClient(clientId))) throw new ValidationError("That client wasn't found.");
+  return repo.insertDependent({ client_id: clientId, ...checkDependent(raw), created_by: actorId });
+}
+
+export async function addBusiness(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string) {
+  const clientId = uuid(raw.client_id, "That client");
+  if (!(await repo.getClient(clientId))) throw new ValidationError("That client wasn't found.");
+  return repo.insertBusiness({ client_id: clientId, ...checkBusiness(raw), created_by: actorId });
 }

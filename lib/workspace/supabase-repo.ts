@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Client, ClientDoc, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
 
 // Workspace rows for one tenant, on the tenant client: the database's tenant policies scope every query.
 const unwrap = <T>(r: { data: T | null; error: { message: string } | null }): T => {
@@ -23,7 +23,13 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   }
   async getClient(id: string) { return unwrap(await this.db.from("clients").select("*").eq("id", id).maybeSingle()) as Client | null; }
   async insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null; tags?: string[] }) { return unwrap(await this.db.from("clients").insert(input).select("*").single()) as Client; }
-  async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null }) { return unwrap(await this.db.from("clients").update(patch).eq("id", id).select("*").single()) as Client; }
+  async listDependents(clientId: string) { return unwrap(await this.db.from("client_dependents").select("*").eq("client_id", clientId).order("created_at")) as Dependent[]; }
+  async insertDependent(input: DependentInput) { return unwrap(await this.db.from("client_dependents").insert(input).select("*").single()) as Dependent; }
+  async deleteDependent(id: string) { unwrap(await this.db.from("client_dependents").delete().eq("id", id).select("id")); }
+  async listBusinesses(clientId: string) { return unwrap(await this.db.from("client_businesses").select("*").eq("client_id", clientId).order("created_at")) as Business[]; }
+  async insertBusiness(input: BusinessInput) { return unwrap(await this.db.from("client_businesses").insert(input).select("*").single()) as Business; }
+  async deleteBusiness(id: string) { unwrap(await this.db.from("client_businesses").delete().eq("id", id).select("id")); }
+  async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null }) { return unwrap(await this.db.from("clients").update(patch).eq("id", id).select("*").single()) as Client; }
 
   async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) {
     let q = this.db.from("client_returns").select("*").order("created_at").limit(5000);

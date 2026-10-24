@@ -4,41 +4,46 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { ClientDocUpload } from "@/components/workspace/client-doc-upload";
-import { SubmitOnce } from "@/components/admin/submit-once";
 import { RevealSsn } from "@/components/workspace/reveal-ssn";
+import { Modal } from "@/components/ui/modal";
+import { MessageComposer } from "@/components/contacts/message-composer";
+import { portalMemberRepo } from "@/lib/portal/server";
+import { splitName } from "@/lib/workspace/rules.ts";
+import { ENTITY_TYPES, RELATIONSHIPS } from "@/lib/workspace/types.ts";
 import { hasStoredSsn } from "@/lib/ssn/service.ts";
 import { ssnDeps } from "@/lib/ssn/server";
 import { balance, defaultInvoiceLines, dollars, invoiceView } from "@/lib/workspace/rules.ts";
 import { RETURN_KINDS } from "@/lib/workspace/types.ts";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
-import { addNoteAction, addReturnAction, addTaskAction, archiveClientAction, createInvoiceAction, deleteClientDocAction, invoiceStatusAction, logMessageAction, openClientDocAction, saveClientAction, sendMessageAction, toggleTaskAction } from "../../actions";
-import { SMS_MAX } from "@/lib/automation/sms.ts";
+import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, createInvoiceAction, linkSpouseAction, removeBusinessAction, removeDependentAction, unlinkSpouseAction, deleteClientDocAction, invoiceStatusAction, logMessageAction, openClientDocAction, saveClientAction, toggleTaskAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
 import { emailConfig, emailKeyProblems } from "@/lib/automation/email.ts";
 import { WorkspaceSetup } from "../../setup";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TABS = [["overview", "Overview"], ["documents", "Documents"], ["messages", "Messages"], ["work", "Work"], ["billing", "Billing"], ["tasks", "Tasks"], ["notes", "Notes"], ["portal", "Portal"]] as const;
-const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other" } as const;
+// Tasks, Notes and Portal are reached from the Overview (See all, and the Portal button), so they are not in the tab bar.
+const TABS = [["overview", "Overview"], ["documents", "Documents"], ["messages", "Messages"], ["billing", "Billing"]] as const;
+const HIDDEN = ["tasks", "notes", "portal"] as const;
+const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other", portal: "Portal" } as const;
 
 /** One client: overview, documents, messages, work, billing (with the $223 breakdown), tasks and notes. */
 export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; notice?: string; error?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
   if (!UUID.test(id)) notFound();
-  const tab = TABS.some(([k]) => k === sp.tab) ? sp.tab! : "overview";
+  const tab = TABS.some(([k]) => k === sp.tab) || (HIDDEN as readonly string[]).includes(sp.tab ?? "") ? sp.tab! : "overview";
   const today = todayIso();
   const result = await workspaceLoad(async () => {
     const repo = workspaceRepo();
     const client = await repo.getClient(id);
     if (!client) return null;
-    const [returns, docs, messages, tasks, notes, invoices, stages] = await Promise.all([repo.listReturns({ clientId: id }), repo.listDocs(id), repo.listMessages(id), repo.listTasks({ clientId: id }), repo.listNotes(id), repo.listInvoices({ clientId: id }), boardStages()]);
-    return { client, returns, docs, messages, tasks, notes, invoices, stages };
+    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member] = await Promise.all([repo.listReturns({ clientId: id }), repo.listDocs(id), repo.listMessages(id), repo.listTasks({ clientId: id }), repo.listNotes(id), repo.listInvoices({ clientId: id }), boardStages(), repo.listClients({ includeArchived: false }), repo.listDependents(id).catch(() => null), repo.listBusinesses(id).catch(() => null), portalMemberRepo(client.tenant_id).getForClient(id).catch(() => null)]);
+    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member };
   });
   if (result.ok && !result.data) notFound();
   if (!result.ok) return <><PageTitle title="Client" back={{ href: "/workspace/clients", label: "Clients" }} /><WorkspaceSetup message={result.message} /></>;
-  const { client, returns, docs, messages, tasks, notes, invoices, stages } = result.data!;
+  const { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member } = result.data!;
   // The office's own texting account, and its prepaid credits when it has them (tenant #1 pays Twilio directly).
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
@@ -47,46 +52,176 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const returnLabel = (r: { kind: keyof typeof RETURN_KINDS; tax_year: number }) => `${RETURN_KINDS[r.kind]} ${r.tax_year}`;
   const owes = invoices.filter((i) => i.status === "sent").reduce((n, i) => n + balance(i), 0);
   const back = `/workspace/clients/${id}?tab=${tab}`;
+  const openTasks = tasks.filter((x) => !x.done_at);
+  const spouse = client.spouse_id ? others.find((o) => o.id === client.spouse_id) ?? null : null;
+  const nameParts = client.first_name ? { first: client.first_name, last: client.last_name ?? "" } : (() => { const s = splitName(client.full_name); return { first: s.first, last: s.last ?? "" }; })();
+  const lastMessage = messages[0] ?? null;
+  const portalLabel = !member ? "Not invited" : member.status === "active" ? "Active" : member.status === "invited" ? "Invited" : "Off";
+  const hiddenTab = (HIDDEN as readonly string[]).includes(tab);
   return (
     <>
-      <PageTitle title={client.full_name} back={{ href: "/workspace/clients", label: "Clients" }}>
+      <PageTitle title={client.full_name} back={{ href: "/contacts", label: "Contacts" }}>
         {[client.email, client.phone].filter(Boolean).join(" · ") || "No contact details yet"}{client.archived_at ? " · Archived" : ""}
       </PageTitle>
+      <div className="cl-head-actions"><Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=portal`}>Portal</Link></div>
       <Flash notice={sp.notice} error={sp.error} />
       <nav className="cl-tabs" aria-label="Client">
         {TABS.map(([k, label]) => <Link key={k} href={`/workspace/clients/${id}?tab=${k}`} className={k === tab ? "is-on" : undefined} aria-current={k === tab ? "page" : undefined}>{label}</Link>)}
       </nav>
+      {hiddenTab && <p><Link className="monarch-link" href={`/workspace/clients/${id}`}>&larr; Back to overview</Link></p>}
 
       {tab === "overview" && (
-        <div className="grid2">
-          <form action={saveClientAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
-            <h2 className="is-wide">Details</h2>
-            <input type="hidden" name="id" value={client.id} />
-            <label>Name *<input name="full_name" required maxLength={200} defaultValue={client.full_name} /></label>
-            <label>Email<input name="email" type="email" maxLength={254} defaultValue={client.email ?? ""} /></label>
-            <label>Phone<FormattedInput kind="phone" name="phone" defaultValue={client.phone ?? ""} /></label>
-            <input type="hidden" name="ssn_last4" value={client.ssn_last4 ?? ""} />
-            <div className="is-wide"><span>Social Security number or ITIN</span><RevealSsn clientId={client.id} last4={client.ssn_last4} onFile={ssnOnFile} /></div>
-            <small className="is-wide monarch-muted"><Link href={`/settings/archive?client=${client.id}`}>See this client&apos;s activity log</Link> for who saved or revealed the number.</small>
-            <label className="is-wide">Address<input name="address" maxLength={300} defaultValue={client.address ?? ""} /></label>
-            <div className="is-wide"><button className="monarch-primary">Save</button></div>
-          </form>
-          <section className="monarch-panel" style={{ padding: 20 }}>
-            <h2>At a glance</h2>
-            <ul style={{ lineHeight: 1.9 }}>
-              <li><b>{returns.length}</b> return{returns.length === 1 ? "" : "s"}{returns.length ? ` · latest ${returnLabel(returns[returns.length - 1])}, ${stageName(returns[returns.length - 1].stage_id)}` : ""}</li>
-              <li><b>{owes ? dollars(owes) : "Nothing"}</b> owed</li>
-              <li><b>{tasks.filter((t) => !t.done_at).length}</b> open task{tasks.filter((t) => !t.done_at).length === 1 ? "" : "s"}</li>
-              <li><b>{docs.length}</b> document{docs.length === 1 ? "" : "s"}</li>
-            </ul>
-            <form action={archiveClientAction} className="monarch-inline-form" style={{ flexWrap: "wrap", marginTop: 16 }}>
-              <input type="hidden" name="id" value={client.id} />
-              {client.archived_at && <input type="hidden" name="restore" value="yes" />}
-              <label><input type="checkbox" name="confirm" value="yes" required /> {client.archived_at ? "Restore this client" : "Archive this client (their returns, invoices and documents are kept)"}</label>
-              <button className="monarch-secondary">{client.archived_at ? "Restore" : "Archive"}</button>
-            </form>
+        <>
+          <section className="cl-strip" aria-label="At a glance">
+            <div><small>Returns</small><b>{returns.length ? `${returnLabel(returns[returns.length - 1])} · ${stageName(returns[returns.length - 1].stage_id)}` : "None"}</b></div>
+            <div><small>Owes</small><b>{owes ? dollars(owes) : "Nothing"}</b></div>
+            <div><small>Open tasks</small><b>{openTasks.length}</b></div>
+            <div><small>Documents</small><b>{docs.length}</b></div>
+            <div><small>Last message</small><b>{lastMessage ? `${CHANNELS[lastMessage.channel]} · ${when(lastMessage.occurred_at)}` : "None"}</b></div>
+            <div><small>Portal</small><b>{portalLabel}</b></div>
           </section>
-        </div>
+          <div className="grid2 cl-cols">
+            <div className="cl-col">
+              <form action={saveClientAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
+                <h2 className="is-wide">Details</h2>
+                <input type="hidden" name="id" value={client.id} />
+                <label>First name *<input name="first_name" required maxLength={100} defaultValue={nameParts.first} /></label>
+                <label>Last name *<input name="last_name" required maxLength={100} defaultValue={nameParts.last} /></label>
+                <label>Email<input name="email" type="email" maxLength={254} defaultValue={client.email ?? ""} /></label>
+                <label>Phone<FormattedInput kind="phone" name="phone" defaultValue={client.phone ?? ""} /></label>
+                <label>Date of birth<input name="dob" type="date" defaultValue={client.dob ?? ""} /></label>
+                <input type="hidden" name="ssn_last4" value={client.ssn_last4 ?? ""} />
+                <div className="is-wide"><span>Social Security number or ITIN</span><RevealSsn clientId={client.id} last4={client.ssn_last4} onFile={ssnOnFile} /></div>
+                <label className="is-wide">Street address<input name="address_line1" maxLength={150} defaultValue={client.address_line1 ?? (client.address_line1 === undefined || client.address_line1 === null ? client.address ?? "" : "")} /></label>
+                <label className="is-wide">Apt, suite or unit<input name="address_line2" maxLength={100} defaultValue={client.address_line2 ?? ""} /></label>
+                <label>City<input name="city" maxLength={80} defaultValue={client.city ?? ""} /></label>
+                <label>State<input name="state" maxLength={2} defaultValue={client.state ?? ""} style={{ textTransform: "uppercase" }} /></label>
+                <label>ZIP<FormattedInput kind="zip" name="zip" defaultValue={client.zip ?? ""} /></label>
+                <div className="is-wide"><button className="monarch-primary">Save</button></div>
+              </form>
+
+              <section className="monarch-panel cl-card">
+                <div className="cl-card-head"><h2>Spouse</h2></div>
+                {spouse ? (
+                  <form action={unlinkSpouseAction} className="cl-row"><input type="hidden" name="id" value={client.id} /><Link href={`/workspace/clients/${spouse.id}`}><b>{spouse.full_name}</b></Link><button className="monarch-link">Unlink</button></form>
+                ) : (
+                  <form action={linkSpouseAction} className="cl-row">
+                    <input type="hidden" name="id" value={client.id} />
+                    <select name="spouse_id" required defaultValue="" aria-label="Spouse"><option value="" disabled>Choose a client…</option>{others.filter((o) => o.id !== client.id && !o.spouse_id).map((o) => <option key={o.id} value={o.id}>{o.full_name}</option>)}</select>
+                    <button className="monarch-secondary">Link</button>
+                  </form>
+                )}
+              </section>
+
+              {dependents && (
+                <section className="monarch-panel cl-card">
+                  <div className="cl-card-head"><h2>Dependents</h2>
+                    <Modal label="Add dependent" title="Add a dependent" className="monarch-secondary">
+                      <form action={addDependentAction} className="monarch-form">
+                        <input type="hidden" name="client_id" value={client.id} />
+                        <label>First name *<input name="first_name" required maxLength={100} /></label>
+                        <label>Last name<input name="last_name" maxLength={100} defaultValue={nameParts.last} /></label>
+                        <label>Date of birth<input name="dob" type="date" /></label>
+                        <label>Relationship<select name="relationship" defaultValue="child">{Object.entries(RELATIONSHIPS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+                        <label className="is-wide">Social Security number<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder="Nine digits" /></label>
+                        <div className="is-wide ac-actions"><button className="monarch-primary">Add dependent</button></div>
+                      </form>
+                    </Modal>
+                  </div>
+                  {dependents.length === 0 ? <p className="monarch-muted cl-empty">None</p> : (
+                    <ul className="cl-list">{dependents.map((d) => (
+                      <li key={d.id}><span><b>{[d.first_name, d.last_name].filter(Boolean).join(" ")}</b><small className="monarch-subcell">{RELATIONSHIPS[d.relationship]}{d.dob ? ` · born ${d.dob}` : ""}{d.ssn_last4 ? ` · SSN ending ${d.ssn_last4}` : ""}</small></span>
+                        <form action={removeDependentAction}><input type="hidden" name="id" value={d.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link is-danger">Remove</button></form></li>
+                    ))}</ul>
+                  )}
+                </section>
+              )}
+
+              {businesses && (
+                <section className="monarch-panel cl-card">
+                  <div className="cl-card-head"><h2>Business</h2>
+                    <Modal label="Add business" title="Add a business" className="monarch-secondary">
+                      <form action={addBusinessAction} className="monarch-form">
+                        <input type="hidden" name="client_id" value={client.id} />
+                        <label className="is-wide">Business name *<input name="name" required maxLength={200} /></label>
+                        <label>Kind<select name="entity_type" defaultValue="sole_proprietor">{Object.entries(ENTITY_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+                        <label>EIN<FormattedInput kind="ein" name="ein" autoComplete="off" /></label>
+                        <label>Phone<FormattedInput kind="phone" name="phone" autoComplete="off" /></label>
+                        <label className="is-wide">Address<input name="address" maxLength={300} /></label>
+                        <div className="is-wide ac-actions"><button className="monarch-primary">Add business</button></div>
+                      </form>
+                    </Modal>
+                  </div>
+                  {businesses.length === 0 ? <p className="monarch-muted cl-empty">None</p> : (
+                    <ul className="cl-list">{businesses.map((b) => (
+                      <li key={b.id}><span><b>{b.name}</b><small className="monarch-subcell">{ENTITY_TYPES[b.entity_type]}{b.ein ? ` · EIN ${b.ein}` : ""}{b.phone ? ` · ${b.phone}` : ""}{b.address ? ` · ${b.address}` : ""}</small></span>
+                        <form action={removeBusinessAction}><input type="hidden" name="id" value={b.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link is-danger">Remove</button></form></li>
+                    ))}</ul>
+                  )}
+                </section>
+              )}
+            </div>
+
+            <div className="cl-col">
+              <section className="monarch-panel cl-card">
+                <div className="cl-card-head"><h2>Returns</h2>
+                  <span className="cl-card-actions">
+                    <Link className="monarch-link" href="/workspace/work">Open the board</Link>
+                    <Modal label="Add return" title="Add a return" className="monarch-secondary">
+                      <form action={addReturnAction} className="monarch-form">
+                        <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="back" value={back} />
+                        <label>Tax year *<input name="tax_year" required inputMode="numeric" maxLength={4} defaultValue={new Date().getUTCFullYear() - 1} /></label>
+                        <label>Kind<select name="kind" defaultValue="original">{Object.entries(RETURN_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+                        <label className="is-wide">Due date<input name="due_on" type="date" /></label>
+                        <div className="is-wide ac-actions"><button className="monarch-primary">Add return</button></div>
+                      </form>
+                    </Modal>
+                  </span>
+                </div>
+                {returns.length === 0 ? <p className="monarch-muted cl-empty">None</p> : (
+                  <ul className="cl-list">{returns.map((r) => (
+                    <li key={r.id} id={`return-${r.id}`}><span><b>{returnLabel(r)}</b><small className="monarch-subcell">{stageName(r.stage_id)}</small></span>
+                      <span className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ? `due ${r.due_on}` : ""}</span></li>
+                  ))}</ul>
+                )}
+              </section>
+
+              <section className="monarch-panel cl-card">
+                <div className="cl-card-head"><h2>Tasks</h2><Link className="monarch-link" href={`/workspace/clients/${id}?tab=tasks`}>See all ({tasks.length})</Link></div>
+                {openTasks.length === 0 ? <p className="monarch-muted cl-empty">None open</p> : (
+                  <ul className="cl-list">{openTasks.slice(0, 5).map((x) => (
+                    <li key={x.id}><span><b>{x.title}</b>{x.due_on && <small className={`monarch-subcell${x.due_on < today ? " wb-late" : ""}`}>due {x.due_on}</small>}</span>
+                      <form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form></li>
+                  ))}</ul>
+                )}
+                <form action={addTaskAction} className="cl-quick">
+                  <input type="hidden" name="client_id" value={client.id} />
+                  <input name="title" required maxLength={200} placeholder="Add a task" aria-label="Task" />
+                  <input name="due_on" type="date" aria-label="Due" />
+                  <button className="monarch-secondary">Add</button>
+                </form>
+              </section>
+
+              <section className="monarch-panel cl-card">
+                <div className="cl-card-head"><h2>Notes</h2><Link className="monarch-link" href={`/workspace/clients/${id}?tab=notes`}>See all ({notes.length})</Link></div>
+                {notes.length === 0 ? <p className="monarch-muted cl-empty">None</p> : (
+                  <ul className="cl-list">{notes.slice(0, 3).map((n) => <li key={n.id}><span style={{ whiteSpace: "pre-wrap" }}>{n.body}<small className="monarch-subcell">{when(n.created_at)}</small></span></li>)}</ul>
+                )}
+                <form action={addNoteAction} className="cl-quick">
+                  <input type="hidden" name="client_id" value={client.id} />
+                  <input name="body" required maxLength={4000} placeholder="Add a note" aria-label="Note" />
+                  <button className="monarch-secondary">Save</button>
+                </form>
+              </section>
+
+              <form action={archiveClientAction} className="monarch-inline-form cl-archive">
+                <input type="hidden" name="id" value={client.id} />
+                {client.archived_at && <input type="hidden" name="restore" value="yes" />}
+                <button className="monarch-secondary">{client.archived_at ? "Restore client" : "Archive client"}</button>
+              </form>
+            </div>
+          </div>
+        </>
       )}
 
       {tab === "documents" && (
@@ -123,30 +258,14 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         <>
           <section className="monarch-panel" style={{ padding: 20 }}>
             <h2>Send a message</h2>
-            {client.archived_at ? <p className="monarch-muted">This client is archived. Restore them on the Overview tab to send messages.</p> : (
-              <div className="grid2">
-                <form action={sendMessageAction} className="monarch-form">
-                  <h3 className="is-wide">Email {client.email ? <small className="monarch-muted">to {client.email}</small> : null}</h3>
-                  <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="channel" value="email" />
-                  {!client.email ? <p className="is-wide monarch-muted">Add an email address on the Overview tab to email this client.</p> : emailProblem ? <p className="is-wide monarch-muted">Email sending isn&apos;t set up yet: {emailProblem}</p> : (
-                    <>
-                      <label className="is-wide">Subject *<input name="subject" required maxLength={200} /></label>
-                      <label className="is-wide">Message *<textarea name="body" required rows={6} maxLength={4000} /></label>
-                      <div className="is-wide"><SubmitOnce className="monarch-primary" busy="Sending…">Send email</SubmitOnce></div>
-                    </>
-                  )}
-                </form>
-                <form action={sendMessageAction} className="monarch-form">
-                  <h3 className="is-wide">Text {mobile ? <small className="monarch-muted">to {mobile}</small> : null}</h3>
-                  <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="channel" value="sms" />
-                  {!mobile ? <p className="is-wide monarch-muted">Add a mobile number on the Overview tab to text this client.</p> : smsProblem ? <p className="is-wide monarch-muted">Text messaging isn&apos;t connected yet: {smsProblem}</p> : (
-                    <>
-                      <label className="is-wide">Message *<textarea name="body" required rows={4} maxLength={SMS_MAX} /><small className="monarch-muted">Up to {SMS_MAX} characters (longer than 160 characters counts as more than one segment).{credits !== null ? ` Each segment uses one text credit; this office has ${credits}.` : ""} Only text clients who agreed to receive texts.</small></label>
-                      <div className="is-wide"><SubmitOnce className="monarch-primary" busy="Sending…">Send text</SubmitOnce></div>
-                    </>
-                  )}
-                </form>
-              </div>
+            {client.archived_at ? <p className="monarch-muted">This client is archived. Restore them to send messages.</p> : (
+              <MessageComposer
+                clientId={client.id}
+                email={{ to: client.email, problem: !client.email ? "Add an email address on the Overview tab to email this client." : emailProblem ? `Email sending isn't set up yet: ${emailProblem}` : null }}
+                sms={{ to: mobile, problem: !mobile ? "Add a mobile number on the Overview tab to text this client." : smsProblem ? `Text messaging isn't connected yet: ${smsProblem}` : null }}
+                portal={{ to: member?.email ?? null, problem: !member || member.status !== "active" ? "This client doesn't have portal access yet. Use the Portal button to invite them." : null }}
+                credits={credits}
+              />
             )}
           </section>
           <section className="monarch-panel">
@@ -178,30 +297,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         </>
         );
       })()}
-
-      {tab === "work" && (
-        <>
-          <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Work</h2><p>Each return, extension and amendment is its own card on the My Work board.</p></div><Link className="mt-card-link" href="/workspace/work">Open the board</Link></div>
-            <div className="monarch-table-wrap"><table>
-              <thead><tr><th>RETURN</th><th>STAGE</th><th>DUE</th><th>FILED</th></tr></thead>
-              <tbody>
-                {returns.length === 0 ? <EmptyRow colSpan={4}>No returns yet.</EmptyRow> : returns.map((r) => (
-                  <tr key={r.id} id={`return-${r.id}`}><td><b>{returnLabel(r)}</b></td><td>{stageName(r.stage_id)}</td><td className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ?? "—"}</td><td>{r.filed_on ?? "—"}</td></tr>
-                ))}
-              </tbody>
-            </table></div>
-          </section>
-          <form action={addReturnAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
-            <h2 className="is-wide">Add a return</h2>
-            <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="back" value={back} />
-            <label>Tax year *<input name="tax_year" required inputMode="numeric" maxLength={4} defaultValue={new Date().getUTCFullYear() - 1} /></label>
-            <label>Kind<select name="kind" defaultValue="original">{Object.entries(RETURN_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-            <label>Due date<input name="due_on" type="date" /><small className="monarch-muted">Leave blank for April 15 (October 15 for an extension).</small></label>
-            <div className="is-wide"><button className="monarch-primary">Add return</button></div>
-          </form>
-        </>
-      )}
 
       {tab === "billing" && (
         <>

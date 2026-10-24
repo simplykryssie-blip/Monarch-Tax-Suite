@@ -31,7 +31,7 @@ export function RevealSsn({ clientId, last4, onFile }: { clientId: string; last4
 
   return (
     <div className="cl-ssn" aria-live="polite">
-      <span className="cl-ssn-value"><b>{value ?? masked}</b>{!onFile && last4 && <small className="monarch-muted"> Last four only. Add the full number below.</small>}</span>
+      <span className="cl-ssn-value"><b>{value ?? masked}</b></span>
       {onFile && !asking && !value && <button type="button" className="monarch-secondary efin-small" onClick={() => { setAsking(true); setError(null); }}>Reveal</button>}
       {value && <button type="button" className="monarch-secondary efin-small" onClick={() => setValue(null)}>Hide</button>}
       {onFile && <button type="button" className="monarch-secondary efin-small" aria-pressed={editing} onClick={() => setEditing((e) => !e)}>{editing ? "Cancel" : "Edit"}</button>}
@@ -46,10 +46,8 @@ export function RevealSsn({ clientId, last4, onFile }: { clientId: string; last4
       {(editing || !onFile) && (
         <div className="cl-ssn-edit">
           <label>{onFile ? "Correct the number" : "Add the full number"}<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder="Nine digits" /></label>
-          <small className="monarch-muted">Kept encrypted. It is saved when you press Save below.</small>
         </div>
       )}
-      {onFile && <small className="monarch-muted">Showing the full number needs your password and is recorded.</small>}
     </div>
   );
 }

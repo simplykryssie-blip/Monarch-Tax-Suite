@@ -10,7 +10,7 @@ import { pipelinesRepo } from "@/lib/pipelines/server";
 import { returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
 import { emitInvoicePaid, emitReturnStage } from "@/lib/automation/emit";
-import { addClient, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveClient, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
+import { addBusiness, addClient, addDependent, linkSpouse, unlinkSpouse, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveClient, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
 import { loadBrand } from "@/lib/branding/server";
@@ -18,6 +18,12 @@ import { canTakePayments } from "@/lib/connect/service.ts";
 import { connectDeps } from "@/lib/connect/server";
 import { invoiceNoticeEmail } from "@/lib/portal/invoices.ts";
 import { portalLink, portalMemberRepo, sendPortalEmail } from "@/lib/portal/server";
+import { portalMessageEmail } from "@/lib/portal/invoices.ts";
+import { createLead } from "@/lib/leads/service.ts";
+import { leadsDeps } from "@/lib/leads/server";
+import { commerceRepo } from "@/lib/admin";
+import { currentTier } from "@/lib/tier-server";
+import { allows } from "@/lib/tier.ts";
 import { currentTenantId } from "@/lib/tenants.ts";
 import { checkSsn, revealSsn, storeSsn } from "@/lib/ssn/service.ts";
 import { revealGate, ssnDeps } from "@/lib/ssn/server";
@@ -90,6 +96,43 @@ export async function saveClientAction(form: FormData) {
     if (ssn) await storeSsn(ssnDeps(), { clientId: id, ssn, actorId: adminId });
     return { notice: "Saved." };
   });
+}
+
+/** The one Add button: a client, a lead or (on plans with the store) a customer. Errors come back to the popup so nothing typed is lost. */
+export async function addContactAction(form: FormData): Promise<{ error: string; field?: string } | undefined> {
+  const admin = await requireAdmin();
+  let to: string;
+  try {
+    const kind = str(form, "kind");
+    const fields = raw(form);
+    const name = [str(form, "first_name"), str(form, "last_name")].map((s) => s.trim()).filter(Boolean).join(" ");
+    const tier = await currentTier();
+    if (kind === "client") {
+      const ssn = typedSsn(form);
+      const c = await addClient(workspaceRepo(), fields, admin.userId);
+      if (ssn) await storeSsn(ssnDeps(), { clientId: c.id, ssn, actorId: admin.userId });
+      to = clientPage(c.id);
+    } else if (kind === "lead") {
+      if (!allows(tier, "leads")) throw new ValidationError("Leads aren't part of this plan.");
+      if (!str(form, "first_name").trim()) throw new ValidationError("Enter the first name.");
+      const lead = await createLead(leadsDeps(), { ...fields, full_name: name }, admin.userId);
+      to = `/leads/${lead.id}`;
+    } else if (kind === "customer") {
+      if (!allows(tier, "store")) throw new ValidationError("Customers aren't part of this plan.");
+      const email = str(form, "email").trim().toLowerCase();
+      if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ValidationError("A customer needs a name and an email address.");
+      const c = await commerceRepo().createCustomer({ email, full_name: name, stripe_customer_id: null });
+      to = `/customers/${c.id}`;
+    } else {
+      throw new ValidationError("Choose client, lead or customer.");
+    }
+  } catch (e) {
+    unstable_rethrow(e);
+    return { error: failure(e) };
+  }
+  revalidatePath("/contacts");
+  revalidatePath("/workspace", "layout");
+  redirect(to);
 }
 
 /** Shows one client's full SSN or ITIN for a few seconds after the person types their password again. Every try is recorded. */
@@ -181,12 +224,60 @@ export async function sendMessageAction(form: FormData) {
   });
 }
 
+/** A message written to the client's portal, with an email telling them it is waiting. */
+export async function sendPortalMessageAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id, "messages"), async (adminId) => {
+    const tenantId = currentTenantId();
+    const repo = workspaceRepo();
+    const client = await repo.getClient(id);
+    if (!client) throw new ValidationError("That client wasn't found.");
+    if (client.archived_at) throw new ValidationError("This client is archived. Restore them to send messages.");
+    const body = str(form, "body").replace(/\r\n/g, "\n").trim().slice(0, 4000);
+    if (!body) throw new ValidationError("Write the message.");
+    const member = await portalMemberRepo(tenantId).getForClient(id);
+    if (!member || member.status !== "active") throw new ValidationError("This client doesn't have portal access yet. Use the Portal button to invite them.");
+    const subject = str(form, "subject").replace(/\s+/g, " ").trim().slice(0, 200);
+    await repo.insertMessage({ client_id: id, direction: "out", channel: "portal", subject: subject || null, body, occurred_at: new Date().toISOString(), created_by: adminId, status: "sent", sent_to: member.email });
+    const office = (await loadBrand(tenantId)).name;
+    const problem = await sendPortalEmail(tenantId, member.email, portalMessageEmail({ office, name: member.full_name, link: await portalLink("/messages") }));
+    return { notice: problem ? `The message is in the portal, but the email telling them didn't go out (${problem}).` : `Message sent to ${member.email}'s portal.` };
+  });
+}
+
 export async function logMessageAction(form: FormData) {
   const id = str(form, "client_id");
   await act(clientPage(id, "messages"), async (adminId) => {
     await logMessage(workspaceRepo(), id, raw(form), adminId);
     return { notice: "Message logged." };
   });
+}
+
+// ---- household: spouse, dependents, businesses
+
+export async function linkSpouseAction(form: FormData) {
+  const id = str(form, "id");
+  await act(clientPage(id), async () => { await linkSpouse(workspaceRepo(), id, str(form, "spouse_id")); return { notice: "Spouse linked." }; });
+}
+export async function unlinkSpouseAction(form: FormData) {
+  const id = str(form, "id");
+  await act(clientPage(id), async () => { await unlinkSpouse(workspaceRepo(), id); return { notice: "Spouse unlinked." }; });
+}
+export async function addDependentAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async (adminId) => { await addDependent(workspaceRepo(), raw(form), adminId); return { notice: "Dependent added." }; });
+}
+export async function removeDependentAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async () => { await workspaceRepo().deleteDependent(str(form, "id")); return { notice: "Dependent removed." }; });
+}
+export async function addBusinessAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async (adminId) => { await addBusiness(workspaceRepo(), raw(form), adminId); return { notice: "Business added." }; });
+}
+export async function removeBusinessAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async () => { await workspaceRepo().deleteBusiness(str(form, "id")); return { notice: "Business removed." }; });
 }
 
 // ---- documents (uploaded straight to private storage, then checked)

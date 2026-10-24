@@ -54,7 +54,7 @@ export async function ClientsView({ ctx, sp }: { ctx: PrepContext; sp: Search })
           <label>Name *<input name="full_name" required maxLength={200} autoComplete="off" /></label>
           <label>Email<input name="email" type="email" maxLength={254} autoComplete="off" /></label>
           <label>Phone<FormattedInput kind="phone" name="phone" autoComplete="off" /></label>
-          <label>Social Security number or ITIN<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder="Nine digits" /><small className="monarch-muted">Kept encrypted. Only the last four show.</small></label>
+          <label>Social Security number or ITIN<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder="Nine digits" /></label>
           <label className="is-wide">Address<input name="address" maxLength={300} autoComplete="off" /></label>
           <div className="is-wide"><button className="monarch-primary">Add client</button></div>
         </form>
@@ -69,7 +69,7 @@ export async function ClientView({ ctx, id, sp }: { ctx: PrepContext; id: string
   // Notes and the message history (including what was imported). The client was already checked as one this person may see.
   const [notes, messages] = await Promise.all([ctx.deps.ws.listNotes(client.id).catch(() => []), ctx.deps.ws.listMessages(client.id).catch(() => [])]);
   const when = (iso: string) => new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Chicago" }).format(new Date(iso));
-  const CHANNEL = { email: "Email", sms: "Text", call: "Call", other: "Other" } as const;
+  const CHANNEL = { email: "Email", sms: "Text", call: "Call", other: "Other", portal: "Portal" } as const;
   return (
     <>
       <Link className="monarch-back" href={`${ctx.base}/clients`}>← My Clients</Link>

@@ -10,7 +10,6 @@ import { deliveryPathFor } from "@/lib/documents/service.ts";
 import { documentEmail } from "@/lib/documents/emails.ts";
 import { sendForSignature } from "@/lib/portal/signing.ts";
 import { ssnDeps } from "@/lib/ssn/server";
-import { clearSsn, storeSsn } from "@/lib/ssn/service.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { loadBrand } from "@/lib/branding/server";
 import { ValidationError } from "@/lib/commerce/validation.ts";
@@ -155,16 +154,3 @@ export async function sendSignatureAction(form: FormData) {
   });
 }
 
-export async function saveSsnAction(form: FormData) {
-  await run(form, async (s) => {
-    await storeSsn(ssnDeps(s.tenantId), { clientId: s.client.id, ssn: form.get("ssn"), actorId: s.userId });
-    return "Social Security number saved (encrypted).";
-  });
-}
-
-export async function clearSsnAction(form: FormData) {
-  await run(form, async (s) => {
-    await clearSsn(ssnDeps(s.tenantId), { clientId: s.client.id, actorId: s.userId });
-    return "Stored Social Security number removed.";
-  });
-}

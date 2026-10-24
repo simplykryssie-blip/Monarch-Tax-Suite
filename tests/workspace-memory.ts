@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Client, ClientDoc, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
 
 // The workspace in memory, with the database rules that matter: one original and one extension per client per year,
 // unique invoice numbers. Returns copies.
@@ -12,7 +12,14 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async listClients(f: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string } = {}) { return this.c(this.clients.filter((x) => (f.includeArchived || !x.archived_at) && (!f.ownerId || x.owner_id === f.ownerId) && (!f.organizationId || x.organization_id === f.organizationId) && (!f.q || x.full_name.toLowerCase().includes(f.q.toLowerCase())))); }
   async getClient(id: string) { return this.c(this.clients.find((x) => x.id === id) ?? null); }
   async insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null }) { const x: Client = { owner_id: null, organization_id: null, ...this.c(input), id: randomUUID(), tenant_id: "t", archived_at: null, created_at: this.at(), updated_at: this.at() }; this.clients.push(x); return this.c(x); }
-  async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null }) { const x = this.clients.find((y) => y.id === id)!; Object.assign(x, this.c(patch)); return this.c(x); }
+  dependents: Dependent[] = []; businesses: Business[] = [];
+  async listDependents(clientId: string) { return this.c(this.dependents.filter((d) => d.client_id === clientId)); }
+  async insertDependent(input: DependentInput) { const rest: Record<string, unknown> = { ...input }; delete rest.created_by; const d = { ...this.c(rest) as unknown as Dependent, id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.dependents.push(d); return this.c(d); }
+  async deleteDependent(id: string) { this.dependents = this.dependents.filter((d) => d.id !== id); }
+  async listBusinesses(clientId: string) { return this.c(this.businesses.filter((b) => b.client_id === clientId)); }
+  async insertBusiness(input: BusinessInput) { const rest: Record<string, unknown> = { ...input }; delete rest.created_by; const b = { ...this.c(rest) as unknown as Business, id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.businesses.push(b); return this.c(b); }
+  async deleteBusiness(id: string) { this.businesses = this.businesses.filter((b) => b.id !== id); }
+  async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null }) { const x = this.clients.find((y) => y.id === id)!; Object.assign(x, this.c(patch)); return this.c(x); }
 
   async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) { return this.c(this.returns.filter((r) => (f.includeArchived || !r.archived_at) && (!f.assigneeId || r.assignee_id === f.assigneeId) && (!f.organizationId || r.organization_id === f.organizationId) && (!f.year || r.tax_year === f.year) && (!f.clientId || r.client_id === f.clientId))); }
   async getReturn(id: string) { return this.c(this.returns.find((r) => r.id === id) ?? null); }

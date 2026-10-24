@@ -53,7 +53,7 @@ export function WorkBoard({ columns }: { columns: BoardColumn[] }) {
               {c.cards.length === 0 && <span className="wb-empty">Drop a return here</span>}
               {c.cards.map((k) => (
                 <article key={k.id} className={"wb-card" + (drag === k.id ? " is-drag" : "")} draggable onDragStart={() => setDrag(k.id)} onDragEnd={() => { setDrag(null); setOver(null); }}>
-                  <Link href={`/workspace/clients/${k.clientId}?tab=work#return-${k.id}`}>{k.clientName}</Link>
+                  <Link href={`/workspace/clients/${k.clientId}#return-${k.id}`}>{k.clientName}</Link>
                   <span><span className={`wb-kind is-${k.kind}`}>{KIND[k.kind]}</span> {k.taxYear}</span>
                   {k.dueOn && <small className={k.late ? "wb-late" : "monarch-muted"}>{k.late ? "Late · " : "Due "}{k.dueOn}</small>}
                 </article>

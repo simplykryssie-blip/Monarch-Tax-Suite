@@ -3,6 +3,9 @@ import { requireAdmin } from "@/lib/admin";
 import { EmptyRow, PageTitle, when } from "@/components/admin/ui";
 import { countContacts, DUPLICATE_REASON, filterContacts, type Contact, type ContactFilter } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
+import { AddContact } from "@/components/contacts/add-contact";
+import { contactKinds } from "@/lib/contacts/kinds.ts";
+import { currentTier } from "@/lib/tier-server";
 
 const KINDS = ["", "lead", "client", "customer", "inactive"] as const;
 const CHIP: Record<string, string> = { lead: "#fff1cc", client: "#e0ecff", customer: "#eee4fb" };
@@ -21,6 +24,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   await requireAdmin();
   const sp = await searchParams;
   const kind = (KINDS as readonly string[]).includes(sp.kind ?? "") ? ((sp.kind ?? "") as ContactFilter["kind"]) : "";
+  const kinds = contactKinds(await currentTier());
   const data = await loadContacts();
   const counts = countContacts(data.contacts);
   const rows = filterContacts(data.contacts, { q: sp.q, kind });
@@ -38,6 +42,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageTitle title="Contacts">Leads, clients and store customers in one list. A person found in more than one place is one contact.</PageTitle>
+      <div className="cl-head-actions"><AddContact kinds={kinds} /></div>
       {data.notes.map((n) => <div key={n} className="monarch-notice" role="status">{n}</div>)}
       <nav className="mf-tabs" aria-label="Contacts view" style={{ marginBottom: 12 }}>
         <Link href="/contacts" className={!review ? "is-active" : undefined} aria-current={!review ? "page" : undefined}>Contacts</Link>
@@ -97,7 +102,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   ) : (
                     rows.map((c) => (
                       <tr key={c.key}>
-                        <td><Link href={`/contacts/${c.key}`}><b>{c.name}</b></Link><small className="monarch-subcell">{c.email ?? "no email"}</small></td>
+                        <td><Link href={c.refs.clientId ? `/workspace/clients/${c.refs.clientId}` : `/contacts/${c.key}`}><b>{c.name}</b></Link><small className="monarch-subcell">{c.email ?? "no email"}</small></td>
                         <td><Chips c={c} /></td>
                         <td>{c.phone ?? "—"}</td>
                         <td>{c.tags.join(", ") || "—"}</td>

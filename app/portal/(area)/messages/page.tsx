@@ -14,7 +14,7 @@ export default async function PortalMessages() {
           <ul className="portal-list">
             {messages.map((m) => (
               <li key={m.id}>
-                <b>{m.direction === "in" ? "You" : ctx.office.name}</b> <span className="monarch-muted">· {m.channel === "sms" ? "Text" : "Email"} · {when(m.occurred_at)}</span>
+                <b>{m.direction === "in" ? "You" : ctx.office.name}</b> <span className="monarch-muted">· {m.channel === "sms" ? "Text" : m.channel === "portal" ? "Message" : "Email"} · {when(m.occurred_at)}</span>
                 {m.subject && <div><b>{m.subject}</b></div>}
                 <p style={{ whiteSpace: "pre-wrap", margin: "4px 0 0" }}>{m.body}</p>
               </li>

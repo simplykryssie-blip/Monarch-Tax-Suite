@@ -1,6 +1,4 @@
-import { FormattedInput } from "@/components/forms/formatted-input";
-import Link from "next/link";
-import { clearSsnAction, saveSsnAction, sendSignatureAction, cancelRequestAction, invitePortalAction, openStaffDocAction, requestDocAction, setPortalAccessAction, shareDocAction, withdrawPortalAction } from "@/app/portal-staff-actions";
+import { sendSignatureAction, cancelRequestAction, invitePortalAction, openStaffDocAction, requestDocAction, setPortalAccessAction, shareDocAction, withdrawPortalAction } from "@/app/portal-staff-actions";
 import { documentDeps } from "@/lib/documents/server";
 import { askFieldsFor } from "@/lib/portal/signing.ts";
 import { portalMemberRepo, portalStaffRepo } from "@/lib/portal/server";
@@ -107,7 +105,7 @@ export async function PortalPanel({ area, tenantId, clientId, email, signDocId, 
                 <form action={sendSignatureAction} className="monarch-form" style={{ marginTop: 14 }}>
                   {hidden}
                   <input type="hidden" name="document_id" value={signing.chosen.id} />
-                  <p className="is-wide">Filled in automatically from the client&apos;s record and your firm profile. {signing.chosen.needsSsn ? (signing.ssnOnFile ? "The client's Social Security number is filled from the encrypted copy." : "This form needs the client's Social Security number: add it under Tax ID below first.") : ""}</p>
+                  <p className="is-wide">Filled in automatically from the client&apos;s record and your firm profile. {signing.chosen.needsSsn ? (signing.ssnOnFile ? "The client's Social Security number is filled from the encrypted copy." : "This form needs the client's Social Security number: add it on the client's Overview first.") : ""}</p>
                   {signing.asks.map((a) => <label key={a.name} className="is-wide">{a.label} *<input name={a.name} required maxLength={300} /></label>)}
                   <label className="is-wide">Message to the client (optional)<input name="message" maxLength={1000} /></label>
                   <div className="is-wide"><button className="monarch-primary" disabled={!email || (signing.chosen.needsSsn && !signing.ssnOnFile)}>Send to {email ?? "the client"}</button></div>
@@ -116,17 +114,6 @@ export async function PortalPanel({ area, tenantId, clientId, email, signDocId, 
               {signing.error && <p className="monarch-alert is-error" role="alert">{signing.error}</p>}
             </>
           )}
-        </section>
-        <section className="monarch-panel" style={{ padding: 20 }}>
-          <h2 style={{ marginTop: 0 }}>Tax ID</h2>
-          <p>{signing.ssnOnFile ? "A full Social Security number is on file, encrypted." : "No full Social Security number on file."} It is used only to fill IRS forms you send, and every use is recorded. The portal and exports show the last four digits only.</p>
-          <form action={saveSsnAction} className="monarch-form" autoComplete="off">
-            {hidden}
-            <label>{signing.ssnOnFile ? "Replace with" : "Social Security number"}<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder="9 digits" /></label>
-            <div className="is-wide"><button className="monarch-secondary">{signing.ssnOnFile ? "Replace" : "Save"}</button></div>
-          </form>
-          {signing.ssnOnFile && <form action={clearSsnAction} style={{ marginTop: 8 }}>{hidden}<button className="monarch-link is-danger">Remove the stored number</button></form>}
-          <p className="monarch-muted" style={{ marginTop: 10 }}>Signed forms the client has returned are in <Link href="/documents">Documents</Link>.</p>
         </section>
       </>
     )}

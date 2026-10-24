@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { Badge, money, PageTitle, when } from "@/components/admin/ui";
 import { DUPLICATE_REASON, parseContactKey } from "@/lib/contacts/combine.ts";
@@ -14,6 +14,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
   const data = await loadContacts();
   const contact = data.contacts.find((c) => c.key === key);
   if (!contact) notFound();
+  if (contact.refs.clientId) redirect(`/workspace/clients/${contact.refs.clientId}`);
 
   const lead = data.leads.find((l) => l.id === contact.refs.leadId) ?? null;
   const client = data.clients.find((c) => c.id === contact.refs.clientId) ?? null;
