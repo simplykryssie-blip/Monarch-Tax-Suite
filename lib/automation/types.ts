@@ -23,7 +23,9 @@ export type RemoveTagAction = { type: "remove_tag"; tag: string };
 export type UpdateContactAction = { type: "update_contact"; field: "lead_status"; value: string };
 /** A text from the office's own number, sent only to a person who agreed to texts. */
 export type SendTextAction = { type: "send_text"; body: string };
-export type Action = SendEmailAction | RecordNoteAction | SendDocumentAction | RequestSignatureAction | CreateTaskAction | AddTagAction | RemoveTagAction | UpdateContactAction | SendTextAction;
+/** Moves the return or piece of work the event is about to a stage of its pipeline, skipping any stages in between. */
+export type MoveStageAction = { type: "move_stage"; pipeline_id: string; stage_id: string };
+export type Action = MoveStageAction | SendEmailAction | RecordNoteAction | SendDocumentAction | RequestSignatureAction | CreateTaskAction | AddTagAction | RemoveTagAction | UpdateContactAction | SendTextAction;
 
 /** Holds the run until a time has passed. Business mode counts only the office's open hours (Settings → Business hours). */
 export type WaitStep = { type: "wait"; amount: number; unit: "minutes" | "hours" | "days"; mode: "business" | "calendar" };

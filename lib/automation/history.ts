@@ -18,7 +18,7 @@ export type HistoryRow = {
   isTest: boolean;
 };
 
-const STEP_NAME: Record<string, string> = { send_email: "Send email", send_document: "Send a document", request_signature: "Request a signature", record_note: "Record a note", wait: "Wait", branch: "If / else", create_task: "Create a task", add_tag: "Add a tag", remove_tag: "Remove a tag", update_contact: "Update the lead", send_text: "Send a text" };
+const STEP_NAME: Record<string, string> = { send_email: "Send email", send_document: "Send a document", request_signature: "Request a signature", record_note: "Record a note", wait: "Wait", branch: "If / else", create_task: "Create a task", add_tag: "Add a tag", remove_tag: "Remove a tag", update_contact: "Update the lead", send_text: "Send a text", move_stage: "Move to a stage" };
 export const stepName = (type: string) => STEP_NAME[type] ?? type.replace(/_/g, " ");
 
 export function historyRows(input: {

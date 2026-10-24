@@ -30,6 +30,8 @@ export interface ContactPort {
   /** False when this run already made a task with this title (a retried step never doubles up). */
   createTask(task: { title: string; dueOn: string | null; contact: Contact | null; executionId: string }): Promise<boolean>;
   sendText(contact: Contact, body: string, reference: string): Promise<SendTextResult>;
+  /** Moves the return or work the event is about to a stage of the pipeline. `reason` says why nothing moved. */
+  moveStage(event: Pick<AutomationEvent, "subject_type" | "subject_id" | "data">, pipelineId: string, stageId: string): Promise<{ moved: boolean; reason?: string; from?: string; to?: string }>;
 }
 
 /** Condition fields that need the person. */

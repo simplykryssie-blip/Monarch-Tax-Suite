@@ -7,6 +7,7 @@ import { stepsOf } from "@/lib/automation/steps.ts";
 import type { Condition, Step } from "@/lib/automation/types.ts";
 import { OffsetField, StepBuilder } from "@/components/automation/step-builder";
 import { commerceRepo } from "@/lib/admin";
+import { pipelinesRepo } from "@/lib/pipelines/server";
 import { saveWorkflowAction, testWorkflowAction, testWorkflowWithClientAction, workflowStatusAction } from "../../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -18,6 +19,7 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
   if (!isNew && !UUID.test(id)) notFound();
   const deps = automationDeps();
   const [templates, wf, catalog] = await Promise.all([deps.repo.listTemplates(), isNew ? null : deps.repo.getWorkflow(id), workflowCatalog(deps)]);
+  const pipelines = await pipelinesRepo().list().catch(() => []);
   const activeDocs = catalog.documents.filter((d) => d.status === "active");
   if (!isNew && !wf) notFound();
   const conditions: Partial<Condition>[] = wf?.conditions ?? [];
@@ -68,6 +70,7 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
             templates: templates.map((t) => ({ id: t.id, name: t.name, active: t.active })),
             documents: activeDocs.map((d) => ({ id: d.id, name: d.name, file_type: d.file_type })),
             senders: catalog.senders.map((x) => ({ id: x.id, label: `${x.from_name} <${x.address}>` })),
+            pipelines: pipelines.filter((x) => !x.archived_at).map((x) => ({ id: x.id, name: x.name, stages: x.stages.map((st) => ({ id: st.id, name: st.name })) })),
           }}
         />
         <label>Attempts before giving up (1–8)<input name="max_attempts" type="number" min={1} max={8} defaultValue={wf?.max_attempts ?? 4} /></label>

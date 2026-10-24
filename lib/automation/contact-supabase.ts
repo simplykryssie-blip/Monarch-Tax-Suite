@@ -99,6 +99,26 @@ export class SupabaseContacts implements ContactPort {
     return changed;
   }
 
+  async moveStage(event: { subject_type?: string | null; subject_id?: string | null; data: Record<string, unknown> }, pipelineId: string, stageId: string) {
+    const pipeline = await this.one("pipelines", "id", pipelineId);
+    const stages = (pipeline?.stages as { id: string; name: string }[] | undefined) ?? [];
+    const target = stages.find((s) => s.id === stageId);
+    if (!pipeline || pipeline.archived_at || !target) return { moved: false, reason: "That pipeline or stage no longer exists. Choose it again in the workflow." };
+    const workId = typeof event.data.work_id === "string" ? event.data.work_id : null;
+    const table = event.subject_type === "return" && event.subject_id ? "client_returns" : workId ? "client_work" : null;
+    const id = table === "client_returns" ? event.subject_id : workId;
+    if (!table || !id) return { moved: false, reason: "This event isn't about a return or a piece of work, so there is nothing to move." };
+    if ((table === "client_returns") !== (pipeline.kind === "returns")) return { moved: false, reason: `This event is about ${table === "client_returns" ? "a tax return" : "other work"}, but the step points at the ${pipeline.name} pipeline.` };
+    const row = await this.one(table, "id", id);
+    if (!row) return { moved: false, reason: "That return or work no longer exists." };
+    if (table === "client_work" && row.pipeline_id !== pipelineId) return { moved: false, reason: `This work isn't in the ${pipeline.name} pipeline.` };
+    if (row.stage_id === stageId) return { moved: false, reason: `Already in ${target.name}.` };
+    const from = stages.find((s) => s.id === row.stage_id)?.name;
+    const { error } = await this.db.from(table).update({ stage_id: stageId }).eq("id", id);
+    if (error) throw new Error(`${table} stage update failed: ${error.message}`);
+    return { moved: true, from, to: target.name };
+  }
+
   async addTag(c: Contact, tag: string) {
     const n = await this.changeTags(c, (tags) => (tags.includes(tag) || tags.length >= TAG_MAX ? null : [...tags, tag]));
     if (n && !c.tags.includes(tag)) c.tags.push(tag);

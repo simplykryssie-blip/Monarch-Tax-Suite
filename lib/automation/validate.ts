@@ -170,6 +170,12 @@ function validateAction(a: RawAction, ctx: Ctx): Action {
     if (!Object.prototype.hasOwnProperty.call(LEAD_STATUSES, value)) throw new ValidationError(`Choose a lead status: ${Object.keys(LEAD_STATUSES).join(", ")}.`);
     return { type: "update_contact", field: "lead_status", value };
   }
+  if (a.type === "move_stage") {
+    const pipeline_id = text(a.pipeline_id, 60);
+    const stage_id = text(a.stage_id, 80);
+    if (!pipeline_id || !stage_id) throw new ValidationError("Choose the pipeline and the stage to move to.");
+    return { type: "move_stage", pipeline_id, stage_id };
+  }
   if (a.type === "send_text") {
     const body = typeof a.body === "string" ? a.body.replace(/\r\n/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").trim() : "";
     if (!body) throw new ValidationError("Write the text message.");

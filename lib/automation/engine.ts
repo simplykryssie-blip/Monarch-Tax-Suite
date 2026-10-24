@@ -439,19 +439,24 @@ async function runDocumentStep(deps: AutomationDeps, exec: Execution, event: Aut
 
 type RunCtx = { contact: () => Promise<Contact | null> };
 
-const NEW_ACTIONS = new Set(["create_task", "add_tag", "remove_tag", "update_contact", "send_text"]);
+const NEW_ACTIONS = new Set(["create_task", "add_tag", "remove_tag", "update_contact", "send_text", "move_stage"]);
 
 async function runAction(deps: AutomationDeps, exec: Execution, event: AutomationEvent, action: Action, index: number, ctx: RunCtx): Promise<ActionOutcome> {
   if (action.type === "record_note") return { status: "ok", detail: action.note.slice(0, 300) };
   if (action.type === "send_document" || action.type === "request_signature") return runDocumentStep(deps, exec, event, action, index);
   if (action.type === "send_email") return runSendEmail(deps, exec, event, action, index);
-  return runContactStep(deps, exec, action, index, ctx);
+  return runContactStep(deps, exec, action, index, ctx, event);
 }
 
 /** Tags, lead status, tasks and texts. These need the person, so they say plainly when there isn't one. */
-async function runContactStep(deps: AutomationDeps, exec: Execution, action: Extract<Action, { type: "create_task" | "add_tag" | "remove_tag" | "update_contact" | "send_text" }>, index: number, ctx: RunCtx): Promise<ActionOutcome> {
+async function runContactStep(deps: AutomationDeps, exec: Execution, action: Extract<Action, { type: "create_task" | "add_tag" | "remove_tag" | "update_contact" | "send_text" | "move_stage" }>, index: number, ctx: RunCtx, event?: AutomationEvent): Promise<ActionOutcome> {
   const port = deps.contacts;
   if (!port) return { status: "failed", kind: "config", detail: "This step needs the contact records, which aren't connected for this account." };
+  if (action.type === "move_stage") {
+    if (!event) return { status: "failed", kind: "config", detail: "This step needs the event it runs for." };
+    const r = await port.moveStage(event, action.pipeline_id, action.stage_id);
+    return r.moved ? { status: "ok", detail: `Moved from ${r.from ?? "its old stage"} to ${r.to}.` } : { status: "skipped", kind: "skipped", detail: `Skipped: ${r.reason}` };
+  }
   const contact = await ctx.contact();
   const nobody = (what: string): ActionOutcome => ({ status: "skipped", kind: "skipped", detail: `Skipped: this event isn't about a lead or client, so there is nobody to ${what}.` });
   if (action.type === "create_task") {
@@ -502,6 +507,7 @@ async function dryRunStep(deps: AutomationDeps, event: AutomationEvent, action: 
   }
   if (action.type === "create_task") return { status: "skipped", kind: "skipped", detail: `Skipped in test: would add the task "${action.title}"${action.due_days === null ? "" : `, due in ${action.due_days} day${action.due_days === 1 ? "" : "s"}`}.` };
   if (action.type === "add_tag" || action.type === "remove_tag") return { status: "skipped", kind: "skipped", detail: `Skipped in test: would ${action.type === "add_tag" ? "add" : "remove"} the tag "${action.tag}".` };
+  if (action.type === "move_stage") return { status: "skipped", kind: "skipped", detail: "Skipped in test: would move the return or work to the chosen stage." };
   if (action.type === "update_contact") return { status: "skipped", kind: "skipped", detail: `Skipped in test: would mark the lead ${action.value}.` };
   if (action.type === "send_text") return { status: "skipped", kind: "skipped", detail: `Skipped in test: would text "${action.body.slice(0, 60)}${action.body.length > 60 ? "…" : ""}" (only if the person agreed to texts).` };
   const what = action.type === "request_signature" ? "request a signature on" : "send";
