@@ -3,8 +3,8 @@ import { ValidationError } from "../commerce/validation.ts";
 import { parseMoney } from "../fees/engine.ts";
 import { parseTags, TAG_MAX } from "../leads/tags.ts";
 import { changedFields, type FieldChange } from "./activity.ts";
-import { balance, checkBusiness, checkClient, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
-import type { Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
+import { balance, checkBusiness, checkClient, checkWork, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
+import type { ClientWork, Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
 // My Workspace orchestration: each function checks its input with the rules, then uses the repository. Nothing here
 // reaches outside the tenant: the repository is built on the tenant-scoped database client.
@@ -88,6 +88,22 @@ export async function moveReturn(repo: WorkspaceRepo, id: string, stageId: strin
   if (!r || r.archived_at) throw new ValidationError("That return wasn't found.");
   if (!stageIds.includes(stageId)) throw new ValidationError("That stage isn't in the pipeline.");
   return repo.updateReturn(r.id, { stage_id: stageId, ...(stageId === stageIds[stageIds.length - 1] && !r.filed_on ? { filed_on: now.toISOString().slice(0, 10) } : {}) });
+}
+
+/** Starts a piece of work (planning, bookkeeping, payroll...) for a client in one of the office's pipelines, in its first stage. */
+export async function addWork(repo: WorkspaceRepo, raw: Record<string, unknown>, pipeline: { id: string; stages: { id: string }[] }, actorId: string): Promise<ClientWork> {
+  const w = checkWork(raw);
+  const client = await repo.getClient(uuid(w.client_id, "That client"));
+  if (!client || client.archived_at) throw new ValidationError("That client wasn't found.");
+  if (!pipeline.stages.length) throw new ValidationError("That pipeline has no stages yet.");
+  return repo.insertWork({ ...w, client_id: client.id, pipeline_id: pipeline.id, stage_id: pipeline.stages[0].id, created_by: actorId });
+}
+
+export async function moveWork(repo: WorkspaceRepo, id: string, stageId: string, stageIds: string[]): Promise<ClientWork> {
+  const w = await repo.getWork(uuid(id, "That work"));
+  if (!w || w.archived_at) throw new ValidationError("That work wasn't found.");
+  if (!stageIds.includes(stageId)) throw new ValidationError("That stage isn't in the pipeline.");
+  return repo.updateWork(w.id, { stage_id: stageId });
 }
 
 export async function addTask(repo: WorkspaceRepo, clientId: string, raw: Record<string, unknown>, actorId: string) {

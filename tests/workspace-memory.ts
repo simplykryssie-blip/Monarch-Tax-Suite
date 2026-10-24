@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
 
 // The workspace in memory, with the database rules that matter: one original and one extension per client per year,
 // unique invoice numbers. Returns copies.
@@ -43,6 +43,11 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[] }) { const x = this.clients.find((y) => y.id === id)!; Object.assign(x, this.c(patch)); return this.c(x); }
 
   async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) { return this.c(this.returns.filter((r) => (f.includeArchived || !r.archived_at) && (!f.assigneeId || r.assignee_id === f.assigneeId) && (!f.organizationId || r.organization_id === f.organizationId) && (!f.year || r.tax_year === f.year) && (!f.clientId || r.client_id === f.clientId))); }
+  work: ClientWork[] = [];
+  async listWork(f: { clientId?: string; pipelineId?: string } = {}) { return this.c(this.work.filter((w) => !w.archived_at && (!f.clientId || w.client_id === f.clientId) && (!f.pipelineId || w.pipeline_id === f.pipelineId))); }
+  async getWork(id: string) { return this.c(this.work.find((w) => w.id === id) ?? null); }
+  async insertWork(input: WorkInput & { created_by: string | null; assignee_id?: string | null }) { const w: ClientWork = { assignee_id: null, ...this.c(input), id: randomUUID(), tenant_id: "t", created_at: this.at(), archived_at: null }; this.work.push(w); return this.c(w); }
+  async updateWork(id: string, patch: Partial<Pick<ClientWork, "stage_id" | "title" | "due_on" | "notes" | "assignee_id" | "archived_at">>) { const w = this.work.find((x) => x.id === id)!; Object.assign(w, this.c(patch)); return this.c(w); }
   async getReturn(id: string) { return this.c(this.returns.find((r) => r.id === id) ?? null); }
   async insertReturn(input: ReturnInput & { assignee_id?: string | null; organization_id?: string | null }) {
     if (input.kind !== "amendment" && this.returns.some((r) => !r.archived_at && r.client_id === input.client_id && r.tax_year === input.tax_year && r.kind === input.kind)) throw new Error('duplicate key value violates unique constraint "client_returns_one_per_year"');

@@ -11,7 +11,7 @@ import { returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
 import { emitInvoicePaid, emitReturnStage, emitTagChanges } from "@/lib/automation/emit";
 import { yesNo } from "@/lib/workspace/rules.ts";
-import { addBusiness, addClient, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
+import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
 import { loadBrand } from "@/lib/branding/server";
@@ -167,6 +167,34 @@ export async function addReturnAction(form: FormData) {
     const r = await addReturn(workspaceRepo(), raw(form), stages[0].id);
     return { notice: `${r.kind === "original" ? "Return" : r.kind === "extension" ? "Extension" : "Amendment"} added for ${r.tax_year}.` };
   });
+}
+
+/** Adds a piece of work that is not a tax return to the chosen pipeline. */
+export async function addWorkAction(form: FormData) {
+  const pipelineId = str(form, "pipeline_id");
+  const back = `/workspace/work?pipeline=${encodeURIComponent(pipelineId)}`;
+  await act(back, async (adminId) => {
+    const pipeline = (await pipelinesRepo().list()).find((p) => p.id === pipelineId && !p.archived_at);
+    if (!pipeline) throw new ValidationError("Choose a pipeline.");
+    await addWork(workspaceRepo(), raw(form), pipeline, adminId);
+    return { notice: `Added to ${pipeline.name}.` };
+  });
+}
+
+/** Called by the board when work in another pipeline is dropped on a stage. */
+export async function moveWorkAction(workId: string, stageId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireAdmin();
+    const work = await workspaceRepo().getWork(workId);
+    const pipeline = work ? (await pipelinesRepo().list()).find((p) => p.id === work.pipeline_id) : null;
+    if (!pipeline) throw new ValidationError("That work wasn't found.");
+    await moveWork(workspaceRepo(), workId, stageId, pipeline.stages.map((s) => s.id));
+    revalidatePath("/workspace", "layout");
+    return { ok: true };
+  } catch (e) {
+    unstable_rethrow(e);
+    return { ok: false, error: failure(e) };
+  }
 }
 
 /** Called by the board when a card is dropped on another stage. */

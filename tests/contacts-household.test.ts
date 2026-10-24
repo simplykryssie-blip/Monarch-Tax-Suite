@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addDependent, addBusiness, linkSpouse, unlinkSpouse, addClient, saveClientTags } from "../lib/workspace/service.ts";
-import { addressLine, checkBusiness, checkClient, checkDependent, splitName } from "../lib/workspace/rules.ts";
+import { addDependent, addBusiness, linkSpouse, unlinkSpouse, addClient, saveClientTags, addWork, moveWork } from "../lib/workspace/service.ts";
+import { buildWorkBoard, addressLine, checkBusiness, checkClient, checkDependent, splitName } from "../lib/workspace/rules.ts";
 import { MemoryWorkspace } from "./workspace-memory.ts";
 
 test("names are kept in parts; a form that sends only a full name is split, and the last word is the last name", () => {
@@ -198,4 +198,21 @@ test("a contact's tags are saved tidy, changes are reported and recorded, and mo
   const same = await saveClientTags(repo, c.id, "referral, new client");
   assert.deepEqual(same.before, same.after);
   await assert.rejects(saveClientTags(repo, c.id, Array.from({ length: 13 }, (_, i) => `t${i}`)), /up to 12/);
+});
+
+test("work in another pipeline starts in its first stage, moves only to its own stages, and shows on the board", async () => {
+  const repo = new MemoryWorkspace();
+  const c = await addClient(repo, { full_name: "Ada King" }, "u1");
+  const pipeline = { id: "p1", stages: [{ id: "s1" }, { id: "s2" }, { id: "s3" }] };
+  const w = await addWork(repo, { client_id: c.id, title: "October books", due_on: "2026-11-05" }, pipeline, "u1");
+  assert.equal(w.stage_id, "s1");
+  await assert.rejects(addWork(repo, { client_id: "nope" }, pipeline, "u1"), /client/i);
+  await assert.rejects(addWork(repo, { client_id: c.id }, { id: "p1", stages: [] }, "u1"), /no stages/);
+  await assert.rejects(moveWork(repo, w.id, "zzz", ["s1", "s2", "s3"]), /isn't in the pipeline/);
+  await moveWork(repo, w.id, "s2", ["s1", "s2", "s3"]);
+  const stages = [{ id: "s1", name: "New", color: "#000", done: false }, { id: "s2", name: "Working", color: "#000", done: false }, { id: "s3", name: "Done", color: "#000", done: true }];
+  const cols = buildWorkBoard(stages, await repo.listWork({ pipelineId: "p1" }), new Map([[c.id, (await repo.getClient(c.id))!]]), "2026-11-10");
+  assert.deepEqual(cols.map((x) => x.cards.length), [0, 1, 0]);
+  assert.equal(cols[1].cards[0].label, "October books");
+  assert.equal(cols[1].cards[0].late, true);
 });

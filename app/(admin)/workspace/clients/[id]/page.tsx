@@ -19,6 +19,7 @@ import { standardFees } from "@/lib/workspace/service.ts";
 import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
 import { hasStoredSsn } from "@/lib/ssn/service.ts";
 import { ssnDeps } from "@/lib/ssn/server";
+import { pipelinesRepo } from "@/lib/pipelines/server";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 import { TagInput } from "@/app/(admin)/leads/tag-input";
 import { invitePortalAction } from "@/app/portal-staff-actions";
@@ -48,16 +49,16 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     const repo = workspaceRepo();
     const client = await repo.getClient(id);
     if (!client) return null;
-    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard] = await Promise.all([
+    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines] = await Promise.all([
       repo.listReturns({ clientId: id }), repo.listDocs(id), repo.listMessages(id), repo.listTasks({ clientId: id }), repo.listNotes(id), repo.listInvoices({ clientId: id }), boardStages(),
       repo.listClients({ includeArchived: false }), repo.listDependents(id).catch(() => null), repo.listBusinesses(id).catch(() => null),
-      portalMemberRepo(client.tenant_id).getForClient(id).catch(() => null), repo.getSpouse(id).catch(() => null), repo.listClientEvents(id, 200).catch(() => []), standardFees(repo),
+      portalMemberRepo(client.tenant_id).getForClient(id).catch(() => null), repo.getSpouse(id).catch(() => null), repo.listClientEvents(id, 200).catch(() => []), standardFees(repo), repo.listWork({ clientId: id }).catch(() => []), pipelinesRepo().list().catch(() => []),
     ]);
-    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard };
+    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines };
   });
   if (result.ok && !result.data) notFound();
   if (!result.ok) return <><PageTitle title="Client" back={{ href: "/contacts", label: "Contacts" }} /><WorkspaceSetup message={result.message} /></>;
-  const { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard } = result.data!;
+  const { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines } = result.data!;
   // The office's own texting account, and its prepaid credits when it has them (tenant #1 pays Twilio directly).
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
@@ -243,6 +244,19 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   ))}</ul>
                 )}
               </section>
+
+              {work.length > 0 && (
+                <section className="monarch-panel cl-card">
+                  <div className="cl-card-head"><h2>Other work</h2></div>
+                  <ul className="cl-list">{work.map((w) => {
+                    const pl = pipelines.find((x) => x.id === w.pipeline_id);
+                    return (
+                      <li key={w.id}><span><b>{pl?.name ?? "Work"}{w.title ? `: ${w.title}` : ""}</b><small className="monarch-subcell">{pl?.stages.find((s) => s.id === w.stage_id)?.name ?? pl?.stages[0]?.name ?? ""}</small></span>
+                        <span className={w.due_on && w.due_on < today ? "wb-late" : undefined}>{w.due_on ? `due ${w.due_on}` : ""}</span></li>
+                    );
+                  })}</ul>
+                </section>
+              )}
 
               <section className="monarch-panel cl-card">
                 <div className="cl-card-head"><h2>Tasks</h2>{tasks.length > 0 && <Link className="monarch-link" href={`/workspace/clients/${id}?tab=tasks`}>See all ({tasks.length})</Link>}</div>

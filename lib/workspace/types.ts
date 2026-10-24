@@ -50,6 +50,13 @@ export type ClientReturn = {
 };
 export type ReturnInput = Pick<ClientReturn, "client_id" | "tax_year" | "kind" | "parent_id" | "stage_id" | "due_on" | "notes">;
 
+/** A piece of work that is not a tax return (planning, bookkeeping, payroll...). Its pipeline's name is the service. */
+export type ClientWork = {
+  id: string; tenant_id: string; client_id: string; pipeline_id: string; stage_id: string; title: string | null; due_on: string | null;
+  assignee_id: string | null; notes: string | null; created_by: string | null; created_at: string; archived_at: string | null;
+};
+export type WorkInput = Pick<ClientWork, "client_id" | "pipeline_id" | "stage_id" | "title" | "due_on" | "notes">;
+
 export type ClientDoc = { id: string; tenant_id: string; client_id: string; return_id: string | null; title: string; file_path: string; file_type: string; size_bytes: number | null; status: "pending" | "stored"; uploaded_by: string | null; created_at: string };
 export type ClientMessage = {
   id: string; tenant_id: string; client_id: string; direction: "out" | "in"; channel: "email" | "sms" | "call" | "other" | "portal"; subject: string | null; body: string; occurred_at: string; created_by: string | null; created_at: string;
@@ -105,6 +112,10 @@ export interface WorkspaceRepo {
 
   listReturns(f?: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string }): Promise<ClientReturn[]>;
   getReturn(id: string): Promise<ClientReturn | null>;
+  listWork(f?: { clientId?: string; pipelineId?: string }): Promise<ClientWork[]>;
+  getWork(id: string): Promise<ClientWork | null>;
+  insertWork(input: WorkInput & { created_by: string | null; assignee_id?: string | null }): Promise<ClientWork>;
+  updateWork(id: string, patch: Partial<Pick<ClientWork, "stage_id" | "title" | "due_on" | "notes" | "assignee_id" | "archived_at">>): Promise<ClientWork>;
   insertReturn(input: ReturnInput & { assignee_id?: string | null; organization_id?: string | null }): Promise<ClientReturn>;
   updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>): Promise<ClientReturn>;
 

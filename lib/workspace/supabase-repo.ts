@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
 
 // Workspace rows for one tenant, on the tenant client: the database's tenant policies scope every query.
 const unwrap = <T>(r: { data: T | null; error: { message: string } | null }): T => {
@@ -59,6 +59,15 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
     if (f.organizationId) q = q.eq("organization_id", f.organizationId);
     return unwrap(await q) as ClientReturn[];
   }
+  async listWork(f: { clientId?: string; pipelineId?: string } = {}) {
+    let q = this.db.from("client_work").select("*").is("archived_at", null).order("created_at").limit(5000);
+    if (f.clientId) q = q.eq("client_id", f.clientId);
+    if (f.pipelineId) q = q.eq("pipeline_id", f.pipelineId);
+    return unwrap(await q) as ClientWork[];
+  }
+  async getWork(id: string) { return unwrap(await this.db.from("client_work").select("*").eq("id", id).maybeSingle()) as ClientWork | null; }
+  async insertWork(input: WorkInput & { created_by: string | null; assignee_id?: string | null }) { return unwrap(await this.db.from("client_work").insert(input).select("*").single()) as ClientWork; }
+  async updateWork(id: string, patch: Partial<Pick<ClientWork, "stage_id" | "title" | "due_on" | "notes" | "assignee_id" | "archived_at">>) { return unwrap(await this.db.from("client_work").update(patch).eq("id", id).select("*").single()) as ClientWork; }
   async getReturn(id: string) { return unwrap(await this.db.from("client_returns").select("*").eq("id", id).maybeSingle()) as ClientReturn | null; }
   async insertReturn(input: ReturnInput & { assignee_id?: string | null; organization_id?: string | null }) { return unwrap(await this.db.from("client_returns").insert(input).select("*").single()) as ClientReturn; }
   async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>) { return unwrap(await this.db.from("client_returns").update(patch).eq("id", id).select("*").single()) as ClientReturn; }
