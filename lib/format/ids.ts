@@ -2,7 +2,7 @@
 // server when a value is saved. Each formatter takes whatever was typed or pasted and returns the standard form, cut off
 // at the right length, so a half-typed value is still shown the right way.
 
-export type IdKind = "phone" | "ssn" | "ein" | "efin" | "ptin" | "caf" | "zip";
+export type IdKind = "phone" | "ssn" | "ein" | "efin" | "ptin" | "caf" | "zip" | "money";
 
 export const digitsOf = (v: unknown): string => String(v ?? "").replace(/\D/g, "");
 
@@ -55,14 +55,32 @@ export function formatZip(v: unknown): string {
   return d.length <= 5 ? d : `${d.slice(0, 5)}-${d.slice(5)}`;
 }
 
+/** A dollar amount as typed: $1,234.50. Digits and one point only, up to two decimals, commas added. */
+export function formatMoney(v: unknown): string {
+  const raw = String(v ?? "").replace(/[^\d.]/g, "");
+  if (!raw) return "";
+  const [whole = "", ...rest] = raw.split(".");
+  const frac = rest.join("").slice(0, 2);
+  const digits = whole.replace(/^0+(?=\d)/, "").slice(0, 8) || "0";
+  return `$${digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${raw.includes(".") ? `.${frac}` : ""}`;
+}
+
+/** The same amount with both decimals, for when the person has finished typing ($50 becomes $50.00). */
+export function finishMoney(v: unknown): string {
+  const s = formatMoney(v);
+  if (!s) return "";
+  const [whole, frac = ""] = s.split(".");
+  return `${whole}.${frac.padEnd(2, "0")}`;
+}
+
 export const FORMATTERS: Record<IdKind, (v: unknown) => string> = {
-  phone: formatPhone, ssn: formatSsn, ein: formatEin, efin: formatEfin, ptin: formatPtin, caf: formatCaf, zip: formatZip,
+  phone: formatPhone, ssn: formatSsn, ein: formatEin, efin: formatEfin, ptin: formatPtin, caf: formatCaf, zip: formatZip, money: formatMoney,
 };
 
 /** The longest a formatted value of each kind can be (and the most the input accepts). */
-export const MAX_LENGTH: Record<IdKind, number> = { phone: 20, ssn: 11, ein: 10, efin: 6, ptin: 9, caf: 10, zip: 10 };
+export const MAX_LENGTH: Record<IdKind, number> = { phone: 20, ssn: 11, ein: 10, efin: 6, ptin: 9, caf: 10, zip: 10, money: 14 };
 
-export const INPUT_MODE: Record<IdKind, "tel" | "numeric" | "text"> = { phone: "tel", ssn: "numeric", ein: "numeric", efin: "numeric", ptin: "text", caf: "numeric", zip: "numeric" };
+export const INPUT_MODE: Record<IdKind, "tel" | "numeric" | "text" | "decimal"> = { phone: "tel", ssn: "numeric", ein: "numeric", efin: "numeric", ptin: "text", caf: "numeric", zip: "numeric", money: "decimal" };
 
 const SMALL_WORDS = new Set(["of", "the", "and"]);
 const KEEP_UPPER = /^(?:[nsew]{1,2}|po|pmb|apt|ste|ne|nw|se|sw|us|ii|iii|iv)$/i;

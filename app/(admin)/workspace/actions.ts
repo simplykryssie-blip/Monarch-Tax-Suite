@@ -10,6 +10,7 @@ import { pipelinesRepo } from "@/lib/pipelines/server";
 import { returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
 import { emitInvoicePaid, emitReturnStage } from "@/lib/automation/emit";
+import { yesNo } from "@/lib/workspace/rules.ts";
 import { addBusiness, addClient, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
@@ -250,7 +251,7 @@ export async function logMessageAction(form: FormData) {
 
 export async function linkSpouseAction(form: FormData) {
   const id = str(form, "id");
-  await act(clientPage(id), async () => { await linkSpouse(workspaceRepo(), id, str(form, "spouse_id"), await whoIs()); return { notice: "Spouse linked." }; });
+  await act(clientPage(id), async () => { await linkSpouse(workspaceRepo(), id, str(form, "spouse_id"), await whoIs(), yesNo(form.get("filed_last_year"))); return { notice: "Spouse linked." }; });
 }
 export async function unlinkSpouseAction(form: FormData) {
   const id = str(form, "id");

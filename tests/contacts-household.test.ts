@@ -24,7 +24,8 @@ test("date of birth and the address parts are read only when the form sent them,
   assert.deepEqual([c.address_line1, c.city, c.state, c.zip], ["12 Main St", "Dallas", "TX", "75001-1234"]);
   assert.equal(c.address, "12 Main St, Dallas, TX 75001-1234");
   assert.throws(() => checkClient({ full_name: "A", dob: "03/09/1985" }), /date of birth/);
-  assert.throws(() => checkClient({ full_name: "A", state: "Texas" }), /two-letter/);
+  assert.throws(() => checkClient({ full_name: "A", state: "Texas" }), /isn't a state/);
+  assert.throws(() => checkClient({ full_name: "A", state: "ZZ" }), /isn't a state/);
   assert.throws(() => checkClient({ full_name: "A", zip: "123" }), /ZIP/);
   assert.equal(addressLine({ city: "Dallas", state: "TX" }), "Dallas, TX");
 });
@@ -77,7 +78,7 @@ import { checkClient as cc, defaultInvoiceLines, invoiceTotal } from "../lib/wor
 test("the driver's license and last year's address are read, checked, and cleared together", () => {
   const c = cc({ full_name: "Ada King", dl_number: "tx12345678", dl_state: "tx", dl_issued_on: "2022-04-01", dl_expires_on: "2030-04-01" });
   assert.deepEqual([c.dl_number, c.dl_state, c.dl_issued_on, c.dl_expires_on], ["TX12345678", "TX", "2022-04-01", "2030-04-01"]);
-  assert.throws(() => cc({ full_name: "A", dl_state: "Texas" }), /two-letter/);
+  assert.throws(() => cc({ full_name: "A", dl_state: "Texas" }), /isn't a state/);
   assert.throws(() => cc({ full_name: "A", dl_issued_on: "2030-01-01", dl_expires_on: "2020-01-01" }), /expires before/);
   assert.equal("dl_number" in cc({ full_name: "A" }), false);
   const yes = cc({ full_name: "A", same_address: "yes", prior_address_line1: "old st" });
@@ -162,4 +163,22 @@ test("merging moves everything to the kept client, keeps what it already had, an
   assert.equal((await repo.listClientEvents(keep.id, 5))[0].action, "client.merged");
   await assert.rejects(mergeClients(repo, keep.id, keep.id), /two different/);
   await assert.rejects(removeDependent(repo, keep.id, "00000000-0000-4000-8000-000000000000"), /wasn't found/);
+});
+
+test("a spouse takes a driver's license and the 'filed together last year' answer is kept on the client", async () => {
+  const repo = new MemoryWorkspace();
+  const ada = await addClient(repo, { full_name: "Ada King" }, "u");
+  const bo = await addClient(repo, { full_name: "Bo King" }, "u");
+  await saveSpouse(repo, { client_id: ada.id, first_name: "Pat", dl_number: "tx999", dl_state: "tx", dl_issued_on: "2021-01-05", dl_expires_on: "2029-01-05", filed_last_year: "yes" });
+  const s = (await repo.getSpouse(ada.id))!;
+  assert.deepEqual([s.dl_number, s.dl_state, s.dl_issued_on, s.dl_expires_on], ["TX999", "TX", "2021-01-05", "2029-01-05"]);
+  assert.equal((await repo.getClient(ada.id))!.filed_with_spouse_last_year, true);
+  await saveSpouse(repo, { client_id: ada.id, first_name: "Pat" });
+  assert.equal((await repo.getClient(ada.id))!.filed_with_spouse_last_year, true, "leaving the question unanswered does not clear an earlier answer");
+  await assert.rejects(saveSpouse(repo, { client_id: ada.id, first_name: "Pat", dl_state: "Texas" }), /isn't a state/);
+  await assert.rejects(saveSpouse(repo, { client_id: ada.id, first_name: "Pat", dl_issued_on: "2030-01-01", dl_expires_on: "2020-01-01" }), /expires before/);
+  await removeSpouse(repo, ada.id);
+  await linkSpouse(repo, ada.id, bo.id, undefined, false);
+  assert.equal((await repo.getClient(ada.id))!.filed_with_spouse_last_year, false);
+  assert.equal((await repo.getClient(bo.id))!.filed_with_spouse_last_year, false, "both clients carry the answer");
 });

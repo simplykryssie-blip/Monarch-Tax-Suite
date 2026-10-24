@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ActionForm } from "@/app/(admin)/efin/action-form";
 import { saveClientDetailsAction } from "@/app/(admin)/workspace/actions";
 import { FormattedInput } from "@/components/forms/formatted-input";
+import { StateSelect } from "@/components/forms/state-select";
 import { RevealSsn } from "@/components/workspace/reveal-ssn";
 
 export type Details = {
@@ -61,7 +62,7 @@ export function DetailsCard({ d }: { d: Details }) {
       <label className="is-wide">Street address<input name="address_line1" maxLength={150} defaultValue={d.address_line1 || (d.city || d.state || d.zip ? "" : d.address)} /></label>
       <label className="is-wide">Apt, suite or unit<input name="address_line2" maxLength={100} defaultValue={d.address_line2} /></label>
       <label>City<input name="city" maxLength={80} defaultValue={d.city} /></label>
-      <label>State<input name="state" maxLength={2} defaultValue={d.state} style={{ textTransform: "uppercase" }} /></label>
+      <label>State<StateSelect name="state" defaultValue={d.state} /></label>
       <label>ZIP<FormattedInput kind="zip" name="zip" defaultValue={d.zip} /></label>
 
       <fieldset className="is-wide dc-same">
@@ -74,14 +75,14 @@ export function DetailsCard({ d }: { d: Details }) {
           <label className="is-wide">Address on last year&apos;s return<input name="prior_address_line1" maxLength={150} defaultValue={d.prior_address_line1} placeholder="Street address" /></label>
           <label className="is-wide">Apt, suite or unit<input name="prior_address_line2" maxLength={100} defaultValue={d.prior_address_line2} /></label>
           <label>City<input name="prior_city" maxLength={80} defaultValue={d.prior_city} /></label>
-          <label>State<input name="prior_state" maxLength={2} defaultValue={d.prior_state} style={{ textTransform: "uppercase" }} /></label>
+          <label>State<StateSelect name="prior_state" defaultValue={d.prior_state} /></label>
           <label>ZIP<FormattedInput kind="zip" name="prior_zip" defaultValue={d.prior_zip} /></label>
         </>
       )}
 
       <h3 className="is-wide dc-sub">Driver&apos;s license</h3>
       <label>License number<input name="dl_number" maxLength={40} defaultValue={d.dl_number} autoComplete="off" /></label>
-      <label>State issued<input name="dl_state" maxLength={2} defaultValue={d.dl_state} style={{ textTransform: "uppercase" }} /></label>
+      <label>State issued<StateSelect name="dl_state" defaultValue={d.dl_state} label="State that issued the license" /></label>
       <label>Issue date<input name="dl_issued_on" type="date" defaultValue={d.dl_issued_on} /></label>
       <label>Expiration date<input name="dl_expires_on" type="date" defaultValue={d.dl_expires_on} /></label>
     </ActionForm>

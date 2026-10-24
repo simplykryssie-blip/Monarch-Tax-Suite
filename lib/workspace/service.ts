@@ -244,7 +244,7 @@ export async function discardImport(repo: WorkspaceRepo, importId: string): Prom
 const fullName = (first: string, last: string | null) => [first, last].filter(Boolean).join(" ");
 
 /** Links two clients as spouses, on both records. Each can have only one spouse. A spouse entered by hand is replaced by the link. */
-export async function linkSpouse(repo: WorkspaceRepo, id: string, spouseId: string, actor?: Actor): Promise<void> {
+export async function linkSpouse(repo: WorkspaceRepo, id: string, spouseId: string, actor?: Actor, filedLastYear: boolean | null = null): Promise<void> {
   const a = await repo.getClient(uuid(id, "That client"));
   const b = await repo.getClient(uuid(spouseId, "The spouse"));
   if (!a || !b) throw new ValidationError("That client wasn't found.");
@@ -253,8 +253,8 @@ export async function linkSpouse(repo: WorkspaceRepo, id: string, spouseId: stri
   if (b.spouse_id && b.spouse_id !== a.id) throw new ValidationError(`${b.full_name} is already linked to another spouse. Unlink them first.`);
   await repo.deleteSpouse(a.id);
   await repo.deleteSpouse(b.id);
-  await repo.updateClient(a.id, { spouse_id: b.id });
-  await repo.updateClient(b.id, { spouse_id: a.id });
+  await repo.updateClient(a.id, { spouse_id: b.id, ...(filedLastYear === null ? {} : { filed_with_spouse_last_year: filedLastYear }) });
+  await repo.updateClient(b.id, { spouse_id: a.id, ...(filedLastYear === null ? {} : { filed_with_spouse_last_year: filedLastYear }) });
   await record(repo, a.id, actor ?? null, "client.spouse_linked", { name: b.full_name });
   await record(repo, b.id, actor ?? null, "client.spouse_linked", { name: a.full_name });
 }
@@ -277,7 +277,9 @@ export async function saveSpouse(repo: WorkspaceRepo, raw: Record<string, unknow
   if (!c) throw new ValidationError("That client wasn't found.");
   if (c.spouse_id) throw new ValidationError("This client is linked to a spouse who is also a client. Unlink them to enter a spouse by hand.");
   const input = checkSpouse(raw);
-  const s = await repo.upsertSpouse({ client_id: clientId, ...input, created_by: actor?.id ?? null });
+  const { filed_last_year: filed, ...fields } = input;
+  const s = await repo.upsertSpouse({ client_id: clientId, ...fields, created_by: actor?.id ?? null });
+  if (filed !== null) await repo.updateClient(clientId, { filed_with_spouse_last_year: filed });
   await record(repo, clientId, actor ?? null, "client.spouse_saved", { name: fullName(input.first_name, input.last_name) });
   return s;
 }

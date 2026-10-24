@@ -1,19 +1,24 @@
 "use client";
 
 import { useState, type InputHTMLAttributes } from "react";
-import { FORMATTERS, INPUT_MODE, MAX_LENGTH, type IdKind } from "@/lib/format/ids.ts";
+import { finishMoney, FORMATTERS, INPUT_MODE, MAX_LENGTH, type IdKind } from "@/lib/format/ids.ts";
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "defaultValue" | "value" | "onChange" | "inputMode" | "maxLength"> & {
   kind: IdKind;
   defaultValue?: string | null;
+  /** Controlled use: the current value, and a function told each time it changes (already formatted). */
+  value?: string;
+  onValue?: (value: string) => void;
   /** Hide the digits as they are typed (a full Social Security number). The value is still shaped as it goes in. */
   secret?: boolean;
 };
 
 /** A text box that writes a phone number, SSN/ITIN, EIN, EFIN, PTIN, CAF or ZIP in its standard form as the person types or pastes. */
-export function FormattedInput({ kind, defaultValue, secret, type, ...rest }: Props) {
+export function FormattedInput({ kind, defaultValue, value: controlled, onValue, secret, type, ...rest }: Props) {
   const format = FORMATTERS[kind];
-  const [value, setValue] = useState(() => format(defaultValue ?? ""));
+  const [own, setOwn] = useState(() => format(defaultValue ?? ""));
+  const value = controlled ?? own;
+  const setValue = (next: string | ((v: string) => string)) => { const v = typeof next === "function" ? next(value) : next; setOwn(v); onValue?.(v); };
   const [shown, setShown] = useState(false);
   const field = (
     <input
@@ -24,6 +29,7 @@ export function FormattedInput({ kind, defaultValue, secret, type, ...rest }: Pr
       autoCapitalize={kind === "ptin" ? "characters" : undefined}
       value={value}
       onChange={(e) => setValue(format(e.target.value))}
+      onBlur={kind === "money" ? () => setValue((v) => finishMoney(v)) : undefined}
     />
   );
   if (!secret) return field;

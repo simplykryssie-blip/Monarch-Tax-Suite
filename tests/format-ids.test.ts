@@ -56,3 +56,32 @@ test("a client save without a full number keeps the last four it was sent, and a
   assert.equal(checkClient({ full_name: "Ada", ssn_last4: "4321" }).ssn_last4, "4321");
   assert.throws(() => checkClient({ full_name: "Ada", ssn: "12345" }), /nine digits/);
 });
+
+import { finishMoney, formatMoney } from "../lib/format/ids.ts";
+import { parseMoney } from "../lib/fees/engine.ts";
+
+test("dollar amounts are written $1,234.50 as they are typed and finished with two decimals", () => {
+  assert.equal(formatMoney(""), "");
+  assert.equal(formatMoney("5"), "$5");
+  assert.equal(formatMoney("1234"), "$1,234");
+  assert.equal(formatMoney("1234.5"), "$1,234.5");
+  assert.equal(formatMoney("$12,345.678"), "$12,345.67");
+  assert.equal(formatMoney("007"), "$7");
+  assert.equal(formatMoney("abc"), "");
+  assert.equal(finishMoney("50"), "$50.00");
+  assert.equal(finishMoney("$1,234.5"), "$1,234.50");
+  assert.equal(finishMoney(""), "");
+  for (const v of ["50", "1234.5", "99.99"]) assert.equal(parseMoney(finishMoney(v)), Math.round(Number(v) * 100), "what the box shows is read back as the same amount");
+});
+
+import { resolveState } from "../lib/format/states.ts";
+
+test("a state typed as letters or as a name is written as the two letters", () => {
+  assert.equal(resolveState("tx"), "TX");
+  assert.equal(resolveState(" Tx "), "TX");
+  assert.equal(resolveState("texas"), "TX");
+  assert.equal(resolveState("New York"), "NY");
+  assert.equal(resolveState("district of columbia"), "DC");
+  assert.equal(resolveState(""), "");
+  assert.equal(resolveState("zz"), "ZZ", "something that isn't a state is left for the form to refuse");
+});

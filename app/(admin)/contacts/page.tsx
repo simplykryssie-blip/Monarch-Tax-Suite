@@ -4,11 +4,12 @@ import { EmptyRow, PageTitle, when } from "@/components/admin/ui";
 import { countContacts, DUPLICATE_REASON, filterContacts, type Contact, type ContactFilter } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
 import { AddContact } from "@/components/contacts/add-contact";
+import { AutoSelect } from "@/components/contacts/auto-select";
 import { Modal } from "@/components/ui/modal";
 import { contactKinds } from "@/lib/contacts/kinds.ts";
 import { currentTier } from "@/lib/tier-server";
 
-const KINDS = ["", "lead", "client", "customer", "inactive"] as const;
+const KINDS = ["", "lead", "client", "customer", "inactive", "archived"] as const;
 const CHIP: Record<string, string> = { lead: "#fff1cc", client: "#e0ecff", customer: "#eee4fb" };
 
 function Chips({ c }: { c: Contact }) {
@@ -24,20 +25,13 @@ function Chips({ c }: { c: Contact }) {
 export default async function ContactsPage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string; view?: string }> }) {
   await requireAdmin();
   const sp = await searchParams;
-  const kind = (KINDS as readonly string[]).includes(sp.kind ?? "") ? ((sp.kind ?? "") as ContactFilter["kind"]) : "";
+  const kind = ((KINDS as readonly string[]).includes(sp.kind ?? "") ? (sp.kind === "archived" ? "inactive" : sp.kind ?? "") : "") as ContactFilter["kind"];
   const kinds = contactKinds(await currentTier());
   const data = await loadContacts();
   const counts = countContacts(data.contacts);
   const rows = filterContacts(data.contacts, { q: sp.q, kind });
   const byKey = new Map(data.contacts.map((c) => [c.key, c]));
-  const href = (k: string) => {
-    const p = new URLSearchParams();
-    if (k) p.set("kind", k);
-    if (sp.q) p.set("q", sp.q);
-    const s = p.toString();
-    return s ? `/contacts?${s}` : "/contacts";
-  };
-  const tabs: [string, string, number][] = [["", "All", counts.all], ["lead", "Leads", counts.lead], ["client", "Clients", counts.client], ["customer", "Customers", counts.customer], ["inactive", "Inactive", counts.inactive]];
+  const tabs: [string, string, number][] = [["", "All", counts.all], ["lead", "Leads", counts.lead], ["client", "Clients", counts.client], ["customer", "Customers", counts.customer], ["inactive", "Archived", counts.inactive]];
 
   return (
     <>
@@ -64,18 +58,12 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       </div>
       {data.notes.map((n) => <div key={n} className="monarch-notice" role="status">{n}</div>)}
       <>
-          <form method="get" action="/contacts" role="search" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            {kind && <input type="hidden" name="kind" value={kind} />}
+          <form method="get" action="/contacts" role="search" className="ct-search">
             <label htmlFor="q" style={{ position: "absolute", left: -9999 }}>Search contacts</label>
-            <input id="q" name="q" type="search" defaultValue={sp.q ?? ""} placeholder="Search by name, email, phone or tag" style={{ flex: "1 1 280px", minHeight: 44, padding: "0 14px", border: "1px solid #dcd9d0", borderRadius: 4 }} />
-            <button type="submit" className="monarch-primary" style={{ minHeight: 44 }}>Search</button>
+            <input id="q" name="q" type="search" defaultValue={sp.q ?? ""} placeholder="Search by name, email, phone or tag" />
+            <AutoSelect name="kind" label="Show" defaultValue={kind ?? ""} options={tabs.map(([k, name, n]) => ({ value: k, label: `${name} (${n})` }))} />
+            <button type="submit" className="monarch-primary">Search</button>
           </form>
-          <nav className="mf-tabs" aria-label="Show" style={{ marginBottom: 4 }}>
-            {tabs.map(([k, name, n]) => (
-              <Link key={k || "all"} href={href(k)} className={kind === k ? "is-active" : undefined} aria-current={kind === k ? "page" : undefined}>{name} ({n})</Link>
-            ))}
-          </nav>
-          <p style={{ margin: "0 0 12px", color: "#77746b", fontSize: 12 }}>One person can be more than one thing, so the counts can add up to more than the total.</p>
           <section className="monarch-panel">
             <div className="monarch-panel-head"><h2>{rows.length} {rows.length === 1 ? "contact" : "contacts"}</h2></div>
             <div className="monarch-table-wrap">

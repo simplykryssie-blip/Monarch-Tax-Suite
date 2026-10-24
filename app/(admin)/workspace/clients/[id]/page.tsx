@@ -1,4 +1,5 @@
 import { FormattedInput } from "@/components/forms/formatted-input";
+import { StateSelect } from "@/components/forms/state-select";
 import { PortalPanel } from "@/components/portal/panel";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -133,29 +134,30 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               <DetailsCard d={details} />
 
               <section className="monarch-panel cl-card">
-                <div className="cl-card-head"><h2>Spouse</h2></div>
+                <div className="cl-card-head"><h2>Spouse</h2>
+                  {!spouse && !manualSpouse && (
+                    <span className="cl-card-actions">
+                      <Modal label="Link a client" title="Link a client as spouse" className="monarch-secondary"><LinkSpouseForm clientId={client.id} clients={others.filter((o) => o.id !== client.id && !o.spouse_id).map((o) => ({ id: o.id, name: o.full_name }))} /></Modal>
+                      <Modal label="Add spouse" title="Add a spouse" className="monarch-secondary"><SpouseForm clientId={client.id} s={null} filed={client.filed_with_spouse_last_year ?? null} /></Modal>
+                    </span>
+                  )}
+                  {manualSpouse && <Modal label="Edit spouse" title="Edit spouse" className="monarch-secondary"><SpouseForm clientId={client.id} s={manualSpouse} filed={client.filed_with_spouse_last_year ?? null} /></Modal>}
+                </div>
                 {spouse ? (
-                  <form action={unlinkSpouseAction} className="cl-row"><input type="hidden" name="id" value={client.id} /><Link href={`/workspace/clients/${spouse.id}`}><b>{spouse.full_name}</b></Link><button className="monarch-link">Unlink</button></form>
+                  <ul className="cl-list"><li>
+                    <span><Link href={`/workspace/clients/${spouse.id}`}><b>{spouse.full_name}</b></Link>{client.filed_with_spouse_last_year !== null && client.filed_with_spouse_last_year !== undefined && <small className="monarch-subcell">Filed together last year: {client.filed_with_spouse_last_year ? "Yes" : "No"}</small>}</span>
+                    <form action={unlinkSpouseAction}><input type="hidden" name="id" value={client.id} /><button className="monarch-link">Unlink</button></form>
+                  </li></ul>
                 ) : manualSpouse ? (
-                  <div className="cl-list">
-                    <div className="cl-row"><span><b>{[manualSpouse.first_name, manualSpouse.last_name].filter(Boolean).join(" ")}</b><small className="monarch-subcell">{[manualSpouse.dob ? `born ${manualSpouse.dob}` : "", manualSpouse.phone, manualSpouse.email, manualSpouse.ssn_last4 ? `SSN ending ${manualSpouse.ssn_last4}` : ""].filter(Boolean).join(" · ") || "No other details"}</small></span></div>
-                    <div className="cl-row">
-                      <Modal label="Edit" title="Edit spouse" className="monarch-secondary">
-                        <SpouseForm clientId={client.id} s={manualSpouse} />
-                      </Modal>
-                      <form action={removeSpouseAction}><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link is-danger">Remove</button></form>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="cl-list">
-                    <form action={linkSpouseAction} className="cl-row">
-                      <input type="hidden" name="id" value={client.id} />
-                      <select name="spouse_id" required defaultValue="" aria-label="Spouse who is a client"><option value="" disabled>Link a client…</option>{others.filter((o) => o.id !== client.id && !o.spouse_id).map((o) => <option key={o.id} value={o.id}>{o.full_name}</option>)}</select>
-                      <button className="monarch-secondary">Link</button>
-                    </form>
-                    <div className="cl-row"><Modal label="Add spouse manually" title="Add a spouse" className="monarch-secondary"><SpouseForm clientId={client.id} s={null} /></Modal></div>
-                  </div>
-                )}
+                  <ul className="cl-list"><li>
+                    <span><b>{[manualSpouse.first_name, manualSpouse.last_name].filter(Boolean).join(" ")}</b>
+                      <small className="monarch-subcell">{[manualSpouse.dob ? `born ${manualSpouse.dob}` : "", manualSpouse.phone, manualSpouse.email, manualSpouse.ssn_last4 ? `SSN ending ${manualSpouse.ssn_last4}` : ""].filter(Boolean).join(" · ") || "No other details"}</small>
+                      {(manualSpouse.dl_number || manualSpouse.dl_state || manualSpouse.dl_issued_on || manualSpouse.dl_expires_on) && <small className="monarch-subcell">License: {[manualSpouse.dl_number, manualSpouse.dl_state, manualSpouse.dl_issued_on ? `issued ${manualSpouse.dl_issued_on}` : "", manualSpouse.dl_expires_on ? `expires ${manualSpouse.dl_expires_on}` : ""].filter(Boolean).join(" · ")}</small>}
+                      {client.filed_with_spouse_last_year !== null && client.filed_with_spouse_last_year !== undefined && <small className="monarch-subcell">Filed together last year: {client.filed_with_spouse_last_year ? "Yes" : "No"}</small>}
+                    </span>
+                    <form action={removeSpouseAction}><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link is-danger">Remove</button></form>
+                  </li></ul>
+                ) : <p className="monarch-muted cl-empty">None</p>}
               </section>
 
               {dependents && (
@@ -458,7 +460,28 @@ function AddReturnForm({ clientId, back }: { clientId: string; back: string }) {
   );
 }
 
-function SpouseForm({ clientId, s }: { clientId: string; s: { first_name: string; last_name: string | null; dob: string | null; phone: string | null; email: string | null } | null }) {
+function LinkSpouseForm({ clientId, clients }: { clientId: string; clients: { id: string; name: string }[] }) {
+  return (
+    <form action={linkSpouseAction} className="monarch-form">
+      <input type="hidden" name="id" value={clientId} />
+      <label className="is-wide">Client<select name="spouse_id" required defaultValue=""><option value="" disabled>Choose a client…</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      <FiledLastYear filed={null} />
+      <div className="is-wide ac-actions"><button className="monarch-primary">Link</button></div>
+    </form>
+  );
+}
+
+function FiledLastYear({ filed }: { filed: boolean | null }) {
+  return (
+    <fieldset className="is-wide dc-same">
+      <legend>Did you file with this spouse last year?</legend>
+      <label className="monarch-check"><input type="radio" name="filed_last_year" value="yes" defaultChecked={filed === true} /> Yes</label>
+      <label className="monarch-check"><input type="radio" name="filed_last_year" value="no" defaultChecked={filed === false} /> No</label>
+    </fieldset>
+  );
+}
+
+function SpouseForm({ clientId, s, filed }: { clientId: string; s: { first_name: string; last_name: string | null; dob: string | null; phone: string | null; email: string | null; dl_number?: string | null; dl_state?: string | null; dl_issued_on?: string | null; dl_expires_on?: string | null } | null; filed: boolean | null }) {
   return (
     <form action={saveSpouseAction} className="monarch-form">
       <input type="hidden" name="client_id" value={clientId} />
@@ -468,6 +491,12 @@ function SpouseForm({ clientId, s }: { clientId: string; s: { first_name: string
       <label>Phone<FormattedInput kind="phone" name="phone" defaultValue={s?.phone ?? ""} /></label>
       <label>Email<input name="email" type="email" maxLength={254} defaultValue={s?.email ?? ""} /></label>
       <label>Social Security number<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder={s ? "Leave empty to keep" : "Nine digits"} /></label>
+      <h3 className="is-wide dc-sub">Driver&apos;s license</h3>
+      <label>License number<input name="dl_number" maxLength={40} defaultValue={s?.dl_number ?? ""} autoComplete="off" /></label>
+      <label>State issued<StateSelect name="dl_state" defaultValue={s?.dl_state ?? ""} label="State that issued the license" /></label>
+      <label>Issue date<input name="dl_issued_on" type="date" defaultValue={s?.dl_issued_on ?? ""} /></label>
+      <label>Expiration date<input name="dl_expires_on" type="date" defaultValue={s?.dl_expires_on ?? ""} /></label>
+      <FiledLastYear filed={filed} />
       <div className="is-wide ac-actions"><button className="monarch-primary">Save spouse</button></div>
     </form>
   );

@@ -65,7 +65,7 @@ function build(g: Group): Contact {
     if (kind === "lead" && lead) chips.push({ kind, label: lead.status === "lost" ? "Lead (lost)" : lead.status === "converted" ? "Lead (converted)" : "Lead", active: leadCurrent(lead.status) });
     if (kind === "customer" && customer) {
       const live = g.customers.some((c) => c.status === "active");
-      chips.push({ kind, label: live ? "Customer" : "Customer (inactive)", active: live });
+      chips.push({ kind, label: live ? "Customer" : "Customer (archived)", active: live });
     }
   }
   const tags = [...new Set([...(client?.tags ?? []), ...(lead?.tags ?? [])])].sort();

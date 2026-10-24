@@ -1,5 +1,6 @@
 import { ValidationError } from "../commerce/validation.ts";
 import { digitsOf, formatAddress, formatEin, formatPhone, formatZip } from "../format/ids.ts";
+import { STATE_CODES } from "../format/states.ts";
 import { parseCsv } from "../leads/csv.ts";
 import { MONARCH_TEMPLATE, parseMoney } from "../fees/engine.ts";
 import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS, type BusinessInput, type Client, type ClientInput, type DependentInput, type SpouseInput, type ClientReturn, type Invoice, type InvoiceLine, type MatchKind, type PaymentRowInsert, type ReturnKind } from "./types.ts";
@@ -32,6 +33,16 @@ export function addressLine(p: { address_line1?: string | null; address_line2?: 
   const place = [p.city, [p.state, p.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
   return [street, place].filter(Boolean).join(", ");
 }
+
+/** A state as typed: any case, two letters, and a real state. Empty is allowed. */
+function stateCode(v: unknown, what: string): string {
+  const s = one(v, 20).toUpperCase();
+  if (s && !STATE_CODES.has(s)) throw new ValidationError(`${what} isn't a state. Choose it from the list.`);
+  return s;
+}
+
+/** A Yes/No answer: true, false, or null when it wasn't answered. */
+export const yesNo = (v: unknown): boolean | null => (v === "yes" ? true : v === "no" ? false : null);
 
 const has = (raw: Record<string, unknown>, ...keys: string[]) => keys.some((k) => Object.hasOwn(raw, k));
 const dayOrNull = (v: unknown, label: string): string | null => {
@@ -72,8 +83,7 @@ export function checkClient(raw: Record<string, unknown>): ClientInput {
 
   if (has(raw, "dob")) out.dob = dayOrNull(raw.dob, "The date of birth");
   if (has(raw, "dl_number", "dl_state", "dl_issued_on", "dl_expires_on")) {
-    const dlState = one(raw.dl_state, 20).toUpperCase();
-    if (dlState && !/^[A-Z]{2}$/.test(dlState)) throw new ValidationError("Use the two-letter state that issued the license, like TX.");
+    const dlState = stateCode(raw.dl_state, "The state that issued the license");
     const issued = dayOrNull(raw.dl_issued_on, "The license issue date");
     const expires = dayOrNull(raw.dl_expires_on, "The license expiration date");
     if (issued && expires && expires < issued) throw new ValidationError("The license expires before it was issued. Check the dates.");
@@ -83,8 +93,7 @@ export function checkClient(raw: Record<string, unknown>): ClientInput {
     out.dl_expires_on = expires;
   }
   if (has(raw, "address_line1", "address_line2", "city", "state", "zip")) {
-    const state = one(raw.state, 20).toUpperCase();
-    if (state && !/^[A-Z]{2}$/.test(state)) throw new ValidationError("Use the two-letter state, like TX.");
+    const state = stateCode(raw.state, "The state");
     const zipDigits = digitsOf(one(raw.zip, 20));
     if (zipDigits && zipDigits.length !== 5 && zipDigits.length !== 9) throw new ValidationError("A ZIP code is five digits, or nine with the extension.");
     const parts = { address_line1: formatAddress(one(raw.address_line1, 150)) || null, address_line2: formatAddress(one(raw.address_line2, 100)) || null, city: formatAddress(one(raw.city, 80)) || null, state: state || null, zip: zipDigits ? formatZip(zipDigits) : null };
@@ -97,8 +106,7 @@ export function checkClient(raw: Record<string, unknown>): ClientInput {
   if (has(raw, "same_address")) {
     const same = one(raw.same_address, 5) !== "no";
     out.address_same_as_last_year = same;
-    const state = one(raw.prior_state, 20).toUpperCase();
-    if (!same && state && !/^[A-Z]{2}$/.test(state)) throw new ValidationError("Use the two-letter state for the old address, like TX.");
+    const state = same ? "" : stateCode(raw.prior_state, "The old address's state");
     const zipDigits = digitsOf(one(raw.prior_zip, 20));
     if (!same && zipDigits && zipDigits.length !== 5 && zipDigits.length !== 9) throw new ValidationError("The old address's ZIP code is five digits, or nine with the extension.");
     out.prior_address_line1 = same ? null : formatAddress(one(raw.prior_address_line1, 150)) || null;
@@ -138,7 +146,7 @@ export function checkBusiness(raw: Record<string, unknown>): Pick<BusinessInput,
 }
 
 /** A spouse entered by hand, for a spouse who isn't a client. */
-export function checkSpouse(raw: Record<string, unknown>): Pick<SpouseInput, "first_name" | "last_name" | "dob" | "phone" | "email" | "ssn_last4"> {
+export function checkSpouse(raw: Record<string, unknown>): Pick<SpouseInput, "first_name" | "last_name" | "dob" | "phone" | "email" | "ssn_last4" | "dl_number" | "dl_state" | "dl_issued_on" | "dl_expires_on"> & { filed_last_year: boolean | null } {
   const first_name = one(raw.first_name, 100);
   if (!first_name) throw new ValidationError("Enter the spouse's first name.");
   const email = one(raw.email, 254).toLowerCase();
@@ -147,7 +155,14 @@ export function checkSpouse(raw: Record<string, unknown>): Pick<SpouseInput, "fi
   if (phone && phone.replace(/\D/g, "").length < 10) throw new ValidationError("That phone number doesn't look right.");
   const digits = digitsOf(one(raw.ssn, 20));
   if (digits && digits.length !== 9 && digits.length !== 4) throw new ValidationError("Enter the nine digits, or only the last four.");
-  return { first_name, last_name: one(raw.last_name, 100) || null, dob: dayOrNull(raw.dob, "The date of birth"), phone: phone ? formatPhone(phone) : null, email: email || null, ssn_last4: digits ? digits.slice(-4) : null };
+  const issued = dayOrNull(raw.dl_issued_on, "The license issue date");
+  const expires = dayOrNull(raw.dl_expires_on, "The license expiration date");
+  if (issued && expires && expires < issued) throw new ValidationError("The license expires before it was issued. Check the dates.");
+  return {
+    first_name, last_name: one(raw.last_name, 100) || null, dob: dayOrNull(raw.dob, "The date of birth"), phone: phone ? formatPhone(phone) : null, email: email || null, ssn_last4: digits ? digits.slice(-4) : null,
+    dl_number: one(raw.dl_number, 40).toUpperCase() || null, dl_state: stateCode(raw.dl_state, "The state that issued the license") || null, dl_issued_on: issued, dl_expires_on: expires,
+    filed_last_year: yesNo(raw.filed_last_year),
+  };
 }
 
 // ---------------------------------------------------------------- returns and the My Work board

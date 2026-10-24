@@ -1,3 +1,4 @@
+import { FormattedInput } from "@/components/forms/formatted-input";
 import { requireAdmin } from "@/lib/admin";
 import { Flash, PageTitle } from "@/components/admin/ui";
 import { dollars, invoiceTotal } from "@/lib/workspace/rules.ts";
@@ -25,7 +26,7 @@ export default async function InvoiceFeesPage({ searchParams }: { searchParams: 
             {Array.from({ length: ROWS }, (_, n) => lines[n] ?? { label: "", amount_cents: 0 }).map((l, n) => (
               <span key={n} className="ni-line">
                 <input name={`line_label_${n}`} defaultValue={l.label} placeholder="Description" aria-label={`Fee ${n + 1} description`} maxLength={120} />
-                <input name={`line_amount_${n}`} defaultValue={l.label ? (l.amount_cents / 100).toFixed(2) : ""} placeholder="Amount" aria-label={`Fee ${n + 1} amount`} size={10} />
+                <FormattedInput kind="money" name={`line_amount_${n}`} defaultValue={l.label ? (l.amount_cents / 100).toFixed(2) : ""} placeholder="$0.00" aria-label={`Fee ${n + 1} amount`} />
               </span>
             ))}
           </fieldset>
