@@ -188,7 +188,7 @@ export async function savePipelineAction(form: FormData) {
 export async function defaultPipelineAction(form: FormData) {
   await mutate(`/automation/pipelines/${str(form, "id")}`, async () => {
     await makeDefault(pipelinesRepo(), id(form));
-    return { notice: "This pipeline now runs the My Work board." };
+    return { notice: "This pipeline now runs the Returns board." };
   });
 }
 

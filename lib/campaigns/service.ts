@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isOpenAt, type BusinessCalendar } from "../calendar/business.ts";
 import { ValidationError } from "../commerce/validation.ts";
 import { addressFor, resolveAudience, sanitizeFilter, type AudienceContact, type AudienceFilter, type AudienceResult, type Channel, type ConsentRow } from "./audience.ts";
-import { hashRecipientToken, linkTable, messageProblems, recipientToken, renderEmail, renderSmsBody, smsSegments, valuesFor, type EmailBrandInput } from "./compose.ts";
+import { hashRecipientToken, linkTable, messageProblems, recipientToken, renderEmail, renderSmsBody, valuesFor, type EmailBrandInput } from "./compose.ts";
 import { batchFor, healthOf, type Health, type SendStats } from "./health.ts";
 
 // Campaigns for one office: writing and scheduling them, turning a scheduled one into recipients, and sending a batch
@@ -300,4 +300,3 @@ export async function textReport(deps: CampaignDeps, r: RecipientRef, status: st
     if (errorCode === "21610") await textKeyword(deps, r.address, "stop");
   }
 }
-export const segmentsOf = (body: string) => smsSegments(body).segments;

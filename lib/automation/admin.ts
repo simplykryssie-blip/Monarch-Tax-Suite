@@ -3,7 +3,7 @@ import { renderTemplate, SAMPLE_VALUES } from "./template.ts";
 import { validateTemplateInput, validateWorkflowInput, type WorkflowCatalog, type WorkflowFormInput } from "./validate.ts";
 import type { EmailSender } from "./email.ts";
 import { resolveSender, type SendersRepo } from "./senders.ts";
-import type { AutomationRepo, Execution, Template, Workflow } from "./types.ts";
+import type { AutomationRepo, Template, Workflow } from "./types.ts";
 
 // Administrator operations. Every function writes an audit entry; callers must have checked requireAdmin.
 
@@ -112,33 +112,6 @@ export async function removeWorkflow(repo: AutomationRepo, actor: Actor, id: str
   await repo.deleteWorkflow(id);
   await repo.addAudit({ actor_id: actor.id, action: "workflow_deleted", target_type: "workflow", target_id: id, detail: { name: w.name } });
   return "deleted";
-}
-
-export type DashboardStats = {
-  active: number;
-  paused: number;
-  succeeded: number;
-  failed: number;
-  retrying: number;
-  queued: number;
-  emailsSent: number;
-  recent: Execution[];
-};
-
-export async function dashboardStats(repo: AutomationRepo): Promise<DashboardStats> {
-  const [workflows, executions] = await Promise.all([repo.listWorkflows(), repo.listExecutions({ limit: 1000 })]);
-  const real = executions.filter((e) => !e.is_test);
-  const count = (s: Execution["status"]) => real.filter((e) => e.status === s).length;
-  return {
-    active: workflows.filter((w) => w.status === "active").length,
-    paused: workflows.filter((w) => w.status === "paused").length,
-    succeeded: count("succeeded"),
-    failed: count("failed"),
-    retrying: count("retrying"),
-    queued: count("queued"),
-    emailsSent: real.reduce((n, e) => n + e.action_log.filter((a) => a.type === "send_email" && a.status === "ok").length, 0),
-    recent: executions.slice(0, 15),
-  };
 }
 
 /**

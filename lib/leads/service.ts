@@ -24,7 +24,6 @@ const optional = (raw: unknown, max: number) => text(raw, max) || null;
 
 /** A source label as typed or imported: one line, up to 120 characters. Blank is not a source. */
 export const cleanSource = (v: unknown): string => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, SOURCE_MAX) : "");
-export const isSource = (v: unknown): v is LeadSource => cleanSource(v) !== "";
 export const isStatus = (v: unknown): v is LeadStatus => typeof v === "string" && (STATUS_KEYS as string[]).includes(v);
 
 export function checkName(raw: unknown): string {

@@ -10,54 +10,64 @@ export const isBranch = (e: Entry): e is Branch => "items" in e;
 // An item that isn't built yet is left out of the menu rather than shown as "Coming soon".
 export const NAV: Entry[] = [
   {
-    label: "My Office",
+    // The daily work, in the order a tax office reaches for it. Every plan has these.
+    label: "Every day",
     icon: "office",
+    section: "workspace",
     items: [
-      { label: "Home", icon: "dashboard", href: "/", section: "bureau" },
-      { label: "Contacts", icon: "user", href: "/contacts", section: "workspace" },
-      { label: "Leads", icon: "user", href: "/leads", section: "leads" },
-      { label: "My Workspace", icon: "firms", href: "/workspace", section: "workspace" },
-      { label: "ERO Dashboard", icon: "licenses", href: "/ero", section: "ero" },
-      {
-        // A section header only: it opens and closes; the dashboard is the first item inside it.
-        label: "My Service Bureau",
-        icon: "licenses",
-        section: "bureau",
-        items: [
-          { label: "Dashboard", icon: "dashboard", href: "/efin" },
-          { label: "EROs & EFINs", icon: "firms", href: "/efin/list" },
-          { label: "Renewals", icon: "bell", href: "/efin/renewals" },
-          { label: "Fees & statements", icon: "reports", href: "/fees" },
-          { label: "Office access", icon: "customers", href: "/offices" },
-          { label: "Compliance", icon: "shield", href: "/compliance" },
-        ],
-      },
-      {
-        label: "My Store",
-        icon: "store",
-        section: "store",
-        items: [
-          { label: "Dashboard", icon: "reports", href: "/store" },
-          { label: "Customers", icon: "customers", href: "/customers" },
-          { label: "Orders", icon: "orders", href: "/orders" },
-          { label: "Products", icon: "products", href: "/products" },
-          { label: "Licenses", icon: "licenses", href: "/licenses" },
-          { label: "Installations", icon: "installs", href: "/installations" },
-          { label: "WISP Generator", icon: "checklist", href: "/store/wisp" },
-        ],
-      },
+      { label: "Home", icon: "dashboard", href: "/" },
+      { label: "Contacts", icon: "user", href: "/contacts" },
+      { label: "Returns", icon: "checklist", href: "/workspace/work" },
+      { label: "Billing", icon: "card", href: "/workspace/billing" },
+      { label: "Calendar", icon: "calendar", href: "/calendar" },
+      { label: "Documents", icon: "reports", href: "/documents" },
     ],
   },
   {
-    label: "Operations",
-    icon: "automation",
-    section: "operations",
+    label: "Grow",
+    icon: "marketing",
+    section: "workspace",
     items: [
-      { label: "Calendar", icon: "calendar", href: "/calendar" },
-      { label: "Automation", icon: "automation", href: "/automation/workflows" },
+      { label: "Websites", icon: "store", href: "/sites" },
       { label: "Forms", icon: "checklist", href: "/forms" },
+      { label: "Automation", icon: "automation", href: "/automation/workflows" },
       { label: "Campaigns", icon: "marketing", href: "/campaigns" },
-      { label: "Website", icon: "store", href: "/sites" },
+      { label: "Leads", icon: "user", href: "/leads", section: "leads" },
+    ],
+  },
+  {
+    label: "ERO",
+    icon: "licenses",
+    section: "ero",
+    items: [{ label: "ERO Dashboard", icon: "dashboard", href: "/ero" }],
+  },
+  {
+    // A section header only: it opens and closes; the dashboard is the first item inside it.
+    label: "My Service Bureau",
+    icon: "licenses",
+    section: "bureau",
+    items: [
+      { label: "Dashboard", icon: "dashboard", href: "/efin" },
+      { label: "EROs & EFINs", icon: "firms", href: "/efin/list" },
+      { label: "Renewals", icon: "bell", href: "/efin/renewals" },
+      { label: "Fees & statements", icon: "reports", href: "/fees" },
+      { label: "Office access", icon: "customers", href: "/offices" },
+      { label: "Compliance", icon: "shield", href: "/compliance" },
+    ],
+  },
+  {
+    // The store has a group of its own.
+    label: "My Store",
+    icon: "store",
+    section: "store",
+    items: [
+      { label: "Dashboard", icon: "reports", href: "/store" },
+      { label: "Customers", icon: "customers", href: "/customers" },
+      { label: "Orders", icon: "orders", href: "/orders" },
+      { label: "Products", icon: "products", href: "/products" },
+      { label: "Licenses", icon: "licenses", href: "/licenses" },
+      { label: "Installations", icon: "installs", href: "/installations" },
+      { label: "WISP Generator", icon: "checklist", href: "/store/wisp" },
     ],
   },
   {

@@ -10,15 +10,16 @@ const labels = (entries: Entry[]): string[] => entries.flatMap((e) => (isBranch(
 const hrefs = (entries: Entry[]): string[] => entries.flatMap((e) => [...(e.href ? [e.href] : []), ...(isBranch(e) ? hrefs(e.items) : [])]);
 
 describe("tiers", () => {
-  test("PTIN sees My Workspace only; ERO adds the ERO Dashboard; Service Bureau adds My Service Bureau", () => {
+  test("every plan has the daily work, Calendar and Grow; ERO adds the ERO group; Service Bureau adds My Service Bureau, My Store and Leads", () => {
+    const daily = ["Every day", "Home", "Contacts", "Returns", "Billing", "Calendar", "Documents", "Grow", "Websites", "Forms", "Automation", "Campaigns", "Settings"];
     const ptin = labels(navFor("ptin"));
-    assert.ok(ptin.includes("My Workspace"));
-    for (const hidden of ["ERO Dashboard", "My Service Bureau", "My Store", "Leads", "Operations", "Home"]) assert.ok(!ptin.includes(hidden), `${hidden} should be hidden from PTIN`);
+    for (const shown of daily) assert.ok(ptin.includes(shown), `${shown} should show for PTIN`);
+    for (const hidden of ["ERO Dashboard", "My Service Bureau", "My Store", "Leads"]) assert.ok(!ptin.includes(hidden), `${hidden} should be hidden from PTIN`);
     const ero = labels(navFor("ero"));
-    assert.ok(ero.includes("My Workspace") && ero.includes("ERO Dashboard"));
-    for (const hidden of ["My Service Bureau", "My Store", "Leads", "Operations"]) assert.ok(!ero.includes(hidden), `${hidden} should be hidden from ERO`);
+    for (const shown of [...daily, "ERO Dashboard"]) assert.ok(ero.includes(shown), `${shown} should show for ERO`);
+    for (const hidden of ["My Service Bureau", "My Store", "Leads"]) assert.ok(!ero.includes(hidden), `${hidden} should be hidden from ERO`);
     const bureau = labels(navFor("bureau"));
-    for (const shown of ["My Workspace", "ERO Dashboard", "My Service Bureau", "My Store", "Leads", "Operations", "Settings"]) assert.ok(bureau.includes(shown), `${shown} should show for Service Bureau`);
+    for (const shown of [...daily, "ERO Dashboard", "My Service Bureau", "My Store", "Leads"]) assert.ok(bureau.includes(shown), `${shown} should show for Service Bureau`);
   });
 
   test("every tier keeps Settings, without the bureau-only pages", () => {
@@ -28,7 +29,7 @@ describe("tiers", () => {
   });
 
   test("My Service Bureau is a header that opens and closes; the dashboard is its first item", () => {
-    const sb = NAV[0] && isBranch(NAV[0]) ? NAV[0].items.find((e) => e.label === "My Service Bureau") : undefined;
+    const sb = NAV.find((e) => e.label === "My Service Bureau");
     assert.ok(sb && isBranch(sb));
     assert.equal(sb.href, undefined);
     assert.deepEqual(sb.items.map((i) => i.label), ["Dashboard", "EROs & EFINs", "Renewals", "Fees & statements", "Office access", "Compliance"]);
@@ -44,8 +45,8 @@ describe("tiers", () => {
 
   test("the breadcrumb group is named like the menu group: Settings is its own group", () => {
     assert.ok(NAV.some((e) => e.label === "Settings" && isBranch(e) && e.items.some((i) => i.href === "/settings/firm")));
-    const ops = NAV.find((e) => e.label === "Operations");
-    assert.ok(ops && isBranch(ops) && !ops.items.some((i) => i.label === "Settings"));
+    const grow = NAV.find((e) => e.label === "Grow");
+    assert.ok(grow && isBranch(grow) && !grow.items.some((i) => i.label === "Settings"));
   });
 
   test("routes belong to sections, and sections to tiers", () => {
@@ -59,8 +60,9 @@ describe("tiers", () => {
     assert.equal(allows("ptin", "ero"), false);
     assert.equal(allows("ero", "ero"), true);
     assert.equal(allows("ero", "bureau"), false);
-    assert.equal(allows("bureau", "operations"), true);
-    assert.deepEqual(TIERS.map(homeFor), ["/workspace", "/ero", "/"]);
+    assert.equal(allows("bureau", "store"), true);
+    assert.equal(allows("ero", "store"), false);
+    assert.deepEqual(TIERS.map(() => homeFor()), ["/", "/", "/"], "Home is every plan's front page");
   });
 
   test("every menu link is a page its tier is allowed to open", () => {
@@ -142,13 +144,31 @@ describe("the Admin area (platform administrators only)", () => {
 });
 
 describe("menu shape", () => {
-  test("My Workspace and ERO Dashboard are separate top-level items of My Office, in order, before My Service Bureau", () => {
-    const office = NAV[0];
-    assert.ok(isBranch(office));
-    const names = office.items.map((i) => i.label);
-    assert.ok(names.indexOf("My Workspace") + 1 === names.indexOf("ERO Dashboard"));
-    assert.ok(names.indexOf("ERO Dashboard") + 1 === names.indexOf("My Service Bureau"));
-    assert.equal(isBranch(office.items[names.indexOf("My Workspace")]), false);
+  test("the menu groups come in this order, and the store has a group of its own", () => {
+    assert.deepEqual(NAV.map((g) => g.label), ["Every day", "Grow", "ERO", "My Service Bureau", "My Store", "Settings", "Admin"]);
+    const store = NAV.find((g) => g.label === "My Store");
+    assert.ok(store && isBranch(store));
+    assert.ok(!labels(NAV.filter((g) => g.label !== "My Store")).includes("Orders"), "the store's pages are only in the store group");
+  });
+
+  test("the daily group lists the daily work in order", () => {
+    const daily = NAV[0];
+    assert.ok(isBranch(daily));
+    assert.deepEqual(daily.items.map((i) => i.label), ["Home", "Contacts", "Returns", "Billing", "Calendar", "Documents"]);
+  });
+
+  test("Calendar, Websites, Forms, Automation and Campaigns are open to every plan, and their pages are gated the same way", () => {
+    for (const path of ["/calendar", "/sites", "/forms", "/automation/workflows", "/campaigns"]) {
+      assert.equal(sectionOf(path), "workspace", path);
+      assert.equal(allows("ptin", sectionOf(path)!), true, path);
+    }
+    for (const layout of ["app/(admin)/forms/layout.tsx", "app/(admin)/automation/layout.tsx"]) assert.match(readFileSync(layout, "utf8"), /requireSection\("workspace"\)/);
+  });
+
+  test("the removed My Tax Office page leads to Home, and nothing links to it", () => {
+    assert.match(readFileSync("next.config.ts", "utf8"), /source: "\/workspace", destination: "\/"/);
+    assert.equal(existsSync("app/(admin)/workspace/page.tsx"), false);
+    assert.ok(!labels(NAV).includes("My Workspace"));
   });
 
   test("Add PTIN is not gated on having an own-office firm, and the tag filter always renders", () => {

@@ -68,10 +68,6 @@ function overrideReason(raw: unknown, warning: string): string {
 
 // ------------------------------------------------------------------ settings
 
-export async function settingsFor(deps: ComplianceDeps, officeId: string) {
-  return deps.repo.getSettings(officeId);
-}
-
 export async function saveSettings(deps: ComplianceDeps, ctx: Ctx, raw: Record<string, unknown>): Promise<ComplianceSettings> {
   need(ctx, "compliance.manage");
   const int = (v: unknown, lo: number, hi: number, label: string) => {

@@ -1,5 +1,5 @@
 import { sentence, words } from "./text.ts";
-import { REMINDER_STAGES, type AssignmentRole, type AssignmentRow, type AssignmentState, type CredentialRow, type EfinRow, type EfinStatus, type RenewalTaskRow, type RoleRow } from "./types.ts";
+import { REMINDER_STAGES, type AssignmentRole, type AssignmentRow, type AssignmentState, type CredentialRow, type EfinRow, type RenewalTaskRow, type RoleRow } from "./types.ts";
 
 // Pure business rules for EFIN management. No database, no clock reads: callers pass "today" so every rule is testable.
 
@@ -46,7 +46,6 @@ export function normalizeEin(raw: string): string {
 export const last4 = (value: string) => value.slice(-4);
 export const maskEfin = (l4: string | null | undefined) => (l4 ? `••${l4}`.padStart(6, "•").slice(-6) : "••••••");
 export const maskPtin = (l4: string | null | undefined) => (l4 ? `P••••${l4}` : "P••••••••");
-export const maskEin = (l4: string | null | undefined) => (l4 ? `••-•••${l4}` : "••-•••••••");
 
 // ------------------------------------------------------------------------------------------ dates
 const DAY = 86_400_000;
@@ -212,8 +211,6 @@ export function dueReminderStage(dueOn: string, today: string): number | null {
 }
 
 export const roleLabel = (r: AssignmentRole) => sentence(r);
-
-export const isEfinStatus = (v: string): v is EfinStatus => ["draft", "pending_verification", "active", "renewal_review", "inactive", "suspended"].includes(v);
 
 /** Clients that only bought software or services: no team, PTIN or internal assignment records are kept for them. */
 export const tracksTeam = (relationship: string) => relationship !== "client";

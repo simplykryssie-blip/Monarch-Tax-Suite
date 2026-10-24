@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
       // Platform tools moved under Admin (platform administrators only).
       { source: "/settings/billing-setup", destination: "/admin/billing-setup", permanent: false },
       { source: "/offices/holders", destination: "/admin/workspaces", permanent: false },
+      // My Tax Office was replaced by Home (the same numbers, plus what needs doing today).
+      { source: "/workspace", destination: "/", permanent: false },
     ];
   },
 };
