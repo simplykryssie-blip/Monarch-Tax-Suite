@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Keyring } from "../lib/ssn/keyring.ts";
-import { checkSsn, clearSsn, revealSsn, rewrapTenantKey, storeSsn, type KeyRow, type RevealGate, type SsnDeps, type SsnRepo } from "../lib/ssn/service.ts";
+import { checkSsn, clearSsn, numberActivity, revealSsn, rewrapTenantKey, storeSsn, type KeyRow, type RevealGate, type SsnDeps, type SsnRepo } from "../lib/ssn/service.ts";
 
 const T1 = "11111111-1111-4111-8111-111111111111";
 const T2 = "22222222-2222-4222-8222-222222222222";
@@ -24,6 +24,7 @@ class Memory implements SsnRepo {
   async deleteCiphertext(id: string) { this.ct.delete(id); }
   async setLast4(id: string, v: string | null) { this.last4.set(id, v); }
   async audit(e: { action: string; clientId: string }) { this.audits.push(e); }
+  async listAudit(id: string, limit: number) { return this.audits.filter((a) => a.clientId === id).reverse().slice(0, limit).map((a, i) => ({ action: a.action, actorId: "u1", at: `2026-10-17T12:00:0${i}Z` })); }
 }
 const deps = (repo = new Memory(), tenantId = T1, keyring: Keyring | null = new Keyring(new Map([[1, key(1)]]))): SsnDeps => ({ tenantId, keyring, repo, now: () => new Date("2026-10-17T12:00:00Z") });
 const gate = (over: Partial<RevealGate> = {}): RevealGate => ({ actorId: "u1", isMember: true, verifyPassword: async (p) => p === "right", allowAttempt: async () => true, ...over });
@@ -136,4 +137,21 @@ test("the keyring reads versions from the environment", () => {
   assert.equal(Keyring.fromEnv({ MONARCH_ENCRYPTION_KEY: k64(1), MONARCH_ENCRYPTION_KEY_V2: k64(2), MONARCH_ENCRYPTION_KEY_CURRENT: "1" })!.current, 1);
   assert.equal(Keyring.fromEnv({}), null);
   assert.equal(Keyring.fromEnv({ MONARCH_ENCRYPTION_KEY: "short" }), null);
+});
+
+test("a valid ITIN is accepted like a Social Security number, and the wording says so", async () => {
+  assert.equal(checkSsn("912-70-1234"), "912701234");
+  assert.equal(checkSsn("999 88 4321"), "999884321");
+  assert.throws(() => checkSsn("123456"), /Social Security number or ITIN/);
+  assert.throws(() => checkSsn("000-12-3456"), /Social Security number or ITIN/);
+});
+
+test("the activity list shows saves and reveals, newest first, without the number", async () => {
+  const d = deps();
+  await storeSsn(d, { clientId: C1, ssn: "123-45-6789", actorId: "u1" });
+  await revealSsn(d, gate(), { clientId: C1, password: "right" });
+  await assert.rejects(revealSsn(d, gate(), { clientId: C1, password: "wrong" }));
+  const a = await numberActivity(d, C1);
+  assert.deepEqual(a.map((x) => x.label), ["Reveal tried with a wrong password", "Number revealed", "Number saved or replaced"]);
+  assert.ok(!JSON.stringify(a).includes("6789"));
 });
