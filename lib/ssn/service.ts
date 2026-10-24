@@ -176,3 +176,16 @@ export async function numberActivity(deps: SsnDeps, clientId: string | null, lim
   const rows = await deps.repo.listAudit(clientId, limit);
   return rows.filter((r) => ACTIVITY[r.action]).map((r) => ({ label: ACTIVITY[r.action], clientId: r.clientId, actorId: r.actorId, at: r.at }));
 }
+
+/** Seals the number held for one client under another client (used when two clients are merged). The original is left as it is. */
+export async function copySsn(deps: SsnDeps, input: { from: string; to: string; actorId: string | null }): Promise<boolean> {
+  if (!UUID.test(input.from) || !UUID.test(input.to)) throw new ValidationError("That client wasn't found.");
+  const sealed = await deps.repo.getCiphertext(input.from);
+  const key = sealed ? await dataKey(deps, false) : null;
+  if (!sealed || !key) return false;
+  const digits = ring(deps).open(key, sealed, aadFor(deps.tenantId, input.from));
+  await deps.repo.putCiphertext(input.to, ring(deps).seal(key, digits, aadFor(deps.tenantId, input.to)), input.actorId);
+  await deps.repo.setLast4(input.to, digits.slice(-4));
+  await deps.repo.audit({ action: "ssn.stored", clientId: input.to, actorId: input.actorId });
+  return true;
+}

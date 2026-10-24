@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { Badge, EmptyRow, Flash, PageTitle } from "@/components/admin/ui";
-import { balance, defaultInvoiceLines, dollars, invoiceView, totals, type InvoiceView } from "@/lib/workspace/rules.ts";
+import { balance, dollars, invoiceView, totals, type InvoiceView } from "@/lib/workspace/rules.ts";
+import { NewInvoice } from "@/components/contacts/new-invoice";
+import { standardFees } from "@/lib/workspace/service.ts";
 import { todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
-import { createInvoiceAction, invoiceStatusAction } from "../actions";
+import { invoiceStatusAction } from "../actions";
 import { WorkspaceSetup } from "../setup";
 
 const VIEWS: [InvoiceView | "all", string][] = [["all", "All"], ["draft", "Draft"], ["sent", "Sent"], ["overdue", "Overdue"], ["paid", "Paid"], ["void", "Void"]];
@@ -13,15 +15,15 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const today = todayIso();
   const result = await workspaceLoad(async () => {
     const repo = workspaceRepo();
-    const [invoices, clients] = await Promise.all([repo.listInvoices(), repo.listClients({ includeArchived: true })]);
-    return { invoices, clients };
+    const [invoices, clients, standard] = await Promise.all([repo.listInvoices(), repo.listClients({ includeArchived: true }), standardFees(repo)]);
+    return { invoices, clients, standard };
   });
   return (
     <>
       <PageTitle title="Billing">Invoices for the returns you prepare. Import your bank statement to match payments to invoices automatically, then review each one before it is applied.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <WorkspaceSetup message={result.message} /> : (() => {
-        const { invoices, clients } = result.data;
+        const { invoices, clients, standard } = result.data;
         const names = new Map(clients.map((c) => [c.id, c.full_name]));
         const years = [...new Set(invoices.map((i) => i.tax_year))].sort((a, b) => b - a);
         const year = years.includes(Number(sp.year)) ? Number(sp.year) : null;
@@ -34,6 +36,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         const active = clients.filter((c) => !c.archived_at);
         return (
           <>
+            <div className="cl-head-actions"><NewInvoice standard={standard} back="/workspace/billing" year={new Date().getUTCFullYear() - 1} clients={active.map((c) => ({ id: c.id, name: c.full_name }))} disabled={active.length === 0} /></div>
             <div className="monarch-metrics">
               {[["Invoiced", dollars(t.invoiced)], ["Collected", dollars(t.collected)], ["Outstanding", dollars(t.outstanding)], ["Overdue", dollars(t.overdue)]].map(([l, v]) => <div className="monarch-metric" key={l}><div>{l}</div><strong>{v}</strong></div>)}
             </div>
@@ -66,22 +69,6 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                 </tbody>
               </table></div>
             </section>
-            <form action={createInvoiceAction} id="new-invoice" className="monarch-panel monarch-form" style={{ padding: 20 }}>
-              <h2 className="is-wide">New invoice</h2>
-              <label>Client *<select name="client_id" required defaultValue=""><option value="" disabled>{active.length ? "Choose a client…" : "Add a client first"}</option>{active.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}</select></label>
-              <label>Tax year *<input name="tax_year" required inputMode="numeric" maxLength={4} defaultValue={new Date().getUTCFullYear() - 1} /></label>
-              <label>Due date<input name="due_on" type="date" /></label>
-              <label>Status<select name="status" defaultValue="sent"><option value="sent">Sent</option><option value="draft">Draft</option></select></label>
-              <fieldset className="is-wide"><legend>Lines (the $223 breakdown; change any amount)</legend>
-                {defaultInvoiceLines().concat([{ label: "", amount_cents: 0 }, { label: "", amount_cents: 0 }]).map((l, n) => (
-                  <span key={n} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                    <input name={`line_label_${n}`} defaultValue={l.label} placeholder="Description" aria-label={`Line ${n + 1} description`} maxLength={120} />
-                    <input name={`line_amount_${n}`} defaultValue={l.label ? (l.amount_cents / 100).toFixed(2) : ""} placeholder="Amount" aria-label={`Line ${n + 1} amount`} size={10} />
-                  </span>
-                ))}
-              </fieldset>
-              <div className="is-wide"><button className="monarch-primary" disabled={active.length === 0}>Create invoice</button></div>
-            </form>
           </>
         );
       })()}

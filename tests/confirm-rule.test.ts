@@ -3,7 +3,7 @@ import test from "node:test";
 import { confirmKind, confirmText } from "../lib/ui/confirm.ts";
 
 test("destructive labels ask first, and permanent ones say so", () => {
-  for (const l of ["Delete", "Delete campaign", "Delete anyway", "Void", "Discard this import", "Revoke", "Disconnect domain"]) assert.equal(confirmKind(l, false), "permanent", l);
+  for (const l of ["Delete", "Delete campaign", "Delete anyway", "Void", "Discard this import", "Revoke", "Disconnect domain", "Merge"]) assert.equal(confirmKind(l, false), "permanent", l);
   for (const l of ["Archive", "Archive this client", "Restore", "Withdraw invite", "Take offline", "Cancel invite", "Remove"]) assert.notEqual(confirmKind(l, false), null, l);
   assert.equal(confirmKind("Remove", false), "permanent");
   assert.equal(confirmKind("Restore", false), "normal");

@@ -12,8 +12,12 @@ export type Client = {
   first_name?: string | null; last_name?: string | null; dob?: string | null;
   address_line1?: string | null; address_line2?: string | null; city?: string | null; state?: string | null; zip?: string | null;
   spouse_id?: string | null;
+  /** Driver's license, and whether the address is the one used on last year's return (if not, the old address). */
+  dl_number?: string | null; dl_state?: string | null; dl_issued_on?: string | null; dl_expires_on?: string | null;
+  address_same_as_last_year?: boolean;
+  prior_address_line1?: string | null; prior_address_line2?: string | null; prior_city?: string | null; prior_state?: string | null; prior_zip?: string | null;
 };
-export type ClientInput = Pick<Client, "full_name" | "email" | "phone" | "ssn_last4" | "address"> & Partial<Pick<Client, "first_name" | "last_name" | "dob" | "address_line1" | "address_line2" | "city" | "state" | "zip">>;
+export type ClientInput = Pick<Client, "full_name" | "email" | "phone" | "ssn_last4" | "address"> & Partial<Pick<Client, "first_name" | "last_name" | "dob" | "address_line1" | "address_line2" | "city" | "state" | "zip" | "dl_number" | "dl_state" | "dl_issued_on" | "dl_expires_on" | "address_same_as_last_year" | "prior_address_line1" | "prior_address_line2" | "prior_city" | "prior_state" | "prior_zip">>;
 
 export const RELATIONSHIPS = { child: "Child", stepchild: "Stepchild", foster_child: "Foster child", grandchild: "Grandchild", sibling: "Sibling", parent: "Parent", other_relative: "Other relative", other: "Other" } as const;
 export type Relationship = keyof typeof RELATIONSHIPS;
@@ -22,8 +26,15 @@ export type DependentInput = Pick<Dependent, "client_id" | "first_name" | "last_
 
 export const ENTITY_TYPES = { sole_proprietor: "Sole proprietor", llc: "LLC", s_corp: "S corporation", c_corp: "C corporation", partnership: "Partnership", nonprofit: "Nonprofit", other: "Other" } as const;
 export type EntityType = keyof typeof ENTITY_TYPES;
-export type Business = { id: string; tenant_id: string; client_id: string; name: string; entity_type: EntityType; ein: string | null; phone: string | null; address: string | null; created_at: string };
-export type BusinessInput = Pick<Business, "client_id" | "name" | "entity_type" | "ein" | "phone" | "address"> & { created_by: string | null };
+export type Business = { id: string; tenant_id: string; client_id: string; name: string; entity_type: EntityType; ein: string | null; phone: string | null; email?: string | null; address: string | null; created_at: string };
+export type BusinessInput = Pick<Business, "client_id" | "name" | "entity_type" | "ein" | "phone" | "address"> & { email?: string | null; created_by: string | null };
+
+/** A spouse entered by hand, for a spouse who is not a client. */
+export type Spouse = { id: string; tenant_id: string; client_id: string; first_name: string; last_name: string | null; dob: string | null; phone: string | null; email: string | null; ssn_last4: string | null; created_at: string };
+export type SpouseInput = Pick<Spouse, "client_id" | "first_name" | "last_name" | "dob" | "phone" | "email" | "ssn_last4"> & { created_by: string | null };
+
+/** One line of the record of what staff did on a client's card. */
+export type ClientEvent = { id: string; action: string; actor_id: string | null; detail: Record<string, unknown>; created_at: string };
 
 export const RETURN_KINDS = { original: "Original", extension: "Extension", amendment: "Amendment" } as const;
 export type ReturnKind = keyof typeof RETURN_KINDS;
@@ -78,6 +89,17 @@ export interface WorkspaceRepo {
   listBusinesses(clientId: string): Promise<Business[]>;
   insertBusiness(input: BusinessInput): Promise<Business>;
   deleteBusiness(id: string): Promise<void>;
+  getSpouse(clientId: string): Promise<Spouse | null>;
+  upsertSpouse(input: SpouseInput): Promise<Spouse>;
+  deleteSpouse(clientId: string): Promise<void>;
+  /** The standard fee lines an invoice starts from. Null until the office has saved its own. */
+  getInvoiceDefaults(): Promise<InvoiceLine[] | null>;
+  saveInvoiceDefaults(lines: InvoiceLine[], actorId: string | null): Promise<void>;
+  /** Records and lists what staff did on a client's card (written to the append-only workspace audit log). */
+  addClientEvent(e: { clientId: string; action: string; actorId: string | null; detail: Record<string, unknown> }): Promise<void>;
+  listClientEvents(clientId: string, limit: number): Promise<ClientEvent[]>;
+  /** Moves everything on `drop` to `keep` in one step and archives `drop`. Returns how much of each kind moved. */
+  mergeClients(keep: string, drop: string, actorId: string | null): Promise<Record<string, number>>;
 
   listReturns(f?: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string }): Promise<ClientReturn[]>;
   getReturn(id: string): Promise<ClientReturn | null>;

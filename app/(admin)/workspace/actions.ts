@@ -10,7 +10,7 @@ import { pipelinesRepo } from "@/lib/pipelines/server";
 import { returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
 import { emitInvoicePaid, emitReturnStage } from "@/lib/automation/emit";
-import { addBusiness, addClient, addDependent, linkSpouse, unlinkSpouse, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveClient, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
+import { addBusiness, addClient, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
 import { loadBrand } from "@/lib/branding/server";
@@ -25,7 +25,7 @@ import { commerceRepo } from "@/lib/admin";
 import { currentTier } from "@/lib/tier-server";
 import { allows } from "@/lib/tier.ts";
 import { currentTenantId } from "@/lib/tenants.ts";
-import { checkSsn, revealSsn, storeSsn } from "@/lib/ssn/service.ts";
+import { checkSsn, copySsn, hasStoredSsn, revealSsn, storeSsn } from "@/lib/ssn/service.ts";
 import { revealGate, ssnDeps } from "@/lib/ssn/server";
 import type { Invoice } from "@/lib/workspace/types";
 
@@ -72,6 +72,9 @@ async function onlinePaymentsOn(): Promise<boolean> {
   return deps ? canTakePayments(await deps.repo.getConnection(), deps.stripe.livemode) : false;
 }
 
+/** The signed-in person, for the record of who changed what. */
+const whoIs = async (): Promise<Actor> => { const a = await requireAdmin(); return { id: a.userId, email: a.email }; };
+
 const clientPage = (id: string, tab = "overview") => `/workspace/clients/${id}?tab=${tab}`;
 
 // ---- clients
@@ -82,19 +85,9 @@ const typedSsn = (form: FormData): string | null => (str(form, "ssn").trim() ? c
 export async function addClientAction(form: FormData) {
   await act("/workspace/clients", async (adminId) => {
     const ssn = typedSsn(form);
-    const c = await addClient(workspaceRepo(), raw(form), adminId);
+    const c = await addClient(workspaceRepo(), raw(form), adminId, null, await whoIs());
     if (ssn) await storeSsn(ssnDeps(), { clientId: c.id, ssn, actorId: adminId });
     return { to: clientPage(c.id), notice: "Client added." };
-  });
-}
-
-export async function saveClientAction(form: FormData) {
-  const id = str(form, "id");
-  await act(clientPage(id), async (adminId) => {
-    const ssn = typedSsn(form);
-    await saveClient(workspaceRepo(), id, raw(form));
-    if (ssn) await storeSsn(ssnDeps(), { clientId: id, ssn, actorId: adminId });
-    return { notice: "Saved." };
   });
 }
 
@@ -109,7 +102,7 @@ export async function addContactAction(form: FormData): Promise<{ error: string;
     const tier = await currentTier();
     if (kind === "client") {
       const ssn = typedSsn(form);
-      const c = await addClient(workspaceRepo(), fields, admin.userId);
+      const c = await addClient(workspaceRepo(), fields, admin.userId, null, { id: admin.userId, email: admin.email });
       if (ssn) await storeSsn(ssnDeps(), { clientId: c.id, ssn, actorId: admin.userId });
       to = clientPage(c.id);
     } else if (kind === "lead") {
@@ -257,27 +250,89 @@ export async function logMessageAction(form: FormData) {
 
 export async function linkSpouseAction(form: FormData) {
   const id = str(form, "id");
-  await act(clientPage(id), async () => { await linkSpouse(workspaceRepo(), id, str(form, "spouse_id")); return { notice: "Spouse linked." }; });
+  await act(clientPage(id), async () => { await linkSpouse(workspaceRepo(), id, str(form, "spouse_id"), await whoIs()); return { notice: "Spouse linked." }; });
 }
 export async function unlinkSpouseAction(form: FormData) {
   const id = str(form, "id");
-  await act(clientPage(id), async () => { await unlinkSpouse(workspaceRepo(), id); return { notice: "Spouse unlinked." }; });
+  await act(clientPage(id), async () => { await unlinkSpouse(workspaceRepo(), id, await whoIs()); return { notice: "Spouse unlinked." }; });
+}
+export async function saveSpouseAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async () => { await saveSpouse(workspaceRepo(), raw(form), await whoIs()); return { notice: "Spouse saved." }; });
+}
+export async function removeSpouseAction(form: FormData) {
+  const id = str(form, "client_id");
+  await act(clientPage(id), async () => { await removeSpouse(workspaceRepo(), id, await whoIs()); return { notice: "Spouse removed." }; });
 }
 export async function addDependentAction(form: FormData) {
   const id = str(form, "client_id");
-  await act(clientPage(id), async (adminId) => { await addDependent(workspaceRepo(), raw(form), adminId); return { notice: "Dependent added." }; });
+  await act(clientPage(id), async (adminId) => { await addDependent(workspaceRepo(), raw(form), adminId, await whoIs()); return { notice: "Dependent added." }; });
 }
 export async function removeDependentAction(form: FormData) {
   const id = str(form, "client_id");
-  await act(clientPage(id), async () => { await workspaceRepo().deleteDependent(str(form, "id")); return { notice: "Dependent removed." }; });
+  await act(clientPage(id), async () => { await removeDependent(workspaceRepo(), id, str(form, "id"), await whoIs()); return { notice: "Dependent removed." }; });
 }
 export async function addBusinessAction(form: FormData) {
   const id = str(form, "client_id");
-  await act(clientPage(id), async (adminId) => { await addBusiness(workspaceRepo(), raw(form), adminId); return { notice: "Business added." }; });
+  await act(clientPage(id), async (adminId) => { await addBusiness(workspaceRepo(), raw(form), adminId, await whoIs()); return { notice: "Business added." }; });
 }
 export async function removeBusinessAction(form: FormData) {
   const id = str(form, "client_id");
-  await act(clientPage(id), async () => { await workspaceRepo().deleteBusiness(str(form, "id")); return { notice: "Business removed." }; });
+  await act(clientPage(id), async () => { await removeBusiness(workspaceRepo(), id, str(form, "id"), await whoIs()); return { notice: "Business removed." }; });
+}
+
+/** The Details card's Save: on a problem the card stays open with what was typed and says what is wrong. */
+export async function saveClientDetailsAction(form: FormData): Promise<{ error: string; field?: string } | undefined> {
+  const id = str(form, "id");
+  let notice: string;
+  try {
+    const admin = await requireAdmin();
+    const ssn = typedSsn(form);
+    const { changes } = await saveClientWithChanges(workspaceRepo(), id, raw(form), { id: admin.userId, email: admin.email });
+    if (ssn) await storeSsn(ssnDeps(), { clientId: id, ssn, actorId: admin.userId });
+    const names = [...changes.map((c) => c.field), ...(ssn ? ["Social Security number"] : [])];
+    notice = names.length ? `Saved. Updated ${names.join(", ")}.` : "Nothing was changed.";
+  } catch (e) {
+    unstable_rethrow(e);
+    return { error: failure(e) };
+  }
+  revalidatePath("/workspace", "layout");
+  redirect(to(clientPage(id), "notice", notice));
+}
+
+/** Merges a duplicate into the client being kept: everything moves over, the duplicate is archived. */
+export async function mergeClientsAction(form: FormData) {
+  const keep = str(form, "keep");
+  const drop = str(form, "drop");
+  await act(clientPage(keep), async (adminId) => {
+    const ssn = ssnDeps();
+    if (!(await hasStoredSsn(ssn, keep)) && (await hasStoredSsn(ssn, drop))) await copySsn(ssn, { from: drop, to: keep, actorId: adminId });
+    const moved = await mergeClients(workspaceRepo(), keep, drop, await whoIs());
+    const parts = Object.entries(moved).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`);
+    return { notice: `Merged. ${parts.length ? `Moved ${parts.join(", ")}.` : "Nothing needed moving."} The other record is archived.` };
+  });
+}
+
+/** Merges a duplicate lead into a client: the lead's details are kept as a note on the client and the lead is marked converted. */
+export async function mergeLeadIntoClientAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  const leadId = str(form, "lead_id");
+  await act(clientPage(clientId), async (adminId) => {
+    const leads = leadsDeps().repo;
+    const lead = await leads.getLead(leadId);
+    if (!lead) throw new ValidationError("That lead wasn't found.");
+    const repo = workspaceRepo();
+    if (!(await repo.getClient(clientId))) throw new ValidationError("That client wasn't found.");
+    const detail = [`Merged from lead ${lead.full_name}`, lead.email, lead.phone, lead.source ? `Source: ${lead.source}` : "", lead.notes ?? ""].filter(Boolean).join("\n");
+    await repo.insertNote({ client_id: clientId, body: detail.slice(0, 4000), created_by: adminId });
+    await leads.updateLead(leadId, { status: "converted" });
+    return { notice: `Lead ${lead.full_name} merged into this client and marked converted.` };
+  });
+}
+
+/** Saves the standard invoice fees (Settings). */
+export async function saveStandardFeesAction(form: FormData) {
+  await act("/settings/invoice-fees", async (adminId) => { await saveStandardFees(workspaceRepo(), raw(form), adminId); return { notice: "Standard fees saved. New invoices start from these." }; });
 }
 
 // ---- documents (uploaded straight to private storage, then checked)

@@ -483,3 +483,22 @@ a.hm-row:hover{background:#fcfbf8}
 .cl-quick input[name="title"], .cl-quick input[name="body"] { flex: 1 1 180px; }
 .cl-archive { justify-content: flex-end; }
 .md-dialog, .cf-dialog { margin: auto; }
+
+/* Details card: read-only list, then the edit form */
+.dc-card { padding: 16px 18px; }
+.dc-list { margin: 0; display: grid; gap: 6px; }
+.dc-list > div { display: grid; grid-template-columns: 150px 1fr; gap: 10px; align-items: start; }
+.dc-list dt { color: var(--muted, #6b665a); font-size: 0.88rem; padding-top: 2px; }
+.dc-list dd { margin: 0; }
+.dc-same { border: 0; padding: 0; margin: 0; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.dc-same legend { float: left; margin-right: 14px; padding: 0; font-weight: 600; }
+.dc-sub { margin: 8px 0 0; font-size: 0.98rem; }
+@media (max-width: 560px) { .dc-list > div { grid-template-columns: 1fr; gap: 0; } }
+.ni-standard ul { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 4px; }
+.ni-standard li { display: flex; justify-content: space-between; gap: 12px; }
+.ni-choice { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.ni-line { display: flex; gap: 8px; margin-bottom: 6px; }
+.ni-line input:first-child { flex: 1; }
+.cl-dupe { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 12px; border: 1px solid #e6cf8f; background: #fff8e1; border-radius: 10px; }
+.mc-keep { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.mc-keep legend { font-weight: 600; margin-bottom: 6px; padding: 0; }

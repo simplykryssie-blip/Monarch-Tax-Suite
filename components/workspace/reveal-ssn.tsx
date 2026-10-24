@@ -8,7 +8,7 @@ import { revealClientSsnAction } from "@/app/(admin)/workspace/actions";
  * A client's Social Security number or ITIN, masked to the last four. Reveal asks for the person's password again, shows the
  * full number for a few seconds, then hides it. Every try, allowed or not, is recorded by the server.
  */
-export function RevealSsn({ clientId, last4, onFile }: { clientId: string; last4: string | null; onFile: boolean }) {
+export function RevealSsn({ clientId, last4, onFile, editable = true }: { clientId: string; last4: string | null; onFile: boolean; editable?: boolean }) {
   const [asking, setAsking] = useState(false);
   const [editing, setEditing] = useState(false);
   const [password, setPassword] = useState("");
@@ -34,7 +34,7 @@ export function RevealSsn({ clientId, last4, onFile }: { clientId: string; last4
       <span className="cl-ssn-value"><b>{value ?? masked}</b></span>
       {onFile && !asking && !value && <button type="button" className="monarch-secondary efin-small" onClick={() => { setAsking(true); setError(null); }}>Reveal</button>}
       {value && <button type="button" className="monarch-secondary efin-small" onClick={() => setValue(null)}>Hide</button>}
-      {onFile && <button type="button" className="monarch-secondary efin-small" aria-pressed={editing} onClick={() => setEditing((e) => !e)}>{editing ? "Cancel" : "Edit"}</button>}
+      {editable && onFile && <button type="button" className="monarch-secondary efin-small" aria-pressed={editing} onClick={() => setEditing((e) => !e)}>{editing ? "Cancel" : "Edit"}</button>}
       {asking && !value && (
         <span className="cl-ssn-ask">
           <input type="password" autoComplete="current-password" aria-label="Your password" placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (password) submit(); } }} />
@@ -43,7 +43,7 @@ export function RevealSsn({ clientId, last4, onFile }: { clientId: string; last4
         </span>
       )}
       {error && <small role="alert" style={{ color: "#a8322b" }}>{error}</small>}
-      {(editing || !onFile) && (
+      {editable && (editing || !onFile) && (
         <div className="cl-ssn-edit">
           <label>{onFile ? "Correct the number" : "Add the full number"}<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder="Nine digits" /></label>
         </div>

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Business, BusinessInput, Client, ClientDoc, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
 
 // The workspace in memory, with the database rules that matter: one original and one extension per client per year,
 // unique invoice numbers. Returns copies.
@@ -12,7 +12,28 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async listClients(f: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string } = {}) { return this.c(this.clients.filter((x) => (f.includeArchived || !x.archived_at) && (!f.ownerId || x.owner_id === f.ownerId) && (!f.organizationId || x.organization_id === f.organizationId) && (!f.q || x.full_name.toLowerCase().includes(f.q.toLowerCase())))); }
   async getClient(id: string) { return this.c(this.clients.find((x) => x.id === id) ?? null); }
   async insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null }) { const x: Client = { owner_id: null, organization_id: null, ...this.c(input), id: randomUUID(), tenant_id: "t", archived_at: null, created_at: this.at(), updated_at: this.at() }; this.clients.push(x); return this.c(x); }
-  dependents: Dependent[] = []; businesses: Business[] = [];
+  dependents: Dependent[] = []; businesses: Business[] = []; spouses: Spouse[] = []; events: (ClientEvent & { client_id: string })[] = []; fees: InvoiceLine[] | null = null;
+  async getSpouse(clientId: string) { return this.c(this.spouses.find((s) => s.client_id === clientId) ?? null); }
+  async upsertSpouse(input: SpouseInput) { const rest: Record<string, unknown> = { ...input }; delete rest.created_by; this.spouses = this.spouses.filter((s) => s.client_id !== input.client_id); const s = { ...this.c(rest) as unknown as Spouse, id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.spouses.push(s); return this.c(s); }
+  async deleteSpouse(clientId: string) { this.spouses = this.spouses.filter((s) => s.client_id !== clientId); }
+  async getInvoiceDefaults() { return this.fees ? this.c(this.fees) : null; }
+  async saveInvoiceDefaults(lines: InvoiceLine[]) { this.fees = this.c(lines); }
+  async addClientEvent(e: { clientId: string; action: string; actorId: string | null; detail: Record<string, unknown> }) { this.events.push({ id: randomUUID(), client_id: e.clientId, action: e.action, actor_id: e.actorId, detail: e.detail, created_at: this.at() }); }
+  async listClientEvents(clientId: string, limit: number) { return this.c(this.events.filter((e) => e.client_id === clientId).reverse().slice(0, limit)); }
+  async mergeClients(keep: string, drop: string, actorId: string | null) {
+    const k = this.clients.find((c) => c.id === keep); const d = this.clients.find((c) => c.id === drop);
+    if (!k || !d || keep === drop) throw new Error("Choose two different clients.");
+    const moved: Record<string, number> = {};
+    const move = <T extends { client_id: string }>(rows: T[], name: string) => { let n = 0; for (const r of rows) if (r.client_id === drop) { r.client_id = keep; n++; } moved[name] = n; };
+    const clash = (r: ClientReturn) => this.returns.some((x) => x.client_id === keep && x.tax_year === r.tax_year && x.kind === r.kind && r.kind !== "amendment" && !x.archived_at && !r.archived_at);
+    let rn = 0; for (const r of this.returns) if (r.client_id === drop && !clash(r)) { r.client_id = keep; rn++; } moved.returns = rn;
+    move(this.docs, "documents"); move(this.messages, "messages"); move(this.tasks, "tasks"); move(this.notes, "notes"); move(this.dependents, "dependents"); move(this.businesses, "businesses");
+    if (k.spouse_id === drop) k.spouse_id = null; if (d.spouse_id === keep) d.spouse_id = null;
+    for (const key of ["email", "phone", "ssn_last4", "address", "dob"] as const) if (!k[key] && d[key]) (k as Record<string, unknown>)[key] = d[key];
+    d.archived_at = d.archived_at ?? this.at();
+    this.events.push({ id: randomUUID(), client_id: keep, action: "client.merged", actor_id: actorId, detail: { merged_name: d.full_name, merged_id: drop, moved }, created_at: this.at() });
+    return moved;
+  }
   async listDependents(clientId: string) { return this.c(this.dependents.filter((d) => d.client_id === clientId)); }
   async insertDependent(input: DependentInput) { const rest: Record<string, unknown> = { ...input }; delete rest.created_by; const d = { ...this.c(rest) as unknown as Dependent, id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.dependents.push(d); return this.c(d); }
   async deleteDependent(id: string) { this.dependents = this.dependents.filter((d) => d.id !== id); }

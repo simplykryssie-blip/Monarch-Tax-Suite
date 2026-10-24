@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import { parseMoney } from "../fees/engine.ts";
-import { balance, checkBusiness, checkClient, checkDependent, checkLines, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
-import type { Client, ClientReturn, Invoice, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
+import { changedFields, type FieldChange } from "./activity.ts";
+import { balance, checkBusiness, checkClient, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
+import type { Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
 // My Workspace orchestration: each function checks its input with the rules, then uses the repository. Nothing here
 // reaches outside the tenant: the repository is built on the tenant-scoped database client.
@@ -17,13 +18,37 @@ const clean = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\
 // ---------------------------------------------------------------- clients, returns, tasks, notes, messages
 
 /** The preparer who adds a client owns them; `organizationId` is the office whose team entered them (none for the account's own). */
-export async function addClient(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string, organizationId: string | null = null): Promise<Client> {
-  return repo.insertClient({ ...checkClient(raw), created_by: actorId, owner_id: actorId, organization_id: organizationId });
+/** Who did something, for the record on a client's card. */
+export type Actor = { id: string | null; email?: string | null };
+
+/** Writes one line to the client's activity record. A failure here is logged but never undoes what the person just did. */
+async function record(repo: WorkspaceRepo, clientId: string, actor: Actor | string | null, action: string, detail: Record<string, unknown> = {}) {
+  const who: Actor = typeof actor === "string" || actor === null ? { id: actor } : actor;
+  try {
+    await repo.addClientEvent({ clientId, action, actorId: who.id, detail: who.email ? { ...detail, by: who.email } : detail });
+  } catch (e) {
+    console.error(`workspace: could not record ${action}: ${e instanceof Error ? e.message : "unknown error"}`);
+  }
 }
 
-export async function saveClient(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>): Promise<Client> {
-  if (!(await repo.getClient(uuid(id, "That client")))) throw new ValidationError("That client wasn't found.");
-  return repo.updateClient(id, checkClient(raw));
+export async function addClient(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string, organizationId: string | null = null, actor?: Actor): Promise<Client> {
+  const c = await repo.insertClient({ ...checkClient(raw), created_by: actorId, owner_id: actorId, organization_id: organizationId });
+  await record(repo, c.id, actor ?? actorId, "client.created");
+  return c;
+}
+
+/** Saves a client's details and says what changed, so the person can be told and the change can be recorded. */
+export async function saveClientWithChanges(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>, actor?: Actor): Promise<{ client: Client; changes: FieldChange[] }> {
+  const before = await repo.getClient(uuid(id, "That client"));
+  if (!before) throw new ValidationError("That client wasn't found.");
+  const client = await repo.updateClient(id, checkClient(raw));
+  const changes = changedFields(before, client);
+  if (changes.length) await record(repo, id, actor ?? null, "client.updated", { changes });
+  return { client, changes };
+}
+
+export async function saveClient(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>, actor?: Actor): Promise<Client> {
+  return (await saveClientWithChanges(repo, id, raw, actor)).client;
 }
 
 /** A new return is worked by `assigneeId` (when given) and belongs to the client's office. */
@@ -96,8 +121,17 @@ export async function createInvoice(repo: WorkspaceRepo, raw: Record<string, unk
     if (!r || r.client_id !== clientId) throw new ValidationError("That return isn't this client's.");
     returnId = r.id;
   }
+  // The standard fees come from Settings, never from the form; the form only chooses whether to include them and adds other charges.
   const hasLines = Object.keys(raw).some((k) => k.startsWith("line_label_"));
-  const lines = hasLines ? checkLines(raw) : defaultInvoiceLines();
+  const chooses = Object.hasOwn(raw, "include_standard");
+  // A caller that sends no choice keeps the old rule: its own lines are the invoice, or the standard fees when it sends none.
+  const standard = (chooses ? raw.include_standard === "yes" : !hasLines) ? await standardFees(repo) : [];
+  let extra: InvoiceLine[] = [];
+  if (hasLines) {
+    try { extra = checkLines(raw); } catch (e) { if (!(standard.length && e instanceof ValidationError && /at least one line/.test(e.message))) throw e; }
+  }
+  const lines = [...standard, ...extra];
+  if (!lines.length) throw new ValidationError("An invoice needs at least one line: include the standard fees or add a charge.");
   const status: InvoiceStatus = raw.status === "sent" ? "sent" : "draft";
   const issued = typeof raw.issued_on === "string" && isDay(raw.issued_on) ? raw.issued_on : now.toISOString().slice(0, 10);
   const due = typeof raw.due_on === "string" && raw.due_on ? (isDay(raw.due_on) ? raw.due_on : (() => { throw new ValidationError("The due date isn't a valid date."); })()) : null;
@@ -207,36 +241,109 @@ export async function discardImport(repo: WorkspaceRepo, importId: string): Prom
 
 // ---------------------------------------------------------------- household: spouse, dependents, businesses
 
-/** Links two clients as spouses, on both records. Each can have only one spouse. */
-export async function linkSpouse(repo: WorkspaceRepo, id: string, spouseId: string): Promise<void> {
+const fullName = (first: string, last: string | null) => [first, last].filter(Boolean).join(" ");
+
+/** Links two clients as spouses, on both records. Each can have only one spouse. A spouse entered by hand is replaced by the link. */
+export async function linkSpouse(repo: WorkspaceRepo, id: string, spouseId: string, actor?: Actor): Promise<void> {
   const a = await repo.getClient(uuid(id, "That client"));
   const b = await repo.getClient(uuid(spouseId, "The spouse"));
   if (!a || !b) throw new ValidationError("That client wasn't found.");
   if (a.id === b.id) throw new ValidationError("A client can't be their own spouse.");
   if (a.spouse_id && a.spouse_id !== b.id) throw new ValidationError(`${a.full_name} is already linked to another spouse. Unlink them first.`);
   if (b.spouse_id && b.spouse_id !== a.id) throw new ValidationError(`${b.full_name} is already linked to another spouse. Unlink them first.`);
+  await repo.deleteSpouse(a.id);
+  await repo.deleteSpouse(b.id);
   await repo.updateClient(a.id, { spouse_id: b.id });
   await repo.updateClient(b.id, { spouse_id: a.id });
+  await record(repo, a.id, actor ?? null, "client.spouse_linked", { name: b.full_name });
+  await record(repo, b.id, actor ?? null, "client.spouse_linked", { name: a.full_name });
 }
 
 /** Removes the link on both records. */
-export async function unlinkSpouse(repo: WorkspaceRepo, id: string): Promise<void> {
+export async function unlinkSpouse(repo: WorkspaceRepo, id: string, actor?: Actor): Promise<void> {
   const a = await repo.getClient(uuid(id, "That client"));
   if (!a) throw new ValidationError("That client wasn't found.");
   if (!a.spouse_id) return;
   const b = await repo.getClient(a.spouse_id);
   await repo.updateClient(a.id, { spouse_id: null });
   if (b && b.spouse_id === a.id) await repo.updateClient(b.id, { spouse_id: null });
+  await record(repo, a.id, actor ?? null, "client.spouse_unlinked", { name: b?.full_name ?? "" });
 }
 
-export async function addDependent(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string) {
+/** Saves a spouse typed in by hand (one who isn't a client). Replaces the one entered before. */
+export async function saveSpouse(repo: WorkspaceRepo, raw: Record<string, unknown>, actor?: Actor) {
   const clientId = uuid(raw.client_id, "That client");
-  if (!(await repo.getClient(clientId))) throw new ValidationError("That client wasn't found.");
-  return repo.insertDependent({ client_id: clientId, ...checkDependent(raw), created_by: actorId });
+  const c = await repo.getClient(clientId);
+  if (!c) throw new ValidationError("That client wasn't found.");
+  if (c.spouse_id) throw new ValidationError("This client is linked to a spouse who is also a client. Unlink them to enter a spouse by hand.");
+  const input = checkSpouse(raw);
+  const s = await repo.upsertSpouse({ client_id: clientId, ...input, created_by: actor?.id ?? null });
+  await record(repo, clientId, actor ?? null, "client.spouse_saved", { name: fullName(input.first_name, input.last_name) });
+  return s;
 }
 
-export async function addBusiness(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string) {
+export async function removeSpouse(repo: WorkspaceRepo, clientId: string, actor?: Actor): Promise<void> {
+  const id = uuid(clientId, "That client");
+  const s = await repo.getSpouse(id);
+  if (!s) return;
+  await repo.deleteSpouse(id);
+  await record(repo, id, actor ?? null, "client.spouse_removed", { name: fullName(s.first_name, s.last_name) });
+}
+
+export async function addDependent(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string, actor?: Actor) {
   const clientId = uuid(raw.client_id, "That client");
   if (!(await repo.getClient(clientId))) throw new ValidationError("That client wasn't found.");
-  return repo.insertBusiness({ client_id: clientId, ...checkBusiness(raw), created_by: actorId });
+  const input = checkDependent(raw);
+  const d = await repo.insertDependent({ client_id: clientId, ...input, created_by: actorId });
+  await record(repo, clientId, actor ?? actorId, "client.dependent_added", { name: fullName(input.first_name, input.last_name) });
+  return d;
+}
+
+export async function removeDependent(repo: WorkspaceRepo, clientId: string, id: string, actor?: Actor): Promise<void> {
+  const cid = uuid(clientId, "That client");
+  const d = (await repo.listDependents(cid)).find((x) => x.id === id);
+  if (!d) throw new ValidationError("That dependent wasn't found.");
+  await repo.deleteDependent(d.id);
+  await record(repo, cid, actor ?? null, "client.dependent_removed", { name: fullName(d.first_name, d.last_name) });
+}
+
+export async function addBusiness(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string, actor?: Actor) {
+  const clientId = uuid(raw.client_id, "That client");
+  if (!(await repo.getClient(clientId))) throw new ValidationError("That client wasn't found.");
+  const input = checkBusiness(raw);
+  const b = await repo.insertBusiness({ client_id: clientId, ...input, created_by: actorId });
+  await record(repo, clientId, actor ?? actorId, "client.business_added", { name: input.name });
+  return b;
+}
+
+export async function removeBusiness(repo: WorkspaceRepo, clientId: string, id: string, actor?: Actor): Promise<void> {
+  const cid = uuid(clientId, "That client");
+  const b = (await repo.listBusinesses(cid)).find((x) => x.id === id);
+  if (!b) throw new ValidationError("That business wasn't found.");
+  await repo.deleteBusiness(b.id);
+  await record(repo, cid, actor ?? null, "client.business_removed", { name: b.name });
+}
+
+// ---------------------------------------------------------------- standard invoice fees and merging duplicates
+
+/** The standard fee lines an invoice starts from: the office's own, or the $223 breakdown until it saves its own. */
+export async function standardFees(repo: WorkspaceRepo): Promise<InvoiceLine[]> {
+  return (await repo.getInvoiceDefaults().catch(() => null)) ?? defaultInvoiceLines();
+}
+
+/** Saves the standard fee lines (Settings). They are what every new invoice starts from. */
+export async function saveStandardFees(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string): Promise<InvoiceLine[]> {
+  const lines = checkLines(raw, 12);
+  await repo.saveInvoiceDefaults(lines, actorId);
+  return lines;
+}
+
+/** Moves everything on `drop` onto `keep` and archives `drop`. Both must be clients of this workspace. */
+export async function mergeClients(repo: WorkspaceRepo, keepId: string, dropId: string, actor?: Actor): Promise<Record<string, number>> {
+  const keep = await repo.getClient(uuid(keepId, "The client to keep"));
+  const drop = await repo.getClient(uuid(dropId, "The client to merge"));
+  if (!keep || !drop) throw new ValidationError("That client wasn't found.");
+  if (keep.id === drop.id) throw new ValidationError("Choose two different clients.");
+  if (keep.archived_at) throw new ValidationError("The client to keep is archived. Restore them first.");
+  return repo.mergeClients(keep.id, drop.id, actor?.id ?? null);
 }

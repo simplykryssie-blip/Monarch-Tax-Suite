@@ -4,30 +4,35 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { ClientDocUpload } from "@/components/workspace/client-doc-upload";
-import { RevealSsn } from "@/components/workspace/reveal-ssn";
-import { Modal } from "@/components/ui/modal";
+import { DetailsCard, type Details } from "@/components/contacts/details-card";
+import { MergeChoice } from "@/components/contacts/merge-choice";
 import { MessageComposer } from "@/components/contacts/message-composer";
+import { NewInvoice } from "@/components/contacts/new-invoice";
+import { Modal } from "@/components/ui/modal";
+import { duplicatesOfClient } from "@/lib/contacts/duplicates.ts";
+import { loadContacts } from "@/lib/contacts/server";
 import { portalMemberRepo } from "@/lib/portal/server";
-import { splitName } from "@/lib/workspace/rules.ts";
-import { ENTITY_TYPES, RELATIONSHIPS } from "@/lib/workspace/types.ts";
+import { describeEvent } from "@/lib/workspace/activity.ts";
+import { balance, dollars, invoiceView, splitName } from "@/lib/workspace/rules.ts";
+import { standardFees } from "@/lib/workspace/service.ts";
+import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
 import { hasStoredSsn } from "@/lib/ssn/service.ts";
 import { ssnDeps } from "@/lib/ssn/server";
-import { balance, defaultInvoiceLines, dollars, invoiceView } from "@/lib/workspace/rules.ts";
-import { RETURN_KINDS } from "@/lib/workspace/types.ts";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
-import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, createInvoiceAction, linkSpouseAction, removeBusinessAction, removeDependentAction, unlinkSpouseAction, deleteClientDocAction, invoiceStatusAction, logMessageAction, openClientDocAction, saveClientAction, toggleTaskAction } from "../../actions";
+import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, deleteClientDocAction, invoiceStatusAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, openClientDocAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
 import { emailConfig, emailKeyProblems } from "@/lib/automation/email.ts";
 import { WorkspaceSetup } from "../../setup";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// Tasks, Notes and Portal are reached from the Overview (See all, and the Portal button), so they are not in the tab bar.
+// Returns, Tasks, Notes, Activity and the Portal open from the Overview (See all, and the Portal button), so they are not in the tab bar.
 const TABS = [["overview", "Overview"], ["documents", "Documents"], ["messages", "Messages"], ["billing", "Billing"]] as const;
-const HIDDEN = ["tasks", "notes", "portal"] as const;
+const HIDDEN = ["returns", "tasks", "notes", "activity", "portal"] as const;
 const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other", portal: "Portal" } as const;
+const FIVE = 5;
 
-/** One client: overview, documents, messages, work, billing (with the $223 breakdown), tasks and notes. */
+/** One client: the Overview with everything about them at a glance, their documents, messages and billing. */
 export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; notice?: string; error?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -38,26 +43,48 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     const repo = workspaceRepo();
     const client = await repo.getClient(id);
     if (!client) return null;
-    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member] = await Promise.all([repo.listReturns({ clientId: id }), repo.listDocs(id), repo.listMessages(id), repo.listTasks({ clientId: id }), repo.listNotes(id), repo.listInvoices({ clientId: id }), boardStages(), repo.listClients({ includeArchived: false }), repo.listDependents(id).catch(() => null), repo.listBusinesses(id).catch(() => null), portalMemberRepo(client.tenant_id).getForClient(id).catch(() => null)]);
-    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member };
+    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard] = await Promise.all([
+      repo.listReturns({ clientId: id }), repo.listDocs(id), repo.listMessages(id), repo.listTasks({ clientId: id }), repo.listNotes(id), repo.listInvoices({ clientId: id }), boardStages(),
+      repo.listClients({ includeArchived: false }), repo.listDependents(id).catch(() => null), repo.listBusinesses(id).catch(() => null),
+      portalMemberRepo(client.tenant_id).getForClient(id).catch(() => null), repo.getSpouse(id).catch(() => null), repo.listClientEvents(id, 200).catch(() => []), standardFees(repo),
+    ]);
+    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard };
   });
   if (result.ok && !result.data) notFound();
-  if (!result.ok) return <><PageTitle title="Client" back={{ href: "/workspace/clients", label: "Clients" }} /><WorkspaceSetup message={result.message} /></>;
-  const { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member } = result.data!;
+  if (!result.ok) return <><PageTitle title="Client" back={{ href: "/contacts", label: "Contacts" }} /><WorkspaceSetup message={result.message} /></>;
+  const { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard } = result.data!;
   // The office's own texting account, and its prepaid credits when it has them (tenant #1 pays Twilio directly).
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
   const ssnOnFile = await hasStoredSsn(ssnDeps(), client.id).catch(() => false);
+  const duplicates = tab === "overview" ? await loadContacts().then((d) => duplicatesOfClient(d.contacts, d.duplicates, client.id)).catch(() => []) : [];
   const stageName = (sid: string) => stages.find((s) => s.id === sid)?.name ?? "Intake";
-  const returnLabel = (r: { kind: keyof typeof RETURN_KINDS; tax_year: number }) => `${RETURN_KINDS[r.kind]} ${r.tax_year}`;
+  // "2025 return", "2025 extension", "2025 amendment".
+  const returnLabel = (r: { kind: keyof typeof RETURN_KINDS; tax_year: number }) => `${r.tax_year} ${r.kind === "original" ? "return" : r.kind}`;
+  const newestFirst = [...returns].sort((a, b) => b.tax_year - a.tax_year);
   const owes = invoices.filter((i) => i.status === "sent").reduce((n, i) => n + balance(i), 0);
   const back = `/workspace/clients/${id}?tab=${tab}`;
   const openTasks = tasks.filter((x) => !x.done_at);
   const spouse = client.spouse_id ? others.find((o) => o.id === client.spouse_id) ?? null : null;
-  const nameParts = client.first_name ? { first: client.first_name, last: client.last_name ?? "" } : (() => { const s = splitName(client.full_name); return { first: s.first, last: s.last ?? "" }; })();
+  const names = client.first_name ? { first: client.first_name, last: client.last_name ?? "" } : (() => { const s = splitName(client.full_name); return { first: s.first, last: s.last ?? "" }; })();
   const lastMessage = messages[0] ?? null;
   const portalLabel = !member ? "Not invited" : member.status === "active" ? "Active" : member.status === "invited" ? "Invited" : "Off";
   const hiddenTab = (HIDDEN as readonly string[]).includes(tab);
+  const activity = events.map((e) => ({ id: e.id, text: describeEvent(e), by: typeof e.detail.by === "string" ? e.detail.by : e.actor_id ? "a teammate" : "the system", at: e.created_at })).filter((e): e is { id: string; text: string; by: string; at: string } => e.text !== null);
+  const details: Details = {
+    id: client.id, first_name: names.first, last_name: names.last, email: client.email ?? "", phone: client.phone ?? "", dob: client.dob ?? "", ssn_last4: client.ssn_last4, ssn_on_file: ssnOnFile,
+    address_line1: client.address_line1 ?? "", address_line2: client.address_line2 ?? "", city: client.city ?? "", state: client.state ?? "", zip: client.zip ?? "", address: client.address ?? "",
+    same_address: client.address_same_as_last_year !== false, prior_address_line1: client.prior_address_line1 ?? "", prior_address_line2: client.prior_address_line2 ?? "", prior_city: client.prior_city ?? "", prior_state: client.prior_state ?? "", prior_zip: client.prior_zip ?? "",
+    dl_number: client.dl_number ?? "", dl_state: client.dl_state ?? "", dl_issued_on: client.dl_issued_on ?? "", dl_expires_on: client.dl_expires_on ?? "",
+  };
+  const quickAdd = (action: (f: FormData) => Promise<void>, field: string, placeholder: string, withDate: boolean) => (
+    <form action={action} className="cl-quick">
+      <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="back" value={back} />
+      <input name={field} required maxLength={field === "body" ? 4000 : 200} placeholder={placeholder} aria-label={placeholder} />
+      {withDate && <input name="due_on" type="date" aria-label="Due" />}
+      <button className="monarch-secondary">{field === "body" ? "Save" : "Add"}</button>
+    </form>
+  );
   return (
     <>
       <PageTitle title={client.full_name} back={{ href: "/contacts", label: "Contacts" }}>
@@ -65,6 +92,27 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       </PageTitle>
       <div className="cl-head-actions"><Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=portal`}>Portal</Link></div>
       <Flash notice={sp.notice} error={sp.error} />
+      {duplicates.map((d) => (
+        <div key={d.other.key} className="cl-dupe" role="note">
+          <span><b>Possible duplicate:</b> <Link href={d.other.refs.clientId ? `/workspace/clients/${d.other.refs.clientId}` : `/contacts/${d.other.key}`} target="_blank" rel="noreferrer">{d.other.name}</Link> · {d.reason}</span>
+          {(d.other.refs.clientId || d.other.refs.leadId) && (
+            <Modal label="Merge" title={`Merge ${d.other.name}`} className="monarch-secondary">
+              {d.other.refs.clientId ? (
+                <form action={mergeClientsAction} className="monarch-form">
+                  <MergeChoice thisId={client.id} thisName={client.full_name} otherId={d.other.refs.clientId} otherName={d.other.name} />
+                  <div className="is-wide ac-actions"><button className="monarch-primary">Merge</button></div>
+                </form>
+              ) : (
+                <form action={mergeLeadIntoClientAction} className="monarch-form">
+                  <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="lead_id" value={d.other.refs.leadId ?? ""} />
+                  <p className="is-wide">Keep {client.full_name} and fold the lead {d.other.name} into this client. The lead&apos;s details become a note here and the lead is marked converted.</p>
+                  <div className="is-wide ac-actions"><button className="monarch-primary">Merge</button></div>
+                </form>
+              )}
+            </Modal>
+          )}
+        </div>
+      ))}
       <nav className="cl-tabs" aria-label="Client">
         {TABS.map(([k, label]) => <Link key={k} href={`/workspace/clients/${id}?tab=${k}`} className={k === tab ? "is-on" : undefined} aria-current={k === tab ? "page" : undefined}>{label}</Link>)}
       </nav>
@@ -73,7 +121,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       {tab === "overview" && (
         <>
           <section className="cl-strip" aria-label="At a glance">
-            <div><small>Returns</small><b>{returns.length ? `${returnLabel(returns[returns.length - 1])} · ${stageName(returns[returns.length - 1].stage_id)}` : "None"}</b></div>
+            <div><small>Returns</small><b>{newestFirst.length ? `${returnLabel(newestFirst[0])} · ${stageName(newestFirst[0].stage_id)}` : "None"}</b></div>
             <div><small>Owes</small><b>{owes ? dollars(owes) : "Nothing"}</b></div>
             <div><small>Open tasks</small><b>{openTasks.length}</b></div>
             <div><small>Documents</small><b>{docs.length}</b></div>
@@ -82,34 +130,31 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           </section>
           <div className="grid2 cl-cols">
             <div className="cl-col">
-              <form action={saveClientAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
-                <h2 className="is-wide">Details</h2>
-                <input type="hidden" name="id" value={client.id} />
-                <label>First name *<input name="first_name" required maxLength={100} defaultValue={nameParts.first} /></label>
-                <label>Last name *<input name="last_name" required maxLength={100} defaultValue={nameParts.last} /></label>
-                <label>Email<input name="email" type="email" maxLength={254} defaultValue={client.email ?? ""} /></label>
-                <label>Phone<FormattedInput kind="phone" name="phone" defaultValue={client.phone ?? ""} /></label>
-                <label>Date of birth<input name="dob" type="date" defaultValue={client.dob ?? ""} /></label>
-                <input type="hidden" name="ssn_last4" value={client.ssn_last4 ?? ""} />
-                <div className="is-wide"><span>Social Security number or ITIN</span><RevealSsn clientId={client.id} last4={client.ssn_last4} onFile={ssnOnFile} /></div>
-                <label className="is-wide">Street address<input name="address_line1" maxLength={150} defaultValue={client.address_line1 ?? (client.address_line1 === undefined || client.address_line1 === null ? client.address ?? "" : "")} /></label>
-                <label className="is-wide">Apt, suite or unit<input name="address_line2" maxLength={100} defaultValue={client.address_line2 ?? ""} /></label>
-                <label>City<input name="city" maxLength={80} defaultValue={client.city ?? ""} /></label>
-                <label>State<input name="state" maxLength={2} defaultValue={client.state ?? ""} style={{ textTransform: "uppercase" }} /></label>
-                <label>ZIP<FormattedInput kind="zip" name="zip" defaultValue={client.zip ?? ""} /></label>
-                <div className="is-wide"><button className="monarch-primary">Save</button></div>
-              </form>
+              <DetailsCard d={details} />
 
               <section className="monarch-panel cl-card">
                 <div className="cl-card-head"><h2>Spouse</h2></div>
                 {spouse ? (
                   <form action={unlinkSpouseAction} className="cl-row"><input type="hidden" name="id" value={client.id} /><Link href={`/workspace/clients/${spouse.id}`}><b>{spouse.full_name}</b></Link><button className="monarch-link">Unlink</button></form>
+                ) : manualSpouse ? (
+                  <div className="cl-list">
+                    <div className="cl-row"><span><b>{[manualSpouse.first_name, manualSpouse.last_name].filter(Boolean).join(" ")}</b><small className="monarch-subcell">{[manualSpouse.dob ? `born ${manualSpouse.dob}` : "", manualSpouse.phone, manualSpouse.email, manualSpouse.ssn_last4 ? `SSN ending ${manualSpouse.ssn_last4}` : ""].filter(Boolean).join(" · ") || "No other details"}</small></span></div>
+                    <div className="cl-row">
+                      <Modal label="Edit" title="Edit spouse" className="monarch-secondary">
+                        <SpouseForm clientId={client.id} s={manualSpouse} />
+                      </Modal>
+                      <form action={removeSpouseAction}><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link is-danger">Remove</button></form>
+                    </div>
+                  </div>
                 ) : (
-                  <form action={linkSpouseAction} className="cl-row">
-                    <input type="hidden" name="id" value={client.id} />
-                    <select name="spouse_id" required defaultValue="" aria-label="Spouse"><option value="" disabled>Choose a client…</option>{others.filter((o) => o.id !== client.id && !o.spouse_id).map((o) => <option key={o.id} value={o.id}>{o.full_name}</option>)}</select>
-                    <button className="monarch-secondary">Link</button>
-                  </form>
+                  <div className="cl-list">
+                    <form action={linkSpouseAction} className="cl-row">
+                      <input type="hidden" name="id" value={client.id} />
+                      <select name="spouse_id" required defaultValue="" aria-label="Spouse who is a client"><option value="" disabled>Link a client…</option>{others.filter((o) => o.id !== client.id && !o.spouse_id).map((o) => <option key={o.id} value={o.id}>{o.full_name}</option>)}</select>
+                      <button className="monarch-secondary">Link</button>
+                    </form>
+                    <div className="cl-row"><Modal label="Add spouse manually" title="Add a spouse" className="monarch-secondary"><SpouseForm clientId={client.id} s={null} /></Modal></div>
+                  </div>
                 )}
               </section>
 
@@ -120,7 +165,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                       <form action={addDependentAction} className="monarch-form">
                         <input type="hidden" name="client_id" value={client.id} />
                         <label>First name *<input name="first_name" required maxLength={100} /></label>
-                        <label>Last name<input name="last_name" maxLength={100} defaultValue={nameParts.last} /></label>
+                        <label>Last name<input name="last_name" maxLength={100} defaultValue={names.last} /></label>
                         <label>Date of birth<input name="dob" type="date" /></label>
                         <label>Relationship<select name="relationship" defaultValue="child">{Object.entries(RELATIONSHIPS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
                         <label className="is-wide">Social Security number<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder="Nine digits" /></label>
@@ -146,7 +191,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                         <label className="is-wide">Business name *<input name="name" required maxLength={200} /></label>
                         <label>Kind<select name="entity_type" defaultValue="sole_proprietor">{Object.entries(ENTITY_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
                         <label>EIN<FormattedInput kind="ein" name="ein" autoComplete="off" /></label>
-                        <label>Phone<FormattedInput kind="phone" name="phone" autoComplete="off" /></label>
+                        <label>Business email<input name="email" type="email" maxLength={254} autoComplete="off" /></label>
+                        <label>Business phone<FormattedInput kind="phone" name="phone" autoComplete="off" /></label>
                         <label className="is-wide">Address<input name="address" maxLength={300} /></label>
                         <div className="is-wide ac-actions"><button className="monarch-primary">Add business</button></div>
                       </form>
@@ -154,7 +200,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   </div>
                   {businesses.length === 0 ? <p className="monarch-muted cl-empty">None</p> : (
                     <ul className="cl-list">{businesses.map((b) => (
-                      <li key={b.id}><span><b>{b.name}</b><small className="monarch-subcell">{ENTITY_TYPES[b.entity_type]}{b.ein ? ` · EIN ${b.ein}` : ""}{b.phone ? ` · ${b.phone}` : ""}{b.address ? ` · ${b.address}` : ""}</small></span>
+                      <li key={b.id}><span><b>{b.name}</b><small className="monarch-subcell">{[ENTITY_TYPES[b.entity_type], b.ein ? `EIN ${b.ein}` : "", b.email, b.phone, b.address].filter(Boolean).join(" · ")}</small></span>
                         <form action={removeBusinessAction}><input type="hidden" name="id" value={b.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link is-danger">Remove</button></form></li>
                     ))}</ul>
                   )}
@@ -166,20 +212,12 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               <section className="monarch-panel cl-card">
                 <div className="cl-card-head"><h2>Returns</h2>
                   <span className="cl-card-actions">
-                    <Link className="monarch-link" href="/workspace/work">Open the board</Link>
-                    <Modal label="Add return" title="Add a return" className="monarch-secondary">
-                      <form action={addReturnAction} className="monarch-form">
-                        <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="back" value={back} />
-                        <label>Tax year *<input name="tax_year" required inputMode="numeric" maxLength={4} defaultValue={new Date().getUTCFullYear() - 1} /></label>
-                        <label>Kind<select name="kind" defaultValue="original">{Object.entries(RETURN_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-                        <label className="is-wide">Due date<input name="due_on" type="date" /></label>
-                        <div className="is-wide ac-actions"><button className="monarch-primary">Add return</button></div>
-                      </form>
-                    </Modal>
+                    <Modal label="Add return" title="Add a return" className="monarch-secondary"><AddReturnForm clientId={client.id} back={back} /></Modal>
+                    {returns.length > FIVE && <Link className="monarch-link" href={`/workspace/clients/${id}?tab=returns`}>See all ({returns.length})</Link>}
                   </span>
                 </div>
                 {returns.length === 0 ? <p className="monarch-muted cl-empty">None</p> : (
-                  <ul className="cl-list">{returns.map((r) => (
+                  <ul className="cl-list">{newestFirst.slice(0, FIVE).map((r) => (
                     <li key={r.id} id={`return-${r.id}`}><span><b>{returnLabel(r)}</b><small className="monarch-subcell">{stageName(r.stage_id)}</small></span>
                       <span className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ? `due ${r.due_on}` : ""}</span></li>
                   ))}</ul>
@@ -187,31 +225,29 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               </section>
 
               <section className="monarch-panel cl-card">
-                <div className="cl-card-head"><h2>Tasks</h2><Link className="monarch-link" href={`/workspace/clients/${id}?tab=tasks`}>See all ({tasks.length})</Link></div>
+                <div className="cl-card-head"><h2>Tasks</h2>{tasks.length > 0 && <Link className="monarch-link" href={`/workspace/clients/${id}?tab=tasks`}>See all ({tasks.length})</Link>}</div>
+                {quickAdd(addTaskAction, "title", "Add a task", true)}
                 {openTasks.length === 0 ? <p className="monarch-muted cl-empty">None open</p> : (
-                  <ul className="cl-list">{openTasks.slice(0, 5).map((x) => (
+                  <ul className="cl-list">{openTasks.slice(0, FIVE).map((x) => (
                     <li key={x.id}><span><b>{x.title}</b>{x.due_on && <small className={`monarch-subcell${x.due_on < today ? " wb-late" : ""}`}>due {x.due_on}</small>}</span>
                       <form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form></li>
                   ))}</ul>
                 )}
-                <form action={addTaskAction} className="cl-quick">
-                  <input type="hidden" name="client_id" value={client.id} />
-                  <input name="title" required maxLength={200} placeholder="Add a task" aria-label="Task" />
-                  <input name="due_on" type="date" aria-label="Due" />
-                  <button className="monarch-secondary">Add</button>
-                </form>
               </section>
 
               <section className="monarch-panel cl-card">
-                <div className="cl-card-head"><h2>Notes</h2><Link className="monarch-link" href={`/workspace/clients/${id}?tab=notes`}>See all ({notes.length})</Link></div>
+                <div className="cl-card-head"><h2>Notes</h2>{notes.length > 0 && <Link className="monarch-link" href={`/workspace/clients/${id}?tab=notes`}>See all ({notes.length})</Link>}</div>
+                {quickAdd(addNoteAction, "body", "Add a note", false)}
                 {notes.length === 0 ? <p className="monarch-muted cl-empty">None</p> : (
-                  <ul className="cl-list">{notes.slice(0, 3).map((n) => <li key={n.id}><span style={{ whiteSpace: "pre-wrap" }}>{n.body}<small className="monarch-subcell">{when(n.created_at)}</small></span></li>)}</ul>
+                  <ul className="cl-list">{notes.slice(0, FIVE).map((n) => <li key={n.id}><span style={{ whiteSpace: "pre-wrap" }}>{n.body}<small className="monarch-subcell">{when(n.created_at)}</small></span></li>)}</ul>
                 )}
-                <form action={addNoteAction} className="cl-quick">
-                  <input type="hidden" name="client_id" value={client.id} />
-                  <input name="body" required maxLength={4000} placeholder="Add a note" aria-label="Note" />
-                  <button className="monarch-secondary">Save</button>
-                </form>
+              </section>
+
+              <section className="monarch-panel cl-card">
+                <div className="cl-card-head"><h2>Client activity</h2>{activity.length > FIVE && <Link className="monarch-link" href={`/workspace/clients/${id}?tab=activity`}>See all ({activity.length})</Link>}</div>
+                {activity.length === 0 ? <p className="monarch-muted cl-empty">Nothing recorded yet</p> : (
+                  <ul className="cl-list">{activity.slice(0, FIVE).map((a) => <li key={a.id}><span>{a.text}<small className="monarch-subcell">{a.by} · {when(a.at)}</small></span></li>)}</ul>
+                )}
               </section>
 
               <form action={archiveClientAction} className="monarch-inline-form cl-archive">
@@ -226,15 +262,16 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
       {tab === "documents" && (
         <>
+          <section className="monarch-panel" style={{ padding: 20 }}><h2>Add a document</h2><ClientDocUpload clientId={client.id} returns={newestFirst.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></section>
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Documents</h2><p>Kept in private storage. Each download link lasts one minute.</p></div></div>
+            <div className="monarch-panel-head"><div><h2>Documents</h2></div></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>TITLE</th><th>FOR</th><th>TYPE</th><th>ADDED</th><th></th></tr></thead>
+              <thead><tr><th>TITLE</th><th>RETURN</th><th>TYPE</th><th>ADDED</th><th></th></tr></thead>
               <tbody>
                 {docs.length === 0 ? <EmptyRow colSpan={5}>No documents yet.</EmptyRow> : docs.map((d) => (
                   <tr key={d.id}>
                     <td><b>{d.title}</b></td>
-                    <td>{d.return_id ? (() => { const r = returns.find((x) => x.id === d.return_id); return r ? returnLabel(r) : "—"; })() : "The client"}</td>
+                    <td>{d.return_id ? (() => { const r = returns.find((x) => x.id === d.return_id); return r ? returnLabel(r) : "—"; })() : "Not tied to a return"}</td>
                     <td>{d.file_type.toUpperCase()}</td>
                     <td>{when(d.created_at)}</td>
                     <td style={{ display: "flex", gap: 8 }}>
@@ -246,7 +283,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               </tbody>
             </table></div>
           </section>
-          <section className="monarch-panel" style={{ padding: 20 }}><h2>Add a document</h2><ClientDocUpload clientId={client.id} returns={returns.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></section>
         </>
       )}
 
@@ -257,7 +293,19 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         return (
         <>
           <section className="monarch-panel" style={{ padding: 20 }}>
-            <h2>Send a message</h2>
+            <div className="cl-card-head"><h2>Send a message</h2>
+              <Modal label="Log a message sent elsewhere" title="Log a message" className="monarch-secondary">
+                <form action={logMessageAction} className="monarch-form">
+                  <input type="hidden" name="client_id" value={client.id} />
+                  <label>Direction<select name="direction" defaultValue="out"><option value="out">I sent it</option><option value="in">Client sent it</option></select></label>
+                  <label>How<select name="channel" defaultValue="email">{Object.entries(CHANNELS).filter(([k]) => k !== "portal").map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+                  <label>Date<input name="occurred_at" type="date" defaultValue={today} /></label>
+                  <label>Subject (optional)<input name="subject" maxLength={200} /></label>
+                  <label className="is-wide">What was said *<textarea name="body" required rows={4} maxLength={4000} /></label>
+                  <div className="is-wide ac-actions"><button className="monarch-primary">Log message</button></div>
+                </form>
+              </Modal>
+            </div>
             {client.archived_at ? <p className="monarch-muted">This client is archived. Restore them to send messages.</p> : (
               <MessageComposer
                 clientId={client.id}
@@ -269,7 +317,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             )}
           </section>
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>History</h2><p>Messages sent from here, and messages you logged.</p></div></div>
+            <div className="monarch-panel-head"><div><h2>History</h2></div></div>
             <div className="monarch-table-wrap"><table>
               <thead><tr><th>WHEN</th><th>HOW</th><th>MESSAGE</th><th>STATUS</th></tr></thead>
               <tbody>
@@ -284,22 +332,13 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               </tbody>
             </table></div>
           </section>
-          <form action={logMessageAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
-            <h2 className="is-wide">Log a message sent elsewhere</h2>
-            <input type="hidden" name="client_id" value={client.id} />
-            <label>Direction<select name="direction" defaultValue="out"><option value="out">I sent it</option><option value="in">Client sent it</option></select></label>
-            <label>How<select name="channel" defaultValue="email">{Object.entries(CHANNELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-            <label>Date<input name="occurred_at" type="date" defaultValue={today} /></label>
-            <label>Subject (optional)<input name="subject" maxLength={200} /></label>
-            <label className="is-wide">What was said *<textarea name="body" required rows={4} maxLength={4000} /></label>
-            <div className="is-wide"><button className="monarch-primary">Log message</button></div>
-          </form>
         </>
         );
       })()}
 
       {tab === "billing" && (
         <>
+          <div className="cl-head-actions"><NewInvoice standard={standard} back={back} year={new Date().getUTCFullYear() - 1} clientId={client.id} returns={returns.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></div>
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Billing</h2><p>{owes ? `${dollars(owes)} owed.` : "Nothing owed."} Invoices default to the $223 breakdown.</p></div></div>
             <div className="monarch-table-wrap"><table>
@@ -329,65 +368,61 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               </tbody>
             </table></div>
           </section>
-          <form action={createInvoiceAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
-            <h2 className="is-wide">New invoice</h2>
-            <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="back" value={back} />
-            <label>Tax year *<input name="tax_year" required inputMode="numeric" maxLength={4} defaultValue={new Date().getUTCFullYear() - 1} /></label>
-            <label>For return<select name="return_id" defaultValue=""><option value="">None in particular</option>{returns.map((r) => <option key={r.id} value={r.id}>{returnLabel(r)}</option>)}</select></label>
-            <label>Due date<input name="due_on" type="date" /></label>
-            <label>Status<select name="status" defaultValue="sent"><option value="sent">Sent</option><option value="draft">Draft</option></select></label>
-            <fieldset className="is-wide"><legend>Lines (the $223 breakdown; change any amount)</legend>
-              {defaultInvoiceLines().concat([{ label: "", amount_cents: 0 }, { label: "", amount_cents: 0 }]).map((l, n) => (
-                <span key={n} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                  <input name={`line_label_${n}`} defaultValue={l.label} placeholder="Description" aria-label={`Line ${n + 1} description`} maxLength={120} />
-                  <input name={`line_amount_${n}`} defaultValue={l.label ? (l.amount_cents / 100).toFixed(2) : ""} placeholder="Amount" aria-label={`Line ${n + 1} amount`} size={10} />
-                </span>
-              ))}
-            </fieldset>
-            <label className="is-wide">Notes<input name="notes" maxLength={1000} /></label>
-            <div className="is-wide"><button className="monarch-primary">Create invoice</button></div>
-          </form>
-        </>
-      )}
-
-      {tab === "tasks" && (
-        <>
-          <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Tasks</h2></div></div>
-            <div className="monarch-table-wrap"><table>
-              <thead><tr><th>TASK</th><th>DUE</th><th>FOR</th><th></th></tr></thead>
-              <tbody>
-                {tasks.length === 0 ? <EmptyRow colSpan={4}>No tasks yet.</EmptyRow> : tasks.map((t) => (
-                  <tr key={t.id} style={t.done_at ? { opacity: 0.55 } : undefined}>
-                    <td style={t.done_at ? { textDecoration: "line-through" } : undefined}><b>{t.title}</b></td>
-                    <td className={!t.done_at && t.due_on && t.due_on < today ? "wb-late" : undefined}>{t.due_on ?? "—"}</td>
-                    <td>{t.return_id ? (() => { const r = returns.find((x) => x.id === t.return_id); return r ? returnLabel(r) : "—"; })() : "The client"}</td>
-                    <td><form action={toggleTaskAction}><input type="hidden" name="id" value={t.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="done" value={t.done_at ? "no" : "yes"} /><button className="monarch-link">{t.done_at ? "Reopen" : "Done"}</button></form></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table></div>
-          </section>
-          <form action={addTaskAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
-            <h2 className="is-wide">Add a task</h2>
-            <input type="hidden" name="client_id" value={client.id} />
-            <label>Task *<input name="title" required maxLength={200} /></label>
-            <label>Due<input name="due_on" type="date" /></label>
-            <label>For return<select name="return_id" defaultValue=""><option value="">The client in general</option>{returns.map((r) => <option key={r.id} value={r.id}>{returnLabel(r)}</option>)}</select></label>
-            <div className="is-wide"><button className="monarch-primary">Add task</button></div>
-          </form>
         </>
       )}
 
       {tab === "portal" && <PortalPanel area="admin" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`} />}
 
+      {tab === "returns" && (
+        <>
+          <div className="cl-head-actions"><Modal label="Add return" title="Add a return" className="monarch-primary"><AddReturnForm clientId={client.id} back={back} /></Modal></div>
+          <section className="monarch-panel">
+            <div className="monarch-panel-head"><div><h2>Returns</h2></div><Link className="mt-card-link" href="/workspace/work">Open the board</Link></div>
+            <div className="monarch-table-wrap"><table>
+              <thead><tr><th>RETURN</th><th>STAGE</th><th>DUE</th><th>FILED</th></tr></thead>
+              <tbody>
+                {newestFirst.length === 0 ? <EmptyRow colSpan={4}>No returns yet.</EmptyRow> : newestFirst.map((r) => (
+                  <tr key={r.id} id={`return-${r.id}`}><td><b>{returnLabel(r)}</b></td><td>{stageName(r.stage_id)}</td><td className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ?? "—"}</td><td>{r.filed_on ?? "—"}</td></tr>
+                ))}
+              </tbody>
+            </table></div>
+          </section>
+        </>
+      )}
+
+      {tab === "tasks" && (
+        <>
+          <section className="monarch-panel cl-card"><h2 style={{ marginTop: 0 }}>Add a task</h2>
+            <form action={addTaskAction} className="cl-quick">
+              <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="back" value={back} />
+              <input name="title" required maxLength={200} placeholder="Task" aria-label="Task" />
+              <input name="due_on" type="date" aria-label="Due" />
+              <select name="return_id" defaultValue="" aria-label="Which return is this for?"><option value="">No specific return</option>{newestFirst.map((r) => <option key={r.id} value={r.id}>{returnLabel(r)}</option>)}</select>
+              <button className="monarch-secondary">Add</button>
+            </form>
+          </section>
+          <section className="monarch-panel">
+            <div className="monarch-panel-head"><div><h2>Tasks</h2></div></div>
+            <div className="monarch-table-wrap"><table>
+              <thead><tr><th>TASK</th><th>DUE</th><th>RETURN</th><th></th></tr></thead>
+              <tbody>
+                {tasks.length === 0 ? <EmptyRow colSpan={4}>No tasks yet.</EmptyRow> : tasks.map((x) => (
+                  <tr key={x.id} style={x.done_at ? { opacity: 0.55 } : undefined}>
+                    <td style={x.done_at ? { textDecoration: "line-through" } : undefined}><b>{x.title}</b></td>
+                    <td className={!x.done_at && x.due_on && x.due_on < today ? "wb-late" : undefined}>{x.due_on ?? "—"}</td>
+                    <td>{x.return_id ? (() => { const r = returns.find((y) => y.id === x.return_id); return r ? returnLabel(r) : "—"; })() : "—"}</td>
+                    <td><form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="done" value={x.done_at ? "no" : "yes"} /><button className="monarch-link">{x.done_at ? "Reopen" : "Done"}</button></form></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          </section>
+        </>
+      )}
+
       {tab === "notes" && (
         <>
-          <form action={addNoteAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
-            <input type="hidden" name="client_id" value={client.id} />
-            <label className="is-wide">Add a note<textarea name="body" required rows={3} maxLength={4000} /></label>
-            <div className="is-wide"><button className="monarch-primary">Save note</button></div>
-          </form>
+          <section className="monarch-panel cl-card"><h2 style={{ marginTop: 0 }}>Add a note</h2>{quickAdd(addNoteAction, "body", "Note", false)}</section>
           <section className="monarch-panel">
             <div className="monarch-table-wrap"><table><tbody>
               {notes.length === 0 ? <EmptyRow colSpan={2}>No notes yet.</EmptyRow> : notes.map((n) => <tr key={n.id}><td style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>{when(n.created_at)}</td><td style={{ whiteSpace: "pre-wrap" }}>{n.body}</td></tr>)}
@@ -395,6 +430,45 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           </section>
         </>
       )}
+
+      {tab === "activity" && (
+        <section className="monarch-panel">
+          <div className="monarch-panel-head"><div><h2>Client activity</h2></div></div>
+          <div className="monarch-table-wrap"><table>
+            <thead><tr><th>WHEN</th><th>WHAT</th><th>BY</th></tr></thead>
+            <tbody>
+              {activity.length === 0 ? <EmptyRow colSpan={3}>Nothing recorded yet.</EmptyRow> : activity.map((a) => <tr key={a.id}><td style={{ whiteSpace: "nowrap" }}>{when(a.at)}</td><td>{a.text}</td><td>{a.by}</td></tr>)}
+            </tbody>
+          </table></div>
+        </section>
+      )}
     </>
+  );
+}
+
+function AddReturnForm({ clientId, back }: { clientId: string; back: string }) {
+  return (
+    <form action={addReturnAction} className="monarch-form">
+      <input type="hidden" name="client_id" value={clientId} /><input type="hidden" name="back" value={back} />
+      <label>Tax year *<input name="tax_year" required inputMode="numeric" maxLength={4} defaultValue={new Date().getUTCFullYear() - 1} /></label>
+      <label>Kind<select name="kind" defaultValue="original">{Object.entries(RETURN_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+      <label className="is-wide">Due date<input name="due_on" type="date" /></label>
+      <div className="is-wide ac-actions"><button className="monarch-primary">Add return</button></div>
+    </form>
+  );
+}
+
+function SpouseForm({ clientId, s }: { clientId: string; s: { first_name: string; last_name: string | null; dob: string | null; phone: string | null; email: string | null } | null }) {
+  return (
+    <form action={saveSpouseAction} className="monarch-form">
+      <input type="hidden" name="client_id" value={clientId} />
+      <label>First name *<input name="first_name" required maxLength={100} defaultValue={s?.first_name ?? ""} /></label>
+      <label>Last name<input name="last_name" maxLength={100} defaultValue={s?.last_name ?? ""} /></label>
+      <label>Date of birth<input name="dob" type="date" defaultValue={s?.dob ?? ""} /></label>
+      <label>Phone<FormattedInput kind="phone" name="phone" defaultValue={s?.phone ?? ""} /></label>
+      <label>Email<input name="email" type="email" maxLength={254} defaultValue={s?.email ?? ""} /></label>
+      <label>Social Security number<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder={s ? "Leave empty to keep" : "Nine digits"} /></label>
+      <div className="is-wide ac-actions"><button className="monarch-primary">Save spouse</button></div>
+    </form>
   );
 }

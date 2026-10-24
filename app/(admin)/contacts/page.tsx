@@ -4,6 +4,7 @@ import { EmptyRow, PageTitle, when } from "@/components/admin/ui";
 import { countContacts, DUPLICATE_REASON, filterContacts, type Contact, type ContactFilter } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
 import { AddContact } from "@/components/contacts/add-contact";
+import { Modal } from "@/components/ui/modal";
 import { contactKinds } from "@/lib/contacts/kinds.ts";
 import { currentTier } from "@/lib/tier-server";
 
@@ -29,7 +30,6 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const counts = countContacts(data.contacts);
   const rows = filterContacts(data.contacts, { q: sp.q, kind });
   const byKey = new Map(data.contacts.map((c) => [c.key, c]));
-  const review = sp.view === "duplicates";
   const href = (k: string) => {
     const p = new URLSearchParams();
     if (k) p.set("kind", k);
@@ -42,43 +42,28 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageTitle title="Contacts">Leads, clients and store customers in one list. A person found in more than one place is one contact.</PageTitle>
-      <div className="cl-head-actions"><AddContact kinds={kinds} /></div>
+      <div className="cl-head-actions">
+        <AddContact kinds={kinds} />
+        {data.duplicates.length > 0 && (
+          <Modal label={`Possible duplicates (${data.duplicates.length})`} title="Possible duplicates" className="monarch-secondary">
+            <ul className="cl-list dup-list">
+              {data.duplicates.map((d) => {
+                const a = byKey.get(d.a);
+                const b = byKey.get(d.b);
+                if (!a || !b) return null;
+                const open = (c: Contact) => (c.refs.clientId ? `/workspace/clients/${c.refs.clientId}` : `/contacts/${c.key}`);
+                return (
+                  <li key={`${d.a}|${d.b}`}>
+                    <span><a href={open(a)} target="_blank" rel="noreferrer"><b>{a.name}</b></a> and <a href={open(b)} target="_blank" rel="noreferrer"><b>{b.name}</b></a><small className="monarch-subcell">{DUPLICATE_REASON[d.reason]}</small></span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Modal>
+        )}
+      </div>
       {data.notes.map((n) => <div key={n} className="monarch-notice" role="status">{n}</div>)}
-      <nav className="mf-tabs" aria-label="Contacts view" style={{ marginBottom: 12 }}>
-        <Link href="/contacts" className={!review ? "is-active" : undefined} aria-current={!review ? "page" : undefined}>Contacts</Link>
-        <Link href="/contacts?view=duplicates" className={review ? "is-active" : undefined} aria-current={review ? "page" : undefined}>Possible duplicates ({data.duplicates.length})</Link>
-      </nav>
-
-      {review ? (
-        <section className="monarch-panel">
-          <div className="monarch-panel-head"><h2>Possible duplicates</h2><span>{data.duplicates.length} to review</span></div>
-          <p style={{ padding: "0 20px", color: "#77746b", fontSize: 12 }}>These may be the same person. Nothing is combined automatically. Open each one to look at the records side by side.</p>
-          <div className="monarch-table-wrap">
-            <table>
-              <thead><tr><th>CONTACT</th><th>CONTACT</th><th>WHY</th></tr></thead>
-              <tbody>
-                {data.duplicates.length === 0 ? (
-                  <EmptyRow colSpan={3}>No possible duplicates.</EmptyRow>
-                ) : (
-                  data.duplicates.map((d) => {
-                    const a = byKey.get(d.a);
-                    const b = byKey.get(d.b);
-                    if (!a || !b) return null;
-                    return (
-                      <tr key={`${d.a}|${d.b}`}>
-                        <td><Link href={`/contacts/${a.key}`}><b>{a.name}</b></Link><small className="monarch-subcell">{a.email ?? "no email"}</small></td>
-                        <td><Link href={`/contacts/${b.key}`}><b>{b.name}</b></Link><small className="monarch-subcell">{b.email ?? "no email"}</small></td>
-                        <td>{DUPLICATE_REASON[d.reason]}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : (
-        <>
+      <>
           <form method="get" action="/contacts" role="search" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
             {kind && <input type="hidden" name="kind" value={kind} />}
             <label htmlFor="q" style={{ position: "absolute", left: -9999 }}>Search contacts</label>
@@ -114,8 +99,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               </table>
             </div>
           </section>
-        </>
-      )}
+      </>
     </>
   );
 }

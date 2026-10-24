@@ -2,8 +2,8 @@
 // anyone remembering to wire it: a submit button asks when its label starts with one of these words, or when it is styled
 // as dangerous. Pure, so it can be tested.
 
-const ASKS = /^(delete|remove|archive|restore|void|discard|revoke|disconnect|withdraw|take offline|unpublish|cancel (?:the )?(?:invite|request|subscription|campaign|send))\b/i;
-const PERMANENT = /^(delete|remove|void|discard|revoke|disconnect)\b/i;
+const ASKS = /^(delete|remove|archive|restore|void|discard|revoke|disconnect|withdraw|merge|take offline|unpublish|cancel (?:the )?(?:invite|request|subscription|campaign|send))\b/i;
+const PERMANENT = /^(delete|remove|void|discard|revoke|disconnect|merge)\b/i;
 
 export type ConfirmKind = "permanent" | "normal";
 

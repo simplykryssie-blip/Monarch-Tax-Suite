@@ -2,7 +2,7 @@ import { ValidationError } from "../commerce/validation.ts";
 import { digitsOf, formatAddress, formatEin, formatPhone, formatZip } from "../format/ids.ts";
 import { parseCsv } from "../leads/csv.ts";
 import { MONARCH_TEMPLATE, parseMoney } from "../fees/engine.ts";
-import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS, type BusinessInput, type Client, type ClientInput, type DependentInput, type ClientReturn, type Invoice, type InvoiceLine, type MatchKind, type PaymentRowInsert, type ReturnKind } from "./types.ts";
+import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS, type BusinessInput, type Client, type ClientInput, type DependentInput, type SpouseInput, type ClientReturn, type Invoice, type InvoiceLine, type MatchKind, type PaymentRowInsert, type ReturnKind } from "./types.ts";
 
 // The pure rules of My Workspace: what a client, return, task and invoice may contain, how the My Work board groups
 // returns, how an invoice's balance and overdue state are worked out, and how a bank statement row is read and matched.
@@ -71,6 +71,17 @@ export function checkClient(raw: Record<string, unknown>): ClientInput {
   const out: ClientInput = { full_name, email: email || null, phone: phone ? formatPhone(phone) : null, ssn_last4: last4 || null, address: null, ...(names ?? {}) };
 
   if (has(raw, "dob")) out.dob = dayOrNull(raw.dob, "The date of birth");
+  if (has(raw, "dl_number", "dl_state", "dl_issued_on", "dl_expires_on")) {
+    const dlState = one(raw.dl_state, 20).toUpperCase();
+    if (dlState && !/^[A-Z]{2}$/.test(dlState)) throw new ValidationError("Use the two-letter state that issued the license, like TX.");
+    const issued = dayOrNull(raw.dl_issued_on, "The license issue date");
+    const expires = dayOrNull(raw.dl_expires_on, "The license expiration date");
+    if (issued && expires && expires < issued) throw new ValidationError("The license expires before it was issued. Check the dates.");
+    out.dl_number = one(raw.dl_number, 40).toUpperCase() || null;
+    out.dl_state = dlState || null;
+    out.dl_issued_on = issued;
+    out.dl_expires_on = expires;
+  }
   if (has(raw, "address_line1", "address_line2", "city", "state", "zip")) {
     const state = one(raw.state, 20).toUpperCase();
     if (state && !/^[A-Z]{2}$/.test(state)) throw new ValidationError("Use the two-letter state, like TX.");
@@ -81,6 +92,21 @@ export function checkClient(raw: Record<string, unknown>): ClientInput {
     out.address = addressLine(parts).slice(0, 300) || null;
   } else {
     out.address = formatAddress(one(raw.address, 300)) || null;
+  }
+  // Was this the address on last year's return? If not, the old address is kept alongside it.
+  if (has(raw, "same_address")) {
+    const same = one(raw.same_address, 5) !== "no";
+    out.address_same_as_last_year = same;
+    const state = one(raw.prior_state, 20).toUpperCase();
+    if (!same && state && !/^[A-Z]{2}$/.test(state)) throw new ValidationError("Use the two-letter state for the old address, like TX.");
+    const zipDigits = digitsOf(one(raw.prior_zip, 20));
+    if (!same && zipDigits && zipDigits.length !== 5 && zipDigits.length !== 9) throw new ValidationError("The old address's ZIP code is five digits, or nine with the extension.");
+    out.prior_address_line1 = same ? null : formatAddress(one(raw.prior_address_line1, 150)) || null;
+    out.prior_address_line2 = same ? null : formatAddress(one(raw.prior_address_line2, 100)) || null;
+    out.prior_city = same ? null : formatAddress(one(raw.prior_city, 80)) || null;
+    out.prior_state = same ? null : state || null;
+    out.prior_zip = same || !zipDigits ? null : formatZip(zipDigits);
+    if (!same && !out.prior_address_line1) throw new ValidationError("Enter the street of the address used on last year's return.");
   }
   return out;
 }
@@ -97,7 +123,7 @@ export function checkDependent(raw: Record<string, unknown>): Pick<DependentInpu
 }
 
 /** A business a client owns. */
-export function checkBusiness(raw: Record<string, unknown>): Pick<BusinessInput, "name" | "entity_type" | "ein" | "phone" | "address"> {
+export function checkBusiness(raw: Record<string, unknown>): Pick<BusinessInput, "name" | "entity_type" | "ein" | "phone" | "email" | "address"> {
   const name = one(raw.name, 200);
   if (!name) throw new ValidationError("Enter the business name.");
   const entity_type = one(raw.entity_type, 30) || "sole_proprietor";
@@ -106,7 +132,22 @@ export function checkBusiness(raw: Record<string, unknown>): Pick<BusinessInput,
   if (ein && ein.length !== 9) throw new ValidationError("An EIN is nine digits.");
   const phone = one(raw.phone, 40);
   if (phone && phone.replace(/\D/g, "").length < 10) throw new ValidationError("That phone number doesn't look right.");
-  return { name, entity_type: entity_type as keyof typeof ENTITY_TYPES, ein: ein ? formatEin(ein) : null, phone: phone ? formatPhone(phone) : null, address: formatAddress(one(raw.address, 300)) || null };
+  const email = one(raw.email, 254).toLowerCase();
+  if (email && !EMAIL.test(email)) throw new ValidationError("That business email address doesn't look right.");
+  return { name, entity_type: entity_type as keyof typeof ENTITY_TYPES, ein: ein ? formatEin(ein) : null, phone: phone ? formatPhone(phone) : null, email: email || null, address: formatAddress(one(raw.address, 300)) || null };
+}
+
+/** A spouse entered by hand, for a spouse who isn't a client. */
+export function checkSpouse(raw: Record<string, unknown>): Pick<SpouseInput, "first_name" | "last_name" | "dob" | "phone" | "email" | "ssn_last4"> {
+  const first_name = one(raw.first_name, 100);
+  if (!first_name) throw new ValidationError("Enter the spouse's first name.");
+  const email = one(raw.email, 254).toLowerCase();
+  if (email && !EMAIL.test(email)) throw new ValidationError("That email address doesn't look right.");
+  const phone = one(raw.phone, 40);
+  if (phone && phone.replace(/\D/g, "").length < 10) throw new ValidationError("That phone number doesn't look right.");
+  const digits = digitsOf(one(raw.ssn, 20));
+  if (digits && digits.length !== 9 && digits.length !== 4) throw new ValidationError("Enter the nine digits, or only the last four.");
+  return { first_name, last_name: one(raw.last_name, 100) || null, dob: dayOrNull(raw.dob, "The date of birth"), phone: phone ? formatPhone(phone) : null, email: email || null, ssn_last4: digits ? digits.slice(-4) : null };
 }
 
 // ---------------------------------------------------------------- returns and the My Work board
