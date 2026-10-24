@@ -430,3 +430,11 @@ a.hm-row:hover{background:#fcfbf8}
 .cl-ssn-value b { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
 .cl-ssn-ask { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cl-ssn-ask input { max-width: 220px; }
+
+/* The one confirm dialog (components/ui/confirm-rule.tsx) */
+.cf-dialog { border: 1px solid var(--line, #d9d4c7); border-radius: 12px; padding: 22px 24px; max-width: min(440px, calc(100vw - 32px)); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25); color: inherit; background: var(--surface, #fff); }
+.cf-dialog::backdrop { background: rgba(20, 18, 14, 0.45); }
+.cf-dialog h2 { margin: 0 0 8px; font-size: 1.1rem; }
+.cf-dialog p { margin: 0 0 18px; line-height: 1.5; }
+.cf-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.cf-actions .is-danger-solid { background: #a8322b; border-color: #a8322b; }

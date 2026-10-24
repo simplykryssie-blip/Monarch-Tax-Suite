@@ -43,6 +43,7 @@ export function ActionForm({ action, children, className, confirm }: { action: (
     <form
       ref={ref}
       className={className}
+      data-has-confirm={confirm ? "" : undefined}
       aria-busy={pending}
       onSubmit={(e) => {
         e.preventDefault();

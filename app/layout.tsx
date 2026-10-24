@@ -6,6 +6,7 @@ import "./globals.css";
 import "./theme.css";
 import { SITE_URL } from "@/lib/site-meta";
 import { PLATFORM } from "@/lib/platform-brand";
+import { ConfirmRule } from "@/components/ui/confirm-rule";
 export const metadata: Metadata = {
   title: { default: `${PLATFORM.name} | Admin Workspace`, template: `%s | ${PLATFORM.name}` },
   description: PLATFORM.description,
@@ -20,6 +21,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         {/* Inside the pop-up (an iframe of this site) hide the app chrome before first paint. */}
         <script dangerouslySetInnerHTML={{ __html: 'try{if(window.self!==window.top)document.documentElement.setAttribute("data-popup","1")}catch(e){document.documentElement.setAttribute("data-popup","1")}' }} />
       </head>
-      <body>{children}</body>
+      <body>{children}<ConfirmRule /></body>
     </html>
   ); }

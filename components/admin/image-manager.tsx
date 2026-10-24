@@ -97,7 +97,7 @@ function ImageCard({ productId, image }: { productId: string; image: ManagedImag
       </form>
       <div className="monarch-inline-actions">
         <button className="monarch-secondary" type="button" onClick={() => setReplacing((r) => !r)}>{replacing ? "Cancel replace" : "Replace"}</button>
-        <form action={remove} onSubmit={(e) => { if (!window.confirm("Remove this image? It disappears now, and the file is permanently deleted after 24 hours. It can't be recovered after that.")) e.preventDefault(); }}>
+        <form action={remove} data-confirm="Remove this image? It disappears now, and the file is permanently deleted after 24 hours. It can't be recovered after that.">
           <input type="hidden" name="image_id" value={image.id} />
           <button className="monarch-secondary is-danger" disabled={removePending}>{removePending ? "Removing…" : "Remove"}</button>
         </form>
