@@ -26,7 +26,7 @@ class Memory implements SsnRepo {
   async audit(e: { action: string; clientId: string }) { this.audits.push(e); }
 }
 const deps = (repo = new Memory(), tenantId = T1, keyring: Keyring | null = new Keyring(new Map([[1, key(1)]]))): SsnDeps => ({ tenantId, keyring, repo, now: () => new Date("2026-10-17T12:00:00Z") });
-const gate = (over: Partial<RevealGate> = {}): RevealGate => ({ actorId: "u1", isOwner: true, verifyPassword: async (p) => p === "right", allowAttempt: async () => true, ...over });
+const gate = (over: Partial<RevealGate> = {}): RevealGate => ({ actorId: "u1", isMember: true, verifyPassword: async (p) => p === "right", allowAttempt: async () => true, ...over });
 
 test("numbers are checked and normalised", () => {
   assert.equal(checkSsn("123-45-6789"), "123456789");
@@ -58,7 +58,7 @@ test("the owner reveals it with the right password, for 30 seconds, and it is au
 test("anyone but the owner is refused, and it is recorded", async () => {
   const d = deps();
   await storeSsn(d, { clientId: C1, ssn: "123456789", actorId: "u1" });
-  await assert.rejects(revealSsn(d, gate({ isOwner: false }), { clientId: C1, password: "right" }), /account owner/);
+  await assert.rejects(revealSsn(d, gate({ isMember: false }), { clientId: C1, password: "right" }), /work in this workspace/);
   assert.equal((d.repo as Memory).audits.at(-1)!.action, "ssn.reveal_refused");
 });
 

@@ -1,4 +1,5 @@
 "use client";
+import { FormattedInput } from "@/components/forms/formatted-input";
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { activateAction, completeOnboardingAction, saveProfileAction, connectHighLevelAction, disconnectAction, finishInstallAction, lookupAction, saveSettingsAction, setWebhookAction, testAction, type SetupState } from "@/app/integrations/actions";
@@ -97,7 +98,7 @@ export function SetupForms({ highlevelAvailable, pending, linked = false }: { hi
               <label>Your full name<input name="contact_name" required maxLength={120} defaultValue={v.onboarding.profile.contact_name} autoComplete="name" /></label>
               <label>Business name<input name="business_name" required maxLength={120} defaultValue={v.onboarding.profile.business_name} autoComplete="organization" /></label>
               <label>Business email<input name="business_email" type="email" required maxLength={254} defaultValue={v.onboarding.profile.business_email} autoComplete="email" /></label>
-              <label>Business phone (optional)<input name="phone" type="tel" maxLength={40} defaultValue={v.onboarding.profile.phone} autoComplete="tel" /></label>
+              <label>Business phone (optional)<FormattedInput kind="phone" name="phone" defaultValue={v.onboarding.profile.phone} autoComplete="tel" /></label>
               <label className="is-wide">GoHighLevel account or sub-account name, if you know it (optional)<input name="ghl_account" maxLength={120} defaultValue={v.onboarding.profile.ghl_account} /></label>
               <div className="is-wide"><button className="monarch-primary" disabled={savingProfile}>{savingProfile ? "Saving…" : "Save details"}</button>{note("profile")}</div>
             </form>

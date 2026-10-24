@@ -19,6 +19,8 @@ import { connectDeps } from "@/lib/connect/server";
 import { invoiceNoticeEmail } from "@/lib/portal/invoices.ts";
 import { portalLink, portalMemberRepo, sendPortalEmail } from "@/lib/portal/server";
 import { currentTenantId } from "@/lib/tenants.ts";
+import { checkSsn, revealSsn, storeSsn } from "@/lib/ssn/service.ts";
+import { revealGate, ssnDeps } from "@/lib/ssn/server";
 import type { Invoice } from "@/lib/workspace/types";
 
 // My Workspace actions. Each re-checks administrator access and acts only on the current tenant's rows.
@@ -68,19 +70,39 @@ const clientPage = (id: string, tab = "overview") => `/workspace/clients/${id}?t
 
 // ---- clients
 
+/** The full number typed in the form, checked before anything is saved so a bad number never leaves a half-saved client. */
+const typedSsn = (form: FormData): string | null => (str(form, "ssn").trim() ? checkSsn(str(form, "ssn")) : null);
+
 export async function addClientAction(form: FormData) {
   await act("/workspace/clients", async (adminId) => {
+    const ssn = typedSsn(form);
     const c = await addClient(workspaceRepo(), raw(form), adminId);
+    if (ssn) await storeSsn(ssnDeps(), { clientId: c.id, ssn, actorId: adminId });
     return { to: clientPage(c.id), notice: "Client added." };
   });
 }
 
 export async function saveClientAction(form: FormData) {
   const id = str(form, "id");
-  await act(clientPage(id), async () => {
+  await act(clientPage(id), async (adminId) => {
+    const ssn = typedSsn(form);
     await saveClient(workspaceRepo(), id, raw(form));
+    if (ssn) await storeSsn(ssnDeps(), { clientId: id, ssn, actorId: adminId });
     return { notice: "Saved." };
   });
+}
+
+/** Shows one client's full SSN or ITIN for a few seconds after the person types their password again. Every try is recorded. */
+export async function revealClientSsnAction(clientId: string, password: string): Promise<{ ssn?: string; seconds?: number; error?: string }> {
+  try {
+    const admin = await requireAdmin();
+    const gate = await revealGate({ userId: admin.userId, email: admin.email });
+    const r = await revealSsn(ssnDeps(), gate, { clientId, password });
+    return { ssn: r.ssn, seconds: r.seconds };
+  } catch (e) {
+    unstable_rethrow(e);
+    return { error: failure(e) };
+  }
 }
 
 export async function archiveClientAction(form: FormData) {

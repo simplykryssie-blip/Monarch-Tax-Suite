@@ -1,3 +1,4 @@
+import { FormattedInput } from "@/components/forms/formatted-input";
 import Link from "next/link";
 import { EmptyRow, Flash, PageTitle } from "@/components/admin/ui";
 import { balance, dollars } from "@/lib/workspace/rules.ts";
@@ -46,8 +47,8 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
             <form action={addClientAction} className="monarch-form">
               <label>Name *<input name="full_name" required maxLength={200} autoComplete="off" /></label>
               <label>Email<input name="email" type="email" maxLength={254} autoComplete="off" /></label>
-              <label>Phone<input name="phone" type="tel" maxLength={40} autoComplete="off" /></label>
-              <label>Last 4 of SSN<input name="ssn_last4" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" autoComplete="off" /><small className="monarch-muted">Only the last 4 digits are ever stored. They help match bank deposits to invoices.</small></label>
+              <label>Phone<FormattedInput kind="phone" name="phone" autoComplete="off" /></label>
+              <label>Social Security number or ITIN<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder="Nine digits" /><small className="monarch-muted">Kept encrypted. Only the last four show, and revealing the full number needs a password and is recorded.</small></label>
               <label className="is-wide">Address<input name="address" maxLength={300} autoComplete="off" /></label>
               <div className="is-wide"><button className="monarch-primary">Add client</button></div>
             </form>
