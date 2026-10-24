@@ -76,12 +76,6 @@ export async function ensureSite(deps: SitesDeps, input: { name: string; userId:
   return made;
 }
 
-export async function renameSite(deps: SitesDeps, siteId: string, name: unknown): Promise<Site> {
-  const n = cleanText(name, 120);
-  if (n.length < 1) fail("Give the website a name.");
-  return deps.repo.updateSite(siteId, { name: n });
-}
-
 // ----------------------------------------------------------------- pages
 
 export async function addPage(deps: SitesDeps, siteId: string, raw: { title?: unknown; slug?: unknown }): Promise<SitePage> {

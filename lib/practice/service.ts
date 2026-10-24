@@ -11,7 +11,6 @@ export type PracticeMember = {
   status: "invited" | "active" | "suspended"; invite_token_hash: string | null; invite_expires_at: string | null;
   invited_by: string | null; accepted_at: string | null; last_seen_at: string | null; created_at: string;
 };
-export type AuditEvent = { id: string; actor_id: string | null; action: string; subject_type: string | null; subject_id: string | null; detail: Record<string, unknown>; created_at: string };
 export type AuditInput = { actor_id: string | null; action: string; subject_type?: string | null; subject_id?: string | null; detail?: Record<string, unknown> };
 
 /** One workspace's own rows (a tenant-scoped client). */

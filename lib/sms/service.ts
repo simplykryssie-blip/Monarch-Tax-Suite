@@ -6,7 +6,7 @@ import { PLATFORM } from "../platform-brand.ts";
 import { secretAad } from "./route.ts";
 import { checkRegistration, savedRegistration } from "./registration.ts";
 import { advanceLocal, advanceTollFree } from "./carrier.ts";
-import { creditPack, creditsLabel, dollars, isNumberType, NUMBER_PLANS, type NumberType } from "./pricing.ts";
+import { creditPack, creditsLabel, isNumberType, NUMBER_PLANS, type NumberType } from "./pricing.ts";
 import { addMonth, FORFEIT_DAYS, RETRY_DAYS, renewalStep } from "./renewal.ts";
 import type { SmsAccount, SmsAccountsRepo } from "./types.ts";
 
@@ -320,12 +320,6 @@ export async function resumeIfPaused(d: SetupDeps): Promise<boolean> {
   await d.notify?.("Texting resumed", `Your ${plan.label.toLowerCase()} was renewed from your credits and texting is back on.`);
   return true;
 }
-
-/** What a credit-pack checkout and a setup cost, in words, for the settings page. */
-export const priceLines = () => ({
-  pack: creditPack(1),
-  plans: Object.values(NUMBER_PLANS).map((p) => ({ ...p, setup: dollars(p.setupCents), monthly: `${creditsLabel(p.monthlyCredits)} a month (${dollars(p.monthlyCents)})` })),
-});
 
 /** Makes sure an office's number sends incoming texts to the platform. Numbers bought now already do; this covers older ones. */
 export async function ensureInbound(d: SetupDeps): Promise<boolean> {

@@ -22,8 +22,6 @@ export const requestSiteHost = cache(async (param: string): Promise<string | nul
 
 export const loadPublicSite = cache(async (host: string): Promise<PublicSite | null> => siteForHost(host));
 
-export type RenderedSite = { view: SiteView; published: boolean };
-
 export const buildView = (ps: PublicSite, blocks: Block[] | null): Promise<SiteView> => viewFor(ps.tenantId, ps.site.name, ps.pages, blocks);
 
 /** The look of a site for the blocks about to be shown: brand, menu (published pages only), contact details, pictures. */

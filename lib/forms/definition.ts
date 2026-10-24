@@ -8,7 +8,6 @@ export type FieldType = (typeof FIELD_TYPES)[number];
 
 /** Display-only blocks: no answer. */
 export const DISPLAY_TYPES: FieldType[] = ["heading", "paragraph"];
-export const CHOICE_TYPES: FieldType[] = ["dropdown", "radio", "checkboxes"];
 export const FILE_KINDS = ["pdf", "jpg", "png"] as const;
 export type FileKind = (typeof FILE_KINDS)[number];
 /** Identifier formats a short answer can be checked against. These are always stored encrypted. */
@@ -26,8 +25,6 @@ export type DateBound = { kind: "fixed"; date: string } | { kind: "relative"; da
 export const FIELD_WIDTHS = ["full", "two_thirds", "half", "third"] as const;
 export type FieldWidth = (typeof FIELD_WIDTHS)[number];
 export const WIDTH_LABELS: Record<FieldWidth, string> = { full: "Full row", two_thirds: "Two thirds of a row", half: "Half a row (two side by side)", third: "One third (three side by side)" };
-/** Columns a width takes out of the form's 6-column grid. */
-export const WIDTH_COLUMNS: Record<FieldWidth, number> = { full: 6, two_thirds: 4, half: 3, third: 2 };
 /** Types that can't share a row: they need the room. */
 export const FULL_ROW_TYPES: FieldType[] = ["signature", "file", "heading", "paragraph"];
 /** Types that can hold a staff-only value. Uploads and signatures are the respondent's own. */

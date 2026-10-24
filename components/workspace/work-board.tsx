@@ -7,7 +7,7 @@ import type { BoardColumn } from "@/lib/workspace/rules.ts";
 
 const KIND = { original: "Original", extension: "Extension", amendment: "Amendment" } as const;
 
-/** The My Work board: a column per pipeline stage. Drag a card to another column to move it; click a card to open its client. */
+/** The Returns board: a column per pipeline stage. Drag a card to another column to move it; click a card to open its client. */
 export function WorkBoard({ columns }: { columns: BoardColumn[] }) {
   const [cols, setCols] = useState(columns);
   const [drag, setDrag] = useState<string | null>(null);

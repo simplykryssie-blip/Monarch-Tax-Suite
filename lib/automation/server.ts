@@ -17,7 +17,7 @@ import type { WorkflowCatalog } from "./validate.ts";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { SupabaseCrmRepo } from "../crm/supabase-repo.ts";
 import type { AutomationConfig, AutomationDeps, EmitInput } from "./engine.ts";
-import { emitEvent, runDue } from "./engine.ts";
+import { emitEvent } from "./engine.ts";
 import { emailConfig, emailConfigProblems, ResendEmailSender, withDefaultSender, type EmailSender } from "./email.ts";
 import { platformProblems, platformSendProblems, platformTwilio } from "./twilio.ts";
 import { sanitizeError } from "./sanitize.ts";
@@ -130,16 +130,6 @@ export async function safeEmit(input: EmitInput, tenantId?: string): Promise<voi
     await emitEvent(automationDeps(tenantId), input);
   } catch (e) {
     console.error(`automation: could not process ${input.type}: ${sanitizeError(e, 160)}`);
-  }
-}
-
-/** Runs due retries (used by the scheduler endpoint and opportunistically). Never throws. */
-export async function runDueSafe(limit = 10): Promise<number> {
-  try {
-    return (await runDue(automationDeps(), limit)).processed;
-  } catch (e) {
-    console.error(`automation: retry sweep failed: ${sanitizeError(e, 160)}`);
-    return 0;
   }
 }
 

@@ -97,11 +97,11 @@ export async function savePipeline(repo: PipelinesRepo, id: string, input: { nam
   }
 }
 
-/** Makes this the returns pipeline the My Work board uses. */
+/** Makes this the returns pipeline the Returns board uses. */
 export async function makeDefault(repo: PipelinesRepo, id: string): Promise<Pipeline> {
   const p = await repo.get(id);
   if (!p || p.archived_at) throw new ValidationError("That pipeline wasn't found.");
-  if (p.kind !== "returns") throw new ValidationError("Only a tax-return pipeline can run the My Work board.");
+  if (p.kind !== "returns") throw new ValidationError("Only a tax-return pipeline can run the Returns board.");
   for (const other of await repo.list()) if (other.id !== id && other.kind === "returns" && other.is_default) await repo.update(other.id, { is_default: false });
   return repo.update(id, { is_default: true });
 }
@@ -109,7 +109,7 @@ export async function makeDefault(repo: PipelinesRepo, id: string): Promise<Pipe
 export async function archivePipeline(repo: PipelinesRepo, id: string, archive: boolean): Promise<Pipeline> {
   const p = await repo.get(id);
   if (!p) throw new ValidationError("That pipeline wasn't found.");
-  if (archive && p.is_default) throw new ValidationError("This pipeline runs the My Work board. Make another tax-return pipeline the default first.");
+  if (archive && p.is_default) throw new ValidationError("This pipeline runs the Returns board. Make another tax-return pipeline the default first.");
   if (!archive && p.archived_at) {
     // Active pipelines of one kind have unique names, so a restore can't bring back a second "Tax returns".
     const clash = (await repo.list()).find((o) => o.id !== id && !o.archived_at && o.kind === p.kind && o.name.toLowerCase() === p.name.toLowerCase());
@@ -124,14 +124,14 @@ export async function archivePipeline(repo: PipelinesRepo, id: string, archive: 
 }
 
 /**
- * Deletes a pipeline for good. Only an archived pipeline can be deleted, so it is never the one running My Work.
+ * Deletes a pipeline for good. Only an archived pipeline can be deleted, so it is never the one running the Returns board.
  * Returns on the board keep their stage; nothing else points at a pipeline.
  */
 export async function deletePipeline(repo: PipelinesRepo, id: string): Promise<Pipeline> {
   const p = await repo.get(id);
   if (!p) throw new ValidationError("That pipeline wasn't found.");
   if (!p.archived_at) throw new ValidationError("Archive the pipeline first. Only archived pipelines can be deleted.");
-  if (p.is_default) throw new ValidationError("This pipeline runs the My Work board, so it can't be deleted.");
+  if (p.is_default) throw new ValidationError("This pipeline runs the Returns board, so it can't be deleted.");
   await repo.remove(id);
   return p;
 }

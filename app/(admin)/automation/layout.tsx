@@ -35,7 +35,7 @@ async function recentRuns() {
 }
 
 export default async function AutomationLayout({ children }: { children: React.ReactNode }) {
-  await requireSection("operations");
+  await requireSection("workspace");
   const rows = await recentRuns();
   const failed = new Set((rows ?? []).filter((r) => r.result === "error").map((r) => r.executionId)).size;
   return (
