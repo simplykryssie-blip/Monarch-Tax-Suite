@@ -15,18 +15,29 @@ export function FormattedInput({ kind, defaultValue, secret, type, ...rest }: Pr
   const format = FORMATTERS[kind];
   const [value, setValue] = useState(() => format(defaultValue ?? ""));
   const [shown, setShown] = useState(false);
+  const field = (
+    <input
+      {...rest}
+      type={secret && !shown ? "password" : type === "tel" || kind === "phone" ? "tel" : "text"}
+      inputMode={INPUT_MODE[kind]}
+      maxLength={MAX_LENGTH[kind]}
+      autoCapitalize={kind === "ptin" ? "characters" : undefined}
+      value={value}
+      onChange={(e) => setValue(format(e.target.value))}
+    />
+  );
+  if (!secret) return field;
+  const label = shown ? "Hide what I typed" : "Show what I typed";
   return (
-    <>
-      <input
-        {...rest}
-        type={secret && !shown ? "password" : type === "tel" || kind === "phone" ? "tel" : "text"}
-        inputMode={INPUT_MODE[kind]}
-        maxLength={MAX_LENGTH[kind]}
-        autoCapitalize={kind === "ptin" ? "characters" : undefined}
-        value={value}
-        onChange={(e) => setValue(format(e.target.value))}
-      />
-      {secret && <button type="button" className="monarch-link" aria-pressed={shown} onClick={() => setShown((s) => !s)}>{shown ? "Hide what I typed" : "Show what I typed"}</button>}
-    </>
+    <span className="fi-wrap">
+      {field}
+      <button type="button" className="fi-eye" aria-label={label} title={label} aria-pressed={shown} onClick={() => setShown((s) => !s)}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+          <circle cx="12" cy="12" r="3" />
+          {shown && <path d="M4 4l16 16" />}
+        </svg>
+      </button>
+    </span>
   );
 }

@@ -431,5 +431,7 @@ a.hm-row:hover{background:#fcfbf8}
 .cl-ssn-ask { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cl-ssn-ask input { max-width: 220px; }
 .cl-ssn-edit { flex-basis: 100%; display: grid; gap: 6px; max-width: 420px; }
-.cl-ssn-log summary { cursor: pointer; font-size: 0.9rem; }
-.cl-ssn-log ul { margin: 6px 0 0; padding-left: 18px; font-size: 0.9rem; line-height: 1.7; }
+.fi-wrap { position: relative; display: flex; align-items: center; width: 100%; }
+.fi-wrap input { flex: 1; min-width: 0; padding-right: 40px; }
+.fi-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; padding: 6px; border: 0; background: none; color: var(--muted, #6b665a); cursor: pointer; border-radius: 6px; }
+.fi-eye:hover, .fi-eye:focus-visible { color: inherit; background: rgba(0, 0, 0, 0.06); }

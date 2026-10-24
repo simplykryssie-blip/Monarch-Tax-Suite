@@ -22,8 +22,8 @@ export interface SsnRepo {
   deleteCiphertext(clientId: string): Promise<void>;
   setLast4(clientId: string, last4: string | null): Promise<void>;
   audit(e: { action: string; clientId: string; actorId: string | null }): Promise<void>;
-  /** The most recent audit entries for one client's number, newest first. */
-  listAudit(clientId: string, limit: number): Promise<{ action: string; actorId: string | null; at: string }[]>;
+  /** The most recent audit entries for clients' numbers (one client's, or all when null), newest first. */
+  listAudit(clientId: string | null, limit: number): Promise<{ action: string; clientId: string; actorId: string | null; at: string }[]>;
 }
 export type SsnDeps = {
   tenantId: string;
@@ -168,11 +168,11 @@ const ACTIVITY: Record<string, string> = {
   "ssn.reveal_limited": "Reveal blocked: too many attempts",
   "ssn.reveal_failed": "Number could not be read",
 };
-export type NumberActivity = { label: string; actorId: string | null; at: string };
+export type NumberActivity = { label: string; clientId: string; actorId: string | null; at: string };
 
-/** Who saved, revealed or tried to reveal this client's number, newest first. Never includes the number. */
-export async function numberActivity(deps: SsnDeps, clientId: string, limit = 6): Promise<NumberActivity[]> {
-  if (!UUID.test(clientId)) return [];
+/** Who saved, revealed or tried to reveal a client's number (every client's when none is named), newest first. Never includes the number. */
+export async function numberActivity(deps: SsnDeps, clientId: string | null, limit = 200): Promise<NumberActivity[]> {
+  if (clientId !== null && !UUID.test(clientId)) return [];
   const rows = await deps.repo.listAudit(clientId, limit);
-  return rows.filter((r) => ACTIVITY[r.action]).map((r) => ({ label: ACTIVITY[r.action], actorId: r.actorId, at: r.at }));
+  return rows.filter((r) => ACTIVITY[r.action]).map((r) => ({ label: ACTIVITY[r.action], clientId: r.clientId, actorId: r.actorId, at: r.at }));
 }

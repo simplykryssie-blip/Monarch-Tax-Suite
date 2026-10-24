@@ -1,13 +1,12 @@
 import { FormattedInput } from "@/components/forms/formatted-input";
 import { PortalPanel } from "@/components/portal/panel";
-import { requireAdmin } from "@/lib/admin";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { ClientDocUpload } from "@/components/workspace/client-doc-upload";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { RevealSsn } from "@/components/workspace/reveal-ssn";
-import { hasStoredSsn, numberActivity } from "@/lib/ssn/service.ts";
+import { hasStoredSsn } from "@/lib/ssn/service.ts";
 import { ssnDeps } from "@/lib/ssn/server";
 import { balance, defaultInvoiceLines, dollars, invoiceView } from "@/lib/workspace/rules.ts";
 import { RETURN_KINDS } from "@/lib/workspace/types.ts";
@@ -26,7 +25,6 @@ const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other" } a
 /** One client: overview, documents, messages, work, billing (with the $223 breakdown), tasks and notes. */
 export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; notice?: string; error?: string }> }) {
   const { id } = await params;
-  const me = (await requireAdmin()).userId;
   const sp = await searchParams;
   if (!UUID.test(id)) notFound();
   const tab = TABS.some(([k]) => k === sp.tab) ? sp.tab! : "overview";
@@ -45,7 +43,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
   const ssnOnFile = await hasStoredSsn(ssnDeps(), client.id).catch(() => false);
-  const activity = await numberActivity(ssnDeps(), client.id).catch(() => []);
   const stageName = (sid: string) => stages.find((s) => s.id === sid)?.name ?? "Intake";
   const returnLabel = (r: { kind: keyof typeof RETURN_KINDS; tax_year: number }) => `${RETURN_KINDS[r.kind]} ${r.tax_year}`;
   const owes = invoices.filter((i) => i.status === "sent").reduce((n, i) => n + balance(i), 0);
@@ -70,11 +67,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             <label>Phone<FormattedInput kind="phone" name="phone" defaultValue={client.phone ?? ""} /></label>
             <input type="hidden" name="ssn_last4" value={client.ssn_last4 ?? ""} />
             <div className="is-wide"><span>Social Security number or ITIN</span><RevealSsn clientId={client.id} last4={client.ssn_last4} onFile={ssnOnFile} /></div>
-            {activity.length > 0 && (
-              <details className="is-wide cl-ssn-log"><summary>Number activity ({activity.length})</summary>
-                <ul>{activity.map((a, i) => <li key={i}>{a.label} · {a.actorId === me ? "you" : a.actorId ? "a teammate" : "the system"} · {when(a.at)}</li>)}</ul>
-              </details>
-            )}
+            <small className="is-wide monarch-muted"><Link href={`/settings/archive?client=${client.id}`}>See this client&apos;s activity log</Link> for who saved or revealed the number.</small>
             <label className="is-wide">Address<input name="address" maxLength={300} defaultValue={client.address ?? ""} /></label>
             <div className="is-wide"><button className="monarch-primary">Save</button></div>
           </form>
