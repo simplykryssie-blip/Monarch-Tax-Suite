@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Installment } from "./plan.ts";
 import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, BillingSettings, InvoiceReceipt, ReceiptInsert, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
 
 // Workspace rows for one tenant, on the tenant client: the database's tenant policies scope every query.
@@ -35,6 +36,14 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   }
   async saveInvoiceDefaults(lines: InvoiceLine[], actorId: string | null) {
     unwrap(await this.db.from("invoice_defaults").upsert({ lines, updated_by: actorId, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" }).select("tenant_id"));
+  }
+  async listInstallments(invoiceIds: string[]) {
+    if (invoiceIds.length === 0) return [];
+    return unwrap(await this.db.from("invoice_installments").select("invoice_id, position, due_on, amount_cents").in("invoice_id", invoiceIds).order("position")) as (Installment & { invoice_id: string })[];
+  }
+  async replaceInstallments(invoiceId: string, plan: Installment[]) {
+    unwrap(await this.db.from("invoice_installments").delete().eq("invoice_id", invoiceId).select("id"));
+    if (plan.length) unwrap(await this.db.from("invoice_installments").insert(plan.map((p) => ({ invoice_id: invoiceId, position: p.position, due_on: p.due_on, amount_cents: p.amount_cents }))).select("id"));
   }
   async listReceipts(invoiceIds?: string[]) {
     let q = this.db.from("invoice_receipts").select("*").order("received_on", { ascending: false }).limit(5000);

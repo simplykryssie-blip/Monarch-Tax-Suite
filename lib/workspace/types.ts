@@ -1,3 +1,4 @@
+import type { Installment } from "./plan.ts";
 // My Workspace: the account holder's own clients, the returns they prepare (the My Work board), each client's
 // documents, messages, tasks and notes, invoices, and bank-statement imports that match payments to invoices.
 
@@ -120,6 +121,8 @@ export interface WorkspaceRepo {
   /** The standard fee lines an invoice starts from. Null until the office has saved its own. */
   getInvoiceDefaults(): Promise<InvoiceLine[] | null>;
   saveInvoiceDefaults(lines: InvoiceLine[], actorId: string | null): Promise<void>;
+  listInstallments(invoiceIds: string[]): Promise<(Installment & { invoice_id: string })[]>;
+  replaceInstallments(invoiceId: string, plan: Installment[]): Promise<void>;
   listReceipts(invoiceIds?: string[]): Promise<InvoiceReceipt[]>;
   insertReceipt(input: ReceiptInsert): Promise<InvoiceReceipt>;
   getBillingSettings(): Promise<BillingSettings | null>;

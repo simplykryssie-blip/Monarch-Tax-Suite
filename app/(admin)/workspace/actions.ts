@@ -11,7 +11,7 @@ import { isLive, returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
 import { emitInvoicePaid, emitReturnStage, emitTagChanges, emitWorkStage } from "@/lib/automation/emit";
 import { yesNo } from "@/lib/workspace/rules.ts";
-import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveBillingSettings, addFeeProduct, saveFeeProduct, archiveFeeProduct, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
+import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveBillingSettings, setPaymentPlan, removePaymentPlan, addFeeProduct, saveFeeProduct, archiveFeeProduct, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { setWorkflowTaskDone } from "@/lib/workspace/workflow-tasks";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
@@ -371,6 +371,16 @@ export async function mergeLeadIntoClientAction(form: FormData) {
     await leads.updateLead(leadId, { status: "converted" });
     return { notice: `Lead ${lead.full_name} merged into this client and marked converted.` };
   });
+}
+
+export async function setPaymentPlanAction(form: FormData) {
+  const back = /^\/workspace/.test(str(form, "back")) ? str(form, "back") : "/workspace/billing";
+  await act(back, async () => { const plan = await setPaymentPlan(workspaceRepo(), str(form, "id"), raw(form)); return { notice: `Payment plan set up: ${plan.length} payments.` }; });
+}
+
+export async function removePaymentPlanAction(form: FormData) {
+  const back = /^\/workspace/.test(str(form, "back")) ? str(form, "back") : "/workspace/billing";
+  await act(back, async () => { await removePaymentPlan(workspaceRepo(), str(form, "id")); return { notice: "Payment plan removed." }; });
 }
 
 /** Billing settings (Settings → Billing): the footer printed on invoices and the sales tax percent. */

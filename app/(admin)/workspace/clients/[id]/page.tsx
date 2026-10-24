@@ -16,6 +16,7 @@ import { portalMemberRepo } from "@/lib/portal/server";
 import { describeEvent } from "@/lib/workspace/activity.ts";
 import { balance, dollars, invoiceView, splitName } from "@/lib/workspace/rules.ts";
 import { ENTITY_TYPES, PAYERS, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
+import { PaymentPlan } from "@/components/contacts/payment-plan";
 import { RecordPayment } from "@/components/contacts/record-payment";
 import { paymentsFor } from "@/lib/workspace/receipts";
 import { InvoiceLink, loadSheetContext } from "@/components/contacts/invoice-sheet";
@@ -71,6 +72,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const ssnOnFile = await hasStoredSsn(ssnDeps(), client.id).catch(() => false);
   const duplicates = tab === "overview" ? await loadContacts().then((d) => duplicatesOfClient(d.contacts, d.duplicates, client.id)).catch(() => []) : [];
   const sheetCtx = tab === "billing" ? await loadSheetContext() : null!;
+  const invoicePlans = tab === "billing" ? await workspaceRepo().listInstallments(invoices.map((i) => i.id)).catch(() => []) : [];
   const invoicePayments = tab === "billing" ? await paymentsFor(workspaceRepo(), invoices.filter((i) => i.paid_cents > 0).map((i) => i.id)).catch(() => []) : [];
   const stageName = (sid: string) => stages.find((s) => s.id === sid)?.name ?? "Intake";
   // "2025 return", "2025 extension", "2025 amendment".
@@ -392,7 +394,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   const view = invoiceView(i, today);
                   return (
                     <tr key={i.id}>
-                      <td><b><InvoiceLink invoice={i} clientName={client.full_name} ctx={sheetCtx} payments={invoicePayments.filter((x) => x.invoice_id === i.id)} /></b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
+                      <td><b><InvoiceLink invoice={i} clientName={client.full_name} ctx={sheetCtx} payments={invoicePayments.filter((x) => x.invoice_id === i.id)} plan={invoicePlans.filter((x) => x.invoice_id === i.id)} /></b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
                       <td>{i.tax_year}</td>
                       <td><b>{dollars(i.total_cents)}</b></td>
                       <td>{dollars(i.paid_cents)}</td>
@@ -406,6 +408,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                           {i.status !== "void" && i.paid_cents === 0 && <button name="do" value="void" className="monarch-link is-danger">Void</button>}
                         </form>
                         {i.status !== "paid" && i.status !== "void" && <RecordPayment invoice={i} back={back} today={today} />}
+                        <PaymentPlan invoice={i} plan={invoicePlans.filter((x) => x.invoice_id === i.id)} back={back} />
                       </td>
                     </tr>
                   );

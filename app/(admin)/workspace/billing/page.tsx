@@ -3,6 +3,7 @@ import { Badge, EmptyRow, Flash, PageTitle } from "@/components/admin/ui";
 import { PAYERS } from "@/lib/workspace/types.ts";
 import { balance, dollars, invoiceView, totals, type InvoiceView } from "@/lib/workspace/rules.ts";
 import { InvoiceLink, loadSheetContext } from "@/components/contacts/invoice-sheet";
+import { PaymentPlan } from "@/components/contacts/payment-plan";
 import { RecordPayment } from "@/components/contacts/record-payment";
 import { paymentsFor } from "@/lib/workspace/receipts";
 import { AutoSelect } from "@/components/contacts/auto-select";
@@ -22,14 +23,15 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
     const repo = workspaceRepo();
     const [invoices, clients] = await Promise.all([repo.listInvoices(), repo.listClients({ includeArchived: true })]);
     const paid = await paymentsFor(repo, invoices.filter((i) => i.paid_cents > 0).map((i) => i.id));
-    return { invoices, clients, paid };
+    const plans = await repo.listInstallments(invoices.map((i) => i.id)).catch(() => []);
+    return { invoices, clients, paid, plans };
   });
   return (
     <>
       <PageTitle title="Billing">Invoices for the returns you prepare. Import your bank statement to match payments to invoices automatically, then review each one before it is applied.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <WorkspaceSetup message={result.message} /> : (() => {
-        const { invoices, clients, paid } = result.data;
+        const { invoices, clients, paid, plans } = result.data;
         const names = new Map(clients.map((c) => [c.id, c.full_name]));
         const thisTaxYear = new Date().getUTCFullYear() - 1;
         // Every year that has an invoice, plus the last four tax years, so a new season is there before its first invoice.
@@ -62,7 +64,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                 <tbody>
                   {shown.length === 0 ? <EmptyRow colSpan={9}>{invoices.length === 0 ? "No invoices yet. Create one below, or from a client's Billing tab." : "No invoices match."}</EmptyRow> : shown.map((i) => (
                     <tr key={i.id}>
-                      <td><b><InvoiceLink invoice={i} clientName={names.get(i.client_id) ?? "Client"} ctx={sheetCtx} payments={paid.filter((p) => p.invoice_id === i.id)} /></b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
+                      <td><b><InvoiceLink invoice={i} clientName={names.get(i.client_id) ?? "Client"} ctx={sheetCtx} payments={paid.filter((p) => p.invoice_id === i.id)} plan={plans.filter((p) => p.invoice_id === i.id)} /></b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
                       <td><Link href={`/workspace/clients/${i.client_id}?tab=billing`}>{names.get(i.client_id) ?? "Unknown"}</Link></td>
                       <td>{i.tax_year}</td><td>{dollars(i.total_cents)}</td><td>{dollars(i.paid_cents)}</td><td>{i.status === "void" ? "—" : dollars(balance(i))}</td>
                       <td><Badge value={invoiceView(i, today)} /></td>
@@ -74,6 +76,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                           
                         </form>
                         {i.status !== "paid" && i.status !== "void" && <RecordPayment invoice={i} back="/workspace/billing" today={today} />}
+                        <PaymentPlan invoice={i} plan={plans.filter((p) => p.invoice_id === i.id)} back="/workspace/billing" />
                       </td>
                     </tr>
                   ))}

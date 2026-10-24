@@ -5,6 +5,7 @@ import { useState } from "react";
 import { createInvoiceAction } from "@/app/(admin)/workspace/actions";
 import { FormattedInput } from "@/components/forms/formatted-input";
 import { parseMoney } from "@/lib/fees/engine.ts";
+import { PLAN_EVERY, splitPlan, type PlanEvery } from "@/lib/workspace/plan.ts";
 
 export type InvoiceFormProps = {
   /** The older standard fees, used only while no tax software or bank product is set up. */
@@ -40,6 +41,9 @@ export function NewInvoiceForm({ standard, products, taxPercent, header, footer,
   // With just one of a kind it is picked for you.
   const [softwareId, setSoftwareId] = useState(softwareList.length === 1 ? softwareList[0].id : "");
   const [bankId, setBankId] = useState(bankList.length === 1 ? bankList[0].id : "");
+  const [planCount, setPlanCount] = useState(1);
+  const [planFirst, setPlanFirst] = useState("");
+  const [planEvery, setPlanEvery] = useState<PlanEvery>("month");
   const [payerPick, setPayerPick] = useState<"bank_product" | "self" | null>(null);
   const [charges, setCharges] = useState<Charge[]>([{ label: "", amount: "" }]);
 
@@ -55,6 +59,7 @@ export function NewInvoiceForm({ standard, products, taxPercent, header, footer,
   const subtotal = lines.reduce((n, l) => n + (l.cents ?? 0), 0);
   const tax = Math.round((subtotal * taxPercent) / 100);
   const total = subtotal + tax;
+  const schedule = planCount > 1 && /^\d{4}-\d{2}-\d{2}$/.test(planFirst) && total > 0 ? splitPlan(total, planCount, planFirst, planEvery) : [];
   const set = (i: number, patch: Partial<Charge>) => setCharges((cs) => cs.map((c, n) => (n === i ? { ...c, ...patch } : c)));
 
   return (
@@ -89,6 +94,17 @@ export function NewInvoiceForm({ standard, products, taxPercent, header, footer,
           <legend>Paid by</legend>
           <label className="monarch-check"><input type="radio" name="payer" value="bank_product" checked={payer === "bank_product"} onChange={() => setPayerPick("bank_product")} /> Bank product</label>
           <label className="monarch-check"><input type="radio" name="payer" value="self" checked={payer === "self"} onChange={() => setPayerPick("self")} /> Out of pocket</label>
+        </fieldset>
+
+        <fieldset className="is-wide ni-plan">
+          <legend>Payment plan</legend>
+          <label>Payments<select name="plan_count" value={planCount} onChange={(e) => setPlanCount(Number(e.target.value))}><option value={1}>Pay in full</option>{Array.from({ length: 11 }, (_, n) => n + 2).map((n) => <option key={n} value={n}>{n} payments</option>)}</select></label>
+          {planCount > 1 && (
+            <>
+              <label>First payment due<input name="plan_first_due" type="date" required value={planFirst} onChange={(e) => setPlanFirst(e.target.value)} /></label>
+              <label>How often<select name="plan_every" value={planEvery} onChange={(e) => setPlanEvery(e.target.value as PlanEvery)}>{Object.entries(PLAN_EVERY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+            </>
+          )}
         </fieldset>
 
         <fieldset className="is-wide ni-charges">
@@ -132,6 +148,12 @@ export function NewInvoiceForm({ standard, products, taxPercent, header, footer,
               <tr><th>Total</th><th>{usd(total)}</th></tr>
             </tfoot>
           </table>
+          {schedule.length > 0 && (
+            <div className="ni-pays">
+              <b>Payment plan</b>
+              <ul>{schedule.map((p) => <li key={p.position}><span>Payment {p.position} · due {new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${p.due_on}T00:00:00Z`))}</span><b>{usd(p.amount_cents)}</b></li>)}</ul>
+            </div>
+          )}
           {(footer.refund || footer.terms) && (
             <div className="ni-foot">
               {footer.refund && <p><b>Refund policy</b><br />{footer.refund}</p>}

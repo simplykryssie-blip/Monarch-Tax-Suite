@@ -5,6 +5,7 @@ import { workspaceRepo } from "@/lib/workspace/server";
 import { balance, dollars } from "@/lib/workspace/rules.ts";
 import { billingSettings } from "@/lib/workspace/service.ts";
 import type { PaymentLine } from "@/lib/workspace/receipts";
+import { allocate, type Installment } from "@/lib/workspace/plan.ts";
 import { PAYERS, RECEIPT_METHODS, type Invoice } from "@/lib/workspace/types.ts";
 
 /** The top and bottom of an invoice, from Firm profile, Branding and Invoice settings. Load once per page. */
@@ -21,7 +22,8 @@ export async function loadSheetContext(): Promise<SheetContext> {
 const day = (d: string) => new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
 
 /** The invoice as the client gets it. */
-export function InvoiceSheet({ invoice: i, clientName, ctx, payments = [] }: { invoice: Invoice; clientName: string; ctx: SheetContext; payments?: PaymentLine[] }) {
+export function InvoiceSheet({ invoice: i, clientName, ctx, payments = [], plan = [] }: { invoice: Invoice; clientName: string; ctx: SheetContext; payments?: PaymentLine[]; plan?: Installment[] }) {
+  const schedule = allocate(plan, i.paid_cents, new Date().toISOString().slice(0, 10));
   const { header, footer } = ctx;
   const tax = i.tax_cents ?? 0;
   return (
@@ -52,6 +54,12 @@ export function InvoiceSheet({ invoice: i, clientName, ctx, payments = [] }: { i
           {i.status !== "paid" && i.status !== "void" && <tr><th>Balance</th><th>{dollars(balance(i))}</th></tr>}
         </tfoot>
       </table>
+      {schedule.length > 0 && (
+        <div className="ni-pays">
+          <b>Payment plan</b>
+          <ul>{schedule.map((p) => <li key={p.position}><span>Payment {p.position} · due {day(p.due_on)} · {p.state === "paid" ? "Paid" : p.state === "overdue" ? "Overdue" : p.state === "partial" ? "Part paid" : "Upcoming"}</span><b>{dollars(p.amount_cents)}</b></li>)}</ul>
+        </div>
+      )}
       {payments.length > 0 && (
         <div className="ni-pays">
           <b>Payments</b>
@@ -70,6 +78,6 @@ export function InvoiceSheet({ invoice: i, clientName, ctx, payments = [] }: { i
 }
 
 /** The invoice number as a button that opens the invoice in a popup. */
-export function InvoiceLink({ invoice, clientName, ctx, payments }: { invoice: Invoice; clientName: string; ctx: SheetContext; payments?: PaymentLine[] }) {
-  return <Modal label={invoice.number} title={`Invoice ${invoice.number}`} className="monarch-link ni-numlink" wide><InvoiceSheet invoice={invoice} clientName={clientName} ctx={ctx} payments={payments} /></Modal>;
+export function InvoiceLink({ invoice, clientName, ctx, payments, plan }: { invoice: Invoice; clientName: string; ctx: SheetContext; payments?: PaymentLine[]; plan?: Installment[] }) {
+  return <Modal label={invoice.number} title={`Invoice ${invoice.number}`} className="monarch-link ni-numlink" wide><InvoiceSheet invoice={invoice} clientName={clientName} ctx={ctx} payments={payments} plan={plan} /></Modal>;
 }

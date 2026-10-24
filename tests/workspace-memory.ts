@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Installment } from "../lib/workspace/plan.ts";
 import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, BillingSettings, InvoiceReceipt, ReceiptInsert, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
 
 // The workspace in memory, with the database rules that matter: one original and one extension per client per year,
@@ -18,6 +19,9 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async deleteSpouse(clientId: string) { this.spouses = this.spouses.filter((s) => s.client_id !== clientId); }
   async getInvoiceDefaults() { return this.fees ? this.c(this.fees) : null; }
   async saveInvoiceDefaults(lines: InvoiceLine[]) { this.fees = this.c(lines); }
+  installments: (Installment & { invoice_id: string })[] = [];
+  async listInstallments(ids: string[]) { return this.c(this.installments.filter((p) => ids.includes(p.invoice_id))); }
+  async replaceInstallments(invoiceId: string, plan: Installment[]) { this.installments = this.installments.filter((p) => p.invoice_id !== invoiceId).concat(plan.map((p) => ({ ...p, invoice_id: invoiceId }))); }
   receipts: InvoiceReceipt[] = [];
   async listReceipts(ids?: string[]) { return this.c(this.receipts.filter((r) => !ids || ids.includes(r.invoice_id))); }
   async insertReceipt(input: ReceiptInsert) { const r: InvoiceReceipt = { ...this.c(input), id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.receipts.push(r); return this.c(r); }

@@ -21,6 +21,8 @@ class Repo implements ConnectRepo {
   async getConnection() { return this.conn; }
   async saveConnection(i: Parameters<ConnectRepo["saveConnection"]>[0]) { this.conn = { id: "conn1", tenant_id: TENANT, status: "connected", connected_at: NOW.toISOString(), disconnected_at: null, ...i }; return this.conn; }
   async updateConnection(p: Parameters<ConnectRepo["updateConnection"]>[0]) { this.conn = { ...this.conn!, ...p }; return this.conn; }
+  plans = new Map<string, { position: number; due_on: string; amount_cents: number }[]>();
+  async installmentsFor(id: string) { return this.plans.get(id) ?? []; }
   async getInvoice(id: string) { return this.invoices.get(id) ?? null; }
   async openPaymentFor(invoiceId: string) { return this.payments.find((p) => p.invoice_id === invoiceId && p.status === "open") ?? null; }
   async getPayment(id: string) { return this.payments.find((p) => p.id === id) ?? null; }
@@ -174,6 +176,18 @@ describe("starting a payment", () => {
     assert.deepEqual(stripe.calls.filter((c) => c.startsWith("checkout")), [`checkout:${ACCT}:12300`]);
     assert.equal(repo.payments[0].amount_cents, 12300);
     assert.ok(repo.payments[0].stripe_session_id);
+  });
+  test("with a payment plan, online payment is the next installment, not the whole balance", async () => {
+    const { deps, repo, stripe, invoice } = await connected();
+    repo.plans.set(invoice.id, [{ position: 1, due_on: "2026-11-01", amount_cents: 11150 }, { position: 2, due_on: "2026-12-01", amount_cents: 11150 }]);
+    await startInvoiceCheckout(deps, checkoutInput(invoice.id));
+    assert.deepEqual(stripe.calls.filter((c) => c.startsWith("checkout")), [`checkout:${ACCT}:11150`]);
+    invoice.paid_cents = 11150;
+    await startInvoiceCheckout(deps, checkoutInput(invoice.id));
+    assert.equal(repo.payments.at(-1)!.amount_cents, 11150, "the second payment is the second installment");
+    invoice.paid_cents = 15000;
+    await startInvoiceCheckout(deps, checkoutInput(invoice.id));
+    assert.equal(repo.payments.at(-1)!.amount_cents, 7300, "a part-paid installment asks only for what is left of it");
   });
   test("a second click expires the first link, so only one can ever be paid", async () => {
     const { deps, repo, stripe, invoice } = await connected();

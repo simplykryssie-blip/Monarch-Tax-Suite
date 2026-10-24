@@ -4,6 +4,7 @@ import { parseMoney } from "../fees/engine.ts";
 import { parseTags, TAG_MAX } from "../leads/tags.ts";
 import { changedFields, type FieldChange } from "./activity.ts";
 import { balance, checkBillingSettings, checkBusiness, checkClient, checkFeeProduct, checkWork, taxOn, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
+import { checkPlan, type Installment } from "./plan.ts";
 import { RECEIPT_METHODS, type InvoiceReceipt, type ReceiptMethod } from "./types.ts";
 import type { BillingSettings, ClientWork, FeeProduct, Payer, Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
@@ -178,7 +179,10 @@ export async function createInvoice(repo: WorkspaceRepo, raw: Record<string, unk
   const issued = typeof raw.issued_on === "string" && isDay(raw.issued_on) ? raw.issued_on : now.toISOString().slice(0, 10);
   const due = typeof raw.due_on === "string" && raw.due_on ? (isDay(raw.due_on) ? raw.due_on : (() => { throw new ValidationError("The due date isn't a valid date."); })()) : null;
   const number = await repo.nextInvoiceNumber();
-  return repo.insertInvoice({ client_id: clientId, return_id: returnId, number, tax_year: taxYear, status, lines, total_cents: subtotal + tax_cents, tax_percent: settings.tax_percent, tax_cents, payer, software_name: software?.name ?? null, bank_name: bank?.name ?? null, issued_on: issued, due_on: due, notes: clean(raw.notes, 1000) || null, created_by: actorId });
+  const plan = checkPlan(raw, subtotal + tax_cents);
+  const invoice = await repo.insertInvoice({ client_id: clientId, return_id: returnId, number, tax_year: taxYear, status, lines, total_cents: subtotal + tax_cents, tax_percent: settings.tax_percent, tax_cents, payer, software_name: software?.name ?? null, bank_name: bank?.name ?? null, issued_on: issued, due_on: due, notes: clean(raw.notes, 1000) || null, created_by: actorId });
+  if (plan) await repo.replaceInstallments(invoice.id, plan);
+  return invoice;
 }
 
 /** The tax software or bank product named on the form, or the only one of its kind when there is just one. */
@@ -190,6 +194,24 @@ function pickProduct(products: FeeProduct[], kind: "software" | "bank", id: unkn
     return found;
   }
   return ofKind.length === 1 ? ofKind[0] : null;
+}
+
+/** Sets up (or replaces) a payment plan on an invoice nothing has been paid on yet. */
+export async function setPaymentPlan(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>): Promise<Installment[]> {
+  const i = await repo.getInvoice(uuid(id, "That invoice"));
+  if (!i) throw new ValidationError("That invoice wasn't found.");
+  if (i.status === "void" || i.status === "paid") throw new ValidationError("This invoice can't have a payment plan.");
+  if (i.paid_cents > 0) throw new ValidationError("A payment has already been made on this invoice, so a payment plan can't be set up.");
+  const plan = checkPlan(raw, i.total_cents);
+  if (!plan) throw new ValidationError("Choose how many payments: 2 or more.");
+  await repo.replaceInstallments(i.id, plan);
+  return plan;
+}
+
+export async function removePaymentPlan(repo: WorkspaceRepo, id: string): Promise<void> {
+  const i = await repo.getInvoice(uuid(id, "That invoice"));
+  if (!i) throw new ValidationError("That invoice wasn't found.");
+  await repo.replaceInstallments(i.id, []);
 }
 
 export async function sendInvoice(repo: WorkspaceRepo, id: string): Promise<Invoice> {
