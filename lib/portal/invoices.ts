@@ -5,6 +5,7 @@
 export type PortalInvoice = {
   id: string; number: string; tax_year: number; status: "sent" | "paid"; lines: { label: string; amount_cents: number }[];
   total_cents: number; paid_cents: number; issued_on: string; due_on: string | null; paid_on: string | null;
+  tax_percent?: number; tax_cents?: number;
 };
 export const PORTAL_INVOICE_STATUSES = ["sent", "paid"] as const;
 

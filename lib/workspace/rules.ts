@@ -239,6 +239,27 @@ export function checkTask(raw: Record<string, unknown>): { title: string; due_on
 // ---------------------------------------------------------------- invoices
 
 export const dollars = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+/** Sales tax on an amount at a percent, to the nearest cent. */
+export const taxOn = (subtotalCents: number, percent: number) => Math.round((subtotalCents * percent) / 100);
+
+/** The Billing settings form: the refund policy and terms printed on invoices, and the sales tax percent (0 to 25). */
+export function checkBillingSettings(raw: Record<string, unknown>): { refund_policy: string | null; terms: string | null; tax_percent: number } {
+  const text = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\r\n/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").trim().slice(0, max) : "");
+  const pctText = one(raw.tax_percent, 10).replace(/%/g, "");
+  const pct = pctText === "" ? 0 : Number(pctText);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 25) throw new ValidationError("Sales tax can be 0% to 25%.");
+  return { refund_policy: text(raw.refund_policy, 4000) || null, terms: text(raw.terms, 8000) || null, tax_percent: Math.round(pct * 1000) / 1000 };
+}
+
+/** A tax software or bank product with the fees it charges: a name and up to 12 fee lines. */
+export function checkFeeProduct(raw: Record<string, unknown>): { kind: "software" | "bank"; name: string; lines: InvoiceLine[] } {
+  const kind = raw.kind === "bank" ? "bank" : raw.kind === "software" ? "software" : null;
+  if (!kind) throw new ValidationError("Choose tax software or bank product.");
+  const name = one(raw.name, 80);
+  if (!name) throw new ValidationError("Give it a name.");
+  return { kind, name, lines: checkLines(raw, 12) };
+}
+
 export const invoiceTotal = (lines: InvoiceLine[]) => lines.reduce((n, l) => n + l.amount_cents, 0);
 export const balance = (i: Pick<Invoice, "total_cents" | "paid_cents">) => Math.max(0, i.total_cents - i.paid_cents);
 

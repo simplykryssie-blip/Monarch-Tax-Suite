@@ -3,8 +3,8 @@ import { ValidationError } from "../commerce/validation.ts";
 import { parseMoney } from "../fees/engine.ts";
 import { parseTags, TAG_MAX } from "../leads/tags.ts";
 import { changedFields, type FieldChange } from "./activity.ts";
-import { balance, checkBusiness, checkClient, checkWork, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
-import type { ClientWork, Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
+import { balance, checkBillingSettings, checkBusiness, checkClient, checkFeeProduct, checkWork, taxOn, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
+import type { BillingSettings, ClientWork, FeeProduct, Payer, Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
 // My Workspace orchestration: each function checks its input with the rules, then uses the repository. Nothing here
 // reaches outside the tenant: the repository is built on the tenant-scoped database client.
@@ -153,22 +153,42 @@ export async function createInvoice(repo: WorkspaceRepo, raw: Record<string, unk
     if (!r || r.client_id !== clientId) throw new ValidationError("That return isn't this client's.");
     returnId = r.id;
   }
-  // The standard fees come from Settings, never from the form; the form only chooses whether to include them and adds other charges.
+  // The standard fees come from Settings (the tax software and bank product picked), never from the form; the form only chooses
+  // whether to include them and adds other charges. With no software or bank product set up, the older standard fees apply.
   const hasLines = Object.keys(raw).some((k) => k.startsWith("line_label_"));
   const chooses = Object.hasOwn(raw, "include_standard");
   // A caller that sends no choice keeps the old rule: its own lines are the invoice, or the standard fees when it sends none.
-  const standard = (chooses ? raw.include_standard === "yes" : !hasLines) ? await standardFees(repo) : [];
+  const includeStandard = chooses ? raw.include_standard === "yes" : !hasLines;
+  const products = await feeProducts(repo);
+  const software = includeStandard ? pickProduct(products, "software", raw.software_id) : null;
+  const bank = includeStandard ? pickProduct(products, "bank", raw.bank_id) : null;
+  const standard = !includeStandard ? [] : products.length === 0 ? await standardFees(repo) : [...(software?.lines ?? []), ...(bank?.lines ?? [])];
   let extra: InvoiceLine[] = [];
   if (hasLines) {
     try { extra = checkLines(raw); } catch (e) { if (!(standard.length && e instanceof ValidationError && /at least one line/.test(e.message))) throw e; }
   }
   const lines = [...standard, ...extra];
   if (!lines.length) throw new ValidationError("An invoice needs at least one line: include the standard fees or add a charge.");
+  const settings = await billingSettings(repo);
+  const subtotal = invoiceTotal(lines);
+  const tax_cents = taxOn(subtotal, settings.tax_percent);
+  const payer: Payer = raw.payer === "bank_product" || raw.payer === "self" ? raw.payer : bank ? "bank_product" : "self";
   const status: InvoiceStatus = raw.status === "sent" ? "sent" : "draft";
   const issued = typeof raw.issued_on === "string" && isDay(raw.issued_on) ? raw.issued_on : now.toISOString().slice(0, 10);
   const due = typeof raw.due_on === "string" && raw.due_on ? (isDay(raw.due_on) ? raw.due_on : (() => { throw new ValidationError("The due date isn't a valid date."); })()) : null;
   const number = await repo.nextInvoiceNumber();
-  return repo.insertInvoice({ client_id: clientId, return_id: returnId, number, tax_year: taxYear, status, lines, total_cents: invoiceTotal(lines), issued_on: issued, due_on: due, notes: clean(raw.notes, 1000) || null, created_by: actorId });
+  return repo.insertInvoice({ client_id: clientId, return_id: returnId, number, tax_year: taxYear, status, lines, total_cents: subtotal + tax_cents, tax_percent: settings.tax_percent, tax_cents, payer, software_name: software?.name ?? null, bank_name: bank?.name ?? null, issued_on: issued, due_on: due, notes: clean(raw.notes, 1000) || null, created_by: actorId });
+}
+
+/** The tax software or bank product named on the form, or the only one of its kind when there is just one. */
+function pickProduct(products: FeeProduct[], kind: "software" | "bank", id: unknown): FeeProduct | null {
+  const ofKind = products.filter((p) => p.kind === kind);
+  if (typeof id === "string" && id) {
+    const found = ofKind.find((p) => p.id === id);
+    if (!found) throw new ValidationError(`That ${kind === "software" ? "tax software" : "bank product"} wasn't found.`);
+    return found;
+  }
+  return ofKind.length === 1 ? ofKind[0] : null;
 }
 
 export async function sendInvoice(repo: WorkspaceRepo, id: string): Promise<Invoice> {
@@ -365,11 +385,39 @@ export async function standardFees(repo: WorkspaceRepo): Promise<InvoiceLine[]> 
   return (await repo.getInvoiceDefaults().catch(() => null)) ?? defaultInvoiceLines();
 }
 
-/** Saves the standard fee lines (Settings). They are what every new invoice starts from. */
-export async function saveStandardFees(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string): Promise<InvoiceLine[]> {
-  const lines = checkLines(raw, 12);
-  await repo.saveInvoiceDefaults(lines, actorId);
-  return lines;
+export async function billingSettings(repo: WorkspaceRepo): Promise<BillingSettings> {
+  return (await repo.getBillingSettings().catch(() => null)) ?? { refund_policy: null, terms: null, tax_percent: 0 };
+}
+
+export async function saveBillingSettings(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string): Promise<BillingSettings> {
+  const s = checkBillingSettings(raw);
+  await repo.saveBillingSettings(s, actorId);
+  return s;
+}
+
+/** The tax software and bank products set up in Settings (not archived). */
+export async function feeProducts(repo: WorkspaceRepo): Promise<FeeProduct[]> {
+  return repo.listFeeProducts().catch(() => []);
+}
+
+export async function addFeeProduct(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string): Promise<FeeProduct> {
+  const p = checkFeeProduct(raw);
+  if ((await feeProducts(repo)).some((x) => x.kind === p.kind && x.name.toLowerCase() === p.name.toLowerCase())) throw new ValidationError(`You already have one called "${p.name}".`);
+  return repo.insertFeeProduct({ ...p, created_by: actorId });
+}
+
+export async function saveFeeProduct(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>): Promise<FeeProduct> {
+  const current = (await feeProducts(repo)).find((x) => x.id === uuid(id, "That item"));
+  if (!current) throw new ValidationError("That wasn't found.");
+  const p = checkFeeProduct({ ...raw, kind: current.kind });
+  return repo.updateFeeProduct(current.id, { name: p.name, lines: p.lines });
+}
+
+/** Removes a product from the pick lists. Invoices already made keep the name and fees they were made with. */
+export async function archiveFeeProduct(repo: WorkspaceRepo, id: string): Promise<void> {
+  const current = (await feeProducts(repo)).find((x) => x.id === uuid(id, "That item"));
+  if (!current) throw new ValidationError("That wasn't found.");
+  await repo.updateFeeProduct(current.id, { archived_at: new Date().toISOString() });
 }
 
 /** Moves everything on `drop` onto `keep` and archives `drop`. Both must be clients of this workspace. */

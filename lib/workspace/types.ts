@@ -76,8 +76,18 @@ export type Invoice = {
   id: string; tenant_id: string; client_id: string; return_id: string | null; number: string; tax_year: number; status: InvoiceStatus; lines: InvoiceLine[];
   total_cents: number; paid_cents: number; issued_on: string; due_on: string | null; paid_on: string | null; notes: string | null;
   created_by: string | null; created_at: string; updated_at: string;
+  /** Sales tax figured on the invoice, and who pays: a bank product (taken from the refund) or the client out of pocket. */
+  tax_percent?: number; tax_cents?: number; payer?: Payer | null; software_name?: string | null; bank_name?: string | null;
 };
-export type InvoiceInsert = Pick<Invoice, "client_id" | "return_id" | "number" | "tax_year" | "status" | "lines" | "total_cents" | "issued_on" | "due_on" | "notes"> & { created_by: string | null };
+export type Payer = "bank_product" | "self";
+export const PAYERS: Record<Payer, string> = { bank_product: "Bank product", self: "Out of pocket" };
+export type InvoiceInsert = Pick<Invoice, "client_id" | "return_id" | "number" | "tax_year" | "status" | "lines" | "total_cents" | "issued_on" | "due_on" | "notes"> & Partial<Pick<Invoice, "tax_percent" | "tax_cents" | "payer" | "software_name" | "bank_name">> & { created_by: string | null };
+
+/** What goes at the bottom of every invoice, and the sales tax percent. */
+export type BillingSettings = { refund_policy: string | null; terms: string | null; tax_percent: number };
+/** A tax software or a bank product, with the standard fees it charges. */
+export type FeeProduct = { id: string; tenant_id: string; kind: "software" | "bank"; name: string; lines: InvoiceLine[]; created_at: string; archived_at: string | null };
+export type FeeProductInput = Pick<FeeProduct, "kind" | "name" | "lines">;
 
 export type MatchKind = "exact" | "possible" | "manual" | "none";
 export type PaymentImport = { id: string; tenant_id: string; file_name: string; file_sha256: string; row_count: number; status: "review" | "applied" | "discarded"; created_by: string | null; created_at: string; applied_at: string | null };
@@ -104,6 +114,11 @@ export interface WorkspaceRepo {
   /** The standard fee lines an invoice starts from. Null until the office has saved its own. */
   getInvoiceDefaults(): Promise<InvoiceLine[] | null>;
   saveInvoiceDefaults(lines: InvoiceLine[], actorId: string | null): Promise<void>;
+  getBillingSettings(): Promise<BillingSettings | null>;
+  saveBillingSettings(s: BillingSettings, actorId: string | null): Promise<void>;
+  listFeeProducts(): Promise<FeeProduct[]>;
+  insertFeeProduct(input: FeeProductInput & { created_by: string | null }): Promise<FeeProduct>;
+  updateFeeProduct(id: string, patch: Partial<Pick<FeeProduct, "name" | "lines" | "archived_at">>): Promise<FeeProduct>;
   /** Records and lists what staff did on a client's card (written to the append-only workspace audit log). */
   addClientEvent(e: { clientId: string; action: string; actorId: string | null; detail: Record<string, unknown> }): Promise<void>;
   listClientEvents(clientId: string, limit: number): Promise<ClientEvent[]>;

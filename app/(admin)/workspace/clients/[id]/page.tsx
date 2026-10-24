@@ -15,7 +15,6 @@ import { loadContacts } from "@/lib/contacts/server";
 import { portalMemberRepo } from "@/lib/portal/server";
 import { describeEvent } from "@/lib/workspace/activity.ts";
 import { balance, dollars, invoiceView, splitName } from "@/lib/workspace/rules.ts";
-import { standardFees } from "@/lib/workspace/service.ts";
 import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
 import { hasStoredSsn } from "@/lib/ssn/service.ts";
 import { ssnDeps } from "@/lib/ssn/server";
@@ -51,17 +50,17 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     const repo = workspaceRepo();
     const client = await repo.getClient(id);
     if (!client) return null;
-    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines, workflowTasks] = await Promise.all([
+    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, work, pipelines, workflowTasks] = await Promise.all([
       repo.listReturns({ clientId: id }), repo.listDocs(id), repo.listMessages(id), repo.listTasks({ clientId: id }), repo.listNotes(id), repo.listInvoices({ clientId: id }), boardStages(),
       repo.listClients({ includeArchived: false }), repo.listDependents(id).catch(() => null), repo.listBusinesses(id).catch(() => null),
-      portalMemberRepo(client.tenant_id).getForClient(id).catch(() => null), repo.getSpouse(id).catch(() => null), repo.listClientEvents(id, 200).catch(() => []), standardFees(repo), repo.listWork({ clientId: id }).catch(() => []), pipelinesRepo().list().catch(() => []),
+      portalMemberRepo(client.tenant_id).getForClient(id).catch(() => null), repo.getSpouse(id).catch(() => null), repo.listClientEvents(id, 200).catch(() => []), repo.listWork({ clientId: id }).catch(() => []), pipelinesRepo().list().catch(() => []),
       workflowTasksFor(id),
     ]);
-    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines, workflowTasks };
+    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, work, pipelines, workflowTasks };
   });
   if (result.ok && !result.data) notFound();
   if (!result.ok) return <><PageTitle title="Client" back={{ href: "/contacts", label: "Contacts" }} /><WorkspaceSetup message={result.message} /></>;
-  const { client, returns, docs, messages, tasks: ownTasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard, work, pipelines, workflowTasks } = result.data!;
+  const { client, returns, docs, messages, tasks: ownTasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, work, pipelines, workflowTasks } = result.data!;
   const tasks: (ClientTask & { source?: "workflow" })[] = [...ownTasks, ...workflowTasks];
   // The office's own texting account, and its prepaid credits when it has them (tenant #1 pays Twilio directly).
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
@@ -378,7 +377,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
       {tab === "billing" && (
         <>
-          <div className="cl-head-actions"><NewInvoice standard={standard} back={back} year={new Date().getUTCFullYear() - 1} clientId={client.id} returns={returns.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></div>
+          <div className="cl-head-actions"><NewInvoice back={back} year={new Date().getUTCFullYear() - 1} clientId={client.id} returns={returns.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></div>
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Billing</h2><p>{owes ? `${dollars(owes)} owed.` : "Nothing owed."} Invoices default to the $223 breakdown.</p></div></div>
             <div className="monarch-table-wrap"><table>

@@ -7,11 +7,16 @@ import { FormattedInput } from "@/components/forms/formatted-input";
 import { parseMoney } from "@/lib/fees/engine.ts";
 
 export type InvoiceFormProps = {
-  /** The standard fees, from Settings, in cents. */
+  /** The older standard fees, used only while no tax software or bank product is set up. */
   standard: { label: string; amount_cents: number }[];
+  /** The tax software and bank products from Settings, with the fees each charges. */
+  products: { id: string; kind: "software" | "bank"; name: string; lines: { label: string; amount_cents: number }[] }[];
+  taxPercent: number;
+  /** The top and bottom of the invoice, from Firm profile, Branding and Invoice settings. */
+  header: { name: string; logoUrl: string | null; address: string | null; phone: string | null; email: string | null };
+  footer: { refund: string | null; terms: string | null };
   back: string;
   year: number;
-  office: string;
   /** On a client's page the client is fixed; on Billing one is chosen. */
   clientId?: string;
   clientName?: string;
@@ -25,19 +30,31 @@ const usd = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency
 const MAX_CHARGES = 8;
 
 /** The invoice form on the left and what the invoice will look like on the right, updating as you type. */
-export function NewInvoiceForm({ standard, back, year, office, clientId, clientName, clients, returns, disabled }: InvoiceFormProps) {
+export function NewInvoiceForm({ standard, products, taxPercent, header, footer, back, year, clientId, clientName, clients, returns, disabled }: InvoiceFormProps) {
   const [picked, setPicked] = useState("");
   const [taxYear, setTaxYear] = useState(String(year));
   const [due, setDue] = useState("");
   const [include, setInclude] = useState<"yes" | "no">("yes");
+  const softwareList = products.filter((p) => p.kind === "software");
+  const bankList = products.filter((p) => p.kind === "bank");
+  // With just one of a kind it is picked for you.
+  const [softwareId, setSoftwareId] = useState(softwareList.length === 1 ? softwareList[0].id : "");
+  const [bankId, setBankId] = useState(bankList.length === 1 ? bankList[0].id : "");
+  const [payerPick, setPayerPick] = useState<"bank_product" | "self" | null>(null);
   const [charges, setCharges] = useState<Charge[]>([{ label: "", amount: "" }]);
 
   const name = clientName ?? clients?.find((c) => c.id === picked)?.name ?? "";
+  const software = softwareList.find((p) => p.id === softwareId);
+  const bank = bankList.find((p) => p.id === bankId);
+  const standardLines = products.length === 0 ? standard : [...(software?.lines ?? []), ...(bank?.lines ?? [])];
+  const payer = payerPick ?? (include === "yes" && bank ? "bank_product" : "self");
   const lines = [
-    ...(include === "yes" ? standard.map((l) => ({ label: l.label, cents: l.amount_cents as number | null })) : []),
+    ...(include === "yes" ? standardLines.map((l) => ({ label: l.label, cents: l.amount_cents as number | null })) : []),
     ...charges.filter((c) => c.label.trim() || c.amount.trim()).map((c) => ({ label: c.label.trim() || "Charge", cents: parseMoney(c.amount) })),
   ];
-  const total = lines.reduce((n, l) => n + (l.cents ?? 0), 0);
+  const subtotal = lines.reduce((n, l) => n + (l.cents ?? 0), 0);
+  const tax = Math.round((subtotal * taxPercent) / 100);
+  const total = subtotal + tax;
   const set = (i: number, patch: Partial<Charge>) => setCharges((cs) => cs.map((c, n) => (n === i ? { ...c, ...patch } : c)));
 
   return (
@@ -53,13 +70,25 @@ export function NewInvoiceForm({ standard, back, year, office, clientId, clientN
         <label>Status<select name="status" defaultValue="sent"><option value="sent">Sent</option><option value="draft">Draft</option></select></label>
 
         <fieldset className="is-wide ni-standard">
-          <legend>Standard fees · {usd(standard.reduce((n, l) => n + l.amount_cents, 0))}</legend>
-          <ul>{standard.map((l, i) => <li key={i}><span>{l.label}</span><b>{usd(l.amount_cents)}</b></li>)}</ul>
+          <legend>Standard fees · {usd(standardLines.reduce((n, l) => n + l.amount_cents, 0))}</legend>
+          {products.length > 0 && (
+            <div className="monarch-form">
+              {softwareList.length > 0 && <label>Tax software<select name="software_id" value={softwareId} onChange={(e) => setSoftwareId(e.target.value)}>{softwareList.length > 1 && <option value="">Choose…</option>}{softwareList.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+              {bankList.length > 0 && <label>Bank product<select name="bank_id" value={bankId} onChange={(e) => setBankId(e.target.value)}>{bankList.length > 1 && <option value="">Choose…</option>}{bankList.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+            </div>
+          )}
+          <ul>{standardLines.map((l, i) => <li key={i}><span>{l.label}</span><b>{usd(l.amount_cents)}</b></li>)}</ul>
           <div className="ni-choice">
             <label className="monarch-check"><input type="radio" name="include_standard" value="yes" checked={include === "yes"} onChange={() => setInclude("yes")} /> Include</label>
             <label className="monarch-check"><input type="radio" name="include_standard" value="no" checked={include === "no"} onChange={() => setInclude("no")} /> Don&apos;t include</label>
-            <Link className="monarch-link" href="/settings/invoice-fees">Change in Settings</Link>
+            <Link className="monarch-link" href="/settings/billing">Change in Settings</Link>
           </div>
+        </fieldset>
+
+        <fieldset className="is-wide ni-choice">
+          <legend>Paid by</legend>
+          <label className="monarch-check"><input type="radio" name="payer" value="bank_product" checked={payer === "bank_product"} onChange={() => setPayerPick("bank_product")} /> Bank product</label>
+          <label className="monarch-check"><input type="radio" name="payer" value="self" checked={payer === "self"} onChange={() => setPayerPick("self")} /> Out of pocket</label>
         </fieldset>
 
         <fieldset className="is-wide ni-charges">
@@ -79,7 +108,15 @@ export function NewInvoiceForm({ standard, back, year, office, clientId, clientN
 
       <aside className="ni-preview" aria-label="Invoice preview">
         <div className="ni-sheet">
-          <div className="ni-sheet-head"><b>{office}</b><span>INVOICE</span></div>
+          <div className="ni-sheet-head">
+            <span className="ni-from">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {header.logoUrl && <img src={header.logoUrl} alt="" style={{ maxHeight: 40, maxWidth: 160, objectFit: "contain" }} />}
+              <b>{header.name}</b>
+              {[header.address, [header.phone, header.email].filter(Boolean).join(" · ")].filter(Boolean).map((l, i) => <small key={i} className="monarch-muted" style={{ whiteSpace: "pre-line" }}>{l}</small>)}
+            </span>
+            <span>INVOICE</span>
+          </div>
           <dl className="ni-meta">
             <div><dt>Bill to</dt><dd>{name || "Choose a client"}</dd></div>
             <div><dt>Tax year</dt><dd>{taxYear || "—"}</dd></div>
@@ -90,8 +127,17 @@ export function NewInvoiceForm({ standard, back, year, office, clientId, clientN
             <tbody>
               {lines.length === 0 ? <tr><td colSpan={2} className="monarch-muted">Nothing on this invoice yet</td></tr> : lines.map((l, i) => <tr key={i}><td>{l.label}</td><td>{l.cents === null ? <span className="wb-late">check amount</span> : usd(l.cents)}</td></tr>)}
             </tbody>
-            <tfoot><tr><th>Total</th><th>{usd(total)}</th></tr></tfoot>
+            <tfoot>
+              {taxPercent > 0 && <><tr><td>Subtotal</td><td>{usd(subtotal)}</td></tr><tr><td>Sales tax ({taxPercent}%)</td><td>{usd(tax)}</td></tr></>}
+              <tr><th>Total</th><th>{usd(total)}</th></tr>
+            </tfoot>
           </table>
+          {(footer.refund || footer.terms) && (
+            <div className="ni-foot">
+              {footer.refund && <p><b>Refund policy</b><br />{footer.refund}</p>}
+              {footer.terms && <p><b>Terms and conditions</b><br />{footer.terms}</p>}
+            </div>
+          )}
         </div>
       </aside>
     </form>

@@ -910,3 +910,4 @@ html[data-popup] body{background:#fff}
 .pl-swatches{border:0;padding:0;margin:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pl-swatches legend{font-weight:600;margin-bottom:6px}
 .pl-swatch{width:28px;height:28px;border-radius:50%;display:inline-grid;place-items:center;cursor:pointer}.pl-swatch input{position:absolute;opacity:0}.pl-swatch:has(input:checked){outline:3px solid #111;outline-offset:2px}
 .pl-card[draggable=true]{cursor:grab}.pl-card.is-over,.pl-crumbs a.is-over{outline:2px dashed var(--gold);outline-offset:2px;background:rgba(27,111,224,.08)}
+.ni-from{display:grid;gap:2px}.ni-foot{margin-top:14px;padding-top:10px;border-top:1px solid #e3e8f0;font-size:11px;line-height:1.5;color:#4b5563}.ni-foot p{margin:0 0 8px;white-space:pre-line}

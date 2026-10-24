@@ -11,7 +11,7 @@ import { isLive, returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
 import { emitInvoicePaid, emitReturnStage, emitTagChanges, emitWorkStage } from "@/lib/automation/emit";
 import { yesNo } from "@/lib/workspace/rules.ts";
-import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
+import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveBillingSettings, addFeeProduct, saveFeeProduct, archiveFeeProduct, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { setWorkflowTaskDone } from "@/lib/workspace/workflow-tasks";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
@@ -373,9 +373,21 @@ export async function mergeLeadIntoClientAction(form: FormData) {
   });
 }
 
-/** Saves the standard invoice fees (Settings). */
-export async function saveStandardFeesAction(form: FormData) {
-  await act("/settings/invoice-fees", async (adminId) => { await saveStandardFees(workspaceRepo(), raw(form), adminId); return { notice: "Standard fees saved. New invoices start from these." }; });
+/** Billing settings (Settings → Billing): the footer printed on invoices and the sales tax percent. */
+export async function saveBillingSettingsAction(form: FormData) {
+  await act("/settings/billing", async (adminId) => { await saveBillingSettings(workspaceRepo(), raw(form), adminId); return { notice: "Saved. New invoices use these." }; });
+}
+
+export async function addFeeProductAction(form: FormData) {
+  await act("/settings/billing", async (adminId) => { const p = await addFeeProduct(workspaceRepo(), raw(form), adminId); return { notice: `${p.name} added.` }; });
+}
+
+export async function saveFeeProductAction(form: FormData) {
+  await act("/settings/billing", async () => { const p = await saveFeeProduct(workspaceRepo(), str(form, "id"), raw(form)); return { notice: `${p.name} saved.` }; });
+}
+
+export async function archiveFeeProductAction(form: FormData) {
+  await act("/settings/billing", async () => { await archiveFeeProduct(workspaceRepo(), str(form, "id")); return { notice: "Removed. Invoices already made keep what they were made with." }; });
 }
 
 // ---- documents (uploaded straight to private storage, then checked)

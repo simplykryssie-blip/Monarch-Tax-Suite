@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, BillingSettings, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
 
 // Workspace rows for one tenant, on the tenant client: the database's tenant policies scope every query.
 const unwrap = <T>(r: { data: T | null; error: { message: string } | null }): T => {
@@ -36,6 +36,16 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   async saveInvoiceDefaults(lines: InvoiceLine[], actorId: string | null) {
     unwrap(await this.db.from("invoice_defaults").upsert({ lines, updated_by: actorId, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" }).select("tenant_id"));
   }
+  async getBillingSettings() {
+    const row = unwrap(await this.db.from("billing_settings").select("refund_policy, terms, tax_percent").maybeSingle()) as { refund_policy: string | null; terms: string | null; tax_percent: number | string } | null;
+    return row ? { refund_policy: row.refund_policy, terms: row.terms, tax_percent: Number(row.tax_percent) } : null;
+  }
+  async saveBillingSettings(s: BillingSettings, actorId: string | null) {
+    unwrap(await this.db.from("billing_settings").upsert({ ...s, updated_by: actorId, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" }).select("tenant_id"));
+  }
+  async listFeeProducts() { return unwrap(await this.db.from("fee_products").select("*").is("archived_at", null).order("name")) as FeeProduct[]; }
+  async insertFeeProduct(input: FeeProductInput & { created_by: string | null }) { return unwrap(await this.db.from("fee_products").insert(input).select("*").single()) as FeeProduct; }
+  async updateFeeProduct(id: string, patch: Partial<Pick<FeeProduct, "name" | "lines" | "archived_at">>) { return unwrap(await this.db.from("fee_products").update(patch).eq("id", id).select("*").single()) as FeeProduct; }
   async addClientEvent(e: { clientId: string; action: string; actorId: string | null; detail: Record<string, unknown> }) {
     unwrap(await this.db.from("workspace_audit_events").insert({ actor_id: e.actorId, action: e.action, subject_type: "client", subject_id: e.clientId, detail: e.detail }).select("id"));
   }

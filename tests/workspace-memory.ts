@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, BillingSettings, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
 
 // The workspace in memory, with the database rules that matter: one original and one extension per client per year,
 // unique invoice numbers. Returns copies.
@@ -18,6 +18,12 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async deleteSpouse(clientId: string) { this.spouses = this.spouses.filter((s) => s.client_id !== clientId); }
   async getInvoiceDefaults() { return this.fees ? this.c(this.fees) : null; }
   async saveInvoiceDefaults(lines: InvoiceLine[]) { this.fees = this.c(lines); }
+  settings: BillingSettings | null = null; products: FeeProduct[] = [];
+  async getBillingSettings() { return this.settings ? this.c(this.settings) : null; }
+  async saveBillingSettings(s: BillingSettings) { this.settings = this.c(s); }
+  async listFeeProducts() { return this.c(this.products.filter((p) => !p.archived_at)); }
+  async insertFeeProduct(input: FeeProductInput & { created_by: string | null }) { const p: FeeProduct = { id: randomUUID(), tenant_id: "t", kind: input.kind, name: input.name, lines: this.c(input.lines), created_at: this.at(), archived_at: null }; this.products.push(p); return this.c(p); }
+  async updateFeeProduct(id: string, patch: Partial<Pick<FeeProduct, "name" | "lines" | "archived_at">>) { const p = this.products.find((x) => x.id === id)!; Object.assign(p, this.c(patch)); return this.c(p); }
   async addClientEvent(e: { clientId: string; action: string; actorId: string | null; detail: Record<string, unknown> }) { this.events.push({ id: randomUUID(), client_id: e.clientId, action: e.action, actor_id: e.actorId, detail: e.detail, created_at: this.at() }); }
   async listClientEvents(clientId: string, limit: number) { return this.c(this.events.filter((e) => e.client_id === clientId).reverse().slice(0, limit)); }
   async mergeClients(keep: string, drop: string, actorId: string | null) {

@@ -50,8 +50,13 @@ export class PortalReader {
     });
   }
 
+  /** The refund policy and terms the office prints at the bottom of its invoices. */
+  async invoiceFooter() {
+    const row = unwrap(await this.db.from("billing_settings").select("refund_policy, terms").maybeSingle()) as { refund_policy: string | null; terms: string | null } | null;
+    return { refund: row?.refund_policy ?? null, terms: row?.terms ?? null };
+  }
   /** Invoices the office sent, and paid ones. Never drafts, voided invoices or internal notes. */
   async invoices() {
-    return unwrap(await this.db.from("invoices").select("id, number, tax_year, status, lines, total_cents, paid_cents, issued_on, due_on, paid_on").eq("client_id", this.clientId).in("status", [...PORTAL_INVOICE_STATUSES]).order("issued_on", { ascending: false }).limit(100)) as PortalInvoice[];
+    return unwrap(await this.db.from("invoices").select("id, number, tax_year, status, lines, total_cents, paid_cents, issued_on, due_on, paid_on, tax_percent, tax_cents").eq("client_id", this.clientId).in("status", [...PORTAL_INVOICE_STATUSES]).order("issued_on", { ascending: false }).limit(100)) as PortalInvoice[];
   }
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addDependent, addBusiness, linkSpouse, unlinkSpouse, addClient, saveClientTags, addWork, moveWork } from "../lib/workspace/service.ts";
+import { addDependent, addBusiness, linkSpouse, unlinkSpouse, addClient, saveClientTags, addWork, moveWork, addFeeProduct, billingSettings, feeProducts, saveBillingSettings } from "../lib/workspace/service.ts";
 import { buildWorkBoard, addressLine, checkBusiness, checkClient, checkDependent, splitName } from "../lib/workspace/rules.ts";
 import { MemoryWorkspace } from "./workspace-memory.ts";
 
@@ -72,7 +72,7 @@ test("dependents and businesses are added to an existing client only", async () 
 });
 
 import { describeEvent, changedFields } from "../lib/workspace/activity.ts";
-import { createInvoice, mergeClients, removeDependent, removeSpouse, saveClientWithChanges, saveSpouse, saveStandardFees, standardFees } from "../lib/workspace/service.ts";
+import { createInvoice, mergeClients, removeDependent, removeSpouse, saveClientWithChanges, saveSpouse, standardFees } from "../lib/workspace/service.ts";
 import { checkClient as cc, defaultInvoiceLines, invoiceTotal } from "../lib/workspace/rules.ts";
 
 test("the driver's license and last year's address are read, checked, and cleared together", () => {
@@ -139,7 +139,7 @@ test("the standard fees come from Settings, and the invoice only chooses whether
   const only = await createInvoice(repo, { ...base, include_standard: "no", line_label_0: "Consult", line_amount_0: "75" }, "u");
   assert.deepEqual(only.lines, [{ label: "Consult", amount_cents: 7500 }]);
   await assert.rejects(createInvoice(repo, { ...base, include_standard: "no" }, "u"), /at least one line/);
-  await saveStandardFees(repo, { line_label_0: "Prep", line_amount_0: "200", line_label_1: "E-file", line_amount_1: "25" }, "u");
+  await repo.saveInvoiceDefaults([{ label: "Prep", amount_cents: 20000 }, { label: "E-file", amount_cents: 2500 }]);
   assert.deepEqual((await standardFees(repo)).map((l) => l.amount_cents), [20000, 2500]);
   assert.equal((await createInvoice(repo, { ...base, include_standard: "yes" }, "u")).total_cents, 22500);
   const tampered = await createInvoice(repo, { ...base, include_standard: "yes", standard_total: "1" }, "u");
@@ -215,4 +215,33 @@ test("work in another pipeline starts in its first stage, moves only to its own 
   assert.deepEqual(cols.map((x) => x.cards.length), [0, 1, 0]);
   assert.equal(cols[1].cards[0].label, "October books");
   assert.equal(cols[1].cards[0].late, true);
+});
+
+test("an invoice takes its fees from the tax software and bank product, adds sales tax, and remembers who pays", async () => {
+  const repo = new MemoryWorkspace();
+  const c = await addClient(repo, { full_name: "Ada King" }, "u1");
+  const base = { client_id: c.id, tax_year: "2025", status: "sent", include_standard: "yes" };
+  await addFeeProduct(repo, { kind: "software", name: "Drake", line_label_0: "Software fee", line_amount_0: "50" }, "u1");
+  await addFeeProduct(repo, { kind: "bank", name: "Refund Advantage", line_label_0: "Bank fee", line_amount_0: "40", line_label_1: "Transmission", line_amount_1: "10" }, "u1");
+  await assert.rejects(addFeeProduct(repo, { kind: "bank", name: "refund advantage", line_label_0: "x", line_amount_0: "1" }, "u1"), /already have/);
+  // One of each: both are picked for you.
+  const a = await createInvoice(repo, base, "u1");
+  assert.deepEqual(a.lines.map((l) => l.amount_cents), [5000, 4000, 1000]);
+  assert.deepEqual([a.software_name, a.bank_name, a.payer, a.tax_cents, a.total_cents], ["Drake", "Refund Advantage", "bank_product", 0, 10000]);
+  // Sales tax is figured on everything and added to the total.
+  await saveBillingSettings(repo, { refund_policy: " No refunds after filing. ", terms: "Net 30", tax_percent: "8.25%" }, "u1");
+  assert.equal((await billingSettings(repo)).tax_percent, 8.25);
+  const b = await createInvoice(repo, { ...base, payer: "self", line_label_0: "Rush", line_amount_0: "100" }, "u1");
+  assert.deepEqual([b.tax_percent, b.tax_cents, b.total_cents, b.payer], [8.25, 1650, 21650, "self"]);
+  // Not including the standard fees means no bank product on the invoice.
+  const none = await createInvoice(repo, { ...base, include_standard: "no", line_label_0: "Consult", line_amount_0: "75" }, "u1");
+  assert.deepEqual([none.bank_name, none.software_name, none.payer], [null, null, "self"]);
+  // With two of a kind, one must be chosen; naming a product that doesn't exist is refused.
+  await addFeeProduct(repo, { kind: "bank", name: "Santa Barbara", line_label_0: "Bank fee", line_amount_0: "30" }, "u1");
+  const unpicked = await createInvoice(repo, { ...base, line_label_0: "Extra", line_amount_0: "5" }, "u1");
+  assert.equal(unpicked.bank_name, null);
+  const bankId = (await feeProducts(repo)).find((p) => p.name === "Santa Barbara")!.id;
+  assert.equal((await createInvoice(repo, { ...base, bank_id: bankId }, "u1")).bank_name, "Santa Barbara");
+  await assert.rejects(createInvoice(repo, { ...base, bank_id: "00000000-0000-4000-8000-000000000000" }, "u1"), /bank product wasn't found/);
+  await assert.rejects(saveBillingSettings(repo, { tax_percent: "30" }, "u1"), /0% to 25%/);
 });
