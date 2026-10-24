@@ -13,7 +13,7 @@ export const NAV: Entry[] = [
     label: "My Office",
     icon: "office",
     items: [
-      { label: "Home", icon: "dashboard", href: "/", section: "bureau" },
+      { label: "Home", icon: "dashboard", href: "/", section: "workspace" },
       { label: "Contacts", icon: "user", href: "/contacts", section: "workspace" },
       { label: "Leads", icon: "user", href: "/leads", section: "leads" },
       { label: "My Workspace", icon: "firms", href: "/workspace", section: "workspace" },

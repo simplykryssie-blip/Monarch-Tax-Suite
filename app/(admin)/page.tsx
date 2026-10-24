@@ -1,92 +1,72 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { commerceRepo, requireAdmin } from "@/lib/admin";
+import { requireAdmin } from "@/lib/admin";
 import { currentTier } from "@/lib/tier-server";
-import { homeFor } from "@/lib/tier.ts";
-import { computeMetrics } from "@/lib/commerce/fulfillment.ts";
-import { loadExtras } from "@/lib/dashboard-data";
-import { buildActivity } from "@/lib/activity.ts";
-import { revenueByMonth } from "@/lib/dashboard-metrics.ts";
-import { ActivityAndAttention, buildTasks, type Data } from "@/components/admin/dashboard-view";
-import { Icon } from "@/components/admin/icons";
-import { load, money, SetupRequired } from "@/components/admin/ui";
+import { allows } from "@/lib/tier.ts";
+import { PageTitle, SetupRequired } from "@/components/admin/ui";
+import { HomeGrid } from "@/components/home/home-grid";
+import { buildHome, type AgendaSource, type LeadLite } from "@/lib/home/model.ts";
+import { appointmentDeps } from "@/lib/appointments/server";
+import { addDays, atLocal, parseYmd, ymdString } from "@/lib/calendar/business.ts";
+import { leadsDeps } from "@/lib/leads/server";
+import { boardStages, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 
-const clock = () => new Date();
+const localDay = (iso: string, tz: string) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+const clock = (iso: string, tz: string) => new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }).format(new Date(iso));
 
-/** My Office: the whole business at a glance. Commerce detail lives under My Store. */
-export default async function OfficeHome() {
-  await requireAdmin();
-  // The business-wide overview is for the Service Bureau tier; the others start in their own area.
+/**
+ * Home: what to do today. One page for every plan: the numbers come from the account's own clients, returns, invoices, tasks,
+ * appointments and (where the plan has Leads) leads. Each person arranges the cards to suit; see components/home/home-grid.tsx.
+ */
+export default async function Home() {
+  const admin = await requireAdmin();
   const tier = await currentTier();
-  if (tier !== "bureau") redirect(homeFor(tier));
-  const repo = commerceRepo();
-  const result = await load(async () => {
-    const [customers, orders, products, licenses, installations] = await Promise.all([repo.listCustomers(), repo.listOrders(), repo.listProducts(), repo.listLicenses(), repo.listInstallations()]);
-    return { customers, orders, products, licenses, installations };
+
+  const result = await workspaceLoad(async () => {
+    const repo = workspaceRepo();
+    const apptDeps = appointmentDeps();
+    const cal = await apptDeps.calendar().catch(() => null);
+    const tz = cal?.timeZone ?? "America/Chicago";
+    const today = localDay(new Date().toISOString(), tz);
+    const first = parseYmd(today)!;
+    const from = atLocal(first, 0, tz);
+    const to = atLocal(addDays(first, 2), 0, tz);
+    const [clients, returns, invoices, tasks, stages, appts, types, leads] = await Promise.all([
+      repo.listClients({ includeArchived: false }),
+      repo.listReturns({}),
+      repo.listInvoices({}),
+      repo.listTasks({ openOnly: true }),
+      boardStages(),
+      apptDeps.repo.listAppointments(from, to).catch(() => []),
+      apptDeps.repo.listTypes().catch(() => []),
+      allows(tier, "leads") ? leadsDeps().repo.listLeads({ limit: 500 }).catch(() => null) : Promise.resolve(null),
+    ]);
+    const typeName = new Map(types.map((t) => [t.id, t.name]));
+    const appointments: AgendaSource[] = appts.filter((a) => a.status !== "cancelled").map((a) => ({ id: a.id, day: localDay(a.starts_at, tz), time: clock(a.starts_at, tz), who: a.contact_name, title: typeName.get(a.type_id) ?? "Appointment" }));
+    const leadRows: LeadLite[] | null = leads ? leads.map((l) => ({ id: l.id, full_name: l.full_name, source: l.source, status: l.status, created_at: l.created_at, last_contacted_at: l.last_contacted_at })) : null;
+    // The same default year as My Work: the newest year that has returns, or last year.
+    const years = [...new Set(returns.map((r) => r.tax_year))].sort((a, b) => b - a);
+    const year = years[0] ?? Number(today.slice(0, 4)) - 1;
+    return { tz, today, tomorrow: ymdString(addDays(first, 1)), year, clients, returns, invoices, tasks, stages, appointments, leads: leadRows };
   });
-  const now = clock();
-  const hour = Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: "America/Chicago" }).format(now)) % 24;
+
+  const hour = result.ok ? Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: result.data.tz }).format(new Date())) % 24 : 12;
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   return (
     <>
-      <div className="mt-hero">
-        <div>
-          <div className="mt-eyebrow">MY OFFICE</div>
-          <h1>{greeting}.</h1>
-          <p>Everything in one place. Open a section to work in it, or pick up what needs you below.</p>
-          <div className="mt-metal-rule" />
-        </div>
-        <div className="mt-actions">
-          <Link className="monarch-primary" href="/orders/internal"><Icon name="plus" size={16} />New license</Link>
-          <Link className="monarch-secondary" href="/store">Open My Store</Link>
-        </div>
+      <PageTitle title={greeting}>What needs you today. Open a card to go to its list, or press Edit layout to arrange Home your way.</PageTitle>
+      <div className="hm-quick">
+        <Link className="monarch-secondary" href="/workspace/clients">Add client</Link>
+        <Link className="monarch-secondary" href="/workspace/work">Add return</Link>
+        <Link className="monarch-primary" href="/workspace/billing">New invoice</Link>
+        {allows(tier, "store") && <Link className="monarch-secondary" href="/store/overview">Store overview</Link>}
       </div>
-      {!result.ok ? <SetupRequired message={result.message} /> : <Body data={{ ...result.data, now }} />}
-    </>
-  );
-}
-
-async function Body({ data }: { data: Data }) {
-  const x = await loadExtras(data.licenses);
-  const m = computeMetrics(data);
-  const revenue = Object.entries(m.revenueByCurrency);
-  const monthNet = revenueByMonth(data.orders, data.now).at(-1)?.value ?? 0;
-  const feed = buildActivity(data, x.feed);
-  const tasks = buildTasks(m, x);
-  return (
-    <>
-      <div className="mt-sections">
-        <Link href="/store" className="mt-section">
-          <span className="mt-section-ico"><Icon name="store" size={22} /></span>
-          <h2>My Store</h2>
-          <p>Sales, customers, licenses and installations.</p>
-          <dl>
-            <div><dt>Net revenue</dt><dd>{revenue.length ? revenue.map(([c, v]) => money(v, c)).join(" · ") : money(0)}</dd></div>
-            <div><dt>This month</dt><dd>{money(monthNet)}</dd></div>
-            <div><dt>Active licenses</dt><dd>{m.activeLicenses}</dd></div>
-          </dl>
-          <span className="mt-section-go">Open store dashboard <Icon name="arrow" size={14} /></span>
-        </Link>
-        <Link href="/automation/workflows" className="mt-section">
-          <span className="mt-section-ico"><Icon name="automation" size={22} /></span>
-          <h2>Operations</h2>
-          <p>Automations, emails and customer onboarding.</p>
-          <dl>
-            <div><dt>Succeeded (30 days)</dt><dd>{x.runs.ok}</dd></div>
-            <div><dt>Failed</dt><dd>{x.runs.failed}</dd></div>
-            <div><dt>Setups finished</dt><dd>{x.completed}</dd></div>
-          </dl>
-          <span className="mt-section-go">Open automation <Icon name="arrow" size={14} /></span>
-        </Link>
-        <Link href="/workspace" className="mt-section">
-          <span className="mt-section-ico"><Icon name="firms" size={22} /></span>
-          <h2>My Workspace</h2>
-          <p>Your own EFIN, the partner EROs attached to it, and the PTINs working under it.</p>
-          <span className="mt-section-go">Open workspace <Icon name="arrow" size={14} /></span>
-        </Link>
-      </div>
-      <ActivityAndAttention feed={feed} tasks={tasks} now={data.now} />
+      {!result.ok ? <SetupRequired message={result.message} /> : (
+        <HomeGrid
+          storageKey={`verexa-home-layout:v1:${admin.userId}`}
+          data={buildHome({ today: result.data.today, tomorrow: result.data.tomorrow, year: result.data.year, invoices: result.data.invoices, clients: result.data.clients, returns: result.data.returns, stages: result.data.stages, tasks: result.data.tasks, appointments: result.data.appointments, leads: result.data.leads })}
+        />
+      )}
     </>
   );
 }

@@ -38,4 +38,5 @@ export function sectionOf(pathname: string): Section | null {
 }
 
 /** A page this tier can't open: where to send them instead. */
-export const homeFor = (tier: Tier): string => (tier === "bureau" ? "/" : tier === "ero" ? "/ero" : "/workspace");
+/** Where an account lands, and where a page its plan lacks sends it: Home, which every plan has. */
+export const homeFor = (): string => "/";

@@ -25,6 +25,6 @@ export async function requireSection(section: Section) {
   if (section === "platform") return { ...(await requirePlatformAdmin()), tier: await currentTier() };
   const admin = await requireAdmin();
   const tier = await currentTier();
-  if (!allows(tier, section)) redirect(homeFor(tier));
+  if (!allows(tier, section)) redirect(homeFor());
   return { ...admin, tier };
 }
