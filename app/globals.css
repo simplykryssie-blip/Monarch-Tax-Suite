@@ -442,3 +442,5 @@ a.hm-row:hover{background:#fcfbf8}
 .cl-ssn-edit { flex-basis: 100%; display: grid; gap: 6px; max-width: 420px; }
 .cl-ssn-log summary { cursor: pointer; font-size: 0.9rem; }
 .cl-ssn-log ul { margin: 6px 0 0; padding-left: 18px; font-size: 0.9rem; line-height: 1.7; }
+
+.cf-dialog .cf-detail { margin-top: -8px; color: var(--muted, #5b574d); font-size: 0.93rem; }
