@@ -1,3 +1,4 @@
+import { FormattedInput } from "@/components/forms/formatted-input";
 import { requireAdmin } from "@/lib/admin";
 import { Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
 import { SubmitOnce } from "@/components/admin/submit-once";
@@ -24,7 +25,7 @@ export default async function NewAppointmentPage({ searchParams }: { searchParam
           <label>Date and time ({result.data.tz.replace(/_/g, " ")})<input type="datetime-local" name="starts_at" required /></label>
           <label>Name<input name="name" required maxLength={200} defaultValue={sp.name ?? ""} autoComplete="off" /></label>
           <label>Email<input name="email" type="email" required maxLength={254} defaultValue={sp.email ?? ""} autoComplete="off" /></label>
-          <label>Mobile number (optional)<input name="phone" maxLength={40} defaultValue={sp.phone ?? ""} autoComplete="off" /></label>
+          <label>Mobile number (optional)<FormattedInput kind="phone" name="phone" defaultValue={sp.phone ?? ""} autoComplete="off" /></label>
           <label className="is-wide"><input type="checkbox" name="sms_consent" /> This person agreed to receive text reminders</label>
           <label className="is-wide">Notes<textarea name="notes" rows={3} maxLength={1000} /></label>
           <div className="is-wide"><SubmitOnce>Book appointment</SubmitOnce></div>

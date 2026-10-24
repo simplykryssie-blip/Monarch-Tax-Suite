@@ -1,3 +1,4 @@
+import { FormattedInput } from "@/components/forms/formatted-input";
 import Link from "next/link";
 import { clearSsnAction, saveSsnAction, sendSignatureAction, cancelRequestAction, invitePortalAction, openStaffDocAction, requestDocAction, setPortalAccessAction, shareDocAction, withdrawPortalAction } from "@/app/portal-staff-actions";
 import { documentDeps } from "@/lib/documents/server";
@@ -121,7 +122,7 @@ export async function PortalPanel({ area, tenantId, clientId, email, signDocId, 
           <p>{signing.ssnOnFile ? "A full Social Security number is on file, encrypted." : "No full Social Security number on file."} It is used only to fill IRS forms you send, and every use is recorded. The portal and exports show the last four digits only.</p>
           <form action={saveSsnAction} className="monarch-form" autoComplete="off">
             {hidden}
-            <label>{signing.ssnOnFile ? "Replace with" : "Social Security number"}<input name="ssn" type="password" inputMode="numeric" autoComplete="off" maxLength={11} placeholder="9 digits" /></label>
+            <label>{signing.ssnOnFile ? "Replace with" : "Social Security number"}<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder="9 digits" /></label>
             <div className="is-wide"><button className="monarch-secondary">{signing.ssnOnFile ? "Replace" : "Save"}</button></div>
           </form>
           {signing.ssnOnFile && <form action={clearSsnAction} style={{ marginTop: 8 }}>{hidden}<button className="monarch-link is-danger">Remove the stored number</button></form>}

@@ -1,3 +1,4 @@
+import { FormattedInput } from "@/components/forms/formatted-input";
 import Link from "next/link";
 import { EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { SubmitOnce } from "@/components/admin/submit-once";
@@ -127,7 +128,7 @@ export default async function SmsSettingsPage({ searchParams }: { searchParams: 
           <label>Legal business name *<input name="legal_name" required maxLength={120} defaultValue={reg.legal_name} /></label>
           <label>Doing business as (optional)<input name="dba_name" maxLength={120} defaultValue={reg.dba_name ?? ""} /></label>
           <label>Business type *<select name="business_type" defaultValue={reg.business_type}>{BUSINESS_TYPES.map((b) => <option key={b}>{b}</option>)}</select></label>
-          <label>EIN *<input name="ein" required inputMode="numeric" maxLength={11} placeholder="12-3456789" defaultValue={reg.ein} /></label>
+          <label>EIN *<FormattedInput kind="ein" name="ein" required placeholder="12-3456789" defaultValue={reg.ein} /></label>
           <label className="is-wide">Website * <small className="monarch-muted">Carriers check that it&apos;s live and matches your business.</small><input name="website" required maxLength={300} placeholder="https://www.yourfirm.com" defaultValue={reg.website} /></label>
           <label className="is-wide">Street address *<input name="street" required maxLength={200} defaultValue={reg.street} /></label>
           <label>City *<input name="city" required maxLength={100} defaultValue={reg.city} /></label>

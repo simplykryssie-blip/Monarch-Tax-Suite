@@ -1,4 +1,5 @@
 "use client";
+import { FormattedInput } from "@/components/forms/formatted-input";
 
 import { useState } from "react";
 
@@ -71,7 +72,7 @@ export function LeadForm({ config, summary }: { config: LeadCaptureConfig; summa
         </div>
         <div className="mt-two">
           <label className="mt-field"><span>Email</span><div className="mt-input-wrap"><input name="email" type="email" maxLength={254} autoComplete="email" /></div></label>
-          <label className="mt-field"><span>Phone</span><div className="mt-input-wrap"><input name="phone" type="tel" maxLength={40} autoComplete="tel" /></div><small>Email or phone is required.</small></label>
+          <label className="mt-field"><span>Phone</span><div className="mt-input-wrap"><FormattedInput kind="phone" name="phone" autoComplete="tel" /></div><small>Email or phone is required.</small></label>
         </div>
         <input className="mt-hp" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
         <label className="mt-consent">

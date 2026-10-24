@@ -1,3 +1,4 @@
+import { FormattedInput } from "@/components/forms/formatted-input";
 import { ImportPanel } from "@/components/imports/import-panel";
 import { PortalPanel } from "@/components/portal/panel";
 import Link from "next/link";
@@ -52,8 +53,8 @@ export async function ClientsView({ ctx, sp }: { ctx: PrepContext; sp: Search })
           {hidden(ctx)}
           <label>Name *<input name="full_name" required maxLength={200} autoComplete="off" /></label>
           <label>Email<input name="email" type="email" maxLength={254} autoComplete="off" /></label>
-          <label>Phone<input name="phone" type="tel" maxLength={40} autoComplete="off" /></label>
-          <label>Last 4 of SSN<input name="ssn_last4" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" autoComplete="off" /><small className="monarch-muted">Only the last 4 digits are ever stored.</small></label>
+          <label>Phone<FormattedInput kind="phone" name="phone" autoComplete="off" /></label>
+          <label>Social Security number or ITIN<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder="Nine digits" /><small className="monarch-muted">Kept encrypted. Only the last four show.</small></label>
           <label className="is-wide">Address<input name="address" maxLength={300} autoComplete="off" /></label>
           <div className="is-wide"><button className="monarch-primary">Add client</button></div>
         </form>
@@ -82,8 +83,9 @@ export async function ClientView({ ctx, id, sp }: { ctx: PrepContext; id: string
           <input type="hidden" name="id" value={client.id} />
           <label>Name *<input name="full_name" required maxLength={200} defaultValue={client.full_name} autoComplete="off" /></label>
           <label>Email<input name="email" type="email" maxLength={254} defaultValue={client.email ?? ""} autoComplete="off" /></label>
-          <label>Phone<input name="phone" type="tel" maxLength={40} defaultValue={client.phone ?? ""} autoComplete="off" /></label>
-          <label>Last 4 of SSN<input name="ssn_last4" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" defaultValue={client.ssn_last4 ?? ""} autoComplete="off" /></label>
+          <label>Phone<FormattedInput kind="phone" name="phone" defaultValue={client.phone ?? ""} autoComplete="off" /></label>
+          <input type="hidden" name="ssn_last4" value={client.ssn_last4 ?? ""} />
+          <label>Social Security number or ITIN<FormattedInput kind="ssn" name="ssn" secret autoComplete="off" placeholder={client.ssn_last4 ? `Ends in ${client.ssn_last4}. Type a full number to replace it` : "Nine digits"} /></label>
           <label className="is-wide">Address<input name="address" maxLength={300} defaultValue={client.address ?? ""} autoComplete="off" /></label>
           <div className="is-wide"><button className="monarch-primary">Save</button></div>
         </form>

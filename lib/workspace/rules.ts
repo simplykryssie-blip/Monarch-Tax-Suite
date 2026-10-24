@@ -1,4 +1,5 @@
 import { ValidationError } from "../commerce/validation.ts";
+import { digitsOf, formatAddress, formatPhone } from "../format/ids.ts";
 import { parseCsv } from "../leads/csv.ts";
 import { MONARCH_TEMPLATE, parseMoney } from "../fees/engine.ts";
 import { RETURN_KINDS, type Client, type ClientInput, type ClientReturn, type Invoice, type InvoiceLine, type MatchKind, type PaymentRowInsert, type ReturnKind } from "./types.ts";
@@ -25,9 +26,12 @@ export function checkClient(raw: Record<string, unknown>): ClientInput {
   if (email && !EMAIL.test(email)) throw new ValidationError("That email address doesn't look right.");
   const phone = one(raw.phone, 40);
   if (phone && phone.replace(/\D/g, "").length < 10) throw new ValidationError("That phone number doesn't look right.");
-  const last4 = one(raw.ssn_last4, 10).replace(/\D/g, "");
-  if (one(raw.ssn_last4, 10) && last4.length !== 4) throw new ValidationError("Enter only the last 4 digits of the Social Security number.");
-  return { full_name, email: email || null, phone: phone || null, ssn_last4: last4 || null, address: one(raw.address, 300) || null };
+  // A full number (SSN or ITIN) gives the last four; the number itself is sealed separately, never kept in this row.
+  const full = digitsOf(one(raw.ssn, 20));
+  if (full && full.length !== 9) throw new ValidationError("A Social Security number or ITIN is nine digits.");
+  const last4 = full ? full.slice(-4) : one(raw.ssn_last4, 10).replace(/\D/g, "");
+  if (!full && one(raw.ssn_last4, 10) && last4.length !== 4) throw new ValidationError("Enter only the last 4 digits of the Social Security number.");
+  return { full_name, email: email || null, phone: phone ? formatPhone(phone) : null, ssn_last4: last4 || null, address: formatAddress(one(raw.address, 300)) || null };
 }
 
 // ---------------------------------------------------------------- returns and the My Work board

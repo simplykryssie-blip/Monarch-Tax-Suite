@@ -424,3 +424,9 @@ a.hm-row:hover{background:#fcfbf8}
 .hm-cols>div{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%}
 .hm-cols span{width:70%;border-radius:6px 6px 0 0;display:block}
 .hm-cols small{text-align:center}
+
+/* Contact page: the masked Social Security number with its Reveal control */
+.cl-ssn { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 4px; }
+.cl-ssn-value b { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.cl-ssn-ask { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cl-ssn-ask input { max-width: 220px; }

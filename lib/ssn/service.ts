@@ -1,7 +1,7 @@
 import { ValidationError } from "../commerce/validation.ts";
 import type { Keyring } from "./keyring.ts";
 
-// Full Social Security numbers for clients: stored encrypted, shown only to the account owner, one client at a time,
+// Full Social Security numbers for clients: stored encrypted, shown only to people who work in the workspace, one client at a time,
 // after they re-enter their password, for 30 seconds. The number is never in a URL, a log, an email, an event, an
 // export or the audit trail; the audit trail records only who looked at whose, and when.
 
@@ -78,8 +78,8 @@ export async function clearSsn(deps: SsnDeps, input: { clientId: string; actorId
 
 export type RevealGate = {
   actorId: string;
-  /** Whether this person is the account owner of the workspace. Resolved by the caller from the session, never from the request. */
-  isOwner: boolean;
+  /** Whether this person works in the workspace (owner or staff). Resolved by the caller from the session, never from the request. */
+  isMember: boolean;
   /** Re-checks the password the person just typed. */
   verifyPassword: (password: string) => Promise<boolean>;
   /** Counts this attempt; false when the person has tried too many times. */
@@ -88,14 +88,14 @@ export type RevealGate = {
 export type Revealed = { ssn: string; expiresAt: string; seconds: number };
 
 /**
- * Shows one client's full number to the account owner. Anyone else is refused; the password is re-checked every time;
+ * Shows one client's full number to an owner or staff member of the workspace. Anyone else is refused; the password is re-checked every time;
  * attempts are limited; every attempt, allowed or not, is recorded without the number.
  */
 export async function revealSsn(deps: SsnDeps, gate: RevealGate, input: { clientId: string; password: unknown }): Promise<Revealed> {
   if (!UUID.test(input.clientId)) throw new ValidationError("That client wasn't found.");
-  if (!gate.isOwner) {
+  if (!gate.isMember) {
     await deps.repo.audit({ action: "ssn.reveal_refused", clientId: input.clientId, actorId: gate.actorId });
-    throw new ValidationError("Only the account owner can view a full Social Security number.");
+    throw new ValidationError("Only people who work in this workspace can view a full Social Security number.");
   }
   if (!(await gate.allowAttempt())) {
     await deps.repo.audit({ action: "ssn.reveal_limited", clientId: input.clientId, actorId: gate.actorId });

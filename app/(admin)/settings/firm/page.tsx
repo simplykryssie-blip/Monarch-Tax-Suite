@@ -1,3 +1,4 @@
+import { FormattedInput } from "@/components/forms/formatted-input";
 import { requireAdmin } from "@/lib/admin";
 import { documentDeps } from "@/lib/documents/server";
 import { Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
@@ -19,9 +20,9 @@ export default async function FirmProfilePage({ searchParams }: { searchParams: 
           <label>Legal name<input name="legal_name" required maxLength={200} defaultValue={p?.legal_name ?? ""} /></label>
           <label>Name clients see<input name="display_name" required maxLength={120} defaultValue={p?.display_name ?? ""} /></label>
           <label>Email<input name="email" type="email" maxLength={254} defaultValue={p?.email ?? ""} /></label>
-          <label>Phone<input name="phone" maxLength={40} defaultValue={p?.phone ?? ""} /></label>
-          <label>PTIN<input name="ptin" maxLength={9} placeholder="P01234567" defaultValue={p?.ptin ?? ""} /></label>
-          <label>CAF number<input name="caf_number" maxLength={10} placeholder="1234-56789" defaultValue={p?.caf_number ?? ""} /></label>
+          <label>Phone<FormattedInput kind="phone" name="phone" defaultValue={p?.phone ?? ""} /></label>
+          <label>PTIN<FormattedInput kind="ptin" name="ptin" placeholder="P01234567" defaultValue={p?.ptin ?? ""} /></label>
+          <label>CAF number<FormattedInput kind="caf" name="caf_number" placeholder="1234-56789" defaultValue={p?.caf_number ?? ""} /></label>
           <label className="is-wide">Mailing address<textarea name="address" rows={3} maxLength={400} defaultValue={p?.address ?? ""} /></label>
           <label>Time zone
             <select name="time_zone" defaultValue={p?.time_zone ?? "America/New_York"}>

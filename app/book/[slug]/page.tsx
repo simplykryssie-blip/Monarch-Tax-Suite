@@ -1,3 +1,4 @@
+import { FormattedInput } from "@/components/forms/formatted-input";
 import type { Metadata } from "next";
 import { SlotPicker } from "@/components/book/slot-picker";
 import { ThemedPage } from "@/components/forms/themed-page";
@@ -35,7 +36,7 @@ export default async function BookPage({ params, searchParams }: { params: Promi
         <h2 className="is-wide">2. Your details</h2>
         <label>Name<input name="name" required maxLength={200} autoComplete="name" /></label>
         <label>Email<input name="email" type="email" required maxLength={254} autoComplete="email" /></label>
-        <label>Mobile number (optional)<input name="phone" type="tel" maxLength={40} autoComplete="tel" /></label>
+        <label>Mobile number (optional)<FormattedInput kind="phone" name="phone" autoComplete="tel" /></label>
         <label className="is-wide"><input type="checkbox" name="sms_consent" /> Text me reminders about this appointment. Message and data rates may apply. Reply STOP to opt out. You can still book without this.</label>
         <label className="is-wide">Anything we should know? (optional)<textarea name="notes" rows={3} maxLength={1000} /></label>
         <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", height: 0, overflow: "hidden" }}><label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
