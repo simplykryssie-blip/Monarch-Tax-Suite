@@ -53,9 +53,11 @@ export class SupabaseSsnRepo implements SsnRepo {
     const { error } = await this.db.from("workspace_audit_events").insert({ actor_id: e.actorId, action: e.action, subject_type: "client", subject_id: e.clientId, detail: {} });
     if (error) throw fail("audit failed", error);
   }
-  async listAudit(clientId: string, limit: number) {
-    const { data, error } = await this.db.from("workspace_audit_events").select("action, actor_id, created_at").eq("subject_type", "client").eq("subject_id", clientId).like("action", "ssn.%").order("created_at", { ascending: false }).limit(limit);
+  async listAudit(clientId: string | null, limit: number) {
+    let q = this.db.from("workspace_audit_events").select("action, subject_id, actor_id, created_at").eq("subject_type", "client").like("action", "ssn.%");
+    if (clientId) q = q.eq("subject_id", clientId);
+    const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
     if (error) throw fail("audit read failed", error);
-    return (data ?? []).map((r) => ({ action: String(r.action), actorId: (r.actor_id as string | null) ?? null, at: String(r.created_at) }));
+    return (data ?? []).map((r) => ({ action: String(r.action), clientId: String(r.subject_id), actorId: (r.actor_id as string | null) ?? null, at: String(r.created_at) }));
   }
 }

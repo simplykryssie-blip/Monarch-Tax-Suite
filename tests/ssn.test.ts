@@ -24,7 +24,7 @@ class Memory implements SsnRepo {
   async deleteCiphertext(id: string) { this.ct.delete(id); }
   async setLast4(id: string, v: string | null) { this.last4.set(id, v); }
   async audit(e: { action: string; clientId: string }) { this.audits.push(e); }
-  async listAudit(id: string, limit: number) { return this.audits.filter((a) => a.clientId === id).reverse().slice(0, limit).map((a, i) => ({ action: a.action, actorId: "u1", at: `2026-10-17T12:00:0${i}Z` })); }
+  async listAudit(id: string | null, limit: number) { return this.audits.filter((a) => id === null || a.clientId === id).reverse().slice(0, limit).map((a, i) => ({ action: a.action, clientId: a.clientId, actorId: "u1", at: `2026-10-17T12:00:0${i}Z` })); }
 }
 const deps = (repo = new Memory(), tenantId = T1, keyring: Keyring | null = new Keyring(new Map([[1, key(1)]]))): SsnDeps => ({ tenantId, keyring, repo, now: () => new Date("2026-10-17T12:00:00Z") });
 const gate = (over: Partial<RevealGate> = {}): RevealGate => ({ actorId: "u1", isMember: true, verifyPassword: async (p) => p === "right", allowAttempt: async () => true, ...over });
@@ -154,4 +154,7 @@ test("the activity list shows saves and reveals, newest first, without the numbe
   const a = await numberActivity(d, C1);
   assert.deepEqual(a.map((x) => x.label), ["Reveal tried with a wrong password", "Number revealed", "Number saved or replaced"]);
   assert.ok(!JSON.stringify(a).includes("6789"));
+  const all = await numberActivity(d, null);
+  assert.equal(all.length, 3, "with no client named, every client's entries come back");
+  assert.deepEqual(await numberActivity(d, C2), [], "another client's entries are not mixed in");
 });

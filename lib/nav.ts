@@ -84,7 +84,7 @@ export const NAV: Entry[] = [
       { label: "Text messaging", icon: "bell", href: "/settings/sms" },
       { label: "Import data", icon: "reports", href: "/settings/import" },
       { label: "Package attributes", icon: "checklist", href: "/settings/package-attributes" },
-      { label: "Archive history", icon: "reports", href: "/settings/archive" },
+      { label: "Activity log", icon: "reports", href: "/settings/archive" },
       { label: "Calculator setup links", icon: "licenses", href: "/settings/integrations", section: "bureau" },
       { label: "Software & banking", icon: "settings", href: "/bureau/settings", section: "bureau" },
       { label: "History", icon: "reports", href: "/bureau/settings/history", section: "bureau" },

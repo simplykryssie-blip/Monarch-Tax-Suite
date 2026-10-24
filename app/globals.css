@@ -444,3 +444,8 @@ a.hm-row:hover{background:#fcfbf8}
 .cl-ssn-log ul { margin: 6px 0 0; padding-left: 18px; font-size: 0.9rem; line-height: 1.7; }
 
 .cf-dialog .cf-detail { margin-top: -8px; color: var(--muted, #5b574d); font-size: 0.93rem; }
+
+.fi-wrap { position: relative; display: flex; align-items: center; width: 100%; }
+.fi-wrap input { flex: 1; min-width: 0; padding-right: 40px; }
+.fi-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; padding: 6px; border: 0; background: none; color: var(--muted, #6b665a); cursor: pointer; border-radius: 6px; }
+.fi-eye:hover, .fi-eye:focus-visible { color: inherit; background: rgba(0, 0, 0, 0.06); }
