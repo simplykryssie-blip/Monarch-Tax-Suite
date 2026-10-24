@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge, EmptyRow, Flash, PageTitle } from "@/components/admin/ui";
 import { balance, dollars, invoiceView, totals, type InvoiceView } from "@/lib/workspace/rules.ts";
+import { AutoSelect } from "@/components/contacts/auto-select";
 import { NewInvoice } from "@/components/contacts/new-invoice";
 import { standardFees } from "@/lib/workspace/service.ts";
 import { todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
@@ -25,7 +26,9 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
       {!result.ok ? <WorkspaceSetup message={result.message} /> : (() => {
         const { invoices, clients, standard } = result.data;
         const names = new Map(clients.map((c) => [c.id, c.full_name]));
-        const years = [...new Set(invoices.map((i) => i.tax_year))].sort((a, b) => b - a);
+        const thisTaxYear = new Date().getUTCFullYear() - 1;
+        // Every year that has an invoice, plus the last four tax years, so a new season is there before its first invoice.
+        const years = [...new Set([...invoices.map((i) => i.tax_year), ...Array.from({ length: 5 }, (_, n) => thisTaxYear - n)])].sort((a, b) => b - a);
         const year = years.includes(Number(sp.year)) ? Number(sp.year) : null;
         const status = VIEWS.some(([k]) => k === sp.status) ? (sp.status as InvoiceView | "all") : "all";
         const inYear = invoices.filter((i) => !year || i.tax_year === year);
@@ -44,7 +47,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
               <div className="monarch-panel-head">
                 <div className="cl-tabs" style={{ margin: 0, border: 0 }}>{VIEWS.map(([k, label]) => <Link key={k} href={link(k)} className={k === status ? "is-on" : undefined}>{label} ({count(k)})</Link>)}</div>
                 <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <form method="get" className="monarch-inline-form">{status !== "all" && <input type="hidden" name="status" value={status} />}<select name="year" defaultValue={year ? String(year) : ""} aria-label="Tax year"><option value="">All years</option>{years.map((y) => <option key={y} value={y}>{y}</option>)}</select><button className="monarch-secondary">Filter</button></form>
+                  <form method="get" className="monarch-inline-form">{status !== "all" && <input type="hidden" name="status" value={status} />}<AutoSelect name="year" label="Tax year" defaultValue={year ? String(year) : ""} options={[{ value: "", label: "All years" }, ...years.map((y) => ({ value: String(y), label: String(y) }))]} /></form>
                   <Link className="monarch-primary" href="/workspace/billing/import">Import bank payments</Link>
                 </span>
               </div>
