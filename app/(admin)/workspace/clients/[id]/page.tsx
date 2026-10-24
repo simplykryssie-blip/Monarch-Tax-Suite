@@ -20,6 +20,7 @@ import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types
 import { hasStoredSsn } from "@/lib/ssn/service.ts";
 import { ssnDeps } from "@/lib/ssn/server";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
+import { invitePortalAction } from "@/app/portal-staff-actions";
 import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, deleteClientDocAction, invoiceStatusAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, openClientDocAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
@@ -27,9 +28,9 @@ import { emailConfig, emailKeyProblems } from "@/lib/automation/email.ts";
 import { WorkspaceSetup } from "../../setup";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// Returns, Tasks, Notes, Activity and the Portal open from the Overview (See all, and the Portal button), so they are not in the tab bar.
+// Returns, Tasks, Notes and Activity open from the Overview (See all), so they are not in the tab bar. The portal lives in Documents.
 const TABS = [["overview", "Overview"], ["documents", "Documents"], ["messages", "Messages"], ["billing", "Billing"]] as const;
-const HIDDEN = ["returns", "tasks", "notes", "activity", "portal"] as const;
+const HIDDEN = ["returns", "tasks", "notes", "activity"] as const;
 const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other", portal: "Portal" } as const;
 const FIVE = 5;
 
@@ -38,7 +39,9 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const { id } = await params;
   const sp = await searchParams;
   if (!UUID.test(id)) notFound();
-  const tab = TABS.some(([k]) => k === sp.tab) || (HIDDEN as readonly string[]).includes(sp.tab ?? "") ? sp.tab! : "overview";
+  // The old Portal tab now lives inside Documents, so an old link to it lands there.
+  const asked = sp.tab === "portal" ? "documents" : sp.tab;
+  const tab = TABS.some(([k]) => k === asked) || (HIDDEN as readonly string[]).includes(asked ?? "") ? asked! : "overview";
   const today = todayIso();
   const result = await workspaceLoad(async () => {
     const repo = workspaceRepo();
@@ -91,7 +94,12 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       <PageTitle title={client.full_name} back={{ href: "/contacts", label: "Contacts" }}>
         {[client.email, client.phone].filter(Boolean).join(" · ") || "No contact details yet"}{client.archived_at ? " · Archived" : ""}
       </PageTitle>
-      <div className="cl-head-actions"><Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=portal`}>Portal</Link></div>
+      {(!member || member.status === "invited" || (member.status === "suspended" && !member.user_id)) && (
+        <form action={invitePortalAction} className="cl-head-actions">
+          <input type="hidden" name="area" value="admin" /><input type="hidden" name="client_id" value={client.id} />
+          <button className="monarch-secondary" disabled={!client.email} title={client.email ? undefined : "Add an email address first"}>{member?.status === "invited" ? "Resend invite" : "Send invite"}</button>
+        </form>
+      )}
       <Flash notice={sp.notice} error={sp.error} />
       {duplicates.map((d) => (
         <div key={d.other.key} className="cl-dupe" role="note">
@@ -264,7 +272,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
       {tab === "documents" && (
         <>
-          <section className="monarch-panel" style={{ padding: 20 }}><h2>Add a document</h2><ClientDocUpload clientId={client.id} returns={newestFirst.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></section>
+          <PortalPanel area="admin" mode="documents" part="actions" tab="documents" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`}
+            extraActions={<Modal label="Add a document" title="Add a document" className="monarch-primary"><ClientDocUpload clientId={client.id} returns={newestFirst.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></Modal>} />
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Documents</h2></div></div>
             <div className="monarch-table-wrap"><table>
@@ -285,6 +294,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               </tbody>
             </table></div>
           </section>
+          <PortalPanel area="admin" mode="documents" part="lists" tab="documents" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`} />
         </>
       )}
 
@@ -313,7 +323,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 clientId={client.id}
                 email={{ to: client.email, problem: !client.email ? "Add an email address on the Overview tab to email this client." : emailProblem ? `Email sending isn't set up yet: ${emailProblem}` : null }}
                 sms={{ to: mobile, problem: !mobile ? "Add a mobile number on the Overview tab to text this client." : smsProblem ? `Text messaging isn't connected yet: ${smsProblem}` : null }}
-                portal={{ to: member?.email ?? null, problem: !member || member.status !== "active" ? "This client doesn't have portal access yet. Use the Portal button to invite them." : null }}
+                portal={{ to: member?.email ?? null, problem: !member || member.status !== "active" ? "This client doesn't have portal access yet. Use Send invite at the top of this page." : null }}
                 credits={credits}
               />
             )}
@@ -372,8 +382,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           </section>
         </>
       )}
-
-      {tab === "portal" && <PortalPanel area="admin" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`} />}
 
       {tab === "returns" && (
         <>

@@ -48,7 +48,7 @@ async function staffFor(form: FormData): Promise<Staff> {
     const admin = await requireAdmin();
     const client = await workspaceRepo().getClient(clientId);
     if (!client) throw new ValidationError("That client wasn't found.");
-    return { tenantId: currentTenantId(), userId: admin.userId, client, back: `/workspace/clients/${clientId}?tab=portal` };
+    return { tenantId: currentTenantId(), userId: admin.userId, client, back: `/workspace/clients/${clientId}?tab=documents` };
   }
   if (!isArea(area)) throw new ValidationError("That client wasn't found.");
   const ctx = await requirePrep(area, "clients.intake");

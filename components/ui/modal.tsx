@@ -3,8 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 /** A button that opens a pop-up window. The content is built fresh each time it opens, so a form inside starts empty. */
-export function Modal({ label, title, children, className = "monarch-primary", wide = false }: { label: string; title: string; children: React.ReactNode; className?: string; wide?: boolean }) {
-  const [open, setOpen] = useState(false);
+export function Modal({ label, title, children, className = "monarch-primary", wide = false, defaultOpen = false }: { label: string; title: string; children: React.ReactNode; className?: string; wide?: boolean; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
