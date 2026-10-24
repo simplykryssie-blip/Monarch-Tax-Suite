@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import { parseMoney } from "../fees/engine.ts";
+import { parseTags, TAG_MAX } from "../leads/tags.ts";
 import { changedFields, type FieldChange } from "./activity.ts";
 import { balance, checkBusiness, checkClient, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
 import type { Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
@@ -45,6 +46,21 @@ export async function saveClientWithChanges(repo: WorkspaceRepo, id: string, raw
   const changes = changedFields(before, client);
   if (changes.length) await record(repo, id, actor ?? null, "client.updated", { changes });
   return { client, changes };
+}
+
+/** Replaces a contact's tags. Returns the tags as saved and what was added or removed, for automations and the activity record. */
+export async function saveClientTags(repo: WorkspaceRepo, id: string, raw: unknown, actor?: Actor): Promise<{ before: string[]; after: string[] }> {
+  const before = await repo.getClient(uuid(id, "That client"));
+  if (!before) throw new ValidationError("That client wasn't found.");
+  const prior = parseTags(before.tags ?? []);
+  const after = parseTags(raw);
+  if (after.length > TAG_MAX) throw new ValidationError(`A contact can have up to ${TAG_MAX} tags.`);
+  if (after.length === prior.length && after.every((x) => prior.includes(x))) return { before: prior, after: prior };
+  await repo.updateClient(id, { tags: after });
+  const added = after.filter((t) => !prior.includes(t));
+  const removed = prior.filter((t) => !after.includes(t));
+  await record(repo, id, actor ?? null, "client.tags_changed", { name: [...added.map((t) => `added ${t}`), ...removed.map((t) => `removed ${t}`)].join(", ") });
+  return { before: prior, after };
 }
 
 export async function saveClient(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>, actor?: Actor): Promise<Client> {

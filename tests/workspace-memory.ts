@@ -40,7 +40,7 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async listBusinesses(clientId: string) { return this.c(this.businesses.filter((b) => b.client_id === clientId)); }
   async insertBusiness(input: BusinessInput) { const rest: Record<string, unknown> = { ...input }; delete rest.created_by; const b = { ...this.c(rest) as unknown as Business, id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.businesses.push(b); return this.c(b); }
   async deleteBusiness(id: string) { this.businesses = this.businesses.filter((b) => b.id !== id); }
-  async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null }) { const x = this.clients.find((y) => y.id === id)!; Object.assign(x, this.c(patch)); return this.c(x); }
+  async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[] }) { const x = this.clients.find((y) => y.id === id)!; Object.assign(x, this.c(patch)); return this.c(x); }
 
   async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) { return this.c(this.returns.filter((r) => (f.includeArchived || !r.archived_at) && (!f.assigneeId || r.assignee_id === f.assigneeId) && (!f.organizationId || r.organization_id === f.organizationId) && (!f.year || r.tax_year === f.year) && (!f.clientId || r.client_id === f.clientId))); }
   async getReturn(id: string) { return this.c(this.returns.find((r) => r.id === id) ?? null); }

@@ -14,5 +14,6 @@ test("the platform is Verexa HQ and its brand files exist", () => {
 test("the workspace colors are Verexa's, with none of Monarch's gold left", () => {
   const css = readFileSync("app/theme.css", "utf8") + readFileSync("app/globals.css", "utf8");
   assert.match(css, /Verexa HQ design system/);
-  for (const gold of ["#c8a24a", "#b8902f", "#8a6420", "#bd974d", "#f4e3a6", "rgba(200,162,74"]) assert.equal(css.toLowerCase().includes(gold), false, gold);
+  for (const gold of ["#c8a24a", "#b8902f", "#8a6420", "#bd974d", "#f4e3a6", "rgba(200,162,74", "#c9a227"]) assert.equal(css.toLowerCase().includes(gold), false, gold);
+  assert.match(css, /\.cl-tabs a\.is-on\{[^}]*border-bottom-color:#236fcd/);
 });

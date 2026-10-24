@@ -20,8 +20,9 @@ import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types
 import { hasStoredSsn } from "@/lib/ssn/service.ts";
 import { ssnDeps } from "@/lib/ssn/server";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
+import { TagInput } from "@/app/(admin)/leads/tag-input";
 import { invitePortalAction } from "@/app/portal-staff-actions";
-import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, deleteClientDocAction, invoiceStatusAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, openClientDocAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
+import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, deleteClientDocAction, invoiceStatusAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, openClientDocAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
 import { emailConfig, emailKeyProblems } from "@/lib/automation/email.ts";
@@ -140,6 +141,15 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <div className="grid2 cl-cols">
             <div className="cl-col">
               <DetailsCard d={details} />
+
+              <section className="monarch-panel cl-card">
+                <div className="cl-card-head"><h2>Tags</h2></div>
+                <form action={saveClientTagsAction} className="cl-tags">
+                  <input type="hidden" name="id" value={client.id} />
+                  <TagInput initial={client.tags ?? []} suggestions={[...new Set(others.flatMap((o) => o.tags ?? []))].sort()} />
+                  <button className="monarch-secondary">Save tags</button>
+                </form>
+              </section>
 
               <section className="monarch-panel cl-card">
                 <div className="cl-card-head"><h2>Spouse</h2>

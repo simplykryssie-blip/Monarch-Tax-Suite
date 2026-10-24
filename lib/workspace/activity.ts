@@ -31,6 +31,7 @@ export function changedFields(before: Client, after: Client): FieldChange[] {
 
 const LABELS: Record<string, string> = {
   "client.created": "Client added",
+  "client.tags_changed": "Tags changed",
   "client.merged": "Merged another client into this one",
   "client.spouse_linked": "Spouse linked",
   "client.spouse_unlinked": "Spouse unlinked",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addDependent, addBusiness, linkSpouse, unlinkSpouse, addClient } from "../lib/workspace/service.ts";
+import { addDependent, addBusiness, linkSpouse, unlinkSpouse, addClient, saveClientTags } from "../lib/workspace/service.ts";
 import { addressLine, checkBusiness, checkClient, checkDependent, splitName } from "../lib/workspace/rules.ts";
 import { MemoryWorkspace } from "./workspace-memory.ts";
 
@@ -181,4 +181,21 @@ test("a spouse takes a driver's license and the 'filed together last year' answe
   await linkSpouse(repo, ada.id, bo.id, undefined, false);
   assert.equal((await repo.getClient(ada.id))!.filed_with_spouse_last_year, false);
   assert.equal((await repo.getClient(bo.id))!.filed_with_spouse_last_year, false, "both clients carry the answer");
+});
+
+test("a contact's tags are saved tidy, changes are reported and recorded, and more than twelve is refused", async () => {
+  const repo = new MemoryWorkspace();
+  const c = await addClient(repo, { full_name: "Ada King" }, "u1");
+  const first = await saveClientTags(repo, c.id, "VIP, new client, vip");
+  assert.deepEqual(first.after, ["vip", "new client"]);
+  assert.deepEqual((await repo.getClient(c.id))?.tags, ["vip", "new client"]);
+  const second = await saveClientTags(repo, c.id, ["new client", "referral"]);
+  assert.deepEqual(second.before, ["vip", "new client"]);
+  assert.deepEqual(second.after, ["new client", "referral"]);
+  const events = await repo.listClientEvents(c.id, 20);
+  assert.equal(events.filter((e) => e.action === "client.tags_changed").length, 2);
+  assert.match(describeEvent(events.find((e) => e.action === "client.tags_changed")!)!, /^Tags changed: /);
+  const same = await saveClientTags(repo, c.id, "referral, new client");
+  assert.deepEqual(same.before, same.after);
+  await assert.rejects(saveClientTags(repo, c.id, Array.from({ length: 13 }, (_, i) => `t${i}`)), /up to 12/);
 });

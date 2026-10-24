@@ -12,7 +12,7 @@ export function layout(firm: string, paragraphs: string[], button: { label: stri
     `<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px">`,
     `<p style="font-size:13px;color:#6b665a;margin:0 0 18px">${esc(oneLine(firm, 120))}</p>`,
     ...paragraphs.map((p) => `<p style="margin:0 0 14px;line-height:1.6">${esc(clean(p)).replace(/\n/g, "<br>")}</p>`),
-    button ? `<p style="margin:24px 0"><a href="${esc(button.url)}" style="background:#111;color:#e8d9a8;text-decoration:none;padding:12px 22px;border-radius:4px;font-weight:600;display:inline-block">${esc(button.label)}</a></p><p style="font-size:12px;color:#6b665a;word-break:break-all">Or copy this address: ${esc(button.url)}</p>` : "",
+    button ? `<p style="margin:24px 0"><a href="${esc(button.url)}" style="background:#111;color:#a6c5ea;text-decoration:none;padding:12px 22px;border-radius:4px;font-weight:600;display:inline-block">${esc(button.label)}</a></p><p style="font-size:12px;color:#6b665a;word-break:break-all">Or copy this address: ${esc(button.url)}</p>` : "",
     `<p style="font-size:12px;color:#6b665a;margin-top:24px">${esc(footer)}</p>`,
     `</div>`,
   ].join("");

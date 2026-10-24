@@ -69,7 +69,7 @@ export function renderTemplate(subjectTemplate: string, bodyTemplate: string, va
   // Callers that pass nothing about branding get the platform's own look.
   const name = brand.name ?? PLATFORM.name;
   const bg = brand.color ?? "#111111";
-  const fg = brand.textColor ?? (brand.color ? "#ffffff" : "#e8d9a8");
+  const fg = brand.textColor ?? (brand.color ? "#ffffff" : "#a6c5ea");
   const unknown = unknownVariables(subjectTemplate, bodyTemplate);
   if (unknown.length) throw new Error(`Unknown template variable(s): ${unknown.join(", ")}`);
 

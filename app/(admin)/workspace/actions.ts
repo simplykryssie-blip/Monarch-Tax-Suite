@@ -9,9 +9,9 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
-import { emitInvoicePaid, emitReturnStage } from "@/lib/automation/emit";
+import { emitInvoicePaid, emitReturnStage, emitTagChanges } from "@/lib/automation/emit";
 import { yesNo } from "@/lib/workspace/rules.ts";
-import { addBusiness, addClient, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
+import { addBusiness, addClient, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
 import { loadBrand } from "@/lib/branding/server";
@@ -299,6 +299,17 @@ export async function saveClientDetailsAction(form: FormData): Promise<{ error: 
   }
   revalidatePath("/workspace", "layout");
   redirect(to(clientPage(id), "notice", notice));
+}
+
+/** Saves the tags on a contact's card, then tells Automation which were added or removed. */
+export async function saveClientTagsAction(form: FormData) {
+  const id = str(form, "id");
+  await act(clientPage(id), async (adminId) => {
+    const admin = await requireAdmin();
+    const { before, after } = await saveClientTags(workspaceRepo(), id, str(form, "tags"), { id: adminId, email: admin.email });
+    await emitTagChanges({ type: "client", id }, before, after);
+    return { notice: before.join() === after.join() ? "Tags are unchanged." : "Tags saved." };
+  });
 }
 
 /** Merges a duplicate into the client being kept: everything moves over, the duplicate is archived. */

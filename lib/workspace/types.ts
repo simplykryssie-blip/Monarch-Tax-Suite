@@ -84,7 +84,7 @@ export interface WorkspaceRepo {
   listClients(f?: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string }): Promise<Client[]>;
   getClient(id: string): Promise<Client | null>;
   insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null; tags?: string[] }): Promise<Client>;
-  updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null }): Promise<Client>;
+  updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[] }): Promise<Client>;
   listDependents(clientId: string): Promise<Dependent[]>;
   insertDependent(input: DependentInput): Promise<Dependent>;
   deleteDependent(id: string): Promise<void>;

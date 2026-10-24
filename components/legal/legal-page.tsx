@@ -24,7 +24,7 @@ export function LegalPage({ title, children, draft = true, platform = false }: {
       </header>
       {draft && (<aside
         role="note"
-        style={{ border: "1px solid #b8860b", background: "#fff8e1", color: "#4a3b00", padding: "12px 16px", borderRadius: 8, marginBottom: 28, fontSize: 14 }}
+        style={{ border: "1px solid #0758bc", background: "#fff8e1", color: "#4a3b00", padding: "12px 16px", borderRadius: 8, marginBottom: 28, fontSize: 14 }}
       >
         <strong>{platform ? "Placeholder draft." : "Draft for review."}</strong> {platform ? "This text is a placeholder written so the product can be built and tested. It is not the final wording, has not been approved by the owner or reviewed by legal counsel, and is not legal advice." : "This document has not yet been reviewed or approved by the business owner or by legal counsel, and it is not legal advice."} Items marked
         “[To confirm]” must be confirmed before this page is relied on.
