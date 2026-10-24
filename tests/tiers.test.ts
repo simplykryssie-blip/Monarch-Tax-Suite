@@ -10,10 +10,10 @@ const labels = (entries: Entry[]): string[] => entries.flatMap((e) => (isBranch(
 const hrefs = (entries: Entry[]): string[] => entries.flatMap((e) => [...(e.href ? [e.href] : []), ...(isBranch(e) ? hrefs(e.items) : [])]);
 
 describe("tiers", () => {
-  test("PTIN sees My Workspace only; ERO adds the ERO Dashboard; Service Bureau adds My Service Bureau", () => {
+  test("PTIN sees Home, Contacts and My Workspace; ERO adds the ERO Dashboard; Service Bureau adds My Service Bureau", () => {
     const ptin = labels(navFor("ptin"));
-    assert.ok(ptin.includes("My Workspace"));
-    for (const hidden of ["ERO Dashboard", "My Service Bureau", "My Store", "Leads", "Operations", "Home"]) assert.ok(!ptin.includes(hidden), `${hidden} should be hidden from PTIN`);
+    assert.ok(ptin.includes("My Workspace") && ptin.includes("Home"));
+    for (const hidden of ["ERO Dashboard", "My Service Bureau", "My Store", "Leads", "Operations"]) assert.ok(!ptin.includes(hidden), `${hidden} should be hidden from PTIN`);
     const ero = labels(navFor("ero"));
     assert.ok(ero.includes("My Workspace") && ero.includes("ERO Dashboard"));
     for (const hidden of ["My Service Bureau", "My Store", "Leads", "Operations"]) assert.ok(!ero.includes(hidden), `${hidden} should be hidden from ERO`);
@@ -60,7 +60,7 @@ describe("tiers", () => {
     assert.equal(allows("ero", "ero"), true);
     assert.equal(allows("ero", "bureau"), false);
     assert.equal(allows("bureau", "operations"), true);
-    assert.deepEqual(TIERS.map(homeFor), ["/workspace", "/ero", "/"]);
+    assert.deepEqual(TIERS.map(() => homeFor()), ["/", "/", "/"], "Home is every plan's front page");
   });
 
   test("every menu link is a page its tier is allowed to open", () => {
