@@ -7,7 +7,7 @@ import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { pipelinesRepo } from "@/lib/pipelines/server";
-import { returnsStages } from "@/lib/pipelines/service.ts";
+import { isLive, returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
 import { emitInvoicePaid, emitReturnStage, emitTagChanges, emitWorkStage } from "@/lib/automation/emit";
 import { yesNo } from "@/lib/workspace/rules.ts";
@@ -174,7 +174,7 @@ export async function addWorkAction(form: FormData) {
   const pipelineId = str(form, "pipeline_id");
   const back = `/workspace/work?pipeline=${encodeURIComponent(pipelineId)}`;
   await act(back, async (adminId) => {
-    const pipeline = (await pipelinesRepo().list()).find((p) => p.id === pipelineId && !p.archived_at);
+    const pipeline = (await pipelinesRepo().list()).find((p) => p.id === pipelineId && isLive(p));
     if (!pipeline) throw new ValidationError("Choose a pipeline.");
     await addWork(workspaceRepo(), raw(form), pipeline, adminId);
     return { notice: `Added to ${pipeline.name}.` };

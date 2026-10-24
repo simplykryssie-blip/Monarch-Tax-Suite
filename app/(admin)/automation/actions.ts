@@ -7,8 +7,6 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { retryExecution, runClientTest, runTest } from "@/lib/automation/engine.ts";
-import { archivePipeline, createPipeline, DEFAULT_RETURN_STAGES, deletePipeline, makeDefault, savePipeline } from "@/lib/pipelines/service.ts";
-import { pipelinesRepo } from "@/lib/pipelines/server";
 import { createSms, setSmsActive, updateSms } from "@/lib/automation/sms.ts";
 import { SupabaseSmsRepo } from "@/lib/automation/sms-repo";
 import { appOrigin, imageStore, tenantDb } from "@/lib/admin";
@@ -165,46 +163,6 @@ export async function testWorkflowWithClientAction(form: FormData) {
         ? `Test finished: ${exec.action_log.length} step${exec.action_log.length === 1 ? "" : "s"} checked${skipped ? `, ${skipped} not sent (emails and documents are never sent in a test)` : ""}. See Run history for each step.`
         : `Test ${exec.status}: ${exec.error ?? "see Run history for details"}`,
     };
-  });
-}
-
-// ---- Pipelines
-
-export async function createPipelineAction(form: FormData) {
-  await mutate("/automation/pipelines", async (a) => {
-    const kind = str(form, "kind") === "returns" ? "returns" : "custom";
-    const p = await createPipeline(pipelinesRepo(), { name: str(form, "name"), kind, quickStart: str(form, "quick") === "1", stages: str(form, "stages") || (kind === "returns" ? DEFAULT_RETURN_STAGES : [{ name: "To do" }, { name: "Doing" }, { name: "Done", done: true }]) }, a.id);
-    return { to: `/automation/pipelines/${p.id}`, notice: "Pipeline created. Add, rename and reorder its stages below." };
-  });
-}
-
-export async function savePipelineAction(form: FormData) {
-  await mutate(`/automation/pipelines/${str(form, "id")}`, async () => {
-    await savePipeline(pipelinesRepo(), id(form), { name: str(form, "name"), stages: str(form, "stages") });
-    return { notice: "Pipeline saved." };
-  });
-}
-
-export async function defaultPipelineAction(form: FormData) {
-  await mutate(`/automation/pipelines/${str(form, "id")}`, async () => {
-    await makeDefault(pipelinesRepo(), id(form));
-    return { notice: "This pipeline now runs the Returns board." };
-  });
-}
-
-export async function archivePipelineAction(form: FormData) {
-  await mutate("/automation/pipelines", async () => {
-    const archive = str(form, "archive") === "yes";
-    await archivePipeline(pipelinesRepo(), id(form), archive);
-    return { notice: archive ? "Pipeline archived. It's listed under Archived pipelines, where you can restore or delete it." : "Pipeline restored." };
-  });
-}
-
-export async function deletePipelineAction(form: FormData) {
-  await mutate("/automation/pipelines", async () => {
-    if (str(form, "confirm") !== "yes") throw new ValidationError("Tick the box to confirm the pipeline should be deleted.");
-    const p = await deletePipeline(pipelinesRepo(), id(form));
-    return { notice: `Pipeline "${p.name}" deleted.` };
   });
 }
 

@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import { Flash, PageTitle } from "@/components/admin/ui";
 import { PipelineBuilder } from "@/components/admin/pipeline-builder";
+import { STAGE_COLORS } from "@/lib/pipelines/service.ts";
 import { pipelinesRepo } from "@/lib/pipelines/server";
-import { archivePipelineAction, defaultPipelineAction, deletePipelineAction, savePipelineAction } from "../../actions";
+import { archivePipelineAction, defaultPipelineAction, deletePipelineAction, savePipelineAction, savePipelineDetailsAction } from "../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -14,8 +15,20 @@ export default async function PipelinePage({ params, searchParams }: { params: P
   if (!p) notFound();
   return (
     <>
-      <PageTitle title={p.name} back={{ href: "/automation/pipelines", label: "Pipelines" }}>{p.kind === "returns" ? "A tax-return pipeline." : "A pipeline for other work."}{p.is_default ? " It runs the My Work board." : ""}{p.archived_at ? " Archived: restore it to edit it." : ""}</PageTitle>
+      <PageTitle title={p.name} back={{ href: "/pipelines", label: "Pipelines" }}>{p.type_label || (p.kind === "returns" ? "Tax returns" : "")}{p.is_default ? " · Runs the tax-return board" : ""}{p.archived_at ? " Archived: restore it to edit it." : ""}</PageTitle>
       <Flash notice={notice} error={error} />
+      {!p.archived_at && (
+        <section className="monarch-panel" style={{ padding: 20 }}>
+          <form action={savePipelineDetailsAction} className="monarch-form">
+            <input type="hidden" name="id" value={p.id} />
+            <label>Type<input name="type_label" maxLength={40} defaultValue={p.type_label ?? ""} placeholder="Bookkeeping, tax planning, payroll…" /></label>
+            <fieldset className="pl-swatches"><legend>Color</legend>
+              {STAGE_COLORS.map((c) => <label key={c} className="pl-swatch" style={{ background: c }}><input type="radio" name="color" value={c} defaultChecked={(p.color ?? STAGE_COLORS[1]) === c} aria-label={c} /></label>)}
+            </fieldset>
+            <div className="is-wide"><button className="monarch-secondary">Save details</button></div>
+          </form>
+        </section>
+      )}
       <PipelineBuilder id={p.id} name={p.name} stages={p.stages} action={savePipelineAction} canSave={!p.archived_at} />
       <section className="monarch-panel" style={{ padding: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
         {p.kind === "returns" && !p.is_default && !p.archived_at && <form action={defaultPipelineAction}><input type="hidden" name="id" value={p.id} /><button className="monarch-primary">Use this for My Work</button></form>}

@@ -5,6 +5,7 @@ import { AddWorkForm } from "@/components/workspace/add-work-form";
 import { PipelinePicker } from "@/components/workspace/pipeline-picker";
 import { WorkBoard } from "@/components/workspace/work-board";
 import { pipelinesRepo } from "@/lib/pipelines/server";
+import { isLive } from "@/lib/pipelines/service.ts";
 import { buildBoard, buildWorkBoard } from "@/lib/workspace/rules.ts";
 import { todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 import { moveWorkAction } from "../actions";
@@ -15,7 +16,7 @@ export default async function MyWork({ searchParams }: { searchParams: Promise<{
   const sp = await searchParams;
   const result = await workspaceLoad(async () => {
     const repo = workspaceRepo();
-    const pipelines = (await pipelinesRepo().list()).filter((p) => !p.archived_at);
+    const pipelines = (await pipelinesRepo().list()).filter(isLive);
     const chosen = pipelines.find((p) => p.id === sp.pipeline) ?? pipelines.find((p) => p.kind === "returns" && p.is_default) ?? pipelines.find((p) => p.kind === "returns") ?? pipelines[0] ?? null;
     const [returns, work, clients] = await Promise.all([repo.listReturns(), chosen && chosen.kind !== "returns" ? repo.listWork({ pipelineId: chosen.id }) : Promise.resolve([]), repo.listClients({ includeArchived: true })]);
     return { pipelines, chosen, returns, work, clients };
@@ -26,7 +27,7 @@ export default async function MyWork({ searchParams }: { searchParams: Promise<{
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <WorkspaceSetup message={result.message} /> : (() => {
         const { pipelines, chosen, returns, work, clients } = result.data;
-        if (!chosen) return <p className="monarch-muted">No pipelines yet. <Link href="/automation/pipelines">Create one</Link></p>;
+        if (!chosen) return <p className="monarch-muted">No pipelines yet. <Link href="/pipelines">Create one</Link></p>;
         const byId = new Map(clients.map((c) => [c.id, c]));
         const active = clients.filter((c) => !c.archived_at);
         const isReturns = chosen.kind === "returns";

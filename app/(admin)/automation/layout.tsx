@@ -7,7 +7,7 @@ import { automationDeps } from "@/lib/automation/server";
 import { historyRows } from "@/lib/automation/history.ts";
 import { retryExecutionAction } from "./actions";
 
-const TABS = [["/automation/workflows", "Workflows"], ["/automation/pipelines", "Pipelines"], ["/automation/tasks", "Tasks"], ["/automation/templates", "Templates"], ["/automation/images", "Images"]] as const;
+const TABS = [["/automation/workflows", "Workflows"], ["/automation/tasks", "Tasks"], ["/automation/templates", "Templates"], ["/automation/images", "Images"]] as const;
 
 const RESULT = { completed: ["Completed", "run-ok"], error: ["Error", "run-err"], skipped: ["Skipped", "run-skip"], waiting: ["Waiting", "monarch-muted"] } as const;
 

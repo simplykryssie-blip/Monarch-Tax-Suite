@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { archivePipeline, checkStages, createPipeline, deletePipeline, DEFAULT_RETURN_STAGES, makeDefault, returnsStages, savePipeline } from "../lib/pipelines/service.ts";
-import type { Pipeline, PipelineInput, PipelinesRepo } from "../lib/pipelines/types.ts";
+import { archivePipeline, checkStages, createFolder, createPipeline, deleteFolder, deletePipeline, DEFAULT_RETURN_STAGES, isLive, makeDefault, movePipeline, returnsStages, savePipeline, setPublished } from "../lib/pipelines/service.ts";
+import type { Pipeline, PipelineFolder, PipelineInput, PipelinePatch, PipelinesRepo } from "../lib/pipelines/types.ts";
 import { checkSms, smsSegments } from "../lib/automation/sms.ts";
 import { historyRows } from "../lib/automation/history.ts";
 import type { AutomationEvent, Execution } from "../lib/automation/types.ts";
@@ -15,11 +15,16 @@ class MemoryPipelines implements PipelinesRepo {
     this.rows.push(p);
     return structuredClone(p);
   }
-  async update(id: string, patch: Partial<Pick<Pipeline, "name" | "stages" | "is_default" | "archived_at">>) {
+  async update(id: string, patch: PipelinePatch) {
     const p = this.rows.find((x) => x.id === id)!;
     Object.assign(p, structuredClone(patch));
     return structuredClone(p);
   }
+  folders: PipelineFolder[] = [];
+  async listFolders() { return structuredClone(this.folders); }
+  async insertFolder(input: { name: string; parent_id: string | null; created_by: string | null }) { const f: PipelineFolder = { id: `f${this.folders.length + 1}`, tenant_id: "t", name: input.name, parent_id: input.parent_id, created_at: "2026-10-15T00:00:00Z" }; this.folders.push(f); return structuredClone(f); }
+  async updateFolder(id: string, patch: Partial<Pick<PipelineFolder, "name" | "parent_id">>) { const f = this.folders.find((x) => x.id === id)!; Object.assign(f, patch); return structuredClone(f); }
+  async removeFolder(id: string) { this.folders = this.folders.filter((f) => f.id !== id); }
   async remove(id: string) { this.rows = this.rows.filter((p) => p.id !== id); }
 }
 
@@ -190,3 +195,44 @@ describe("creating a pipeline twice", () => {
   });
 });
 
+
+describe("pipeline folders, type and publishing", () => {
+  const stages = [{ name: "To do" }, { name: "Done", done: true }];
+  test("a new pipeline starts unpublished with the type written as typed; publishing makes it live", async () => {
+    const repo = new MemoryPipelines();
+    const p = await createPipeline(repo, { name: "Monthly books", stages, type_label: "  Bookkeeping ", color: "#059669" }, "u1");
+    assert.equal(p.type_label, "Bookkeeping");
+    assert.equal(p.color, "#059669");
+    assert.equal(p.published, false);
+    assert.equal(isLive(p), false);
+    assert.equal(isLive(await setPublished(repo, p.id, true)), true);
+    const plain = await createPipeline(repo, { name: "Payroll", stages, color: "javascript:x" }, "u1");
+    assert.equal(plain.type_label, null);
+    assert.equal(plain.color, "#2563eb");
+  });
+
+  test("the tax-return pipeline starts published and cannot be unpublished while it runs the board", async () => {
+    const repo = new MemoryPipelines();
+    const r = await createPipeline(repo, { name: "Tax returns", kind: "returns", quickStart: true, stages: DEFAULT_RETURN_STAGES }, "u1");
+    assert.equal(r.published, true);
+    await assert.rejects(setPublished(repo, r.id, false), /stays published/);
+  });
+
+  test("folders nest to four levels, names are unique per level, and deleting one moves its contents up", async () => {
+    const repo = new MemoryPipelines();
+    const a = await createFolder(repo, { name: "Clients" }, "u1");
+    const b = await createFolder(repo, { name: "Bookkeeping", parent_id: a.id }, "u1");
+    await assert.rejects(createFolder(repo, { name: "clients" }, "u1"), /already here/);
+    await createFolder(repo, { name: "clients", parent_id: b.id }, "u1");
+    const c = await createFolder(repo, { name: "Deep", parent_id: b.id }, "u1");
+    const d = await createFolder(repo, { name: "Deeper", parent_id: c.id }, "u1");
+    await assert.rejects(createFolder(repo, { name: "Too deep", parent_id: d.id }, "u1"), /4 levels/);
+    const p = await createPipeline(repo, { name: "Monthly", stages, folder_id: b.id }, "u1");
+    assert.equal(p.folder_id, b.id);
+    await deleteFolder(repo, b.id);
+    assert.equal((await repo.get(p.id))!.folder_id, a.id);
+    assert.equal((await repo.listFolders()).find((f) => f.id === c.id)!.parent_id, a.id);
+    await assert.rejects(movePipeline(repo, p.id, "nope"), /wasn't found/);
+    assert.equal((await movePipeline(repo, p.id, "")).folder_id, null);
+  });
+});

@@ -11,7 +11,7 @@ const hrefs = (entries: Entry[]): string[] => entries.flatMap((e) => [...(e.href
 
 describe("tiers", () => {
   test("every plan has the daily work, Calendar and Grow; ERO adds the ERO group; Service Bureau adds My Service Bureau, My Store and Leads", () => {
-    const daily = ["Every day", "Home", "Contacts", "Work", "Pipelines", "Billing", "Calendar", "Documents", "Grow", "Websites", "Forms", "Automation", "Campaigns", "Settings"];
+    const daily = ["Every day", "Home", "Contacts", "Work", "Billing", "Calendar", "Documents", "Grow", "Websites", "Forms", "Automation", "Pipelines", "Campaigns", "Settings"];
     const ptin = labels(navFor("ptin"));
     for (const shown of daily) assert.ok(ptin.includes(shown), `${shown} should show for PTIN`);
     for (const hidden of ["ERO Dashboard", "My Service Bureau", "My Store", "Leads"]) assert.ok(!ptin.includes(hidden), `${hidden} should be hidden from PTIN`);
@@ -154,7 +154,7 @@ describe("menu shape", () => {
   test("the daily group lists the daily work in order", () => {
     const daily = NAV[0];
     assert.ok(isBranch(daily));
-    assert.deepEqual(daily.items.map((i) => i.label), ["Home", "Contacts", "Work", "Pipelines", "Billing", "Calendar", "Documents"]);
+    assert.deepEqual(daily.items.map((i) => i.label), ["Home", "Contacts", "Work", "Billing", "Calendar", "Documents"]);
   });
 
   test("Calendar, Websites, Forms, Automation and Campaigns are open to every plan, and their pages are gated the same way", () => {
