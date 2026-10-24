@@ -15,7 +15,8 @@ import { loadContacts } from "@/lib/contacts/server";
 import { portalMemberRepo } from "@/lib/portal/server";
 import { describeEvent } from "@/lib/workspace/activity.ts";
 import { balance, dollars, invoiceView, splitName } from "@/lib/workspace/rules.ts";
-import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
+import { ENTITY_TYPES, PAYERS, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
+import { InvoiceLink, loadSheetContext } from "@/components/contacts/invoice-sheet";
 import { hasStoredSsn } from "@/lib/ssn/service.ts";
 import { ssnDeps } from "@/lib/ssn/server";
 import type { ClientTask } from "@/lib/workspace/types";
@@ -67,6 +68,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
   const ssnOnFile = await hasStoredSsn(ssnDeps(), client.id).catch(() => false);
   const duplicates = tab === "overview" ? await loadContacts().then((d) => duplicatesOfClient(d.contacts, d.duplicates, client.id)).catch(() => []) : [];
+  const sheetCtx = tab === "billing" ? await loadSheetContext() : null!;
   const stageName = (sid: string) => stages.find((s) => s.id === sid)?.name ?? "Intake";
   // "2025 return", "2025 extension", "2025 amendment".
   const returnLabel = (r: { kind: keyof typeof RETURN_KINDS; tax_year: number }) => `${r.tax_year} ${r.kind === "original" ? "return" : r.kind}`;
@@ -379,20 +381,20 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         <>
           <div className="cl-head-actions"><NewInvoice back={back} year={new Date().getUTCFullYear() - 1} clientId={client.id} returns={returns.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></div>
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Billing</h2><p>{owes ? `${dollars(owes)} owed.` : "Nothing owed."} Invoices default to the $223 breakdown.</p></div></div>
+            <div className="monarch-panel-head"><div><h2>Billing</h2><p>{owes ? `${dollars(owes)} owed.` : "Nothing owed."}</p></div></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>INVOICE</th><th>YEAR</th><th>BREAKDOWN</th><th>TOTAL</th><th>PAID</th><th>STATUS</th><th></th></tr></thead>
+              <thead><tr><th>INVOICE</th><th>YEAR</th><th>TOTAL</th><th>PAID</th><th>STATUS</th><th>PAYMENT TYPE</th><th></th></tr></thead>
               <tbody>
                 {invoices.length === 0 ? <EmptyRow colSpan={7}>No invoices yet.</EmptyRow> : invoices.map((i) => {
                   const view = invoiceView(i, today);
                   return (
                     <tr key={i.id}>
-                      <td><b>{i.number}</b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
+                      <td><b><InvoiceLink invoice={i} clientName={client.full_name} ctx={sheetCtx} /></b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
                       <td>{i.tax_year}</td>
-                      <td style={{ whiteSpace: "normal" }}>{i.lines.map((l) => <div key={l.label}>{l.label} {dollars(l.amount_cents)}</div>)}</td>
                       <td><b>{dollars(i.total_cents)}</b></td>
                       <td>{dollars(i.paid_cents)}</td>
                       <td><Badge value={view} /></td>
+                      <td>{i.payer ? PAYERS[i.payer] : "—"}</td>
                       <td>
                         <form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value={back} />

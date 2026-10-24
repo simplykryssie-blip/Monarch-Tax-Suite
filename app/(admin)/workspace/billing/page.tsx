@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Badge, EmptyRow, Flash, PageTitle } from "@/components/admin/ui";
 import { PAYERS } from "@/lib/workspace/types.ts";
 import { balance, dollars, invoiceView, totals, type InvoiceView } from "@/lib/workspace/rules.ts";
+import { InvoiceLink, loadSheetContext } from "@/components/contacts/invoice-sheet";
 import { AutoSelect } from "@/components/contacts/auto-select";
 import { NewInvoice } from "@/components/contacts/new-invoice";
 import { todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
@@ -14,6 +15,7 @@ const VIEWS: [InvoiceView | "all", string][] = [["all", "All"], ["draft", "Draft
 export default async function BillingPage({ searchParams }: { searchParams: Promise<{ status?: string; year?: string; payer?: string; notice?: string; error?: string }> }) {
   const sp = await searchParams;
   const today = todayIso();
+  const sheetCtx = await loadSheetContext();
   const result = await workspaceLoad(async () => {
     const repo = workspaceRepo();
     const [invoices, clients] = await Promise.all([repo.listInvoices(), repo.listClients({ includeArchived: true })]);
@@ -53,14 +55,15 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                 </span>
               </div>
               <div className="monarch-table-wrap"><table>
-                <thead><tr><th>INVOICE</th><th>CLIENT</th><th>YEAR</th><th>TOTAL</th><th>PAID</th><th>BALANCE</th><th>STATUS</th><th></th></tr></thead>
+                <thead><tr><th>INVOICE</th><th>CLIENT</th><th>YEAR</th><th>TOTAL</th><th>PAID</th><th>BALANCE</th><th>STATUS</th><th>PAYMENT TYPE</th><th></th></tr></thead>
                 <tbody>
-                  {shown.length === 0 ? <EmptyRow colSpan={8}>{invoices.length === 0 ? "No invoices yet. Create one below, or from a client's Billing tab." : "No invoices match."}</EmptyRow> : shown.map((i) => (
+                  {shown.length === 0 ? <EmptyRow colSpan={9}>{invoices.length === 0 ? "No invoices yet. Create one below, or from a client's Billing tab." : "No invoices match."}</EmptyRow> : shown.map((i) => (
                     <tr key={i.id}>
-                      <td><b>{i.number}</b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
+                      <td><b><InvoiceLink invoice={i} clientName={names.get(i.client_id) ?? "Client"} ctx={sheetCtx} /></b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
                       <td><Link href={`/workspace/clients/${i.client_id}?tab=billing`}>{names.get(i.client_id) ?? "Unknown"}</Link></td>
-                      <td>{i.tax_year}{i.payer && <small className="monarch-subcell">{PAYERS[i.payer]}</small>}</td><td>{dollars(i.total_cents)}</td><td>{dollars(i.paid_cents)}</td><td>{i.status === "void" ? "—" : dollars(balance(i))}</td>
+                      <td>{i.tax_year}</td><td>{dollars(i.total_cents)}</td><td>{dollars(i.paid_cents)}</td><td>{i.status === "void" ? "—" : dollars(balance(i))}</td>
                       <td><Badge value={invoiceView(i, today)} /></td>
+                      <td>{i.payer ? PAYERS[i.payer] : "—"}</td>
                       <td>
                         <form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={i.id} />
