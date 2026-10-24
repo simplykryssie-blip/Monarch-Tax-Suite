@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
-import { archivePipeline, createFolder, createPipeline, DEFAULT_RETURN_STAGES, deleteFolder, deletePipeline, makeDefault, movePipeline, renameFolder, savePipeline, saveDetails, setPublished } from "@/lib/pipelines/service.ts";
+import { archivePipeline, createFolder, createPipeline, DEFAULT_RETURN_STAGES, deleteFolder, deletePipeline, makeDefault, moveFolder, movePipeline, renameFolder, savePipeline, saveDetails, setPublished } from "@/lib/pipelines/service.ts";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 
 // Every action re-checks administrator access on the server.
@@ -122,4 +122,20 @@ export async function deleteFolderAction(form: FormData) {
     const f = await deleteFolder(pipelinesRepo(), id(form));
     return { notice: `Folder "${f.name}" deleted. Whatever was inside moved up a level.` };
   });
+}
+
+/** Drag and drop: a pipeline or folder dropped on a folder (or on "All pipelines", to = empty). */
+export async function moveByDragAction(kind: "pipeline" | "folder", itemId: string, to: string | null): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireAdmin();
+    if (!UUID.test(itemId) || (to !== null && !UUID.test(to))) throw new ValidationError("That item could not be found.");
+    if (kind === "folder") await moveFolder(pipelinesRepo(), itemId, to);
+    else await movePipeline(pipelinesRepo(), itemId, to);
+    revalidatePath("/pipelines", "layout");
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof ValidationError) return { ok: false, error: e.message };
+    console.error(`pipelines move failed: ${sanitizeError(e, 200)}`);
+    return { ok: false, error: "That did not work. Nothing was moved." };
+  }
 }

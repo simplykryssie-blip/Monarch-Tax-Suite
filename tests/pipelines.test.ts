@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { archivePipeline, checkStages, createFolder, createPipeline, deleteFolder, deletePipeline, DEFAULT_RETURN_STAGES, isLive, makeDefault, movePipeline, returnsStages, savePipeline, setPublished } from "../lib/pipelines/service.ts";
+import { archivePipeline, checkStages, createFolder, createPipeline, deleteFolder, deletePipeline, moveFolder, DEFAULT_RETURN_STAGES, isLive, makeDefault, movePipeline, returnsStages, savePipeline, setPublished } from "../lib/pipelines/service.ts";
 import type { Pipeline, PipelineFolder, PipelineInput, PipelinePatch, PipelinesRepo } from "../lib/pipelines/types.ts";
 import { checkSms, smsSegments } from "../lib/automation/sms.ts";
 import { historyRows } from "../lib/automation/history.ts";
@@ -174,7 +174,6 @@ describe("creating a pipeline twice", () => {
     await savePipeline(repo, p.id, { name: "Monthly bookkeeping", stages: [{ name: "To do" }, { name: "Doing" }, { name: "Done", done: true }] });
     assert.equal((await repo.get(p.id))?.stages.length, 3);
 
-    await assert.rejects(deletePipeline(repo, p.id), /Archive the pipeline first/);
     await archivePipeline(repo, p.id, true);
     await assert.rejects(savePipeline(repo, p.id, { name: "X pipeline", stages: [{ name: "A" }, { name: "B", done: true }] }), /wasn't found/);
     await archivePipeline(repo, p.id, false);
@@ -191,7 +190,7 @@ describe("creating a pipeline twice", () => {
     await assert.rejects(deletePipeline(repo, p.id), /wasn't found/);
     // The default returns pipeline can be neither archived nor deleted.
     await assert.rejects(archivePipeline(repo, returns.id, true), /runs the Returns board/);
-    await assert.rejects(deletePipeline(repo, returns.id), /Archive the pipeline first/);
+    await assert.rejects(deletePipeline(repo, returns.id), /can.t be deleted/);
   });
 });
 
@@ -234,5 +233,27 @@ describe("pipeline folders, type and publishing", () => {
     assert.equal((await repo.listFolders()).find((f) => f.id === c.id)!.parent_id, a.id);
     await assert.rejects(movePipeline(repo, p.id, "nope"), /wasn't found/);
     assert.equal((await movePipeline(repo, p.id, "")).folder_id, null);
+  });
+
+  test("renaming a pipeline or a stage keeps every id, so work, returns and workflows follow it", async () => {
+    const repo = new MemoryPipelines();
+    const p = await createPipeline(repo, { name: "Bookkeeping", stages: [{ name: "To do" }, { name: "Done", done: true }] }, "u");
+    const ids = p.stages.map((s) => s.id);
+    const renamed = await savePipeline(repo, p.id, { name: "Monthly books", stages: p.stages.map((s, i) => ({ ...s, name: i === 0 ? "Waiting on records" : s.name })) });
+    assert.equal(renamed.id, p.id);
+    assert.deepEqual(renamed.stages.map((s) => s.id), ids);
+    assert.equal(renamed.stages[0].name, "Waiting on records");
+  });
+
+  test("a pipeline with work in it can't be deleted; a folder can be dragged into another but never into itself", async () => {
+    const repo = new MemoryPipelines();
+    const p = await createPipeline(repo, { name: "Payroll", stages: [{ name: "To do" }, { name: "Done", done: true }] }, "u");
+    repo.remove = async () => { throw new Error('update or delete on table "pipelines" violates foreign key constraint "client_work_pipeline_id_same_tenant" on table "client_work"'); };
+    await assert.rejects(deletePipeline(repo, p.id), /still work in this pipeline/);
+    const a = await createFolder(repo, { name: "A" }, "u");
+    const b = await createFolder(repo, { name: "B", parent_id: a.id }, "u");
+    await assert.rejects(moveFolder(repo, a.id, b.id), /inside itself/);
+    await assert.rejects(moveFolder(repo, a.id, a.id), /inside itself/);
+    assert.equal((await moveFolder(repo, b.id, "")).parent_id, null);
   });
 });

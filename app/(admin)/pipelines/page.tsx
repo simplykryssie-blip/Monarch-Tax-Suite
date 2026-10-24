@@ -5,6 +5,7 @@ import { pipelinesRepo } from "@/lib/pipelines/server";
 import { DEFAULT_RETURN_STAGES, STAGE_COLORS } from "@/lib/pipelines/service.ts";
 import type { Pipeline, PipelineFolder } from "@/lib/pipelines/types.ts";
 import { SubmitOnce } from "@/components/admin/submit-once";
+import { DragCard, DropLink } from "@/components/pipelines/dnd";
 import { archivePipelineAction, createFolderAction, createPipelineAction, deleteFolderAction, deletePipelineAction, movePipelineAction, publishPipelineAction, renameFolderAction } from "./actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -59,8 +60,8 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
           )}
           <div className="monarch-page-actions">
             <nav className="pl-crumbs" aria-label="Folder">
-              <Link href="/pipelines" aria-current={current ? undefined : "page"}>All pipelines</Link>
-              {crumbs.map((f) => <span key={f.id}> / <Link href={`/pipelines?folder=${f.id}`} aria-current={f.id === current?.id ? "page" : undefined}>{f.name}</Link></span>)}
+              <DropLink to={null} href="/pipelines" current={!current}>All pipelines</DropLink>
+              {crumbs.map((f) => <span key={f.id}> / <DropLink to={f.id} href={`/pipelines?folder=${f.id}`} current={f.id === current?.id}>{f.name}</DropLink></span>)}
             </nav>
             <span className="cl-card-actions">
               <Modal label="New folder" title="New folder" className="monarch-secondary">
@@ -81,14 +82,14 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
           {subfolders.length > 0 && (
             <div className="pl-grid">
               {subfolders.map((f) => (
-                <section key={f.id} className="monarch-panel pl-card pl-folder">
+                <DragCard key={f.id} kind="folder" id={f.id} dropTo={f.id} className="monarch-panel pl-card pl-folder">
                   <Link className="pl-name" href={`/pipelines?folder=${f.id}`}>{f.name}</Link>
                   <small className="monarch-muted">{all.filter((p) => !p.archived_at && p.folder_id === f.id).length} pipelines · {folders.filter((x) => x.parent_id === f.id).length} folders</small>
                   <span className="cl-card-actions">
                     <Modal label="Rename" title="Rename folder" className="monarch-link"><form action={renameFolderAction} className="monarch-form">{here}<input type="hidden" name="id" value={f.id} /><label>Name *<input name="name" required maxLength={80} defaultValue={f.name} /></label><div className="is-wide"><button className="monarch-primary">Save</button></div></form></Modal>
                     <form action={deleteFolderAction}><input type="hidden" name="id" value={f.id} /><button className="monarch-link is-danger">Delete</button></form>
                   </span>
-                </section>
+                </DragCard>
               ))}
             </div>
           )}
@@ -98,7 +99,7 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
               {list.map((p) => {
                 const live = p.published !== false;
                 return (
-                  <section key={p.id} className="monarch-panel pl-card" style={{ borderTopColor: p.color ?? undefined }}>
+                  <DragCard key={p.id} kind="pipeline" id={p.id} className="monarch-panel pl-card" style={{ borderTopColor: p.color ?? undefined }}>
                     <Link className="pl-name" href={`/pipelines/${p.id}`}>{p.name}</Link>
                     <dl className="pl-facts">
                       <div><dt>Type</dt><dd>{p.type_label || (p.kind === "returns" ? "Tax returns" : "—")}</dd></div>
@@ -117,8 +118,9 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
                         </Modal>
                       )}
                       {!p.is_default && <form action={archivePipelineAction}>{here}<input type="hidden" name="id" value={p.id} /><input type="hidden" name="archive" value="yes" /><button className="monarch-link">Archive</button></form>}
+                      {!p.is_default && <form action={deletePipelineAction}>{here}<input type="hidden" name="id" value={p.id} /><button className="monarch-link is-danger">Delete</button></form>}
                     </span>
-                  </section>
+                  </DragCard>
                 );
               })}
             </div>

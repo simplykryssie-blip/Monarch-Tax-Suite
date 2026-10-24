@@ -86,6 +86,19 @@ export async function deleteFolder(repo: PipelinesRepo, id: string): Promise<Pip
   return f;
 }
 
+/** Moves a folder inside another folder (or to the top level). A folder can't go inside itself or anything inside it. */
+export async function moveFolder(repo: PipelinesRepo, id: string, to: unknown): Promise<PipelineFolder> {
+  const folders = await repo.listFolders();
+  const f = folders.find((x) => x.id === id);
+  if (!f) throw new ValidationError("That folder wasn't found.");
+  const parent_id = typeof to === "string" && to ? to : null;
+  if (parent_id && !folders.some((x) => x.id === parent_id)) throw new ValidationError("That folder wasn't found.");
+  for (let cur = parent_id; cur; cur = folders.find((x) => x.id === cur)?.parent_id ?? null) if (cur === id) throw new ValidationError("A folder can't go inside itself.");
+  if (folderDepth(folders, parent_id) >= MAX_FOLDER_DEPTH) throw new ValidationError(`Folders can go ${MAX_FOLDER_DEPTH} levels deep.`);
+  if (folders.some((x) => x.id !== id && x.parent_id === parent_id && x.name.toLowerCase() === f.name.toLowerCase())) throw new ValidationError("A folder with that name is already there.");
+  return repo.updateFolder(id, { parent_id });
+}
+
 export async function movePipeline(repo: PipelinesRepo, id: string, folderId: unknown): Promise<Pipeline> {
   const p = await repo.get(id);
   if (!p) throw new ValidationError("That pipeline wasn't found.");
@@ -201,15 +214,19 @@ export async function archivePipeline(repo: PipelinesRepo, id: string, archive: 
 }
 
 /**
- * Deletes a pipeline for good. Only an archived pipeline can be deleted, so it is never the one running the Returns board.
- * Returns on the board keep their stage; nothing else points at a pipeline.
+ * Deletes a pipeline for good. The one running the tax-return board can't be deleted. Returns keep their stage; a pipeline
+ * with other work in it can't be deleted until that work is moved or finished.
  */
 export async function deletePipeline(repo: PipelinesRepo, id: string): Promise<Pipeline> {
   const p = await repo.get(id);
   if (!p) throw new ValidationError("That pipeline wasn't found.");
-  if (!p.archived_at) throw new ValidationError("Archive the pipeline first. Only archived pipelines can be deleted.");
-  if (p.is_default) throw new ValidationError("This pipeline runs the Returns board, so it can't be deleted.");
-  await repo.remove(id);
+  if (p.is_default) throw new ValidationError("This pipeline runs the tax-return board, so it can't be deleted.");
+  try {
+    await repo.remove(id);
+  } catch (e) {
+    if (/client_work|foreign key/i.test(e instanceof Error ? e.message : "")) throw new ValidationError("There is still work in this pipeline. Move or finish it first, or archive the pipeline instead.");
+    throw e;
+  }
   return p;
 }
 
