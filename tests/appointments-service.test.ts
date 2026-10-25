@@ -1,3 +1,4 @@
+import { intakeStatus } from "../lib/appointments/intake.ts";
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
 import test from "node:test";
@@ -331,4 +332,22 @@ test("every email carries the firm's name, address, phone and email at the botto
   assert.match(sent[0].body, /\n\n--\nAcme Tax\n12 Main St, Lake Charles, LA\n\(337\) 555-0100 · hello@acme\.test$/);
   assert.equal(sent[1].channel, "sms");
   assert.doesNotMatch(sent[1].body, /--\n/);
+});
+
+test("an appointment type can ask for a form: the confirmation links to it, and the calendar knows if it was filled in", async () => {
+  const { deps, sent, repo } = make();
+  const FORM = "11111111-1111-4111-8111-111111111111";
+  deps.intakeLink = async (id) => (id === FORM ? "https://acme.test/f/AbCdEf1234567890" : null);
+  assert.throws(() => checkType({ name: "X", intake_form_id: "nope" }), /Choose a form/);
+  const t = await createType(deps, { ...TYPE, intake_form_id: FORM });
+  assert.equal(t.intake_form_id, FORM);
+  const { appointment } = await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
+  assert.match(sent[0].body, /please fill in this form: https:\/\/acme\.test\/f\/AbCdEf1234567890/);
+  const types = await repo.listTypes();
+  const sub = (at: string) => ({ form_id: FORM, respondent_email: person.email.toUpperCase(), submitted_at: at });
+  assert.equal(intakeStatus([appointment], types, []).get(appointment.id), "waiting");
+  assert.equal(intakeStatus([appointment], types, [sub("2020-01-01T00:00:00Z")]).get(appointment.id), "waiting", "an older submission does not count");
+  assert.equal(intakeStatus([appointment], types, [sub(new Date(Date.parse(appointment.created_at) + 1000).toISOString())]).get(appointment.id), "done");
+  const plain = await createType(deps, { ...TYPE, name: "Plain", slug: "plain" });
+  assert.equal(plain.intake_form_id, null);
 });

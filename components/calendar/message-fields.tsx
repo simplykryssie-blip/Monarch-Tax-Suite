@@ -32,9 +32,12 @@ export function MessageFields({ subject, body, sms }: { subject: string | null; 
   return (
     <>
       <div className="is-wide">
-        <b>Add information</b>
-        <p className="monarch-muted" style={{ margin: "4px 0 8px" }}>Click where you want it in the subject, the email or the text, then click a tag.</p>
-        <div className="msg-tags">{TAGS.map(([label, key]) => <button key={key} type="button" className="msg-tag" onClick={() => insert(key)}>{label}</button>)}</div>
+        <label>Add information
+          <select value="" onChange={(e) => { if (e.target.value) insert(e.target.value); }}>
+            <option value="">Choose what to add…</option>
+            {TAGS.map(([label, key]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+        </label>
       </div>
       <label className="is-wide">Email subject<input name="confirm_subject" maxLength={200} ref={subjectRef} {...common("subject")} /></label>
       <label className="is-wide">Email<textarea name="confirm_body" rows={9} maxLength={4000} ref={bodyRef} {...common("body")} /></label>

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
 import { Badge, Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
 import { SubmitOnce } from "@/components/admin/submit-once";
+import { formDeps } from "@/lib/forms/server";
+import { intakeStatus } from "@/lib/appointments/intake.ts";
 import { appointmentDeps } from "@/lib/appointments/server";
 import { addDays, parseYmd, ymdString, atLocal } from "@/lib/calendar/business.ts";
 import { monthGridStart, shiftMonth } from "@/lib/calendar/grid.ts";
@@ -39,7 +41,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     const from = atLocal(first, 0, cal.timeZone);
     const to = atLocal(addDays(first, days), 0, cal.timeZone);
     const [appts, types, tasks, open, clients] = await Promise.all([deps.repo.listAppointments(from, to), deps.repo.listTypes(), tasksDueBetween(ymdString(first), ymdString(addDays(first, days))), openTasks(60), workspaceRepo().listClients({ includeArchived: false }).catch(() => [])]);
-    return { tz: cal.timeZone, today, first, anchor, days, appts, types, tasks, open, clients };
+    // Which appointments have had their form filled in (only types that ask for one).
+    const formIds = [...new Set(types.map((t) => t.intake_form_id).filter((f): f is string => !!f))];
+    const subs = formIds.length ? (await Promise.all(formIds.map((f) => formDeps().repo.listSubmissions(f, { limit: 500 }).then((r) => r.rows).catch(() => [])))).flat() : [];
+    const intake = intakeStatus(appts, types, subs);
+    return { tz: cal.timeZone, today, first, anchor, days, appts, types, tasks, open, clients, intake };
   });
   const base = (v: View, date?: string) => `/calendar?view=${v}${date ? `&date=${date}` : ""}`;
   return (
@@ -47,7 +53,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <PageTitle title="Calendar">Appointments booked online or by your staff, in your office&apos;s time zone.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <SetupRequired message={result.message} /> : (() => {
-        const { tz, today, first, anchor, days, appts, types, tasks, open, clients } = result.data;
+        const { tz, today, first, anchor, days, appts, types, tasks, open, clients, intake } = result.data;
         const tasksByDay = new Map<string, typeof tasks>();
         for (const t of tasks) tasksByDay.set(t.due_on, [...(tasksByDay.get(t.due_on) ?? []), t]);
         const typeName = new Map(types.map((t) => [t.id, t.name]));
@@ -106,6 +112,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                           <span>{typeName.get(a.type_id) ?? "Appointment"} · {a.contact_name}</span>
                           <Badge value={a.status} />
                           {a.source === "public" && <span className="monarch-muted">booked online</span>}
+                          {a.status === "booked" && intake.has(a.id) && <span className="monarch-muted">{intake.get(a.id) === "done" ? "Form filled in" : "Form not filled in yet"}</span>}
                         </div>
                         <div className="monarch-muted">{a.contact_email}{a.contact_phone ? ` · ${a.contact_phone}` : ""}{a.sms_consent ? " · texts OK" : ""}</div>
                         {a.notes && <div style={{ whiteSpace: "pre-wrap" }}>{a.notes}</div>}

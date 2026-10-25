@@ -20,6 +20,8 @@ export type AppointmentDeps = {
   /** The firm's name, address, phone and email, added to the bottom of every email. */
   firmSignature?: () => Promise<string>;
   /** The secret link for one appointment: the same every time for the same id, impossible to guess. */
+  /** The public link to an intake form, or null when it has none (not published, no web address). */
+  intakeLink?: (formId: string) => Promise<string | null>;
   tokenFor: (appointmentId: string) => string;
   manageUrl: (token: string) => Promise<string>;
   /** Raised for the Automation Center. Never allowed to fail a booking. */
@@ -44,6 +46,11 @@ const signed = async (d: AppointmentDeps, text: string): Promise<string> => {
   const sig = await d.firmSignature?.().catch(() => "");
   return sig ? `${text}\n\n--\n${sig}` : text;
 };
+/** A confirmation with the intake form link added when the appointment type asks for one. */
+const withIntake = async (d: AppointmentDeps, t: AppointmentType, text: string): Promise<string> => {
+  const link = t.intake_form_id ? await d.intakeLink?.(t.intake_form_id).catch(() => null) : null;
+  return link ? `${text}\n\nBefore your visit, please fill in this form: ${link}` : text;
+};
 const emitSafe = async (d: AppointmentDeps, type: string, a: Appointment) => { try { await d.emit?.(type, a); } catch { /* an automation problem never fails a booking */ } };
 
 // ---------------------------------------------------------------- appointment types
@@ -59,6 +66,8 @@ export function checkType(raw: Record<string, unknown>): TypeInput {
   if (hours.length > 3 || hours.some((h) => !Number.isInteger(h) || h < 1 || h > 336)) throw new ValidationError("Reminders: up to three, each a whole number of hours before the appointment (1 to 336), for example 24, 2.");
   const assignee = line(raw.assignee_id, 40);
   if (assignee && !UUID.test(assignee)) throw new ValidationError("Choose a staff member from the list.");
+  const intake = line(raw.intake_form_id, 40);
+  if (intake && !UUID.test(intake)) throw new ValidationError("Choose a form from the list.");
   return {
     slug, name, description: para(raw.description, 2000) || null, location: line(raw.location, 300) || null,
     duration_minutes: int(raw.duration_minutes, "Length", 5, 480, 30),
@@ -67,7 +76,7 @@ export function checkType(raw: Record<string, unknown>): TypeInput {
     step_minutes: int(raw.step_minutes, "Start times every", 5, 240, 30),
     min_notice_minutes: int(raw.min_notice_minutes, "Minimum notice", 0, 43200, 120),
     max_days_ahead: int(raw.max_days_ahead, "Book up to", 1, 365, 60),
-    reminder_hours: [...new Set(hours)], assignee_id: assignee || null, active: raw.active === undefined ? true : raw.active === true || raw.active === "on" || raw.active === "true",
+    reminder_hours: [...new Set(hours)], assignee_id: assignee || null, intake_form_id: intake || null, active: raw.active === undefined ? true : raw.active === true || raw.active === "on" || raw.active === "true",
   };
 }
 
@@ -196,7 +205,7 @@ async function insertBooked(d: AppointmentDeps, t: AppointmentType, input: {
   // The confirmation is a courtesy: if it can't be sent the booking still stands.
   try {
     const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(token), await d.repo.getMessages().catch(() => null));
-    await d.notify.email(saved.contact_email, c.subject, await signed(d, c.text));
+    await d.notify.email(saved.contact_email, c.subject, await signed(d, await withIntake(d, t, c.text)));
     // The text goes only to someone who agreed to texts and gave a number.
     if (saved.sms_consent && saved.contact_phone) await d.notify.sms(saved.contact_phone, c.sms);
   } catch { /* kept */ }
@@ -298,7 +307,7 @@ async function move(d: AppointmentDeps, a: Appointment, t: AppointmentType, star
   await emitSafe(d, "appointment.rescheduled", saved);
   try {
     const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(d.tokenFor(saved.id)), await d.repo.getMessages().catch(() => null));
-    await d.notify.email(saved.contact_email, /^Confirmed/.test(c.subject) ? c.subject.replace("Confirmed", "Rescheduled") : `Rescheduled: ${c.subject}`, await signed(d, c.text));
+    await d.notify.email(saved.contact_email, /^Confirmed/.test(c.subject) ? c.subject.replace("Confirmed", "Rescheduled") : `Rescheduled: ${c.subject}`, await signed(d, await withIntake(d, t, c.text)));
   } catch { /* kept */ }
   return saved;
 }

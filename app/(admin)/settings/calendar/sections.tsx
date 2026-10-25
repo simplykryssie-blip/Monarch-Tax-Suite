@@ -11,7 +11,9 @@ import { addOverrideAction, removeOverrideAction, saveBookingMessagesAction, sav
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const hm = (t: string | null) => (t ? t.slice(0, 5) : "");
 
-function TypeForm({ t }: { t?: AppointmentType }) {
+export type FormOption = { id: string; name: string };
+
+function TypeForm({ t, forms }: { t?: AppointmentType; forms: FormOption[] }) {
   return (
     <form action={saveTypeAction} className="monarch-form">
       {t && <input type="hidden" name="id" value={t.id} />}
@@ -28,6 +30,12 @@ function TypeForm({ t }: { t?: AppointmentType }) {
         <select name="assignee" defaultValue={t?.assignee_id ? "me" : "office"}>
           <option value="office">The office (shared)</option>
           <option value="me">Me</option>
+        </select>
+      </label>
+      <label className="is-wide">Form to fill in before the visit
+        <select name="intake_form_id" defaultValue={t?.intake_form_id ?? ""}>
+          <option value="">No form</option>
+          {forms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
       </label>
       <label className="is-wide">Where (address or meeting link, shown to the client)<input name="location" maxLength={300} defaultValue={t?.location ?? ""} /></label>
@@ -56,10 +64,10 @@ export function BookingLinks({ origin, types }: { origin: string; types: Appoint
 }
 
 /** The appointment types as cards, each opening a popup to edit; a button to add one. */
-export function TypeCards({ types }: { types: AppointmentType[] }) {
+export function TypeCards({ types, forms }: { types: AppointmentType[]; forms: FormOption[] }) {
   return (
     <section className="monarch-panel" style={{ padding: 20 }}>
-      <div className="cl-card-head"><h2>Appointment types</h2><Modal label="Add appointment type" title="Add an appointment type" className="monarch-secondary" wide><TypeForm /></Modal></div>
+      <div className="cl-card-head"><h2>Appointment types</h2><Modal label="Add appointment type" title="Add an appointment type" className="monarch-secondary" wide><TypeForm forms={forms} /></Modal></div>
       {types.length === 0 ? <p className="monarch-muted">None yet.</p> : (
         <div className="pl-grid">
           {types.map((t) => (
@@ -67,7 +75,7 @@ export function TypeCards({ types }: { types: AppointmentType[] }) {
               <b className="pl-name">{t.name}</b>
               <dl className="pl-facts"><div><dt>Length</dt><dd>{t.duration_minutes} min</dd></div><div><dt>Booking</dt><dd>{t.active ? "Open" : "Closed"}</dd></div></dl>
               <span className="cl-card-actions">
-                <Modal label="Edit" title={`Edit ${t.name}`} className="monarch-link" wide><TypeForm t={t} /></Modal>
+                <Modal label="Edit" title={`Edit ${t.name}`} className="monarch-link" wide><TypeForm t={t} forms={forms} /></Modal>
               </span>
             </section>
           ))}

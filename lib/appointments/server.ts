@@ -11,6 +11,9 @@ import { businessDeps } from "../calendar/server";
 import { loadCalendar } from "../calendar/service.ts";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { SupabaseDocumentsRepo } from "../documents/supabase-repo.ts";
+import { formDeps } from "../forms/server";
+import { readSettings } from "../forms/settings.ts";
+import { formLink } from "../forms/link";
 import { heldBack } from "../forms/after.ts";
 import { peopleDeps } from "../people/server";
 import { tenantSms } from "../sms/server";
@@ -77,6 +80,12 @@ export function appointmentDeps(tenantId: string = currentTenantId()): Appointme
     firmSignature: async () => {
       const p = await docs.getProfile().catch(() => null);
       return [p?.display_name, p?.address, [p?.phone, p?.email].filter(Boolean).join(" · ")].filter(Boolean).join("\n");
+    },
+    intakeLink: async (formId) => {
+      const fd = formDeps(tenantId);
+      const form = await fd.repo.getForm(formId);
+      if (!form || form.status !== "published") return null;
+      return formLink(fd, form.public_id, readSettings(form.settings));
     },
     tokenFor: (id) => secrets().hashIdentifier("appointment-link", `${tenantId}:${id}`),
     manageUrl: async (token) => `${await origin()}/book/manage/${token}`,
