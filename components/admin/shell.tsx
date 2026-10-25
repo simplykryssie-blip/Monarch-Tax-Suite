@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "@/lib/auth-actions";
+import { markAllNotificationsReadAction, markNotificationReadAction } from "@/app/(admin)/notification-actions";
+import { ago } from "@/lib/notifications/service.ts";
+import type { BellItem } from "@/lib/notifications/types.ts";
 import { Icon } from "./icons";
 import { CommandPalette } from "./command-palette";
 import { allows, type Tier } from "@/lib/tier.ts";
@@ -105,7 +108,7 @@ function Popover({ trigger, children }: { trigger: (open: boolean, toggle: () =>
   );
 }
 
-export function AdminShell({ email, brand, today, alerts = [], tier = "bureau", platformAdmin = false, adminOnly = false, children }: { email: string; brand?: Brand; today: string; alerts?: Alert[]; tier?: Tier; platformAdmin?: boolean; adminOnly?: boolean; children: React.ReactNode }) {
+export function AdminShell({ email, brand, today, alerts = [], bell = { items: [], unread: 0 }, tier = "bureau", platformAdmin = false, adminOnly = false, children }: { email: string; brand?: Brand; today: string; alerts?: Alert[]; bell?: { items: BellItem[]; unread: number }; tier?: Tier; platformAdmin?: boolean; adminOnly?: boolean; children: React.ReactNode }) {
   const pathname = usePathname();
   const nav = navFor(tier, adminOnly ? NAV.filter((e) => e.section === "platform") : undefined, undefined, platformAdmin);
   // White-labelled accounts see their own brand in the shell; everyone else sees the platform brand.
@@ -124,7 +127,14 @@ export function AdminShell({ email, brand, today, alerts = [], tier = "bureau", 
   }, [menu]);
   const initial = (email[0] ?? "M").toUpperCase();
   const attention = alerts.filter((a) => a.count > 0);
-  const total = attention.reduce((n, a) => n + a.count, 0);
+  const total = attention.reduce((n, a) => n + a.count, 0) + bell.unread;
+  const router = useRouter();
+  const openItem = async (item: BellItem, close: () => void) => {
+    close();
+    if (item.unread) await markNotificationReadAction(item.id).catch(() => undefined);
+    router.push(item.href);
+  };
+  const readAll = async () => { await markAllNotificationsReadAction().catch(() => undefined); router.refresh(); };
 
   return (
     <div className={"mt-shell" + (white ? " is-white-label" : "")} style={white && brand ? (adminBrandVars(brand) as React.CSSProperties) : undefined}>
@@ -184,8 +194,19 @@ export function AdminShell({ email, brand, today, alerts = [], tier = "bureau", 
           >
             {(close) => (
               <div className="mt-pop" role="menu">
-                <div className="mt-pop-title">Needs your attention</div>
-                {attention.length === 0 ? <p className="mt-pop-empty">You are all caught up.</p> : attention.map((a) => (
+                {bell.items.length > 0 && (
+                  <>
+                    <div className="mt-pop-title mt-pop-head"><span>Recent activity</span>{bell.unread > 0 && <button type="button" className="mt-pop-link" onClick={readAll}>Mark all read</button>}</div>
+                    {bell.items.slice(0, 12).map((n) => (
+                      <button key={n.id} type="button" className={"mt-pop-item" + (n.unread ? " is-unread" : "")} role="menuitem" onClick={() => openItem(n, close)}>
+                        <span><b>{n.title}</b>{n.detail && <small>{n.detail}</small>}<small>{ago(n.at)}</small></span>
+                        {n.unread && <i className="mt-unread" aria-label="Unread" />}
+                      </button>
+                    ))}
+                  </>
+                )}
+                {attention.length > 0 && <div className="mt-pop-title">Needs your attention</div>}
+                {attention.length === 0 && bell.items.length === 0 ? <p className="mt-pop-empty">You are all caught up.</p> : attention.map((a) => (
                   <Link key={a.title} href={a.href} onClick={close} className="mt-pop-item" role="menuitem">
                     <span><b>{a.title}</b><small>{a.note}</small></span>
                     <span className="mt-pill is-hot">{a.count}</span>

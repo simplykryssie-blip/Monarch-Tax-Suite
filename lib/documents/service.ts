@@ -1,5 +1,7 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
+import { documentOpenedNotice } from "./activity.ts";
+import type { NewNotification } from "../notifications/types.ts";
 import { checkDocumentFile, cleanDocumentName, CONTENT_TYPES, DOCUMENT_URL_SECONDS, MAX_DOCUMENT_BYTES, sha256Hex, type DocumentFileType } from "./files.ts";
 import { fillTemplate, missingValues, scanTemplate } from "./merge.ts";
 import { applySignature, isSignaturePng, type SignatureMark } from "./signing.ts";
@@ -16,6 +18,8 @@ export type DocumentDeps = {
   /** Secret for secure links (derived from MONARCH_ENCRYPTION_KEY). Links are HMACs of the delivery id. */
   linkKey: Buffer;
   now?: () => Date;
+  /** Told when a sent document is opened, signed or declined, for the bell. Never allowed to fail the action. */
+  told?: (n: NewNotification) => Promise<void>;
 };
 
 export const LINK_DAYS_DEFAULT = 14;
@@ -242,6 +246,10 @@ export async function markOpened(deps: DocumentDeps, delivery: Delivery) {
   if (delivery.first_opened_at) return;
   await deps.repo.updateDelivery(delivery.id, { first_opened_at: iso(deps) });
   await deps.repo.addEvent({ document_id: delivery.document_id, delivery_id: delivery.id, signature_request_id: null, type: "opened", actor_id: null, detail: {} });
+  if (!delivery.is_test && deps.told) {
+    const doc = await deps.repo.getDocument(delivery.document_id).catch(() => null);
+    if (doc) await deps.told(documentOpenedNotice(delivery, doc)).catch(() => undefined);
+  }
 }
 
 /** A 60-second download link for the copy behind a secure link (the signed copy once it is signed). */

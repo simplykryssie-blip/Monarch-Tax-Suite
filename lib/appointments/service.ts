@@ -3,6 +3,7 @@ import { isTimeZone, parseYmd, zonedToUtc, type BusinessCalendar } from "../cale
 import { ValidationError } from "../commerce/validation.ts";
 import { checkEmail, checkName, checkPhone } from "../leads/service.ts";
 import { matchPerson, type PeopleDeps } from "../people/match.ts";
+import type { AppointmentActivity } from "./activity.ts";
 import { cancelledEmail, confirmationFrom, reminderEmail, reminderSms } from "./messages.ts";
 import { availableSlots, slotIsOffered, type Rule, type Slot } from "./slots.ts";
 import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type NewReminder, type Notifier, type TypeInput } from "./types.ts";
@@ -26,6 +27,8 @@ export type AppointmentDeps = {
   manageUrl: (token: string) => Promise<string>;
   /** Raised for the Automation Center. Never allowed to fail a booking. */
   emit?: (type: string, appointment: Appointment) => Promise<void>;
+  /** Told when an appointment is booked, moved or cancelled, for the bell. Never allowed to fail the change. */
+  activity?: (e: AppointmentActivity) => Promise<void>;
   now?: () => Date;
 };
 
@@ -51,6 +54,7 @@ const withIntake = async (d: AppointmentDeps, t: AppointmentType, text: string):
   const link = t.intake_form_id ? await d.intakeLink?.(t.intake_form_id).catch(() => null) : null;
   return link ? `${text}\n\nBefore your visit, please fill in this form: ${link}` : text;
 };
+const told = async (d: AppointmentDeps, e: AppointmentActivity) => { try { await d.activity?.(e); } catch { /* the bell is a courtesy */ } };
 const emitSafe = async (d: AppointmentDeps, type: string, a: Appointment) => { try { await d.emit?.(type, a); } catch { /* an automation problem never fails a booking */ } };
 
 // ---------------------------------------------------------------- appointment types
@@ -202,6 +206,7 @@ async function insertBooked(d: AppointmentDeps, t: AppointmentType, input: {
   }
   await d.repo.insertReminders(remindersFor(saved, t, now));
   await emitSafe(d, "appointment.booked", saved);
+  await told(d, { kind: "booked", appointment: saved, type: t, by: input.source === "public" ? "client" : "staff", actorId: input.actorId });
   // The confirmation is a courtesy: if it can't be sent the booking still stands.
   try {
     const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(token), await d.repo.getMessages().catch(() => null));
@@ -268,10 +273,11 @@ function assertOpen(d: AppointmentDeps, a: Appointment) {
   if (Date.parse(a.starts_at) <= nowOf(d).getTime()) throw new ValidationError("This appointment has already started, so it can't be changed online. Please call the office.");
 }
 
-async function cancelRow(d: AppointmentDeps, a: Appointment, t: AppointmentType, reason: string | null, notifyClient: boolean): Promise<Appointment> {
+async function cancelRow(d: AppointmentDeps, a: Appointment, t: AppointmentType, reason: string | null, notifyClient: boolean, by: "client" | "staff", actorId: string | null = null): Promise<Appointment> {
   const saved = await d.repo.updateAppointment(a.id, { status: "cancelled", cancelled_at: nowOf(d).toISOString(), cancel_reason: reason });
   await d.repo.cancelPendingReminders(a.id);
   await emitSafe(d, "appointment.cancelled", saved);
+  await told(d, { kind: "cancelled", appointment: saved, type: t, by, actorId });
   if (notifyClient) {
     try { const m = cancelledEmail(saved, t, await d.firmName()); await d.notify.email(saved.contact_email, m.subject, await signed(d, m.text)); } catch { /* kept */ }
   }
@@ -281,17 +287,17 @@ async function cancelRow(d: AppointmentDeps, a: Appointment, t: AppointmentType,
 export async function cancelByToken(d: AppointmentDeps, token: unknown, reason: unknown): Promise<Appointment> {
   const { a, t } = await byToken(d, token);
   assertOpen(d, a);
-  return cancelRow(d, a, t, line(reason, 300) || null, false);
+  return cancelRow(d, a, t, line(reason, 300) || null, false, "client");
 }
-export async function cancelByStaff(d: AppointmentDeps, id: string, reason: unknown, notifyClient: boolean): Promise<Appointment> {
+export async function cancelByStaff(d: AppointmentDeps, id: string, reason: unknown, notifyClient: boolean, actorId: string | null = null): Promise<Appointment> {
   const a = UUID.test(id) ? await d.repo.getAppointment(id) : null;
   const t = a ? await d.repo.getType(a.type_id) : null;
   if (!a || !t) throw new ValidationError("That appointment wasn't found.");
   if (a.status !== "booked") throw new ValidationError("Only a booked appointment can be cancelled.");
-  return cancelRow(d, a, t, line(reason, 300) || null, notifyClient);
+  return cancelRow(d, a, t, line(reason, 300) || null, notifyClient, "staff", actorId);
 }
 
-async function move(d: AppointmentDeps, a: Appointment, t: AppointmentType, start: Date, slot: Slot | null): Promise<Appointment> {
+async function move(d: AppointmentDeps, a: Appointment, t: AppointmentType, start: Date, slot: Slot | null, by: "client" | "staff", actorId: string | null = null): Promise<Appointment> {
   const end = slot?.end ?? new Date(start.getTime() + t.duration_minutes * MIN);
   const bs = slot?.blockStart ?? new Date(start.getTime() - t.buffer_before_minutes * MIN);
   const be = slot?.blockEnd ?? new Date(end.getTime() + t.buffer_after_minutes * MIN);
@@ -305,6 +311,7 @@ async function move(d: AppointmentDeps, a: Appointment, t: AppointmentType, star
   await d.repo.cancelPendingReminders(a.id);
   await d.repo.insertReminders(remindersFor(saved, t, nowOf(d)));
   await emitSafe(d, "appointment.rescheduled", saved);
+  await told(d, { kind: "rescheduled", appointment: saved, type: t, by, actorId, from: a.starts_at });
   try {
     const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(d.tokenFor(saved.id)), await d.repo.getMessages().catch(() => null));
     await d.notify.email(saved.contact_email, /^Confirmed/.test(c.subject) ? c.subject.replace("Confirmed", "Rescheduled") : `Rescheduled: ${c.subject}`, await signed(d, await withIntake(d, t, c.text)));
@@ -316,14 +323,14 @@ export async function rescheduleByToken(d: AppointmentDeps, token: unknown, star
   const { a, t } = await byToken(d, token);
   assertOpen(d, a);
   const start = parseStart(startsAt);
-  return move(d, a, t, start, await offered(d, t, start, a.id));
+  return move(d, a, t, start, await offered(d, t, start, a.id), "client");
 }
-export async function rescheduleByStaff(d: AppointmentDeps, id: string, startsAt: unknown): Promise<Appointment> {
+export async function rescheduleByStaff(d: AppointmentDeps, id: string, startsAt: unknown, actorId: string | null = null): Promise<Appointment> {
   const a = UUID.test(id) ? await d.repo.getAppointment(id) : null;
   const t = a ? await d.repo.getType(a.type_id) : null;
   if (!a || !t) throw new ValidationError("That appointment wasn't found.");
   if (a.status !== "booked") throw new ValidationError("Only a booked appointment can be moved.");
-  return move(d, a, t, parseStart(startsAt), null);
+  return move(d, a, t, parseStart(startsAt), null, "staff", actorId);
 }
 
 /** After the appointment: attended or didn't show. */

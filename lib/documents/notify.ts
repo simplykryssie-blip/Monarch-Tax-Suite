@@ -2,6 +2,7 @@ import { emitEvent, type AutomationDeps } from "../automation/engine.ts";
 import { resolveSender } from "../automation/senders.ts";
 import { sanitizeError } from "../automation/sanitize.ts";
 import { deliveryPathFor, linkToken, sweepSignatures, type DocumentDeps } from "./service.ts";
+import { documentDeclinedNotice, documentSignedNotice } from "./activity.ts";
 import { documentEmail, firmNoticeEmail, signedConfirmationEmail } from "./emails.ts";
 import type { Delivery, LibraryDocument, SignatureRequest } from "./types.ts";
 
@@ -43,12 +44,14 @@ export async function afterSigned(auto: AutomationDeps, docs: DocumentDeps, o: O
   await send(auto, o.request.signer_email, signedConfirmationEmail({ firmName: c.firmName, documentName: o.document.name, signerName: o.request.signed_name ?? "there", url }), `signed:${o.request.id}:signer`);
   await send(auto, c.firmEmail, firmNoticeEmail({ firmName: c.firmName, outcome: "signed", documentName: o.document.name, clientName: o.request.signed_name ?? o.request.signer_name ?? "The client", clientEmail: o.request.signer_email, adminUrl: `${c.origin}/documents/${o.document.id}` }), `signed:${o.request.id}:firm`);
   await raise(auto, o, "document.signed");
+  if (!o.delivery.is_test) await docs.told?.(documentSignedNotice(o.delivery, o.document, o.request)).catch(() => undefined);
 }
 
 export async function afterDeclined(auto: AutomationDeps, docs: DocumentDeps, o: Outcome) {
   const c = await context(auto, docs);
   await send(auto, c.firmEmail, firmNoticeEmail({ firmName: c.firmName, outcome: "declined", documentName: o.document.name, clientName: o.request.signer_name ?? "The client", clientEmail: o.request.signer_email, reason: o.request.decline_reason, adminUrl: `${c.origin}/documents/${o.document.id}` }), `declined:${o.request.id}:firm`);
   await raise(auto, o, "document.signature_declined");
+  if (!o.delivery.is_test) await docs.told?.(documentDeclinedNotice(o.delivery, o.document, o.request)).catch(() => undefined);
 }
 
 /** Expires overdue signature requests (notice + event) and sends due reminders. Safe to run often. */

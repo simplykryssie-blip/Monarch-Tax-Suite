@@ -4,6 +4,7 @@ import { PlatformShell } from "@/components/admin/platform-shell";
 import { isPlatformAdmin, onAdminHost, requireAdmin, requirePlatformAdmin } from "@/lib/admin";
 import { adminSeparationOn } from "@/lib/admin-host.ts";
 import { loadAlerts } from "@/lib/attention";
+import { loadBell } from "@/lib/notifications/server";
 import { allows, sectionOf } from "@/lib/tier.ts";
 import { currentTier } from "@/lib/tier-server";
 import { loadBrand } from "@/lib/branding/server";
@@ -37,8 +38,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const brand = await loadBrand(currentTenantId());
   // Alerts about parts of the app this tier doesn't have would lead nowhere.
   const alerts = (await onAdminHost() ? [] : await loadAlerts().catch(() => [])).filter((a) => { const section = sectionOf(a.href.split(/[?#]/)[0]); return !section || allows(tier, section); });
+  const bell = await onAdminHost() ? { items: [], unread: 0 } : await loadBell(admin.userId);
   // Separated: the Admin menu belongs to the admin address alone (and that address shows nothing else). Not yet separated: as before.
   const adminHost = await onAdminHost();
   const platformAdmin = adminSeparationOn() ? adminHost && (await isPlatformAdmin()) : await isPlatformAdmin();
-  return <AdminShell email={admin.email} tier={tier} platformAdmin={platformAdmin} adminOnly={adminHost} alerts={alerts} brand={brand} today={new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" }).format(new Date())}>{children}</AdminShell>;
+  return <AdminShell email={admin.email} tier={tier} platformAdmin={platformAdmin} adminOnly={adminHost} alerts={alerts} bell={bell} brand={brand} today={new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" }).format(new Date())}>{children}</AdminShell>;
 }

@@ -82,15 +82,15 @@ export async function bookAction(form: FormData) {
 }
 
 export async function cancelAction(form: FormData) {
-  await act("/calendar", async () => {
-    await cancelByStaff(office(), str(form, "id"), str(form, "reason"), form.get("notify") === "on");
+  await act("/calendar", async (adminId) => {
+    await cancelByStaff(office(), str(form, "id"), str(form, "reason"), form.get("notify") === "on", adminId);
     return "Appointment cancelled.";
   });
 }
 
 export async function moveAction(form: FormData) {
-  await act("/calendar", async () => {
-    await rescheduleByStaff(office(), str(form, "id"), officeLocalToIso(str(form, "starts_at"), await timeZone()));
+  await act("/calendar", async (adminId) => {
+    await rescheduleByStaff(office(), str(form, "id"), officeLocalToIso(str(form, "starts_at"), await timeZone()), adminId);
     return "Appointment moved.";
   });
 }

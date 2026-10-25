@@ -19,6 +19,8 @@ import { peopleDeps } from "../people/server";
 import { tenantSms } from "../sms/server";
 import { tenantClient } from "../supabase/service";
 import { currentTenantId } from "../tenants.ts";
+import { appointmentNotice } from "./activity.ts";
+import { notify as raiseNotice } from "../notifications/server";
 import type { AppointmentDeps } from "./service.ts";
 import { SupabaseAppointmentRepo } from "./supabase-repo.ts";
 import type { Notifier } from "./types.ts";
@@ -89,6 +91,7 @@ export function appointmentDeps(tenantId: string = currentTenantId()): Appointme
     },
     tokenFor: (id) => secrets().hashIdentifier("appointment-link", `${tenantId}:${id}`),
     manageUrl: async (token) => `${await origin()}/book/manage/${token}`,
+    activity: async (e) => raiseNotice(tenantId, appointmentNotice(e)),
     emit: (type, a) => safeEmit({ type, key: `${type}:${a.id}:${a.updated_at}`, subject: { type: "appointment", id: a.id }, data: { source: a.source } }),
   };
 }

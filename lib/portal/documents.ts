@@ -31,7 +31,11 @@ export interface PortalDocsRepo {
   /** A to-do for staff: "Review upload". */
   addReviewTask(title: string): Promise<void>;
 }
-export type PortalDocDeps = { tenantId: string; repo: PortalDocsRepo; store: DocumentStore; now?: () => Date };
+export type PortalDocDeps = {
+  tenantId: string; repo: PortalDocsRepo; store: DocumentStore; now?: () => Date;
+  /** Told when the client finishes an upload, for the bell. Never allowed to fail the upload. */
+  told?: (doc: { id: string; title: string; request_id?: string | null }) => Promise<void>;
+};
 const nowOf = (d: PortalDocDeps) => (d.now ? d.now() : new Date());
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -89,6 +93,7 @@ export async function finishPortalUpload(d: PortalDocDeps, id: string): Promise<
   const stored = await d.repo.markStored(doc.id);
   if (doc.request_id) await d.repo.markRequestReceived(doc.request_id, nowOf(d).toISOString());
   await d.repo.addReviewTask(`Review upload from client: ${doc.title}`.slice(0, 200));
+  await d.told?.({ id: stored.id, title: stored.title, request_id: doc.request_id }).catch(() => undefined);
   return stored;
 }
 

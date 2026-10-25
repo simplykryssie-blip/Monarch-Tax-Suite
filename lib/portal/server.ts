@@ -9,6 +9,8 @@ import { createClient } from "../supabase/server";
 import { platformClient, tenantClient } from "../supabase/service";
 import { SupabaseDocumentStore } from "../documents/supabase-repo.ts";
 import { SupabasePortalDocsRepo, SupabasePortalStaffRepo } from "./docs-supabase.ts";
+import { notify } from "../notifications/server";
+import { portalUploadNotice } from "./activity.ts";
 import type { PortalDocDeps } from "./documents.ts";
 import { PortalReader } from "./reader.ts";
 import type { PortalMember, PortalMemberRepo } from "./service.ts";
@@ -27,7 +29,13 @@ export const portalReader = (tenantId: string, clientId: string) => new PortalRe
 /** Document deps for one client of one office: the repo is limited to that client, the store to that office's folder. */
 export function portalDocDeps(tenantId: string, clientId: string): PortalDocDeps {
   const db = tenantClient(tenantId);
-  return { tenantId, repo: new SupabasePortalDocsRepo(db, clientId), store: new SupabaseDocumentStore(db) };
+  return {
+    tenantId, repo: new SupabasePortalDocsRepo(db, clientId), store: new SupabaseDocumentStore(db),
+    told: async (doc) => {
+      const { data } = await db.from("clients").select("id, full_name, owner_id").eq("id", clientId).maybeSingle();
+      if (data) await notify(tenantId, portalUploadNotice(data as { id: string; full_name: string; owner_id: string | null }, doc));
+    },
+  };
 }
 
 export const portalStaffRepo = (tenantId: string) => new SupabasePortalStaffRepo(tenantClient(tenantId));

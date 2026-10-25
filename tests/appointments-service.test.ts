@@ -351,3 +351,20 @@ test("an appointment type can ask for a form: the confirmation links to it, and 
   const plain = await createType(deps, { ...TYPE, name: "Plain", slug: "plain" });
   assert.equal(plain.intake_form_id, null);
 });
+
+test("booking, moving and cancelling tell the bell, saying who did it", async () => {
+  const { deps } = make();
+  const seen: string[] = [];
+  deps.activity = async (e) => { seen.push(`${e.kind}:${e.by}${e.actorId ? `:${e.actorId}` : ""}`); };
+  const t = await createType(deps, TYPE);
+  const online = await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
+  await rescheduleByToken(deps, online.token, "2026-10-12T15:00:00.000Z");
+  await cancelByToken(deps, online.token, "Plans changed");
+  const staffMade = await bookByStaff(deps, "u-staff", { type_id: t.id, name: "Walk In", email: "w@example.com", starts_at: "2026-10-12T17:00:00.000Z" });
+  await rescheduleByStaff(deps, staffMade.appointment.id, "2026-10-12T18:00:00.000Z", "u-staff");
+  await cancelByStaff(deps, staffMade.appointment.id, "", false, "u-staff");
+  assert.deepEqual(seen, ["booked:client", "rescheduled:client", "cancelled:client", "booked:staff:u-staff", "rescheduled:staff:u-staff", "cancelled:staff:u-staff"]);
+  // A problem telling the bell never undoes the booking.
+  deps.activity = async () => { throw new Error("bell down"); };
+  await bookPublic(deps, t.slug, { ...person, email: "z@example.com", starts_at: "2026-10-12T19:00:00.000Z" });
+});

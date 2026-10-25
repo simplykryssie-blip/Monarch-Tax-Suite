@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac } from "node:crypto";
 import { platformClient, tenantClient } from "../supabase/service";
 import { currentTenantId } from "../tenants.ts";
+import { notify } from "../notifications/server";
 import { hashLinkToken, type DocumentDeps } from "./service.ts";
 import { SupabaseDocumentStore, SupabaseDocumentsRepo } from "./supabase-repo.ts";
 
@@ -21,7 +22,7 @@ export function documentDeps(tenantId: string = currentTenantId()): DocumentDeps
   const linkKey = documentLinkKey();
   if (!linkKey) throw new Error("MONARCH_ENCRYPTION_KEY is not configured, so secure document links cannot be made.");
   const db = tenantClient(tenantId);
-  return { tenantId, repo: new SupabaseDocumentsRepo(db), store: new SupabaseDocumentStore(db), linkKey };
+  return { tenantId, repo: new SupabaseDocumentsRepo(db), store: new SupabaseDocumentStore(db), linkKey, told: (n) => notify(tenantId, n) };
 }
 
 /** Which tenant a secure link belongs to, or null. Reads one column of one row by the token's hash. */

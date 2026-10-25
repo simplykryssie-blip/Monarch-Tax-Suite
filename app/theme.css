@@ -264,6 +264,9 @@ kbd{font-family:var(--font-ui);font-size:11.5px;font-weight:600;color:#7a7a7a;bo
 .mt-pop-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;border-radius:10px;border:0;background:transparent;text-decoration:none;color:var(--ink);text-align:left;cursor:pointer;font:inherit}
 .mt-pop-item:hover{background:#f5f5f5}
 .mt-pop-item b{display:block;font-size:14px;font-weight:600}.mt-pop-item small{display:block;font-size:12.5px;color:var(--muted)}
+.mt-pop-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.mt-pop-link{border:0;background:transparent;color:var(--gold-deep);font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;padding:0}.mt-pop-link:hover{text-decoration:underline}
+.mt-pop-item.is-unread{background:#eef5ff}.mt-pop-item.is-unread:hover{background:#e2eefc}.mt-unread{flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:var(--gold)}
+.mt-pop{max-height:min(78vh,640px);overflow:auto}
 
 /* command palette */
 .mt-pal-shade{position:fixed;inset:0;z-index:80;background:rgba(10,10,10,.45);backdrop-filter:blur(3px);display:flex;justify-content:center;align-items:flex-start;padding:12vh 16px 16px;animation:mt-rise .15s ease both}

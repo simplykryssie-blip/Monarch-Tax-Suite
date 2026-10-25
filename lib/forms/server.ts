@@ -1,3 +1,4 @@
+import { notify } from "../notifications/server";
 import { SupabaseCampaignRepo } from "../campaigns/supabase-repo.ts";
 import { captureFormLead } from "../leads/service.ts";
 import { leadsDeps } from "../leads/server";
@@ -40,6 +41,7 @@ export function formDeps(tenantId: string = currentTenantId()): FormDeps {
     secrets,
     linkKey: createHmac("sha256", master).update("monarch:form-links:v1").digest(),
     profile: () => docs.getProfile().catch(() => null),
+    told: (n) => notify(tenantId, n),
     addLead: async (input) => {
       const lead = await captureFormLead(leadsDeps(tenantId), input);
       // Filling in a form that adds people to Leads is their opt-in to hear from the office (campaign consent, basis "form");

@@ -498,7 +498,7 @@ export async function invoiceStatusAction(form: FormData) {
     }
     if (str(form, "do") === "void") { const i = await voidInvoice(repo, str(form, "id")); return { notice: `${i.number} voided.` }; }
     const i = await recordPayment(repo, str(form, "id"), str(form, "amount"), str(form, "paid_on"), new Date(), { method: str(form, "method"), reference: str(form, "reference"), actorId: adminId });
-    await emitInvoicePaid(i.id);
+    await emitInvoicePaid(i.id, undefined, adminId);
     return { notice: i.status === "paid" ? `${i.number} is paid.` : `Payment recorded on ${i.number}.` };
   });
 }

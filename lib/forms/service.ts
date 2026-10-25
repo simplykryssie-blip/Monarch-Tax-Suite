@@ -1,3 +1,4 @@
+import type { NewNotification } from "../notifications/types.ts";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import type { CommerceRepo } from "../commerce/types.ts";
@@ -34,6 +35,8 @@ export type FormDeps = {
   brandCatalog?: () => Promise<{ brands: Brand[]; senderDomain: Record<string, string> }>;
   /** Adds a respondent to Leads (source: the form's name). Wired on the server; absent in tests. */
   addLead?: (input: { formName: string; name: string | null; email: string; phone?: string | null; textConsent?: boolean }) => Promise<unknown>;
+  /** Told when a form is submitted, for the bell. Wired on the server; absent in tests. */
+  told?: (n: NewNotification) => Promise<void>;
   now?: () => Date;
 };
 
