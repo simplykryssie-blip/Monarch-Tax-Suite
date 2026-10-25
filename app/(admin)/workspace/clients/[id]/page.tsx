@@ -401,8 +401,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                       <td>{dollars(i.paid_cents)}</td>
                       <td><Badge value={view} /></td>
                       <td>{i.payer ? PAYERS[i.payer] : "—"}</td>
-                      <td>
-                        <form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
+                      <td><div className="bl-actions"><form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value={back} />
                           
                           {i.status === "draft" && <button name="do" value="send" className="monarch-link">Send to client</button>}
@@ -411,8 +410,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                         <EditInvoice invoice={i} back={back} />
                         {i.status === "void" && <form action={archiveInvoiceAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="archive" value="yes" /><button className="monarch-link">Archive</button></form>}
                         {i.status !== "paid" && i.status !== "void" && <RecordPayment invoice={i} back={back} today={today} />}
-                        <PaymentPlan invoice={i} plan={invoicePlans.filter((x) => x.invoice_id === i.id)} back={back} />
-                      </td>
+                        <PaymentPlan invoice={i} plan={invoicePlans.filter((x) => x.invoice_id === i.id)} back={back} /></div></td>
                     </tr>
                   );
                 })}

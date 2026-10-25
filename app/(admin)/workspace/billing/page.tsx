@@ -73,8 +73,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                       <td>{i.tax_year}</td><td>{dollars(i.total_cents)}</td><td>{dollars(i.paid_cents)}</td><td>{i.status === "void" ? "—" : dollars(balance(i))}</td>
                       <td><Badge value={invoiceView(i, today)} /></td>
                       <td>{i.payer ? PAYERS[i.payer] : "—"}</td>
-                      <td>
-                        <form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
+                      <td><div className="bl-actions"><form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={i.id} />
                           {i.status === "draft" && <button name="do" value="send" className="monarch-link">Send to client</button>}
                           
@@ -83,8 +82,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                         <EditInvoice invoice={i} back="/workspace/billing" />
                         {i.status !== "void" && i.paid_cents === 0 && <form action={invoiceStatusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value="/workspace/billing" /><button name="do" value="void" className="monarch-link is-danger">Void</button></form>}
                         {i.status === "void" && <form action={archiveInvoiceAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value="/workspace/billing" /><input type="hidden" name="archive" value={i.archived_at ? "no" : "yes"} /><button className="monarch-link">{i.archived_at ? "Restore" : "Archive"}</button></form>}
-                        <PaymentPlan invoice={i} plan={plans.filter((p) => p.invoice_id === i.id)} back="/workspace/billing" />
-                      </td>
+                        <PaymentPlan invoice={i} plan={plans.filter((p) => p.invoice_id === i.id)} back="/workspace/billing" /></div></td>
                     </tr>
                   ))}
                 </tbody>
