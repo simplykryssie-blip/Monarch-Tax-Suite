@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unwrap } from "../commerce/supabase-repo.ts";
 import { discardObjects, removeObjects } from "../storage/objects.ts";
-import type { Delivery, DocumentEvent, DocumentStore, DocumentsRepo, DocumentVersion, LibraryDocument, NewDelivery, NewSignatureRequest, ProfilePatch, SignatureRequest, SignatureStatus, TenantProfile } from "./types.ts";
+import type { Delivery, DocumentFolder, DocumentEvent, DocumentStore, DocumentsRepo, DocumentVersion, LibraryDocument, NewDelivery, NewSignatureRequest, ProfilePatch, SignatureRequest, SignatureStatus, TenantProfile } from "./types.ts";
 
 export const DOCUMENT_BUCKET = "tenant-documents";
 
@@ -31,6 +31,14 @@ export class SupabaseDocumentsRepo implements DocumentsRepo {
   }
   async deleteDocument(id: string) {
     unwrap(await this.db.from("documents").delete().eq("id", id));
+  }
+
+  async listFolders() { return unwrap(await this.db.from("document_folders").select("*").order("name")) as DocumentFolder[]; }
+  async insertFolder(input: { name: string; parent_id: string | null; created_by: string | null }) { return unwrap(await this.db.from("document_folders").insert(input).select("*").single()) as DocumentFolder; }
+  async updateFolder(id: string, patch: Partial<Pick<DocumentFolder, "name" | "parent_id">>) { return unwrap(await this.db.from("document_folders").update(patch).eq("id", id).select("*").single()) as DocumentFolder; }
+  async removeFolder(id: string) { unwrap(await this.db.from("document_folders").delete().eq("id", id)); }
+  async listDeliveriesForClient(clientId: string, limit: number) {
+    return unwrap(await this.db.from("document_deliveries").select("*").eq("client_id", clientId).order("created_at", { ascending: false }).limit(limit)) as Delivery[];
   }
 
   async listVersions(documentId: string) {

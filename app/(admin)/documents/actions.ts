@@ -8,7 +8,10 @@ import { automationDeps } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { documentDeps } from "@/lib/documents/server";
 import { finishVersionUpload, revokeDelivery, setConsentText, startVersionUpload } from "@/lib/documents/service.ts";
-import { sendDocumentManually } from "@/lib/documents/manual.ts";
+import { createFolder, deleteFolder, moveDocument, moveFolder, renameFolder } from "@/lib/documents/folders.ts";
+import { sendDocumentToClient } from "@/lib/portal/send-document.ts";
+import { ssnDeps } from "@/lib/ssn/server";
+import { workspaceRepo } from "@/lib/workspace/server";
 
 // Document library actions. Every action re-checks administrator access and acts only on the current tenant's rows
 // (the tenant-scoped database client), so ids from another tenant simply are not found.
@@ -37,11 +40,12 @@ async function act(back: string, fn: (adminId: string) => Promise<{ to?: string;
 export type DocUploadTicket = { ok: true; versionId: string; documentId: string; uploadUrl: string; contentType: string } | { ok: false; error: string };
 export type DocUploadResult = { ok: true; documentId: string; fields: string[] } | { ok: false; error: string };
 
-export async function startDocumentUploadAction(input: { documentId: string | null; name: string; fileName: string; sizeBytes: number }): Promise<DocUploadTicket> {
+export async function startDocumentUploadAction(input: { documentId: string | null; name: string; fileName: string; sizeBytes: number; folderId?: string | null }): Promise<DocUploadTicket> {
   const admin = await requireAdmin();
   if (input.documentId && !UUID.test(input.documentId)) return { ok: false, error: "Invalid document." };
   try {
     const t = await startVersionUpload(documentDeps(), { documentId: input.documentId, name: String(input.name ?? "").slice(0, 120), fileName: String(input.fileName).slice(0, 300), sizeBytes: Number(input.sizeBytes), adminId: admin.userId });
+    if (!input.documentId && input.folderId && UUID.test(input.folderId)) await moveDocument(documentDeps().repo, t.document.id, input.folderId).catch(() => null);
     return { ok: true, versionId: t.version.id, documentId: t.document.id, uploadUrl: t.uploadUrl, contentType: t.contentType };
   } catch (e) {
     if (e instanceof ValidationError) return { ok: false, error: e.message };
@@ -66,7 +70,7 @@ export async function finishDocumentUploadAction(versionId: string): Promise<Doc
 
 export async function saveDocumentDetailsAction(form: FormData) {
   const id = str(form, "id");
-  await act(`/documents/${id}`, async () => {
+  await act(`/documents/${id}?tab=settings`, async () => {
     if (!UUID.test(id)) throw new ValidationError("Document not found.");
     const name = str(form, "name").replace(/\s+/g, " ").trim().slice(0, 120);
     if (name.length < 2) throw new ValidationError("Give the document a name.");
@@ -77,7 +81,7 @@ export async function saveDocumentDetailsAction(form: FormData) {
 
 export async function saveConsentAction(form: FormData) {
   const id = str(form, "id");
-  await act(`/documents/${id}`, async (adminId) => {
+  await act(`/documents/${id}?tab=settings`, async (adminId) => {
     if (!UUID.test(id)) throw new ValidationError("Document not found.");
     await setConsentText(documentDeps(), id, str(form, "consent"), adminId);
     return { notice: "Signing consent statement saved. New signature requests show this text; earlier ones keep the text their signer saw." };
@@ -86,7 +90,7 @@ export async function saveConsentAction(form: FormData) {
 
 export async function revokeDeliveryAction(form: FormData) {
   const id = str(form, "document_id");
-  await act(`/documents/${id}`, async (adminId) => {
+  await act(`/documents/${id}?tab=sent`, async (adminId) => {
     const deliveryId = str(form, "delivery_id");
     if (!UUID.test(deliveryId)) throw new ValidationError("Not found.");
     await revokeDelivery(documentDeps(), deliveryId, adminId);
@@ -94,19 +98,74 @@ export async function revokeDeliveryAction(form: FormData) {
   });
 }
 
-export async function sendManualAction(form: FormData) {
+/** Where to come back to: the library, inside the folder the person was looking at. */
+const here = (form: FormData) => (UUID.test(str(form, "folder")) ? `/documents?folder=${str(form, "folder")}` : "/documents");
+
+export async function createFolderAction(form: FormData) {
+  await act(here(form), async (adminId) => {
+    await createFolder(documentDeps().repo, { name: str(form, "name"), parent_id: str(form, "folder") }, adminId);
+    return { notice: "Folder created." };
+  });
+}
+
+export async function renameFolderAction(form: FormData) {
+  await act(here(form), async () => {
+    await renameFolder(documentDeps().repo, str(form, "id"), str(form, "name"));
+    return { notice: "Folder renamed." };
+  });
+}
+
+export async function deleteFolderAction(form: FormData) {
+  await act(here(form), async () => {
+    const f = await deleteFolder(documentDeps().repo, str(form, "id"));
+    return { notice: `Folder "${f.name}" deleted. What was inside moved up.` };
+  });
+}
+
+export async function moveDocumentAction(form: FormData) {
+  const back = str(form, "back");
+  await act(/^\/documents\/[0-9a-f-]{36}\?tab=settings$/i.test(back) ? back : here(form), async () => {
+    await moveDocument(documentDeps().repo, str(form, "id"), str(form, "to"));
+    return { notice: "Moved." };
+  });
+}
+
+/** Drag and drop: moves a document or a folder into a folder (or back to the top). */
+export async function moveByDragAction(kind: "item" | "folder", itemId: string, to: string | null): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireAdmin();
+    if (!UUID.test(itemId) || (to !== null && !UUID.test(to))) throw new ValidationError("That item could not be found.");
+    if (kind === "folder") await moveFolder(documentDeps().repo, itemId, to);
+    else await moveDocument(documentDeps().repo, itemId, to);
+    revalidatePath("/documents", "layout");
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof ValidationError) return { ok: false, error: e.message };
+    console.error(`documents move failed: ${sanitizeError(e, 200)}`);
+    return { ok: false, error: "That did not work. Nothing was moved." };
+  }
+}
+
+/** The client search behind "Send to a client". */
+export async function searchClientsAction(q: string): Promise<{ id: string; name: string; email: string | null }[]> {
+  await requireAdmin();
+  const term = String(q ?? "").trim().slice(0, 80);
+  if (term.length < 2) return [];
+  return (await workspaceRepo().listClients({ q: term, includeArchived: false })).slice(0, 8).map((c) => ({ id: c.id, name: c.full_name, email: c.email }));
+}
+
+/** "Send to a client" on a document's page. */
+export async function sendToClientAction(form: FormData) {
   const id = str(form, "id");
   await act(`/documents/${id}`, async (adminId) => {
-    const customerId = str(form, "customer_id");
-    if (!UUID.test(id) || !UUID.test(customerId)) throw new ValidationError("Choose a customer.");
-    const orderId = str(form, "order_id");
-    const kind = str(form, "kind") === "signature" ? "signature" : "send";
-    const senderId = str(form, "sender_id");
-    const reminder = str(form, "reminder_days");
-    await sendDocumentManually(automationDeps(), documentDeps(), {
-      documentId: id, customerId, orderId: UUID.test(orderId) ? orderId : null, kind, senderId: UUID.test(senderId) ? senderId : null,
-      message: str(form, "message").slice(0, 1000), linkDays: Number(str(form, "link_days")) || 14, reminderDays: reminder ? Number(reminder) || null : null, actorId: adminId,
+    const clientId = str(form, "client_id");
+    if (!UUID.test(id) || !UUID.test(clientId)) throw new ValidationError("Choose a client.");
+    const client = await workspaceRepo().getClient(clientId);
+    if (!client) throw new ValidationError("That client wasn't found.");
+    const asks = Object.fromEntries([...form.entries()].filter(([k, v]) => k.startsWith("ask.") && typeof v === "string"));
+    const notice = await sendDocumentToClient(automationDeps(), { docs: documentDeps(), ssn: ssnDeps() }, {
+      documentId: id, kind: str(form, "kind") === "signature" ? "signature" : "send", client, asks, message: str(form, "message"), actorId: adminId,
     });
-    return { notice: kind === "signature" ? "Signature request sent." : "Document sent." };
+    return { notice, to: `/documents/${id}?tab=sent` };
   });
 }

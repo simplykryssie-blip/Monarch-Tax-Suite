@@ -8,7 +8,7 @@ import { finishDocumentUploadAction, startDocumentUploadAction } from "@/app/(ad
  * Uploads a PDF or Word document straight to the tenant's private document storage with a one-time URL, then asks
  * the server to check it by content and read its merge fields. With `documentId` it adds a new version.
  */
-export function DocumentUploader({ documentId, accept = ".pdf,.docx" }: { documentId?: string; accept?: string }) {
+export function DocumentUploader({ documentId, folderId, accept = ".pdf,.docx" }: { documentId?: string; /** A new document goes into this folder. */ folderId?: string; accept?: string }) {
   const input = useRef<HTMLInputElement>(null);
   const name = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -21,7 +21,7 @@ export function DocumentUploader({ documentId, accept = ".pdf,.docx" }: { docume
     setBusy(true);
     setMessage(null);
     try {
-      const ticket = await startDocumentUploadAction({ documentId: documentId ?? null, name: name.current?.value ?? "", fileName: file.name, sizeBytes: file.size });
+      const ticket = await startDocumentUploadAction({ documentId: documentId ?? null, name: name.current?.value ?? "", fileName: file.name, sizeBytes: file.size, folderId: folderId ?? null });
       if (!ticket.ok) return setMessage({ ok: false, text: ticket.error });
       const res = await fetch(ticket.uploadUrl, { method: "PUT", headers: { "content-type": ticket.contentType, "x-upsert": "false" }, body: file });
       if (!res.ok) return setMessage({ ok: false, text: `The upload failed (storage answered ${res.status}). Try again.` });

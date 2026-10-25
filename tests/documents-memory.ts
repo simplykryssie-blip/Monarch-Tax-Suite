@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Delivery, DocumentEvent, DocumentStore, DocumentsRepo, DocumentVersion, LibraryDocument, NewDelivery, NewSignatureRequest, ProfilePatch, SignatureRequest, SignatureStatus, TenantProfile } from "../lib/documents/types.ts";
+import type { Delivery, DocumentFolder, DocumentEvent, DocumentStore, DocumentsRepo, DocumentVersion, LibraryDocument, NewDelivery, NewSignatureRequest, ProfilePatch, SignatureRequest, SignatureStatus, TenantProfile } from "../lib/documents/types.ts";
 
 /** One tenant's document rows in memory (the database's tenant scoping is tested separately in SQL). */
 export class MemoryDocumentsRepo implements DocumentsRepo {
@@ -33,6 +33,13 @@ export class MemoryDocumentsRepo implements DocumentsRepo {
     this.documents = this.documents.filter((d) => d.id !== id);
     this.versions = this.versions.filter((v) => v.document_id !== id);
   }
+
+  folders: DocumentFolder[] = [];
+  async listFolders() { return this.folders.map((f) => ({ ...f })); }
+  async insertFolder(input: { name: string; parent_id: string | null; created_by: string | null }) { const f: DocumentFolder = { ...input, id: randomUUID(), tenant_id: this.tenantId, created_at: this.now() }; this.folders.push(f); return { ...f }; }
+  async updateFolder(id: string, patch: Partial<Pick<DocumentFolder, "name" | "parent_id">>) { const f = this.folders.find((x) => x.id === id)!; Object.assign(f, patch); return { ...f }; }
+  async removeFolder(id: string) { this.folders = this.folders.filter((f) => f.id !== id); }
+  async listDeliveriesForClient(clientId: string, limit: number) { return this.deliveries.filter((d) => d.client_id === clientId).slice(0, limit).map((d) => ({ ...d })); }
 
   async listVersions(documentId: string) { return this.versions.filter((v) => v.document_id === documentId).sort((a, b) => b.version - a.version).map((v) => ({ ...v })); }
   async getVersion(id: string) { const v = this.versions.find((x) => x.id === id); return v ? { ...v } : null; }

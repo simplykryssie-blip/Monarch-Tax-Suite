@@ -137,7 +137,7 @@ export async function deleteFolderAction(form: FormData) {
 }
 
 /** Drag and drop: a pipeline or folder dropped on a folder (or on "All pipelines", to = empty). */
-export async function moveByDragAction(kind: "pipeline" | "folder", itemId: string, to: string | null): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function moveByDragAction(kind: "item" | "folder", itemId: string, to: string | null): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     await requireAdmin();
     if (!UUID.test(itemId) || (to !== null && !UUID.test(to))) throw new ValidationError("That item could not be found.");

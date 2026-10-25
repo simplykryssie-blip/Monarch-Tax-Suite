@@ -7,8 +7,8 @@ import type { Pipeline, PipelineFolder } from "@/lib/pipelines/types.ts";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { automationDeps } from "@/lib/automation/server";
 import { workflowsUsing } from "@/lib/pipelines/usage.ts";
-import { DragCard, DropLink } from "@/components/pipelines/dnd";
-import { archivePipelineAction, createFolderAction, createPipelineAction, deleteFolderAction, deletePipelineAction, movePipelineAction, publishPipelineAction, renameFolderAction } from "./actions";
+import { DragCard, DropLink } from "@/components/ui/folder-dnd";
+import { archivePipelineAction, createFolderAction, createPipelineAction, deleteFolderAction, deletePipelineAction, moveByDragAction, movePipelineAction, publishPipelineAction, renameFolderAction } from "./actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -79,8 +79,8 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
           )}
           <div className="monarch-page-actions">
             <nav className="pl-crumbs" aria-label="Folder">
-              <DropLink to={null} href="/pipelines" current={!current}>All pipelines</DropLink>
-              {crumbs.map((f) => <span key={f.id}> / <DropLink to={f.id} href={`/pipelines?folder=${f.id}`} current={f.id === current?.id}>{f.name}</DropLink></span>)}
+              <DropLink scope="pipeline" move={moveByDragAction} to={null} href="/pipelines" current={!current}>All pipelines</DropLink>
+              {crumbs.map((f) => <span key={f.id}> / <DropLink scope="pipeline" move={moveByDragAction} to={f.id} href={`/pipelines?folder=${f.id}`} current={f.id === current?.id}>{f.name}</DropLink></span>)}
             </nav>
             <span className="cl-card-actions">
               <Modal label="New folder" title="New folder" className="monarch-secondary">
@@ -101,7 +101,7 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
           {subfolders.length > 0 && (
             <div className="pl-grid">
               {subfolders.map((f) => (
-                <DragCard key={f.id} kind="folder" id={f.id} dropTo={f.id} className="monarch-panel pl-card pl-folder">
+                <DragCard key={f.id} scope="pipeline" move={moveByDragAction} kind="folder" id={f.id} dropTo={f.id} className="monarch-panel pl-card pl-folder">
                   <Link className="pl-name" href={`/pipelines?folder=${f.id}`}>{f.name}</Link>
                   <small className="monarch-muted">{all.filter((p) => !p.archived_at && p.folder_id === f.id).length} pipelines · {folders.filter((x) => x.parent_id === f.id).length} folders</small>
                   <span className="cl-card-actions">
@@ -119,7 +119,7 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
                 const live = p.published !== false;
                 const used = workflowsUsing(p, workflows);
                 return (
-                  <DragCard key={p.id} kind="pipeline" id={p.id} className="monarch-panel pl-card" style={{ borderTopColor: p.color ?? undefined }}>
+                  <DragCard key={p.id} scope="pipeline" move={moveByDragAction} kind="item" id={p.id} className="monarch-panel pl-card" style={{ borderTopColor: p.color ?? undefined }}>
                     <Link className="pl-name" href={`/pipelines/${p.id}`}>{p.name}</Link>
                     <dl className="pl-facts">
                       <div><dt>Type</dt><dd>{p.type_label || (p.kind === "returns" ? "Tax returns" : "—")}</dd></div>

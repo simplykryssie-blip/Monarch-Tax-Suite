@@ -12,7 +12,9 @@ import { NewInvoice } from "@/components/contacts/new-invoice";
 import { Modal } from "@/components/ui/modal";
 import { duplicatesOfClient } from "@/lib/contacts/duplicates.ts";
 import { loadContacts } from "@/lib/contacts/server";
-import { portalMemberRepo } from "@/lib/portal/server";
+import { documentDeps } from "@/lib/documents/server";
+import { portalMemberRepo, portalStaffRepo } from "@/lib/portal/server";
+import type { StaffDoc } from "@/lib/portal/staff-docs.ts";
 import { describeEvent } from "@/lib/workspace/activity.ts";
 import { balance, dollars, invoiceView, splitName } from "@/lib/workspace/rules.ts";
 import { ENTITY_TYPES, PAYERS, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
@@ -26,7 +28,7 @@ import { workflowTasksFor } from "@/lib/workspace/workflow-tasks";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 import { TagInput } from "@/app/(admin)/leads/tag-input";
-import { invitePortalAction } from "@/app/portal-staff-actions";
+import { invitePortalAction, shareDocAction } from "@/app/portal-staff-actions";
 import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, deleteClientDocAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, openClientDocAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
@@ -66,6 +68,15 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const { client, returns, docs, messages, tasks: ownTasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, work, pipelines, workflowTasks } = result.data!;
   const tasks: (ClientTask & { source?: "workflow" })[] = [...ownTasks, ...workflowTasks];
   // The office's own texting account, and its prepaid credits when it has them (tenant #1 pays Twilio directly).
+  // The Documents tab: what was sent to this client and how it went, and which files they can see in the portal.
+  const docsDeps = tab === "documents" ? documentDeps() : null;
+  const sent = docsDeps ? await (async () => {
+    const [deliveries, library] = await Promise.all([docsDeps.repo.listDeliveriesForClient(id, 50).catch(() => []), docsDeps.repo.listDocuments().catch(() => [])]);
+    const names = new Map(library.map((d) => [d.id, d.name]));
+    const signatures = await Promise.all(deliveries.map((d) => (d.kind === "signature" ? docsDeps.repo.getSignatureByDelivery(d.id).catch(() => null) : null)));
+    return deliveries.map((d, i) => ({ d, name: names.get(d.document_id) ?? d.file_name, sig: signatures[i] }));
+  })() : [];
+  const shared = tab === "documents" ? new Map((await portalStaffRepo(client.tenant_id).listDocs(id).catch(() => [])).map((x) => [x.id, x])) : new Map<string, StaffDoc>();
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
   const ssnOnFile = await hasStoredSsn(ssnDeps(), client.id).catch(() => false);
@@ -307,23 +318,49 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         <>
           <PortalPanel area="admin" mode="documents" part="actions" tab="documents" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`}
             extraActions={<Modal label="Add a document" title="Add a document" className="monarch-primary"><ClientDocUpload clientId={client.id} returns={newestFirst.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></Modal>} />
+          {sent.length > 0 && (
+            <section className="monarch-panel">
+              <div className="monarch-panel-head"><div><h2>Sent to {client.full_name.split(" ")[0]}</h2></div></div>
+              <div className="monarch-table-wrap"><table>
+                <thead><tr><th>DOCUMENT</th><th>HOW</th><th>STATUS</th><th>SENT</th></tr></thead>
+                <tbody>
+                  {sent.map(({ d, name, sig }) => (
+                    <tr key={d.id}>
+                      <td><Link href={`/documents/${d.document_id}?tab=sent`}><b>{name}</b></Link></td>
+                      <td>{d.kind === "signature" ? "To sign" : "To read"}</td>
+                      <td>{d.revoked_at ? "Cancelled" : sig?.status === "signed" ? `Signed ${when(sig.signed_at)}` : sig?.status === "declined" ? "Declined" : sig?.status === "viewed" || d.first_opened_at ? "Opened" : "Not opened yet"}</td>
+                      <td>{when(d.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            </section>
+          )}
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Documents</h2></div></div>
+            <div className="monarch-panel-head"><div><h2>Files</h2></div></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>TITLE</th><th>RETURN</th><th>TYPE</th><th>ADDED</th><th></th></tr></thead>
+              <thead><tr><th>TITLE</th><th>RETURN</th><th>FROM</th><th>PORTAL</th><th>ADDED</th><th></th></tr></thead>
               <tbody>
-                {docs.length === 0 ? <EmptyRow colSpan={5}>No documents yet.</EmptyRow> : docs.map((d) => (
-                  <tr key={d.id}>
-                    <td><b>{d.title}</b></td>
-                    <td>{d.return_id ? (() => { const r = returns.find((x) => x.id === d.return_id); return r ? returnLabel(r) : "—"; })() : "Not tied to a return"}</td>
-                    <td>{d.file_type.toUpperCase()}</td>
-                    <td>{when(d.created_at)}</td>
-                    <td style={{ display: "flex", gap: 8 }}>
-                      <form action={openClientDocAction}><input type="hidden" name="id" value={d.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link">Download</button></form>
-                      <form action={deleteClientDocAction}><input type="hidden" name="id" value={d.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link is-danger">Delete</button></form>
-                    </td>
-                  </tr>
-                ))}
+                {docs.length === 0 ? <EmptyRow colSpan={6}>No files yet.</EmptyRow> : docs.map((d) => {
+                  const s = shared.get(d.id);
+                  return (
+                    <tr key={d.id}>
+                      <td><b>{d.title}</b><small className="monarch-subcell">{d.file_type.toUpperCase()}</small></td>
+                      <td>{d.return_id ? (() => { const r = returns.find((x) => x.id === d.return_id); return r ? returnLabel(r) : "—"; })() : "—"}</td>
+                      <td>{s?.source === "client" ? "The client" : "Your office"}</td>
+                      <td>
+                        {s?.source === "client" ? "Always visible"
+                          : s ? <form action={shareDocAction}><input type="hidden" name="area" value="admin" /><input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="doc_id" value={d.id} /><input type="hidden" name="shared" value={s.shared_with_client ? "0" : "1"} /><button className="monarch-link">{s.shared_with_client ? "Shared · Hide" : "Not shared · Share"}</button></form>
+                          : "—"}
+                      </td>
+                      <td>{when(d.created_at)}</td>
+                      <td style={{ display: "flex", gap: 8 }}>
+                        <form action={openClientDocAction}><input type="hidden" name="id" value={d.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link">Download</button></form>
+                        <form action={deleteClientDocAction}><input type="hidden" name="id" value={d.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link is-danger">Delete</button></form>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table></div>
           </section>

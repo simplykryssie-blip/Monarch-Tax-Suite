@@ -30,10 +30,14 @@ export type LibraryDocument = {
   status: DocumentStatus;
   current_version_id: string | null;
   signature_consent: string | null;
+  /** The folder it is kept in, or none. */
+  folder_id?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
 } & ArchiveFields;
+
+export type DocumentFolder = { id: string; tenant_id: string; name: string; parent_id: string | null; created_by: string | null; created_at: string };
 
 export type DocumentVersion = {
   id: string;
@@ -122,8 +126,15 @@ export interface DocumentsRepo {
   listDocuments(): Promise<LibraryDocument[]>;
   getDocument(id: string): Promise<LibraryDocument | null>;
   insertDocument(input: Pick<LibraryDocument, "name" | "description" | "file_type" | "created_by">): Promise<LibraryDocument>;
-  updateDocument(id: string, patch: Partial<Pick<LibraryDocument, "name" | "description" | "status" | "current_version_id" | "signature_consent">>): Promise<LibraryDocument>;
+  updateDocument(id: string, patch: Partial<Pick<LibraryDocument, "name" | "description" | "status" | "current_version_id" | "signature_consent" | "folder_id">>): Promise<LibraryDocument>;
   deleteDocument(id: string): Promise<void>;
+
+  listFolders(): Promise<DocumentFolder[]>;
+  insertFolder(input: { name: string; parent_id: string | null; created_by: string | null }): Promise<DocumentFolder>;
+  updateFolder(id: string, patch: Partial<Pick<DocumentFolder, "name" | "parent_id">>): Promise<DocumentFolder>;
+  removeFolder(id: string): Promise<void>;
+  /** Deliveries made to one client, newest first. */
+  listDeliveriesForClient(clientId: string, limit: number): Promise<Delivery[]>;
 
   listVersions(documentId: string): Promise<DocumentVersion[]>;
   getVersion(id: string): Promise<DocumentVersion | null>;
