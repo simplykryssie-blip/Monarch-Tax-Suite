@@ -423,7 +423,7 @@ export async function ContactsView({ ctx, sp }: { ctx: CampaignsContext; sp: Sea
           <h2 style={{ marginTop: 0 }}>Provider setup (one time, for the whole platform)</h2>
           <p className="monarch-muted">Open and bounce reports come from Resend, registered once for the platform.</p>
           <ul>
-            <li>Resend → Webhooks: add <code>{await webhookUrl()}</code> for the events <i>email.delivered</i>, <i>email.bounced</i> and <i>email.complained</i>, then set its signing secret as <code>RESEND_WEBHOOK_SECRET</code> in Vercel.</li>
+            <li>Resend → Webhooks: add <code>{await webhookUrl()}</code> for the events <i>email.delivered</i>, <i>email.bounced</i> and <i>email.complained</i>, then set its signing secret as <code>RESEND_WEBHOOK_SECRET</code> in the server settings.</li>
             <li>Texts: nothing to do. Each office&apos;s number is pointed at the platform automatically when it&apos;s bought, and the daily check covers older numbers.</li>
           </ul>
         </section>

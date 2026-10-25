@@ -322,3 +322,13 @@ test("a booking sends the built-in confirmation email and text, or the wording t
   assert.match(sent[0].body, /^Confirmed: /);
   await assert.rejects(saveBookingMessages(deps, { confirm_sms: "x".repeat(321) }, null), /up to 320/);
 });
+
+test("every email carries the firm's name, address, phone and email at the bottom, and texts do not", async () => {
+  const { deps, sent } = make();
+  deps.firmSignature = async () => "Acme Tax\n12 Main St, Lake Charles, LA\n(337) 555-0100 · hello@acme.test";
+  const t = await createType(deps, TYPE);
+  await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
+  assert.match(sent[0].body, /\n\n--\nAcme Tax\n12 Main St, Lake Charles, LA\n\(337\) 555-0100 · hello@acme\.test$/);
+  assert.equal(sent[1].channel, "sms");
+  assert.doesNotMatch(sent[1].body, /--\n/);
+});

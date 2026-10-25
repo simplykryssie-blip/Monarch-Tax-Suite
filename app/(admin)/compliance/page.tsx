@@ -30,7 +30,7 @@ export default async function BureauCompliance() {
     <>
       <PageTitle title="Compliance">Each office&apos;s compliance status at a glance. You see status only: offices&apos; vault files and Form 8879 records stay with the office. Open an office to see its Compliance Center the way its team does.</PageTitle>
       {problem ? (
-        <div className="monarch-notice"><b>DATABASE SETUP REQUIRED</b> Apply <code>supabase/migrations/20261022090000_compliance.sql</code>, then reload. <small>({problem})</small></div>
+        <div className="monarch-notice"><b>NOT SET UP YET</b> This part of your account isn&apos;t ready yet. Please contact support and we&apos;ll finish setting it up. Nothing else is affected. </div>
       ) : (
         <section className="monarch-panel">
           <div className="monarch-panel-head"><h2>Offices</h2><span>{rows.length} active</span></div>

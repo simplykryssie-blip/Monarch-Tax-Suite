@@ -943,3 +943,9 @@ html[data-popup] body{background:#fff}
 .bk-tz{font-size:12px;margin-top:10px}
 .bk-slots{display:flex;flex-direction:column;gap:8px;margin-top:10px;max-width:260px}
 .bk-slot{border:1px solid var(--gold);color:var(--gold-deep);border-radius:6px;padding:10px 12px;text-align:center;font-weight:700;cursor:pointer;position:relative}.bk-slot input{position:absolute;opacity:0;pointer-events:none}.bk-slot.is-on{background:var(--gold);color:#fff}
+.na-name{position:relative;display:grid;gap:8px}.na-hits{list-style:none;margin:0;padding:4px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;box-shadow:0 6px 18px rgba(15,23,42,.1);display:grid}
+.na-hits button{width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:6px;cursor:pointer;display:grid;gap:2px}.na-hits button:hover{background:#eef5ff}.na-hits small{color:#64748b}
+.na-none{margin:0;font-size:13px}.na-add{display:grid;gap:10px;padding:12px;border:1px solid #dbe3ef;border-radius:8px;background:#f8fafd}
+.monarch-form label.na-consent{flex-direction:row;display:flex;align-items:center;gap:10px}.monarch-form label.na-consent input{width:auto}
+.msg-tags{display:flex;flex-wrap:wrap;gap:8px}.msg-tag{border:1px solid var(--gold);background:#eef5ff;color:var(--gold-deep);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer}.msg-tag:hover{background:var(--gold);color:#fff}
+.msg-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:6px}.msg-gap{flex:1;min-width:48px}

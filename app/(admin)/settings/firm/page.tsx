@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/admin";
 import { documentDeps } from "@/lib/documents/server";
 import { Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 import { saveFirmProfileAction } from "../actions";
+import { BusinessHoursSection } from "./business-hours-section";
 
 const ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Phoenix", "America/Los_Angeles", "America/Anchorage", "Pacific/Honolulu", "America/Puerto_Rico", "UTC"];
 
@@ -32,6 +33,7 @@ export default async function FirmProfilePage({ searchParams }: { searchParams: 
           <div className="is-wide"><button className="monarch-primary">Save firm profile</button>{p && <small className="monarch-muted"> Last saved {when(p.updated_at)}</small>}</div>
         </form>
       )}
+      <BusinessHoursSection />
     </>
   );
 }

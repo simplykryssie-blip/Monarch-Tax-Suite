@@ -72,7 +72,7 @@ export default async function EmailSendingPage({ searchParams }: { searchParams:
                   <input name="link_host" defaultValue={d.link_host ?? defaultLinkHost(d.domain)} placeholder="Web address for form links" maxLength={253} aria-label="Web address for form links" />
                   <button className="monarch-secondary">Save brand</button>
                 </form>
-                <p className="monarch-muted" style={{ margin: "4px 0" }}>Form links: <code>https://{d.link_host ?? defaultLinkHost(d.domain)}/f/…</code>. At your domain host, add a CNAME record named <code>{(d.link_host ?? defaultLinkHost(d.domain)).split(".")[0]}</code> pointing to <code>cname.vercel-dns.com</code>; the same address must also be added to the app&apos;s hosting (Vercel → Domains).</p>
+                <p className="monarch-muted" style={{ margin: "4px 0" }}>Form links: <code>https://{d.link_host ?? defaultLinkHost(d.domain)}/f/…</code>. At your domain host, add a CNAME record named <code>{(d.link_host ?? defaultLinkHost(d.domain)).split(".")[0]}</code> pointing to <code>cname.vercel-dns.com</code>; support then connects the same address to your account.</p>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <form action={checkDomainAction}><input type="hidden" name="id" value={d.id} /><button className="monarch-secondary">{d.status === "verified" ? "Check again" : "Check verification"}</button></form>
                   <form action={removeDomainAction}><input type="hidden" name="id" value={d.id} /><SubmitOnce className="monarch-secondary is-danger" busy="Disconnecting…">Disconnect domain</SubmitOnce></form>

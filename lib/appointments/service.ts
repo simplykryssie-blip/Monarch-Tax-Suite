@@ -17,6 +17,8 @@ export type AppointmentDeps = {
   people: PeopleDeps;
   notify: Notifier;
   firmName: () => Promise<string>;
+  /** The firm's name, address, phone and email, added to the bottom of every email. */
+  firmSignature?: () => Promise<string>;
   /** The secret link for one appointment: the same every time for the same id, impossible to guess. */
   tokenFor: (appointmentId: string) => string;
   manageUrl: (token: string) => Promise<string>;
@@ -36,6 +38,11 @@ const int = (v: unknown, label: string, min: number, max: number, dflt: number) 
   const n = Number(v);
   if (!Number.isInteger(n) || n < min || n > max) throw new ValidationError(`${label} must be a whole number from ${min} to ${max}.`);
   return n;
+};
+/** An email body with the firm's details added at the bottom. */
+const signed = async (d: AppointmentDeps, text: string): Promise<string> => {
+  const sig = await d.firmSignature?.().catch(() => "");
+  return sig ? `${text}\n\n--\n${sig}` : text;
 };
 const emitSafe = async (d: AppointmentDeps, type: string, a: Appointment) => { try { await d.emit?.(type, a); } catch { /* an automation problem never fails a booking */ } };
 
@@ -189,7 +196,7 @@ async function insertBooked(d: AppointmentDeps, t: AppointmentType, input: {
   // The confirmation is a courtesy: if it can't be sent the booking still stands.
   try {
     const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(token), await d.repo.getMessages().catch(() => null));
-    await d.notify.email(saved.contact_email, c.subject, c.text);
+    await d.notify.email(saved.contact_email, c.subject, await signed(d, c.text));
     // The text goes only to someone who agreed to texts and gave a number.
     if (saved.sms_consent && saved.contact_phone) await d.notify.sms(saved.contact_phone, c.sms);
   } catch { /* kept */ }
@@ -257,7 +264,7 @@ async function cancelRow(d: AppointmentDeps, a: Appointment, t: AppointmentType,
   await d.repo.cancelPendingReminders(a.id);
   await emitSafe(d, "appointment.cancelled", saved);
   if (notifyClient) {
-    try { const m = cancelledEmail(saved, t, await d.firmName()); await d.notify.email(saved.contact_email, m.subject, m.text); } catch { /* kept */ }
+    try { const m = cancelledEmail(saved, t, await d.firmName()); await d.notify.email(saved.contact_email, m.subject, await signed(d, m.text)); } catch { /* kept */ }
   }
   return saved;
 }
@@ -291,7 +298,7 @@ async function move(d: AppointmentDeps, a: Appointment, t: AppointmentType, star
   await emitSafe(d, "appointment.rescheduled", saved);
   try {
     const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(d.tokenFor(saved.id)), await d.repo.getMessages().catch(() => null));
-    await d.notify.email(saved.contact_email, /^Confirmed/.test(c.subject) ? c.subject.replace("Confirmed", "Rescheduled") : `Rescheduled: ${c.subject}`, c.text);
+    await d.notify.email(saved.contact_email, /^Confirmed/.test(c.subject) ? c.subject.replace("Confirmed", "Rescheduled") : `Rescheduled: ${c.subject}`, await signed(d, c.text));
   } catch { /* kept */ }
   return saved;
 }
@@ -348,7 +355,7 @@ export async function sendDueReminders(d: AppointmentDeps, limit = 50): Promise<
     let result;
     if (r.channel === "email") {
       const m = reminderEmail(a, t, firm, url);
-      result = await d.notify.email(a.contact_email, m.subject, m.text);
+      result = await d.notify.email(a.contact_email, m.subject, await signed(d, m.text));
     } else if (a.sms_consent && a.contact_phone) {
       result = await d.notify.sms(a.contact_phone, reminderSms(a, t, firm, url));
     } else {

@@ -222,6 +222,9 @@ export async function addTaskAction(form: FormData) {
   const back = str(form, "back").startsWith("/calendar") ? str(form, "back") : clientPage(id, "tasks");
   await act(back, async (adminId) => {
     await addTask(workspaceRepo(), id, raw(form), adminId);
+    // From the Calendar, land on the month the task is due in so it can be seen straight away.
+    const due = str(form, "due_on");
+    if (back.startsWith("/calendar") && /^\d{4}-\d{2}-\d{2}$/.test(due)) return { to: `/calendar?view=month&date=${due}`, notice: "Task added to the calendar." };
     return { notice: "Task added." };
   });
 }

@@ -67,7 +67,7 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
       <PageTitle title="Pipelines">The stages a piece of work moves through. A published pipeline appears on the Work board.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? (
-        <div className="monarch-notice"><b>DATABASE SETUP REQUIRED</b> Pipelines needs its table. Apply <code>supabase/migrations/20261026090000_pipelines_sms.sql</code>, then reload. <small>({result.message})</small></div>
+        <div className="monarch-notice"><b>NOT SET UP YET</b> This part of your account isn&apos;t ready yet. Please contact support and we&apos;ll finish setting it up. Nothing else is affected. </div>
       ) : (
         <>
           {!hasReturns && (

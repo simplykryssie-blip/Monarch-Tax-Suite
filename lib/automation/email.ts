@@ -39,13 +39,13 @@ export const isFromHeader = (v: string) => FROM.test(v);
  * environment-wide fallback address.
  */
 export function emailKeyProblems(c: EmailConfig): string[] {
-  return c.apiKey ? [] : ["Set RESEND_API_KEY in Vercel (server-side)."];
+  return c.apiKey ? [] : ["Set RESEND_API_KEY in the server settings."];
 }
 
 /** What is missing before email can be sent with only the environment's fallback address. Empty means ready to try. */
 export function emailConfigProblems(c: EmailConfig): string[] {
   const problems: string[] = [];
-  if (!c.apiKey) problems.push("Set RESEND_API_KEY in Vercel (server-side).");
+  if (!c.apiKey) problems.push("Set RESEND_API_KEY in the server settings.");
   if (!c.from) problems.push("Set MONARCH_EMAIL_FROM to an address on a domain verified in Resend, for example Your Firm <notifications@yourdomain.com>.");
   else if (!FROM.test(c.from)) problems.push("MONARCH_EMAIL_FROM is not a valid sender address.");
   if (c.replyTo && !isEmailAddress(c.replyTo)) problems.push("MONARCH_EMAIL_REPLY_TO is not a valid email address.");

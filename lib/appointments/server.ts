@@ -74,6 +74,10 @@ export function appointmentDeps(tenantId: string = currentTenantId()): Appointme
     people: peopleDeps(tenantId),
     notify,
     firmName: async () => (await docs.getProfile().catch(() => null))?.display_name ?? "Our office",
+    firmSignature: async () => {
+      const p = await docs.getProfile().catch(() => null);
+      return [p?.display_name, p?.address, [p?.phone, p?.email].filter(Boolean).join(" · ")].filter(Boolean).join("\n");
+    },
     tokenFor: (id) => secrets().hashIdentifier("appointment-link", `${tenantId}:${id}`),
     manageUrl: async (token) => `${await origin()}/book/manage/${token}`,
     emit: (type, a) => safeEmit({ type, key: `${type}:${a.id}:${a.updated_at}`, subject: { type: "appointment", id: a.id }, data: { source: a.source } }),

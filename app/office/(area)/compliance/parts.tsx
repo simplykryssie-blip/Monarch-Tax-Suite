@@ -49,8 +49,10 @@ export function Required({ by }: { by: "IRS" | "FTC" }) {
   return <span className="compliance-required">Required by {by}</span>;
 }
 
-export function SetupNotice({ message }: { message: string }) {
-  return <div className="monarch-notice"><b>DATABASE SETUP REQUIRED</b> The Compliance Center needs its tables. Apply <code>supabase/migrations/20261022090000_compliance.sql</code>, then reload. <small>({message})</small></div>;
+// The message is kept for logs only; people are told to contact support.
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+export function SetupNotice({ message: _message }: { message: string }) {
+  return <div className="monarch-notice"><b>NOT SET UP YET</b> This part of your account isn&apos;t ready yet. Please contact support and we&apos;ll finish setting it up. Nothing else is affected. </div>;
 }
 
 /** Turns a missing-table error into a setup notice instead of a crash. */

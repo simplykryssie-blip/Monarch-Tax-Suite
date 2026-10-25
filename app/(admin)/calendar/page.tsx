@@ -68,8 +68,12 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               <Link className="monarch-secondary" href={base(view, next)} aria-label="Later">→</Link>
               <span style={{ flex: 1 }} />
               <Link className="monarch-primary" href="/calendar/new">New appointment</Link>
-              <Link className="monarch-secondary" href="/calendar/types">Appointment types</Link>
-              <CopyLink href="/book" />
+              <Modal label="Booking links" title="Booking links" className="monarch-secondary">
+                <ul className="cl-list">
+                  <li><span><b>All appointment types</b></span><span className="cl-card-actions"><CopyLink href="/book" label="Copy" className="monarch-link" /></span></li>
+                  {types.filter((t) => t.active).map((t) => <li key={t.id}><span><b>{t.name}</b></span><span className="cl-card-actions"><CopyLink href={`/book/${t.slug}`} label="Copy" className="monarch-link" /></span></li>)}
+                </ul>
+              </Modal>
             </div>
             {view === "month" && (
               <>
@@ -160,8 +164,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                   <form action={addTaskAction} className="monarch-form">
                     <input type="hidden" name="back" value={here} />
                     <label>Contact *<select name="client_id" required defaultValue=""><option value="" disabled>Choose a contact…</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}</select></label>
-                    <label>Task *<input name="title" required maxLength={200} /></label>
                     <label>Due date<input name="due_on" type="date" /></label>
+                    <label className="is-wide">Task *<textarea name="title" required rows={4} maxLength={200} placeholder="What needs to be done?" /></label>
                     <div className="is-wide"><button className="monarch-primary">Add task</button></div>
                   </form>
                 </Modal>

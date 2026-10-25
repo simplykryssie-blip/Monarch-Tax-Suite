@@ -26,7 +26,7 @@ export default async function ImagesPage({ searchParams }: { searchParams: Promi
         <p className="monarch-muted">PNG, JPG or WebP, up to 4 MB. You can also upload straight from the Picture button while writing an email template.</p>
       </section>
       {!result.ok ? (
-        <div className="monarch-notice"><b>DATABASE SETUP REQUIRED</b> Apply <code>supabase/migrations/20261031100000_tenant_storage_and_sending.sql</code>, then reload. <small>({result.message})</small></div>
+        <div className="monarch-notice"><b>NOT SET UP YET</b> This part of your account isn&apos;t ready yet. Please contact support and we&apos;ll finish setting it up. Nothing else is affected. </div>
       ) : (
         <section className="monarch-panel">
           <div className="monarch-panel-head"><div><h2>Your pictures</h2></div></div>

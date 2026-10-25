@@ -112,7 +112,7 @@ export function ImageManager({ productId, images, readOnly, max }: { productId: 
   return (
     <section className="monarch-panel monarch-pad">
       <h2 className="monarch-h2">Product images</h2>
-      <p className="monarch-muted">The primary image is shown first on the storefront and in the product list. Images are stored in Supabase Storage; only administrators can upload, replace or remove them.</p>
+      <p className="monarch-muted">The primary image is shown first on the storefront and in the product list. Only administrators can upload, replace or remove them.</p>
       {images.length === 0 ? <p className="im-empty">No images yet. The storefront shows a placeholder until one is uploaded.</p> : (
         <ul className="im-grid">{images.map((img) => readOnly ? (
           <li key={img.id} className="im-card">

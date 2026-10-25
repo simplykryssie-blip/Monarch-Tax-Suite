@@ -64,7 +64,7 @@ export function resolveKeys(saved: SavedKeys | null, env: Record<string, string 
 export function describeKey(label: string, source: KeySource, hint: string | null, mode: StripeMode | null): string {
   if (source === "connected") return `${label}: not needed. Your connected Stripe account is used${mode ? ` (${mode} mode)` : ""}; keys saved here stay as a fallback.`;
   if (source === "settings") return `${label}: saved here${hint ? ` (ends ${hint})` : ""}${mode ? `, ${mode} mode` : ""}.`;
-  if (source === "environment") return `${label}: still read from the server's environment settings${mode ? ` (${mode} mode)` : ""}. Save it here, check it works, then remove it from Vercel.`;
+  if (source === "environment") return `${label}: still read from the server's environment settings${mode ? ` (${mode} mode)` : ""}. Save it here, check it works, then remove it from the server settings.`;
   return `${label}: not set.`;
 }
 

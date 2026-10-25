@@ -50,21 +50,19 @@ export function EmptyRow({ colSpan, children }: { colSpan: number; children: Rea
   );
 }
 
-export function SetupRequired({ message, module }: { message: string; module?: "efin" }) {
+// The message is kept for logs only; people are told to contact support.
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+export function SetupRequired({ message: _message, module }: { message: string; module?: "efin" }) {
   if (module === "efin") {
     return (
       <div className="monarch-notice">
-        <b>DATABASE SETUP REQUIRED</b> My Service Bureau needs its database tables, which have not been installed on this database yet. Run
-        <code> supabase/migrations/20261011100000_efin_management.sql </code>  and then
-        <code> supabase/migrations/20261012090000_efin_management_update.sql </code> on the Supabase project, then reload. Nothing else in the app is affected. <small>({message})</small>
+        <b>NOT SET UP YET</b> This part of your account isn&apos;t ready yet. Please contact support and we&apos;ll finish setting it up. Nothing else is affected. 
       </div>
     );
   }
   return (
     <div className="monarch-notice">
-      <b>DATABASE SETUP REQUIRED</b> The commerce tables are not available yet. Apply
-      <code> supabase/migrations/20261009044133_monarch_commerce_licensing.sql </code>
-      to the Supabase project, then reload. <small>({message})</small>
+      <b>NOT SET UP YET</b> This part of your account isn&apos;t ready yet. Please contact support and we&apos;ll finish setting it up. Nothing else is affected. 
     </div>
   );
 }

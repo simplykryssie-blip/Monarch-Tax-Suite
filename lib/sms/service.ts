@@ -46,7 +46,7 @@ const nowOf = (d: SetupDeps) => d.now?.() ?? new Date();
 const today = (d: SetupDeps) => nowOf(d).toISOString().slice(0, 10);
 
 function notMonarch(d: SetupDeps) {
-  if (d.tenantId === MONARCH_TENANT_ID) throw new ValidationError("This office texts from the owner's own Twilio account, set in Vercel.");
+  if (d.tenantId === MONARCH_TENANT_ID) throw new ValidationError("This office texts from the owner's own Twilio account, set in the server settings.");
 }
 function twilioReady(d: SetupDeps): { twilio: TwilioAccounts; secrets: CrmSecrets; parentSid: string } {
   if (!d.twilio || !d.parentSid) throw new ValidationError("Text messaging can't be set up yet: the platform's Twilio account isn't connected.");
