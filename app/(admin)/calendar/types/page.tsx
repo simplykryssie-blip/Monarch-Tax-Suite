@@ -5,7 +5,8 @@ import { appointmentDeps } from "@/lib/appointments/server";
 import { appOrigin } from "@/lib/admin";
 import type { AppointmentType } from "@/lib/appointments/types.ts";
 import { CopyLink } from "@/components/calendar/copy-link";
-import { saveTypeAction } from "../actions";
+import { saveBookingMessagesAction, saveTypeAction } from "../actions";
+import { CONFIRM_FIELDS, DEFAULT_CONFIRM_BODY, DEFAULT_CONFIRM_SMS, DEFAULT_CONFIRM_SUBJECT } from "@/lib/appointments/messages.ts";
 
 function TypeForm({ t }: { t?: AppointmentType }) {
   return (
@@ -38,7 +39,7 @@ export default async function TypesPage({ searchParams }: { searchParams: Promis
   await requireAdmin();
   const sp = await searchParams;
   const deps = appointmentDeps();
-  const result = await load(async () => ({ types: await deps.repo.listTypes(), origin: await appOrigin() }));
+  const result = await load(async () => ({ types: await deps.repo.listTypes(), origin: await appOrigin(), messages: await deps.repo.getMessages().catch(() => null) }));
   return (
     <>
       <PageTitle title="Appointment types" back={{ href: "/calendar", label: "Calendar" }}>What clients can book. Each type has its own booking link you can share or put on your website.</PageTitle>
@@ -52,6 +53,16 @@ export default async function TypesPage({ searchParams }: { searchParams: Promis
               <TypeForm t={t} />
             </details>
           ))}
+          <section className="monarch-panel" style={{ padding: 16, marginBottom: 12 }}>
+            <h2 style={{ marginTop: 0 }}>Confirmation email and text</h2>
+            <form action={saveBookingMessagesAction} className="monarch-form">
+              <label className="is-wide">Email subject<input name="confirm_subject" maxLength={200} defaultValue={result.data.messages?.confirm_subject ?? DEFAULT_CONFIRM_SUBJECT} /></label>
+              <label className="is-wide">Email<textarea name="confirm_body" rows={9} maxLength={4000} defaultValue={result.data.messages?.confirm_body ?? DEFAULT_CONFIRM_BODY} /></label>
+              <label className="is-wide">Text message (sent only to people who agreed to texts)<textarea name="confirm_sms" rows={3} maxLength={320} defaultValue={result.data.messages?.confirm_sms ?? DEFAULT_CONFIRM_SMS} /></label>
+              <p className="is-wide monarch-muted">You can use: {Object.keys(CONFIRM_FIELDS).map((k) => <code key={k} title={CONFIRM_FIELDS[k]} style={{ marginRight: 8 }}>{`{{${k}}}`}</code>)}</p>
+              <div className="is-wide"><SubmitOnce>Save messages</SubmitOnce> <button name="reset" value="yes" className="monarch-link">Use the standard wording</button></div>
+            </form>
+          </section>
           <section className="monarch-panel" style={{ padding: 16 }}>
             <h2 style={{ marginTop: 0 }}>Add an appointment type</h2>
             <TypeForm />

@@ -6,6 +6,8 @@ import { appointmentDeps } from "@/lib/appointments/server";
 import { addDays, parseYmd, ymdString, atLocal } from "@/lib/calendar/business.ts";
 import { monthGridStart, shiftMonth } from "@/lib/calendar/grid.ts";
 import { openTasks, tasksDueBetween } from "@/lib/workspace/workflow-tasks";
+import { Modal } from "@/components/ui/modal";
+import { ViewPicker } from "@/components/calendar/view-picker";
 import { TaskCheck } from "@/components/calendar/task-check";
 import { CopyLink } from "@/components/calendar/copy-link";
 import { workspaceRepo } from "@/lib/workspace/server";
@@ -60,7 +62,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           <div className="cal-layout">
             <div className="cal-main">
             <div className="monarch-toolbar" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-              {(["month", "week", "day", "agenda"] as View[]).map((v) => <Link key={v} className={v === view ? "monarch-primary" : "monarch-secondary"} href={base(v, ymdString(view === "month" ? anchor : first))}>{v === "agenda" ? "Agenda" : v === "day" ? "Day" : v === "week" ? "Week" : "Month"}</Link>)}
+              <ViewPicker view={view} date={ymdString(view === "month" ? anchor : first)} />
               <Link className="monarch-secondary" href={base(view, prev)} aria-label="Earlier">←</Link>
               <Link className="monarch-secondary" href={base(view, today)}>Today</Link>
               <Link className="monarch-secondary" href={base(view, next)} aria-label="Later">→</Link>
@@ -153,6 +155,17 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             </div>
             <aside className="cal-side monarch-panel" aria-label="Tasks">
               <h2>Tasks</h2>
+              {clients.length > 0 && (
+                <Modal label="Add a task" title="Add a task" className="monarch-secondary">
+                  <form action={addTaskAction} className="monarch-form">
+                    <input type="hidden" name="back" value={here} />
+                    <label>Contact *<select name="client_id" required defaultValue=""><option value="" disabled>Choose a contact…</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}</select></label>
+                    <label>Task *<input name="title" required maxLength={200} /></label>
+                    <label>Due date<input name="due_on" type="date" /></label>
+                    <div className="is-wide"><button className="monarch-primary">Add task</button></div>
+                  </form>
+                </Modal>
+              )}
               {open.length === 0 ? <p className="monarch-muted">Nothing to do.</p> : (
                 <ul className="cal-tasks">
                   {open.map((x) => (
@@ -165,16 +178,6 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                     </li>
                   ))}
                 </ul>
-              )}
-              {clients.length > 0 && (
-                <form action={addTaskAction} className="cal-addtask">
-                  <b>Add a task</b>
-                  <input type="hidden" name="back" value={here} />
-                  <select name="client_id" required defaultValue="" aria-label="Contact"><option value="" disabled>Choose a contact…</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}</select>
-                  <input name="title" required maxLength={200} placeholder="Task" aria-label="Task" />
-                  <input name="due_on" type="date" aria-label="Due" />
-                  <button className="monarch-secondary">Add</button>
-                </form>
               )}
             </aside>
           </div>

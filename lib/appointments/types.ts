@@ -29,7 +29,12 @@ export type RuleRow = Rule & { id: string; assignee_id: string | null };
 /** Thrown by the repository when the database refuses an overlapping booking. */
 export class OverlapError extends Error {}
 
+/** The confirmation messages an office has edited. A null field uses the built-in wording. */
+export type BookingMessages = { confirm_subject: string | null; confirm_body: string | null; confirm_sms: string | null };
+
 export interface AppointmentRepo {
+  getMessages(): Promise<BookingMessages | null>;
+  saveMessages(m: BookingMessages, actorId: string | null): Promise<void>;
   listTypes(): Promise<AppointmentType[]>;
   getType(id: string): Promise<AppointmentType | null>;
   getTypeBySlug(slug: string): Promise<AppointmentType | null>;

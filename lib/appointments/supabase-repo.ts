@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Busy } from "./slots.ts";
+import type { BookingMessages } from "./types.ts";
 import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type NewAppointment, type NewReminder, type ReminderRow, type RuleRow, type TypeInput } from "./types.ts";
 
 const fail = (what: string, e: { message: string }) => new Error(`${what}: ${e.message}`);
@@ -9,6 +10,15 @@ const overlap = (e: { code?: string }) => e.code === "23P01";
 export class SupabaseAppointmentRepo implements AppointmentRepo {
   constructor(private db: SupabaseClient) {}
 
+  async getMessages() {
+    const { data, error } = await this.db.from("appointment_messages").select("confirm_subject, confirm_body, confirm_sms").maybeSingle();
+    if (error) throw fail("messages failed", error);
+    return (data as BookingMessages | null) ?? null;
+  }
+  async saveMessages(m: BookingMessages, actorId: string | null) {
+    const { error } = await this.db.from("appointment_messages").upsert({ ...m, updated_by: actorId, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" });
+    if (error) throw fail("messages failed", error);
+  }
   async listTypes() {
     const { data, error } = await this.db.from("appointment_types").select("*").order("name");
     if (error) throw fail("types failed", error);

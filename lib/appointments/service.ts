@@ -3,7 +3,7 @@ import { isTimeZone, parseYmd, zonedToUtc, type BusinessCalendar } from "../cale
 import { ValidationError } from "../commerce/validation.ts";
 import { checkEmail, checkName, checkPhone } from "../leads/service.ts";
 import { matchPerson, type PeopleDeps } from "../people/match.ts";
-import { cancelledEmail, confirmationEmail, reminderEmail, reminderSms } from "./messages.ts";
+import { cancelledEmail, confirmationFrom, reminderEmail, reminderSms } from "./messages.ts";
 import { availableSlots, slotIsOffered, type Rule, type Slot } from "./slots.ts";
 import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type NewReminder, type Notifier, type TypeInput } from "./types.ts";
 
@@ -188,10 +188,22 @@ async function insertBooked(d: AppointmentDeps, t: AppointmentType, input: {
   await emitSafe(d, "appointment.booked", saved);
   // The confirmation is a courtesy: if it can't be sent the booking still stands.
   try {
-    const c = confirmationEmail(saved, t, await d.firmName(), await d.manageUrl(token));
+    const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(token), await d.repo.getMessages().catch(() => null));
     await d.notify.email(saved.contact_email, c.subject, c.text);
+    // The text goes only to someone who agreed to texts and gave a number.
+    if (saved.sms_consent && saved.contact_phone) await d.notify.sms(saved.contact_phone, c.sms);
   } catch { /* kept */ }
   return { appointment: saved, token };
+}
+
+/** The confirmation messages Settings saves. A message left empty goes back to the built-in wording. */
+export async function saveBookingMessages(d: AppointmentDeps, raw: Record<string, unknown>, actorId: string | null): Promise<void> {
+  const pick = (v: unknown, max: number, label: string) => {
+    const s = para(v, max);
+    if (typeof v === "string" && v.trim().length > max) throw new ValidationError(`${label} can be up to ${max} characters.`);
+    return s || null;
+  };
+  await d.repo.saveMessages({ confirm_subject: pick(raw.confirm_subject, 200, "The subject"), confirm_body: pick(raw.confirm_body, 4000, "The email"), confirm_sms: pick(raw.confirm_sms, 320, "The text") }, actorId);
 }
 
 /** A booking from the public page. */
@@ -278,8 +290,8 @@ async function move(d: AppointmentDeps, a: Appointment, t: AppointmentType, star
   await d.repo.insertReminders(remindersFor(saved, t, nowOf(d)));
   await emitSafe(d, "appointment.rescheduled", saved);
   try {
-    const c = confirmationEmail(saved, t, await d.firmName(), await d.manageUrl(d.tokenFor(saved.id)));
-    await d.notify.email(saved.contact_email, c.subject.replace("Confirmed", "Rescheduled"), c.text);
+    const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(d.tokenFor(saved.id)), await d.repo.getMessages().catch(() => null));
+    await d.notify.email(saved.contact_email, /^Confirmed/.test(c.subject) ? c.subject.replace("Confirmed", "Rescheduled") : `Rescheduled: ${c.subject}`, c.text);
   } catch { /* kept */ }
   return saved;
 }

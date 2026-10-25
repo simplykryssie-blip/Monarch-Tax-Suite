@@ -7,7 +7,7 @@ import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { appointmentDeps } from "@/lib/appointments/server";
 import {
-  addDateOverride, bookByStaff, cancelByStaff, createType, editType, markOutcome, officeLocalToIso, rescheduleByStaff, saveWeekly,
+  addDateOverride, bookByStaff, cancelByStaff, createType, editType, markOutcome, officeLocalToIso, rescheduleByStaff, saveBookingMessages, saveWeekly,
 } from "@/lib/appointments/service.ts";
 
 // Every action re-checks administrator access and acts for the signed-in tenant only.
@@ -65,6 +65,14 @@ export async function outcomeAction(form: FormData) {
   await act("/calendar", async () => {
     await markOutcome(office(), str(form, "id"), str(form, "outcome"));
     return "Appointment updated.";
+  });
+}
+
+export async function saveBookingMessagesAction(form: FormData) {
+  await act("/calendar/types", async (adminId) => {
+    const reset = str(form, "reset") === "yes";
+    await saveBookingMessages(office(), reset ? {} : Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string")), adminId);
+    return reset ? "Back to the standard wording." : "Messages saved.";
   });
 }
 

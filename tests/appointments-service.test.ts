@@ -5,17 +5,20 @@ import { DEFAULT_WEEK } from "../lib/calendar/business.ts";
 import { ValidationError } from "../lib/commerce/validation.ts";
 import { appointmentIcs, reminderSms, whenFor } from "../lib/appointments/messages.ts";
 import {
-  addDateOverride, bookByStaff, bookPublic, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
+  addDateOverride, bookByStaff, bookPublic, saveBookingMessages, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
   rescheduleByStaff, rescheduleByToken, saveWeekly, sendDueReminders, slugOf, type AppointmentDeps,
 } from "../lib/appointments/service.ts";
 import type { Busy } from "../lib/appointments/slots.ts";
-import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type NewAppointment, type NewReminder, type Notifier, type ReminderRow, type RuleRow, type TypeInput } from "../lib/appointments/types.ts";
+import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type BookingMessages, type NewAppointment, type NewReminder, type Notifier, type ReminderRow, type RuleRow, type TypeInput } from "../lib/appointments/types.ts";
 import type { Lead, LeadsRepo } from "../lib/leads/types.ts";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NOW = new Date("2026-10-12T00:00:00Z"); // Sunday evening in New York
 
 class Memory implements AppointmentRepo {
+  messages: BookingMessages | null = null;
+  async getMessages() { return this.messages; }
+  async saveMessages(m: BookingMessages) { this.messages = m; }
   types: AppointmentType[] = [];
   rules: RuleRow[] = [];
   appts: Appointment[] = [];
@@ -293,4 +296,29 @@ test("messages show the client's time zone and the office's, and the calendar fi
   assert.match(ics, /DESCRIPTION:Bring W-2s\\, 1099s/);
   assert.ok(ics.endsWith("END:VCALENDAR\r\n"));
   assert.ok(reminderSms(appointment, t, "Acme Tax", "https://x.test/m").length < 320);
+});
+
+test("a booking sends the built-in confirmation email and text, or the wording the office wrote", async () => {
+  const { deps, sent } = make();
+  const t = await createType(deps, { ...TYPE, location: "12 Main St" });
+  await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
+  assert.match(sent[0].body, /^Confirmed: Tax Prep Consultation with Acme Tax\nHi Ana Ruiz,/);
+  assert.match(sent[0].body, /Where: 12 Main St/);
+  assert.equal(sent[1].channel, "sms", "a person who agreed to texts gets one");
+  assert.match(sent[1].body, /^Acme Tax: your Tax Prep Consultation is booked for .*Reply STOP/);
+  sent.length = 0;
+  await saveBookingMessages(deps, { confirm_subject: "See you, {{first_name}}!", confirm_body: "{{office}} will see you {{date_time}} at {{location}}. {{nonsense}}Change: {{manage_link}}", confirm_sms: "Booked: {{date_time}}" }, null);
+  await bookPublic(deps, t.slug, { ...person, email: "b@example.com", starts_at: "2026-10-12T15:00:00.000Z" });
+  assert.match(sent[0].body, /^See you, Ana!\nAcme Tax will see you .* at 12 Main St\. Change: https:\/\/book\.example\.com\/book\/manage\//);
+  assert.match(sent[1].body, /^Booked: /);
+  // No consent, no text.
+  sent.length = 0;
+  await bookPublic(deps, t.slug, { ...person, email: "c@example.com", sms_consent: undefined, starts_at: "2026-10-12T16:00:00.000Z" });
+  assert.deepEqual(sent.map((m) => m.channel), ["email"]);
+  // Clearing a message goes back to the built-in wording; too-long ones are refused.
+  await saveBookingMessages(deps, {}, null);
+  sent.length = 0;
+  await bookPublic(deps, t.slug, { ...person, email: "d@example.com", starts_at: "2026-10-12T17:00:00.000Z" });
+  assert.match(sent[0].body, /^Confirmed: /);
+  await assert.rejects(saveBookingMessages(deps, { confirm_sms: "x".repeat(321) }, null), /up to 320/);
 });
