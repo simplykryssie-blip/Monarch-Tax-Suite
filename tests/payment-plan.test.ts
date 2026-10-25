@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { addToDay, allocate, checkPlan, nextPaymentCents, splitPlan } from "../lib/workspace/plan.ts";
-import { addClient, archiveInvoice, createInvoice, editInvoice, removePaymentPlan, saveBillingSettings, setPaymentPlan, recordPayment, voidInvoice } from "../lib/workspace/service.ts";
+import { addFeeProduct, addClient, archiveInvoice, createInvoice, editInvoice, removePaymentPlan, saveBillingSettings, setPaymentPlan, recordPayment, voidInvoice } from "../lib/workspace/service.ts";
 import { MemoryWorkspace } from "./workspace-memory.ts";
 
 test("a total splits into equal payments with the odd cents on the first ones", () => {
@@ -79,4 +79,19 @@ test("only a voided invoice can be archived, and it can be restored", async () =
   await voidInvoice(repo, inv.id);
   assert.ok((await archiveInvoice(repo, inv.id, true)).archived_at);
   assert.equal((await archiveInvoice(repo, inv.id, false)).archived_at, null);
+});
+
+test("standard fees on an invoice can't be changed by editing it; only the other charges can", async () => {
+  const repo = new MemoryWorkspace();
+  const c = await addClient(repo, { full_name: "Ada King" }, "u1");
+  await addFeeProduct(repo, { kind: "software", name: "Drake", line_label_0: "Software fee", line_amount_0: "50" }, "u1");
+  const inv = await createInvoice(repo, { client_id: c.id, tax_year: "2025", status: "sent", include_standard: "yes", line_label_0: "Rush", line_amount_0: "20" }, "u1");
+  assert.deepEqual(inv.lines.map((l) => [l.label, l.standard === true]), [["Software fee", true], ["Rush", false]]);
+  // The form sends back only the other charges, and someone posting a changed standard fee gets it ignored.
+  const edited = await editInvoice(repo, inv.id, { tax_year: "2025", line_label_0: "Rush", line_amount_0: "30", line_label_1: "Software fee", line_amount_1: "1" });
+  assert.deepEqual(edited.invoice.lines.map((l) => [l.label, l.amount_cents, l.standard === true]), [["Software fee", 5000, true], ["Rush", 3000, false], ["Software fee", 100, false]]);
+  assert.equal(edited.invoice.total_cents, 8100);
+  // Taking out every other charge leaves the standard fees.
+  const bare = await editInvoice(repo, inv.id, { tax_year: "2025" });
+  assert.deepEqual(bare.invoice.lines.map((l) => l.label), ["Software fee"]);
 });

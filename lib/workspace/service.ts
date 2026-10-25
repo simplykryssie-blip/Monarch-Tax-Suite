@@ -164,7 +164,7 @@ export async function createInvoice(repo: WorkspaceRepo, raw: Record<string, unk
   const products = await feeProducts(repo);
   const software = includeStandard ? pickProduct(products, "software", raw.software_id) : null;
   const bank = includeStandard ? pickProduct(products, "bank", raw.bank_id) : null;
-  const standard = !includeStandard ? [] : products.length === 0 ? await standardFees(repo) : [...(software?.lines ?? []), ...(bank?.lines ?? [])];
+  const standard = (!includeStandard ? [] : products.length === 0 ? await standardFees(repo) : [...(software?.lines ?? []), ...(bank?.lines ?? [])]).map((l) => ({ label: l.label, amount_cents: l.amount_cents, standard: true }));
   let extra: InvoiceLine[] = [];
   if (hasLines) {
     try { extra = checkLines(raw); } catch (e) { if (!(standard.length && e instanceof ValidationError && /at least one line/.test(e.message))) throw e; }
@@ -235,7 +235,11 @@ export async function editInvoice(repo: WorkspaceRepo, id: string, raw: Record<s
   if (raw.payer === "bank_product" || raw.payer === "self") patch.payer = raw.payer;
   let totalChanged = false;
   if (i.paid_cents === 0) {
-    const lines = checkLines(raw);
+    // The standard fees stay exactly as they were made; only the other charges can change.
+    const kept = i.lines.filter((l) => l.standard);
+    let extra: InvoiceLine[] = [];
+    try { extra = checkLines(raw); } catch (e) { if (!(kept.length && e instanceof ValidationError && /at least one line/.test(e.message))) throw e; }
+    const lines = [...kept, ...extra];
     const year = Number(clean(raw.tax_year, 4));
     if (!Number.isInteger(year) || year < 2000 || year > new Date().getUTCFullYear() + 1) throw new ValidationError("Enter a tax year.");
     const subtotal = invoiceTotal(lines);

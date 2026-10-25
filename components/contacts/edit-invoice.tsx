@@ -3,7 +3,8 @@ import { Modal } from "@/components/ui/modal";
 import { editInvoiceAction } from "@/app/(admin)/workspace/actions";
 import type { Invoice } from "@/lib/workspace/types.ts";
 
-const ROWS = 10;
+const ROWS = 8;
+const usd = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 
 /** An Edit button for an invoice that isn't paid or void. With a payment on it only the due date, notes and who pays can change. */
 export function EditInvoice({ invoice: i, back }: { invoice: Invoice; back: string }) {
@@ -23,8 +24,14 @@ export function EditInvoice({ invoice: i, back }: { invoice: Invoice; back: stri
         </fieldset>
         {open ? (
           <fieldset className="is-wide ni-charges">
-            <legend>Charges</legend>
-            {Array.from({ length: ROWS }, (_, n) => i.lines[n] ?? { label: "", amount_cents: 0 }).map((l, n) => (
+            <legend>Other charges</legend>
+            {i.lines.some((l) => l.standard) && (
+              <div className="ni-standard">
+                <ul>{i.lines.filter((l) => l.standard).map((l, n) => <li key={n}><span>{l.label}</span><b>{usd(l.amount_cents)}</b></li>)}</ul>
+                <small className="monarch-muted">Standard fees. They can only be changed in Settings.</small>
+              </div>
+            )}
+            {Array.from({ length: ROWS }, (_, n) => i.lines.filter((l) => !l.standard)[n] ?? { label: "", amount_cents: 0 }).map((l, n) => (
               <div key={n} className="ni-charge">
                 <label>What it&apos;s for<input name={`line_label_${n}`} defaultValue={l.label} maxLength={120} /></label>
                 <label>Amount<FormattedInput kind="money" name={`line_amount_${n}`} defaultValue={l.label ? (l.amount_cents / 100).toFixed(2) : ""} placeholder="$0.00" /></label>

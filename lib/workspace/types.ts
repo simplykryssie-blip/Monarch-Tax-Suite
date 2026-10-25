@@ -71,7 +71,8 @@ export type NewClientMessage = Omit<ClientMessage, "id" | "tenant_id" | "created
 export type ClientTask = { id: string; tenant_id: string; client_id: string; return_id: string | null; title: string; due_on: string | null; done_at: string | null; created_by: string | null; created_at: string };
 export type ClientNote = { id: string; tenant_id: string; client_id: string; body: string; created_by: string | null; created_at: string };
 
-export type InvoiceLine = { label: string; amount_cents: number };
+/** `standard` marks a fee that comes from the tax software or bank product in Settings. Those are never edited on an invoice. */
+export type InvoiceLine = { label: string; amount_cents: number; standard?: boolean };
 export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
 export type Invoice = {
   id: string; tenant_id: string; client_id: string; return_id: string | null; number: string; tax_year: number; status: InvoiceStatus; lines: InvoiceLine[];
