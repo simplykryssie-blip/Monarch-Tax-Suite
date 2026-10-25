@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { checkDocumentFile, cleanDocumentName, CONTENT_TYPES, MAX_DOCUMENT_BYTES } from "../documents/files.ts";
+import { checkDocumentFile, cleanDocumentName, CONTENT_TYPES, MAX_DOCUMENT_BYTES, type DocumentFileType } from "../documents/files.ts";
 import type { DocumentStore } from "../documents/types.ts";
 import { ValidationError } from "../commerce/validation.ts";
 import type { ClientDoc, WorkspaceRepo } from "./types.ts";
@@ -18,7 +18,7 @@ export async function startClientDoc(d: DocDeps, raw: { clientId: unknown; title
   if (!Number.isFinite(size) || size <= 0) throw new ValidationError("Choose a file.");
   if (size > MAX_DOCUMENT_BYTES) throw new ValidationError("That file is larger than 25 MB.");
   const { fileName, fileType } = cleanDocumentName(String(raw.fileName ?? ""));
-  const title = (typeof raw.title === "string" ? raw.title.replace(/\s+/g, " ").trim().slice(0, 200) : "") || fileName.replace(/\.(pdf|docx)$/i, "");
+  const title = (typeof raw.title === "string" ? raw.title.replace(/\s+/g, " ").trim().slice(0, 200) : "") || fileName.replace(/\.[a-z]{3,4}$/i, "");
   let returnId: string | null = null;
   if (typeof raw.returnId === "string" && raw.returnId) {
     const r = UUID.test(raw.returnId) ? await d.repo.getReturn(raw.returnId) : null;
@@ -40,7 +40,7 @@ export async function finishClientDoc(d: DocDeps, id: string): Promise<ClientDoc
   const bytes = await d.store.download(doc.file_path);
   if (!bytes) throw new ValidationError("The upload didn't arrive. Try again.");
   try {
-    await checkDocumentFile(bytes, doc.file_type as "pdf" | "docx");
+    await checkDocumentFile(bytes, doc.file_type as DocumentFileType);
   } catch (e) {
     await d.store.remove([doc.file_path]).catch(() => undefined);
     await d.repo.deleteDoc(doc.id);

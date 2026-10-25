@@ -72,7 +72,7 @@ export async function startVersionUpload(
     if (document.status === "archived") throw new ValidationError("This document is archived. Restore it before uploading a new version.");
     if (document.file_type !== fileType) throw new ValidationError(`This document is a ${document.file_type.toUpperCase()}. Upload a .${document.file_type} file as its new version, or add a new document.`);
   } else {
-    const name = (input.name ?? "").trim().slice(0, 120) || fileName.replace(/\.(pdf|docx)$/i, "");
+    const name = (input.name ?? "").trim().slice(0, 120) || fileName.replace(/\.[a-z]{3,4}$/i, "");
     if (name.length < 2) throw new ValidationError("Give the document a name.");
     document = await deps.repo.insertDocument({ name, description: input.description?.trim().slice(0, 1000) || null, file_type: fileType, created_by: input.adminId });
   }

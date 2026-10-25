@@ -7,6 +7,7 @@ import { Badge, Flash, label, PageTitle, when } from "@/components/admin/ui";
 import { ArchivePanel } from "@/components/admin/archive";
 import { DocumentUploader } from "@/components/admin/document-uploader";
 import { ClientPicker } from "@/components/documents/client-picker";
+import { VIEWABLE_TYPES } from "@/lib/documents/files.ts";
 import { folderPaths } from "@/lib/documents/folders.ts";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { ASK_FIELD, askLabel } from "@/lib/documents/fields.ts";
@@ -29,8 +30,8 @@ export default async function DocumentPage({ params, searchParams }: { params: P
   const current = versions.find((v) => v.id === doc.current_version_id) ?? null;
   const sigByDelivery = new Map(signatures.map((s) => [s.delivery_id, s]));
   const canSign = doc.file_type === "pdf";
-  const tabs = [["send", "Send"], ["sent", `Sent copies${deliveries.length ? ` (${deliveries.length})` : ""}`], ["file", "File"], ["settings", "Settings"]] as const;
-  const tab = tabs.some(([k]) => k === askedTab) ? askedTab! : "send";
+  const tabs = [["file", "File"], ["send", "Send"], ["sent", `Sent copies${deliveries.length ? ` (${deliveries.length})` : ""}`], ["settings", "Settings"]] as const;
+  const tab = tabs.some(([k]) => k === askedTab) ? askedTab! : "file";
   const asks = (current?.merge_fields ?? []).filter((f) => ASK_FIELD.test(f));
   const paths = folderPaths(folders);
 
@@ -113,17 +114,18 @@ export default async function DocumentPage({ params, searchParams }: { params: P
                   <b>{current.file_name}</b> · {kb(current.size_bytes)} · version {current.version} · uploaded {when(current.ready_at)}
                 </p>
                 <p style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <a className="monarch-secondary" href={`/documents/file?type=version&id=${current.id}`}>Download original</a>
-                  <a className="monarch-secondary" href={`/documents/${doc.id}/preview`} target="_blank" rel="noreferrer">Preview with sample data</a>
+                  {VIEWABLE_TYPES.includes(doc.file_type) && <a className="monarch-primary" href={`/documents/file?type=version&id=${current.id}&view=1`} target="_blank" rel="noreferrer">Open</a>}
+                  <a className="monarch-secondary" href={`/documents/file?type=version&id=${current.id}`}>Download</a>
+                  {current.merge_fields.length > 0 && <a className="monarch-secondary" href={`/documents/${doc.id}/preview`} target="_blank" rel="noreferrer">Preview with sample data</a>}
                 </p>
-                <h3>Merge fields</h3>
-                {current.merge_fields.length ? (
+                {(doc.file_type === "pdf" || doc.file_type === "docx") && <h3>Merge fields</h3>}
+                {doc.file_type !== "pdf" && doc.file_type !== "docx" ? null : current.merge_fields.length ? (
                   <ul>{current.merge_fields.map((f) => <li key={f}><code>{f}</code> {MERGE_FIELDS[f]?.label ?? (f.startsWith("form.") ? "The answer to this form question (workflows that start on a form submission)" : "")}</li>)}</ul>
                 ) : <p className="monarch-muted">None: this document is sent exactly as uploaded.</p>}
                 {canSign && <p className="monarch-muted">{current.has_signature_field ? "The signature goes in the form field named “signature”." : "No form field named “signature”: the signature is placed on the signing certificate page."}</p>}
               </>
             ) : <p className="monarch-muted">No file has been accepted yet. Upload one below.</p>}
-            {doc.status === "active" && <><h3>Upload a new version</h3><DocumentUploader documentId={doc.id} accept={`.${doc.file_type}`} /><p className="monarch-muted">Copies already sent keep the version they used.</p></>}
+            {doc.status === "active" && <><h3>Upload a new version</h3><DocumentUploader documentId={doc.id} accept={`.${doc.file_type}${doc.file_type === "jpg" ? ",.jpeg" : ""}`} /><p className="monarch-muted">Copies already sent keep the version they used.</p></>}
           </section>
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Versions</h2></div></div>

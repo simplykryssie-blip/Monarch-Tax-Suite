@@ -106,6 +106,7 @@ export async function startUpload(deps: ComplianceDeps, ctx: Ctx, raw: { kind: u
   if (!Number.isFinite(size) || size <= 0) fail("Choose a file.");
   if (size > MAX_DOCUMENT_BYTES) fail("That file is larger than 25 MB.");
   const { fileName, fileType } = cleanDocumentName(String(raw.fileName ?? ""));
+  if (fileType !== "pdf" && fileType !== "docx") throw new ValidationError("Compliance files can be PDF or Word (.docx).");
   const title = text(raw.title, 200) || fileName.replace(/\.(pdf|docx)$/i, "");
   const id = randomUUID();
   const path = vaultPath(deps, ctx.officeId, id, fileType);

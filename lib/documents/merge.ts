@@ -37,6 +37,7 @@ function checkNames(names: string[], type: DocumentFileType): string[] {
 
 /** Lists the merge fields a document uses. Throws on unknown or malformed fields. */
 export async function scanTemplate(bytes: Uint8Array, type: DocumentFileType): Promise<TemplateScan> {
+  if (type !== "docx" && type !== "pdf") return { fields: [], hasSignatureField: false };
   if (type === "docx") {
     const zip = new PizZip(bytes);
     const names: string[] = [];
@@ -75,6 +76,7 @@ function pdfSafe(v: string) {
  * otherwise the form is flattened so the copy cannot be edited.
  */
 export async function fillTemplate(bytes: Uint8Array, type: DocumentFileType, values: Record<string, string>, opts: { keepSigning?: boolean } = {}): Promise<Uint8Array> {
+  if (type !== "docx" && type !== "pdf") return bytes;
   if (type === "docx") {
     const zip = new PizZip(bytes);
     const doc = new Docxtemplater(zip, {

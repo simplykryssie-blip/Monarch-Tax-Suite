@@ -10,15 +10,17 @@ import { DragCard, DragRow, DropLink } from "@/components/ui/folder-dnd";
 import { folderPaths } from "@/lib/documents/folders.ts";
 import { inView, viewCounts, viewOf } from "@/lib/archive.ts";
 import type { DocumentFolder } from "@/lib/documents/types.ts";
+import { ClientsFolder } from "./clients-view";
 import { createFolderAction, deleteFolderAction, moveByDragAction, moveDocumentAction, renameFolderAction } from "./actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The document library: folders, then the documents in the folder you're looking at. Everything else is on a document's own page. */
-export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ view?: string; folder?: string; q?: string; notice?: string; error?: string }> }) {
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ view?: string; folder?: string; clients?: string; client?: string; q?: string; notice?: string; error?: string }> }) {
   await requireAdmin();
   const sp = await searchParams;
   const view = viewOf(sp.view);
+  const inClients = sp.clients === "1" || UUID.test(sp.client ?? "");
   const q = (sp.q ?? "").trim().toLowerCase().slice(0, 80);
   const result = await load(async () => {
     const deps = documentDeps();
@@ -43,6 +45,8 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? (
         <SetupRequired message={result.message} />
+      ) : inClients ? (
+        <ClientsFolder clientId={sp.client} q={q} />
       ) : (
         <>
           <div className="monarch-page-actions">
@@ -58,10 +62,19 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
               </Modal>
               <Modal label="Add a document" title="Add a document" className="monarch-primary">
                 <DocumentUploader folderId={current?.id} />
-                <p className="monarch-muted">PDF or Word (.docx), up to 25 MB. Type merge fields like {"{{client_name}}"} in the text and they are filled in when you send it. Only PDFs can be signed.</p>
+                <p className="monarch-muted">PDF, Word, Excel or image (JPG, PNG), up to 25 MB.</p>
               </Modal>
             </span>
           </div>
+
+          {!current && !searching && view === "current" && (
+            <div className="pl-grid">
+              <section className="monarch-panel pl-card pl-folder">
+                <Link className="pl-name" href="/documents?clients=1">Clients</Link>
+                <small className="monarch-muted">A folder for each client</small>
+              </section>
+            </div>
+          )}
 
           {subfolders.length > 0 && (
             <div className="pl-grid">

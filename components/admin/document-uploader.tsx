@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { finishDocumentUploadAction, startDocumentUploadAction } from "@/app/(admin)/documents/actions";
 
 /**
- * Uploads a PDF or Word document straight to the tenant's private document storage with a one-time URL, then asks
+ * Uploads a file (PDF, Word, Excel or image) straight to the tenant's private document storage with a one-time URL, then asks
  * the server to check it by content and read its merge fields. With `documentId` it adds a new version.
  */
-export function DocumentUploader({ documentId, folderId, accept = ".pdf,.docx" }: { documentId?: string; /** A new document goes into this folder. */ folderId?: string; accept?: string }) {
+export function DocumentUploader({ documentId, folderId, accept = ".pdf,.docx,.xlsx,.png,.jpg,.jpeg" }: { documentId?: string; /** A new document goes into this folder. */ folderId?: string; accept?: string }) {
   const input = useRef<HTMLInputElement>(null);
   const name = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -17,7 +17,7 @@ export function DocumentUploader({ documentId, folderId, accept = ".pdf,.docx" }
 
   async function upload() {
     const file = input.current?.files?.[0];
-    if (!file) return setMessage({ ok: false, text: "Choose a PDF or Word (.docx) file first." });
+    if (!file) return setMessage({ ok: false, text: "Choose a file first." });
     setBusy(true);
     setMessage(null);
     try {

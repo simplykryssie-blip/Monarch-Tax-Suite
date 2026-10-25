@@ -120,3 +120,29 @@ describe("signing", () => {
     assert.equal((await PDFDocument.load(signed)).getPageCount(), 2);
   });
 });
+
+describe("Excel and image files", () => {
+  const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  const jpgBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]);
+  test("names are accepted by extension, macro workbooks are not", () => {
+    assert.deepEqual(cleanDocumentName("Budget 2026.XLSX"), { fileName: "Budget 2026.XLSX", fileType: "xlsx" });
+    assert.deepEqual(cleanDocumentName("scan.jpeg").fileType, "jpg");
+    assert.deepEqual(cleanDocumentName("id.png").fileType, "png");
+    assert.throws(() => cleanDocumentName("macros.xlsm"), /Macro-enabled Excel/);
+    assert.throws(() => cleanDocumentName("tool.exe"), /Only PDF, Word/);
+  });
+  test("images are checked by content", async () => {
+    await checkDocumentFile(pngBytes, "png");
+    await checkDocumentFile(jpgBytes, "jpg");
+    await assert.rejects(checkDocumentFile(jpgBytes, "png"), /not a PNG/);
+    await assert.rejects(checkDocumentFile(pngBytes, "jpg"), /not a JPG/);
+  });
+  test("workbooks must be real, unprotected and macro-free", async () => {
+    const zip = (files: Record<string, string>) => { const z = new PizZip(); for (const [k, v] of Object.entries(files)) z.file(k, v); return new Uint8Array(z.generate({ type: "uint8array" })); };
+    await checkDocumentFile(zip({ "[Content_Types].xml": "<Types/>", "xl/workbook.xml": "<workbook/>" }), "xlsx");
+    await assert.rejects(checkDocumentFile(zip({ "[Content_Types].xml": "<Types/>", "word/document.xml": "<w/>" }), "xlsx"), /not an Excel workbook/);
+    await assert.rejects(checkDocumentFile(zip({ "[Content_Types].xml": "<Types/>", "xl/workbook.xml": "<workbook/>", "xl/vbaProject.bin": "x" }), "xlsx"), /macros/);
+    await assert.rejects(checkDocumentFile(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 1, 2, 3, 4]), "xlsx"), /old \.xls/);
+    await assert.rejects(checkDocumentFile(new Uint8Array([1, 2, 3, 4, 5]), "xlsx"), /not an Excel workbook/);
+  });
+});

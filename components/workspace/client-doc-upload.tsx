@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { finishClientDocAction, startClientDocAction } from "@/app/(admin)/workspace/actions";
 
-/** Uploads a PDF or Word file straight to private storage with a one-time link, then asks the server to check it. */
+/** Uploads a file straight to private storage with a one-time link, then asks the server to check it. */
 export function ClientDocUpload({ clientId, returns }: { clientId: string; returns: { id: string; label: string }[] }) {
   const file = useRef<HTMLInputElement>(null);
   const title = useRef<HTMLInputElement>(null);
@@ -15,7 +15,7 @@ export function ClientDocUpload({ clientId, returns }: { clientId: string; retur
 
   async function go() {
     const f = file.current?.files?.[0];
-    if (!f) return setMsg({ ok: false, text: "Choose a PDF or Word (.docx) file first." });
+    if (!f) return setMsg({ ok: false, text: "Choose a file first." });
     setBusy(true);
     setMsg(null);
     try {
@@ -40,7 +40,7 @@ export function ClientDocUpload({ clientId, returns }: { clientId: string; retur
     <div className="monarch-form">
       <label>Name of the document<input ref={title} maxLength={200} placeholder="For example W-2 2025" /></label>
       {returns.length > 0 && <label>Which tax return is this for?<select ref={ret} defaultValue=""><option value="">None, keep it with the client</option>{returns.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></label>}
-      <label>File (PDF or Word, up to 25 MB)<input ref={file} type="file" accept=".pdf,.docx" /></label>
+      <label>File (PDF, Word, Excel or image, up to 25 MB)<input ref={file} type="file" accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg" /></label>
       <div className="is-wide"><button type="button" className="monarch-primary" onClick={go} disabled={busy}>{busy ? "Uploading…" : "Upload"}</button></div>
       {msg && <p className={msg.ok ? "monarch-alert" : "monarch-alert is-error"} role={msg.ok ? "status" : "alert"}>{msg.text}</p>}
     </div>

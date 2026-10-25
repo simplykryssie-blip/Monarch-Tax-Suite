@@ -1,9 +1,10 @@
--- Documents: folders (with sub-folders) to keep library documents in.
--- Additive only: one new column on documents and one new table. Nothing is dropped and no existing value is changed;
--- every existing document stays where it is, outside any folder. Safe to run again.
+-- Documents: folders (with sub-folders) to keep files in, and Excel and image files besides PDF and Word.
+-- Additive only: one new column on documents, one new table, and a wider list of allowed file types. Nothing is dropped
+-- and no existing value is changed; every existing document stays where it is, outside any folder. Safe to run again.
 --
 -- documents.folder_id   the folder a document is kept in, or none.
 -- document_folders      a folder, optionally inside another folder.
+-- documents.file_type   now also allows xlsx, png and jpg (it already allowed pdf and docx).
 
 set local lock_timeout = '10s';
 
@@ -20,6 +21,9 @@ create unique index if not exists document_folders_tenant_id_id_key on public.do
 create unique index if not exists document_folders_name_key on public.document_folders (tenant_id, coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(name));
 
 alter table public.documents add column if not exists folder_id uuid;
+
+alter table public.documents drop constraint if exists documents_file_type_check;
+alter table public.documents add constraint documents_file_type_check check (file_type in ('pdf', 'docx', 'xlsx', 'png', 'jpg'));
 
 -- Tenant scoping, the same as every tenant table since Step 0.
 do $$
