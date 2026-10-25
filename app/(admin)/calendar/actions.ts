@@ -96,7 +96,7 @@ function weeklyFrom(form: FormData): Record<number, [string, string][]> {
 
 export async function saveWeeklyAction(form: FormData) {
   const who = str(form, "who") === "me" ? "me" : "office";
-  await act(`/calendar/availability?who=${who}`, async (adminId) => {
+  await act(`/settings/availability?who=${who}`, async (adminId) => {
     await saveWeekly(office(), who === "me" ? adminId : null, weeklyFrom(form));
     return "Weekly hours saved.";
   });
@@ -104,7 +104,7 @@ export async function saveWeeklyAction(form: FormData) {
 
 export async function addOverrideAction(form: FormData) {
   const who = str(form, "who") === "me" ? "me" : "office";
-  await act(`/calendar/availability?who=${who}`, async (adminId) => {
+  await act(`/settings/availability?who=${who}`, async (adminId) => {
     await addDateOverride(office(), who === "me" ? adminId : null, { date: str(form, "date"), closed: form.get("closed") === "on", from: str(form, "from"), to: str(form, "to") });
     return "Date saved.";
   });
@@ -112,7 +112,7 @@ export async function addOverrideAction(form: FormData) {
 
 export async function removeOverrideAction(form: FormData) {
   const who = str(form, "who") === "me" ? "me" : "office";
-  await act(`/calendar/availability?who=${who}`, async () => {
+  await act(`/settings/availability?who=${who}`, async () => {
     await office().repo.removeRule(str(form, "id"));
     return "Date removed.";
   });

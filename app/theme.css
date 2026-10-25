@@ -918,3 +918,19 @@ html[data-popup] body{background:#fff}
 .inv-actions .monarch-secondary{padding:6px 14px;font-size:12px}
 .row-menu summary{list-style:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--gold-deep);padding:4px 0}.row-menu summary::-webkit-details-marker{display:none}.row-menu summary:after{content:" ▾"}.row-menu[open] summary:after{content:" ▴"}
 .row-menu-list{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:8px 0 4px 10px;border-left:2px solid #dbe6f5}
+.cal-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}@media (max-width:1000px){.cal-layout{grid-template-columns:1fr}}
+.cal-month-title{margin:0 0 10px;font-size:20px}
+.cal-month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid #dbe3ef;border-radius:8px;overflow:hidden;background:#fff}
+.cal-dow{padding:8px;font-size:12px;font-weight:700;color:#475569;background:#f4f7fb;border-bottom:1px solid #dbe3ef;text-align:center}
+.cal-cell{min-height:112px;padding:6px;border-right:1px solid #e8edf5;border-bottom:1px solid #e8edf5;display:flex;flex-direction:column;gap:3px;min-width:0}.cal-cell:nth-child(7n){border-right:0}
+.cal-cell.is-out{background:#fafbfd}.cal-cell.is-out .cal-num{color:#a3aebf}
+.cal-cell.is-today{background:#eef5ff}.cal-cell.is-today .cal-num{background:var(--gold);color:#fff}
+.cal-num{align-self:flex-start;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;text-decoration:none;color:#1f2937}
+.cal-item{display:block;font-size:11px;line-height:1.3;padding:2px 5px;border-radius:4px;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-item.is-appt{background:#dbeafe;color:#0b3a8a}.cal-item.is-task{background:#f1f5f9;color:#334155}
+.cal-more{font-size:11px;color:var(--gold-deep);text-decoration:none;font-weight:600}
+@media (max-width:640px){.cal-cell{min-height:64px;padding:3px}.cal-item{font-size:10px;padding:1px 3px}}
+.cal-side{padding:14px;display:grid;gap:12px}.cal-side h2{margin:0;font-size:16px}
+.cal-tasks{list-style:none;margin:0;padding:0;display:grid;gap:10px;max-height:520px;overflow:auto}.cal-tasks li{display:flex;gap:10px;align-items:flex-start}.cal-tasks span{display:grid;gap:2px;min-width:0}.cal-tasks small{font-size:11px}
+.cal-check{margin:0}.cal-check input[type=checkbox]{width:18px;height:18px;margin-top:2px;cursor:pointer}
+.cal-addtask{display:grid;gap:8px;border-top:1px solid #e8edf5;padding-top:12px}.cal-addtask input,.cal-addtask select{width:100%}

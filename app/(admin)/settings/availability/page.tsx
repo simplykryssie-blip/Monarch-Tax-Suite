@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/admin";
 import { Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { appointmentDeps } from "@/lib/appointments/server";
-import { addOverrideAction, removeOverrideAction, saveWeeklyAction } from "../actions";
+import { addOverrideAction, removeOverrideAction, saveWeeklyAction } from "../../calendar/actions";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const hm = (t: string | null) => (t ? t.slice(0, 5) : "");
@@ -17,13 +17,13 @@ export default async function AvailabilityPage({ searchParams }: { searchParams:
   const result = await load(async () => ({ rules: await deps.repo.listRules(who === "me" ? admin.userId : null) }));
   return (
     <>
-      <PageTitle title="Availability" back={{ href: "/calendar", label: "Calendar" }}>
+      <PageTitle title="Availability">
         The hours clients can book. If you set nothing, your <Link href="/settings/business-hours">business hours</Link> apply. Closed days from business hours (holidays) always block booking unless you open that date below.
       </PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <Link className={who === "office" ? "monarch-primary" : "monarch-secondary"} href="/calendar/availability?who=office">The office</Link>
-        <Link className={who === "me" ? "monarch-primary" : "monarch-secondary"} href="/calendar/availability?who=me">My hours</Link>
+        <Link className={who === "office" ? "monarch-primary" : "monarch-secondary"} href="/settings/availability?who=office">The office</Link>
+        <Link className={who === "me" ? "monarch-primary" : "monarch-secondary"} href="/settings/availability?who=me">My hours</Link>
       </div>
       {!result.ok ? <SetupRequired message={result.message} /> : (() => {
         const weekly = result.data.rules.filter((r) => r.weekday !== null);

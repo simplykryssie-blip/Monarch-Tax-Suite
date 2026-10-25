@@ -4,6 +4,7 @@ import { SubmitOnce } from "@/components/admin/submit-once";
 import { appointmentDeps } from "@/lib/appointments/server";
 import { appOrigin } from "@/lib/admin";
 import type { AppointmentType } from "@/lib/appointments/types.ts";
+import { CopyLink } from "@/components/calendar/copy-link";
 import { saveTypeAction } from "../actions";
 
 function TypeForm({ t }: { t?: AppointmentType }) {
@@ -47,7 +48,7 @@ export default async function TypesPage({ searchParams }: { searchParams: Promis
           {result.data.types.map((t) => (
             <details key={t.id} className="monarch-panel" style={{ padding: 16, marginBottom: 12 }}>
               <summary><strong>{t.name}</strong> · {t.duration_minutes} min{t.active ? "" : " · closed"}</summary>
-              <p className="monarch-muted">Booking link: <code>{result.data.origin}/book/{t.slug}</code></p>
+              <p className="monarch-muted">Booking link: <code>{result.data.origin}/book/{t.slug}</code> <CopyLink href={`/book/${t.slug}`} label="Copy" /></p>
               <TypeForm t={t} />
             </details>
           ))}

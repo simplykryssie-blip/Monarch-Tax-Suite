@@ -29,7 +29,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.next({ request: { headers } });
     }
   } else if (hostKind.kind === "platform-subdomain" || (await hostHasSite(hostKind.host))) {
-    if (SITE_PASSTHROUGH.some((p) => path.startsWith(p))) return updateSession(request);
+    if (path === "/book" || SITE_PASSTHROUGH.some((p) => path.startsWith(p))) return updateSession(request);
     const host = cleanRequestHost(hostKind.host)!;
     const url = request.nextUrl.clone();
     url.pathname = `/s/${host}${path === "/" ? "" : path}`;

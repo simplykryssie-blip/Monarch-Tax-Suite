@@ -218,7 +218,9 @@ export async function moveReturnAction(returnId: string, stageId: string): Promi
 
 export async function addTaskAction(form: FormData) {
   const id = str(form, "client_id");
-  await act(clientPage(id, "tasks"), async (adminId) => {
+  // From the Calendar's task list the person stays on the Calendar.
+  const back = str(form, "back").startsWith("/calendar") ? str(form, "back") : clientPage(id, "tasks");
+  await act(back, async (adminId) => {
     await addTask(workspaceRepo(), id, raw(form), adminId);
     return { notice: "Task added." };
   });
