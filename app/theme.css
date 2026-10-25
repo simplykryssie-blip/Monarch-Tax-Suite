@@ -914,3 +914,7 @@ html[data-popup] body{background:#fff}
 .ni-numlink{font-size:inherit;font-weight:700;text-decoration:underline;text-underline-offset:2px}
 .ni-pays{margin-top:12px;font-size:12px}.ni-pays ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}.ni-pays li{display:flex;justify-content:space-between;gap:10px}
 .bl-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px}.bl-actions form{display:contents}
+.inv-actions{display:flex;flex-direction:column;align-items:flex-start;gap:8px}.inv-actions form{margin:0}
+.inv-actions .monarch-secondary{padding:6px 14px;font-size:12px}
+.row-menu summary{list-style:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--gold-deep);padding:4px 0}.row-menu summary::-webkit-details-marker{display:none}.row-menu summary:after{content:" ▾"}.row-menu[open] summary:after{content:" ▴"}
+.row-menu-list{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:8px 0 4px 10px;border-left:2px solid #dbe6f5}

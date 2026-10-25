@@ -3,14 +3,11 @@ import { Badge, EmptyRow, Flash, PageTitle } from "@/components/admin/ui";
 import { PAYERS } from "@/lib/workspace/types.ts";
 import { balance, dollars, invoiceView, totals, type InvoiceView } from "@/lib/workspace/rules.ts";
 import { InvoiceLink, loadSheetContext } from "@/components/contacts/invoice-sheet";
-import { PaymentPlan } from "@/components/contacts/payment-plan";
-import { RecordPayment } from "@/components/contacts/record-payment";
 import { paymentsFor } from "@/lib/workspace/receipts";
 import { AutoSelect } from "@/components/contacts/auto-select";
 import { NewInvoice } from "@/components/contacts/new-invoice";
 import { todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
-import { archiveInvoiceAction, invoiceStatusAction } from "../actions";
-import { EditInvoice } from "@/components/contacts/edit-invoice";
+import { InvoiceActions } from "@/components/contacts/invoice-actions";
 import { WorkspaceSetup } from "../setup";
 
 type ViewKey = InvoiceView | "all" | "archived";
@@ -73,16 +70,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                       <td>{i.tax_year}</td><td>{dollars(i.total_cents)}</td><td>{dollars(i.paid_cents)}</td><td>{i.status === "void" ? "—" : dollars(balance(i))}</td>
                       <td><Badge value={invoiceView(i, today)} /></td>
                       <td>{i.payer ? PAYERS[i.payer] : "—"}</td>
-                      <td><div className="bl-actions"><form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
-                          <input type="hidden" name="id" value={i.id} />
-                          {i.status === "draft" && <button name="do" value="send" className="monarch-link">Send to client</button>}
-                          
-                        </form>
-                        {i.status !== "paid" && i.status !== "void" && <RecordPayment invoice={i} back="/workspace/billing" today={today} />}
-                        <EditInvoice invoice={i} back="/workspace/billing" />
-                        {i.status !== "void" && i.paid_cents === 0 && <form action={invoiceStatusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value="/workspace/billing" /><button name="do" value="void" className="monarch-link is-danger">Void</button></form>}
-                        {i.status === "void" && <form action={archiveInvoiceAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value="/workspace/billing" /><input type="hidden" name="archive" value={i.archived_at ? "no" : "yes"} /><button className="monarch-link">{i.archived_at ? "Restore" : "Archive"}</button></form>}
-                        <PaymentPlan invoice={i} plan={plans.filter((p) => p.invoice_id === i.id)} back="/workspace/billing" /></div></td>
+                      <td><InvoiceActions invoice={i} plan={plans.filter((p) => p.invoice_id === i.id)} back={"/workspace/billing"} today={today} /></td>
                     </tr>
                   ))}
                 </tbody>

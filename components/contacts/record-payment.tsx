@@ -5,9 +5,9 @@ import { balance } from "@/lib/workspace/rules.ts";
 import { RECEIPT_METHODS, type Invoice } from "@/lib/workspace/types.ts";
 
 /** A Record payment button that opens a small form: the amount, the date, how it was paid and a reference. */
-export function RecordPayment({ invoice: i, back, today }: { invoice: Invoice; back: string; today: string }) {
+export function RecordPayment({ invoice: i, back, today, button = false }: { invoice: Invoice; back: string; today: string; button?: boolean }) {
   return (
-    <Modal label="Record payment" title={`Record a payment on ${i.number}`} className="monarch-link">
+    <Modal label="Record payment" title={`Record a payment on ${i.number}`} className={button ? "monarch-secondary" : "monarch-link"}>
       <form action={invoiceStatusAction} className="monarch-form">
         <input type="hidden" name="id" value={i.id} />
         <input type="hidden" name="back" value={back} />
