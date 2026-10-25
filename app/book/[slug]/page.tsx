@@ -1,6 +1,6 @@
 import { FormattedInput } from "@/components/forms/formatted-input";
 import type { Metadata } from "next";
-import { SlotPicker } from "@/components/book/slot-picker";
+import { MonthPicker } from "@/components/book/month-picker";
 import { ThemedPage } from "@/components/forms/themed-page";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { bookingContext } from "@/lib/appointments/public";
@@ -22,7 +22,7 @@ export default async function BookPage({ params, searchParams }: { params: Promi
   if (!type || !type.active) return <ThemedPage theme={theme} firm={firm}><h1>Booking isn&apos;t available</h1><p>This booking link is not valid or is not open right now. Please contact the office.</p></ThemedPage>;
   const cal = await deps.calendar();
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: cal.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  const slots = await listSlots(deps, type, today, 14).catch(() => []);
+  const slots = await listSlots(deps, type, today, Math.min(type.max_days_ahead, 90)).catch(() => []);
   return (
     <ThemedPage theme={theme} firm={firm} poweredBy={!!brand?.showPoweredBy}>
       {firm && <div className="monarch-eyebrow">{firm.toUpperCase()}</div>}
@@ -32,7 +32,7 @@ export default async function BookPage({ params, searchParams }: { params: Promi
       {error && <p className="monarch-alert is-error" role="alert">{error}</p>}
       <form action={bookAction.bind(null, slug)} className="monarch-form">
         <h2 className="is-wide">1. Pick a time</h2>
-        <div className="is-wide"><SlotPicker slots={slots.map((s) => s.start.toISOString())} officeTz={cal.timeZone} /></div>
+        <div className="is-wide"><MonthPicker slots={slots.map((s) => s.start.toISOString())} officeTz={cal.timeZone} /></div>
         <h2 className="is-wide">2. Your details</h2>
         <label>Name<input name="name" required maxLength={200} autoComplete="name" /></label>
         <label>Email<input name="email" type="email" required maxLength={254} autoComplete="email" /></label>

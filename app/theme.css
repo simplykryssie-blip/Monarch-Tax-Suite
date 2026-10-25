@@ -934,3 +934,12 @@ html[data-popup] body{background:#fff}
 .cal-tasks{list-style:none;margin:0;padding:0;display:grid;gap:10px;max-height:520px;overflow:auto}.cal-tasks li{display:flex;gap:10px;align-items:flex-start}.cal-tasks span{display:grid;gap:2px;min-width:0}.cal-tasks small{font-size:11px}
 .cal-check{margin:0}.cal-check input[type=checkbox]{width:18px;height:18px;margin-top:2px;cursor:pointer}
 .cal-addtask{display:grid;gap:8px;border-top:1px solid #e8edf5;padding-top:12px}.cal-addtask input,.cal-addtask select{width:100%}
+.bk-picker{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:24px;align-items:start}@media (max-width:640px){.bk-picker{grid-template-columns:1fr}}
+.bk-guard{position:absolute;opacity:0;height:0;width:0;pointer-events:none}
+.bk-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.bk-head button{border:1px solid #dbe3ef;background:#fff;border-radius:50%;width:32px;height:32px;cursor:pointer}.bk-head button:disabled{opacity:.35;cursor:default}
+.bk-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.bk-dow{text-align:center;font-size:11px;font-weight:700;color:#64748b;padding:4px 0}
+.bk-day{aspect-ratio:1;border:0;border-radius:50%;background:transparent;font-size:14px;color:#a3aebf;cursor:default}
+.bk-day.is-open{background:#e8f1ff;color:var(--gold-deep);font-weight:700;cursor:pointer}.bk-day.is-open:hover{background:#d3e5ff}.bk-day.is-on{background:var(--gold);color:#fff}
+.bk-tz{font-size:12px;margin-top:10px}
+.bk-slots{display:flex;flex-direction:column;gap:8px;margin-top:10px;max-width:260px}
+.bk-slot{border:1px solid var(--gold);color:var(--gold-deep);border-radius:6px;padding:10px 12px;text-align:center;font-weight:700;cursor:pointer;position:relative}.bk-slot input{position:absolute;opacity:0;pointer-events:none}.bk-slot.is-on{background:var(--gold);color:#fff}
