@@ -11,12 +11,12 @@ import { isLive, returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
 import { emitInvoicePaid, emitReturnStage, emitTagChanges, emitWorkStage } from "@/lib/automation/emit";
 import { yesNo } from "@/lib/workspace/rules.ts";
-import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveBillingSettings, setPaymentPlan, removePaymentPlan, addFeeProduct, saveFeeProduct, archiveFeeProduct, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
+import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveBillingSettings, editInvoice, archiveInvoice, setPaymentPlan, removePaymentPlan, addFeeProduct, saveFeeProduct, archiveFeeProduct, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
 import { setWorkflowTaskDone } from "@/lib/workspace/workflow-tasks";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
 import { loadBrand } from "@/lib/branding/server";
-import { canTakePayments } from "@/lib/connect/service.ts";
+import { cancelOpenPayment, canTakePayments } from "@/lib/connect/service.ts";
 import { connectDeps } from "@/lib/connect/server";
 import { invoiceNoticeEmail } from "@/lib/portal/invoices.ts";
 import { portalLink, portalMemberRepo, sendPortalEmail } from "@/lib/portal/server";
@@ -381,6 +381,25 @@ export async function setPaymentPlanAction(form: FormData) {
 export async function removePaymentPlanAction(form: FormData) {
   const back = /^\/workspace/.test(str(form, "back")) ? str(form, "back") : "/workspace/billing";
   await act(back, async () => { await removePaymentPlan(workspaceRepo(), str(form, "id")); return { notice: "Payment plan removed." }; });
+}
+
+export async function editInvoiceAction(form: FormData) {
+  const back = /^\/workspace/.test(str(form, "back")) ? str(form, "back") : "/workspace/billing";
+  await act(back, async () => {
+    const r = await editInvoice(workspaceRepo(), str(form, "id"), raw(form));
+    // A pay link made for the old total must not be payable any more.
+    if (r.totalChanged) { const deps = connectDeps(currentTenantId()); if (deps) await cancelOpenPayment(deps, r.invoice.id).catch(() => false); }
+    return { notice: `${r.invoice.number} saved.${r.planRemoved ? " Its payment plan was removed because the total changed. Set it up again." : ""}` };
+  });
+}
+
+export async function archiveInvoiceAction(form: FormData) {
+  const back = /^\/workspace/.test(str(form, "back")) ? str(form, "back") : "/workspace/billing";
+  await act(back, async () => {
+    const archive = str(form, "archive") === "yes";
+    const i = await archiveInvoice(workspaceRepo(), str(form, "id"), archive);
+    return { notice: archive ? `${i.number} archived. Find it under Archived on Billing.` : `${i.number} restored.` };
+  });
 }
 
 /** Billing settings (Settings → Billing): the footer printed on invoices and the sales tax percent. */

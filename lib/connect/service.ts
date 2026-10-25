@@ -162,6 +162,16 @@ export async function startInvoiceCheckout(
   }
 }
 
+/** Cancels a pay link that is still open on an invoice, e.g. because the invoice was just changed. Returns whether one was open. */
+export async function cancelOpenPayment(deps: ConnectDeps, invoiceId: string): Promise<boolean> {
+  const open = await deps.repo.openPaymentFor(invoiceId);
+  if (!open) return false;
+  const conn = await deps.repo.getConnection();
+  if (open.stripe_session_id && conn) await deps.stripe.expireCheckout(conn.stripe_account_id, open.stripe_session_id).catch(() => undefined);
+  await deps.repo.closePayment(open.id, "expired");
+  return true;
+}
+
 // ------------------------------------------------------------------ events
 
 export type ConnectEvent = {

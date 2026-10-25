@@ -221,6 +221,42 @@ export async function sendInvoice(repo: WorkspaceRepo, id: string): Promise<Invo
   return repo.updateInvoice(i.id, { status: "sent" });
 }
 
+/**
+ * Changes an unpaid invoice (lines, tax year, due date, notes, who pays), or, once a payment is on it, only its due date, notes
+ * and who pays. Sales tax is figured again at the percent the invoice was made with. When the total changes, a payment plan no
+ * longer adds up, so it is removed, and the caller is told so.
+ */
+export async function editInvoice(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>): Promise<{ invoice: Invoice; totalChanged: boolean; planRemoved: boolean }> {
+  const i = await repo.getInvoice(uuid(id, "That invoice"));
+  if (!i) throw new ValidationError("That invoice wasn't found.");
+  if (i.status === "void" || i.status === "paid") throw new ValidationError("A paid or void invoice can't be edited.");
+  const due = typeof raw.due_on === "string" && raw.due_on ? (isDay(raw.due_on) ? raw.due_on : (() => { throw new ValidationError("The due date isn't a valid date."); })()) : null;
+  const patch: Parameters<WorkspaceRepo["updateInvoice"]>[1] = { due_on: due, notes: clean(raw.notes, 1000) || null };
+  if (raw.payer === "bank_product" || raw.payer === "self") patch.payer = raw.payer;
+  let totalChanged = false;
+  if (i.paid_cents === 0) {
+    const lines = checkLines(raw);
+    const year = Number(clean(raw.tax_year, 4));
+    if (!Number.isInteger(year) || year < 2000 || year > new Date().getUTCFullYear() + 1) throw new ValidationError("Enter a tax year.");
+    const subtotal = invoiceTotal(lines);
+    const tax = taxOn(subtotal, i.tax_percent ?? 0);
+    patch.lines = lines; patch.tax_year = year; patch.tax_cents = tax; patch.total_cents = subtotal + tax;
+    totalChanged = subtotal + tax !== i.total_cents;
+  }
+  const hadPlan = (await repo.listInstallments([i.id])).length > 0;
+  const invoice = await repo.updateInvoice(i.id, patch);
+  if (totalChanged && hadPlan) await repo.replaceInstallments(i.id, []);
+  return { invoice, totalChanged, planRemoved: totalChanged && hadPlan };
+}
+
+/** Archives a voided invoice, or brings an archived one back. Only a voided invoice can be archived. */
+export async function archiveInvoice(repo: WorkspaceRepo, id: string, archive: boolean): Promise<Invoice> {
+  const i = await repo.getInvoice(uuid(id, "That invoice"));
+  if (!i) throw new ValidationError("That invoice wasn't found.");
+  if (archive && i.status !== "void") throw new ValidationError("Only a voided invoice can be archived. Void it first.");
+  return repo.updateInvoice(i.id, { archived_at: archive ? new Date().toISOString() : null });
+}
+
 export async function voidInvoice(repo: WorkspaceRepo, id: string): Promise<Invoice> {
   const i = await repo.getInvoice(uuid(id, "That invoice"));
   if (!i) throw new ValidationError("That invoice wasn't found.");

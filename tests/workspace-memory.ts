@@ -91,7 +91,7 @@ export class MemoryWorkspace implements WorkspaceRepo {
     const i: Invoice = { ...this.c(input), id: randomUUID(), tenant_id: "t", paid_cents: 0, paid_on: null, created_at: this.at(), updated_at: this.at() };
     this.invoices.push(i); return this.c(i);
   }
-  async updateInvoice(id: string, patch: Partial<Pick<Invoice, "status" | "lines" | "total_cents" | "paid_cents" | "paid_on" | "due_on" | "notes">>) { const i = this.invoices.find((x) => x.id === id)!; Object.assign(i, this.c(patch)); return this.c(i); }
+  async updateInvoice(id: string, patch: Partial<Pick<Invoice, "status" | "lines" | "total_cents" | "paid_cents" | "paid_on" | "due_on" | "notes" | "tax_year" | "tax_cents" | "payer" | "archived_at">>) { const i = this.invoices.find((x) => x.id === id)!; Object.assign(i, this.c(patch)); return this.c(i); }
   async nextInvoiceNumber() { const max = Math.max(0, ...this.invoices.map((i) => Number(i.number.replace(/\D/g, "")))); return `INV-${String(max + 1).padStart(4, "0")}`; }
 
   async insertImport(input: Pick<PaymentImport, "file_name" | "file_sha256" | "row_count" | "created_by">) { const p: PaymentImport = { ...this.c(input), id: randomUUID(), tenant_id: "t", status: "review", created_at: this.at(), applied_at: null }; this.imports.push(p); return this.c(p); }

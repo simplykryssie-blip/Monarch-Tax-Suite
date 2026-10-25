@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { addToDay, allocate, checkPlan, nextPaymentCents, splitPlan } from "../lib/workspace/plan.ts";
-import { addClient, createInvoice, removePaymentPlan, setPaymentPlan, recordPayment } from "../lib/workspace/service.ts";
+import { addClient, archiveInvoice, createInvoice, editInvoice, removePaymentPlan, saveBillingSettings, setPaymentPlan, recordPayment, voidInvoice } from "../lib/workspace/service.ts";
 import { MemoryWorkspace } from "./workspace-memory.ts";
 
 test("a total splits into equal payments with the odd cents on the first ones", () => {
@@ -49,4 +49,34 @@ test("an invoice can be made with a plan, and a plan can be set, replaced and re
   await recordPayment(repo, inv.id, "50", "2026-12-01", new Date("2026-12-02"), { method: "cash" });
   await assert.rejects(setPaymentPlan(repo, inv.id, { plan_count: "3", plan_first_due: "2026-12-01" }), /already been made/);
   await assert.rejects(setPaymentPlan(repo, inv.id, { plan_count: "1" }), /already been made/);
+});
+
+test("an unpaid invoice can be edited and tax is figured again; a plan is dropped when the total changes; a paid-on invoice only takes small edits", async () => {
+  const repo = new MemoryWorkspace();
+  const c = await addClient(repo, { full_name: "Ada King" }, "u1");
+  await saveBillingSettings(repo, { tax_percent: "10" }, "u1");
+  const inv = await createInvoice(repo, { client_id: c.id, tax_year: "2025", status: "sent", include_standard: "no", line_label_0: "Prep", line_amount_0: "100", plan_count: "2", plan_first_due: "2026-11-01" }, "u1");
+  assert.equal(inv.total_cents, 11000);
+  const same = await editInvoice(repo, inv.id, { tax_year: "2025", line_label_0: "Prep", line_amount_0: "100", due_on: "2026-12-01", notes: "Thanks" });
+  assert.deepEqual([same.totalChanged, same.planRemoved, same.invoice.due_on, same.invoice.notes], [false, false, "2026-12-01", "Thanks"]);
+  assert.equal((await repo.listInstallments([inv.id])).length, 2, "an edit that keeps the total keeps the plan");
+  const bigger = await editInvoice(repo, inv.id, { tax_year: "2025", line_label_0: "Prep", line_amount_0: "100", line_label_1: "Rush", line_amount_1: "50", payer: "bank_product" });
+  assert.deepEqual([bigger.invoice.total_cents, bigger.invoice.tax_cents, bigger.totalChanged, bigger.planRemoved, bigger.invoice.payer], [16500, 1500, true, true, "bank_product"]);
+  assert.equal((await repo.listInstallments([inv.id])).length, 0);
+  await assert.rejects(editInvoice(repo, inv.id, { tax_year: "2025" }), /at least one line/);
+  await recordPayment(repo, inv.id, "50", "2026-12-01", new Date("2026-12-02"), { method: "cash" });
+  const small = await editInvoice(repo, inv.id, { line_label_0: "Ignored", line_amount_0: "1", due_on: "2027-01-01", notes: "Late" });
+  assert.deepEqual([small.invoice.total_cents, small.invoice.lines.length, small.invoice.due_on], [16500, 2, "2027-01-01"], "with a payment on it the charges can't change");
+  await recordPayment(repo, inv.id, "500", "2026-12-05", new Date("2026-12-06"), { method: "cash" });
+  await assert.rejects(editInvoice(repo, inv.id, { due_on: "2027-02-01" }), /can't be edited/);
+});
+
+test("only a voided invoice can be archived, and it can be restored", async () => {
+  const repo = new MemoryWorkspace();
+  const c = await addClient(repo, { full_name: "Ada King" }, "u1");
+  const inv = await createInvoice(repo, { client_id: c.id, tax_year: "2025", status: "sent", include_standard: "no", line_label_0: "Prep", line_amount_0: "100" }, "u1");
+  await assert.rejects(archiveInvoice(repo, inv.id, true), /Only a voided invoice/);
+  await voidInvoice(repo, inv.id);
+  assert.ok((await archiveInvoice(repo, inv.id, true)).archived_at);
+  assert.equal((await archiveInvoice(repo, inv.id, false)).archived_at, null);
 });

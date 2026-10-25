@@ -79,6 +79,8 @@ export type Invoice = {
   created_by: string | null; created_at: string; updated_at: string;
   /** Sales tax figured on the invoice, and who pays: a bank product (taken from the refund) or the client out of pocket. */
   tax_percent?: number; tax_cents?: number; payer?: Payer | null; software_name?: string | null; bank_name?: string | null;
+  /** Set when a voided invoice has been archived. */
+  archived_at?: string | null;
 };
 export type Payer = "bank_product" | "self";
 export const PAYERS: Record<Payer, string> = { bank_product: "Bank product", self: "Out of pocket" };
@@ -164,7 +166,7 @@ export interface WorkspaceRepo {
   listInvoices(f?: { clientId?: string; year?: number }): Promise<Invoice[]>;
   getInvoice(id: string): Promise<Invoice | null>;
   insertInvoice(input: InvoiceInsert): Promise<Invoice>;
-  updateInvoice(id: string, patch: Partial<Pick<Invoice, "status" | "lines" | "total_cents" | "paid_cents" | "paid_on" | "due_on" | "notes">>): Promise<Invoice>;
+  updateInvoice(id: string, patch: Partial<Pick<Invoice, "status" | "lines" | "total_cents" | "paid_cents" | "paid_on" | "due_on" | "notes" | "tax_year" | "tax_cents" | "payer" | "archived_at">>): Promise<Invoice>;
   nextInvoiceNumber(): Promise<string>;
 
   insertImport(input: Pick<PaymentImport, "file_name" | "file_sha256" | "row_count" | "created_by">): Promise<PaymentImport>;

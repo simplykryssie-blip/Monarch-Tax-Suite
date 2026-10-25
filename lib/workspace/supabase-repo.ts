@@ -125,7 +125,7 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   }
   async getInvoice(id: string) { return unwrap(await this.db.from("invoices").select("*").eq("id", id).maybeSingle()) as Invoice | null; }
   async insertInvoice(input: InvoiceInsert) { return unwrap(await this.db.from("invoices").insert(input).select("*").single()) as Invoice; }
-  async updateInvoice(id: string, patch: Partial<Pick<Invoice, "status" | "lines" | "total_cents" | "paid_cents" | "paid_on" | "due_on" | "notes">>) { return unwrap(await this.db.from("invoices").update(patch).eq("id", id).select("*").single()) as Invoice; }
+  async updateInvoice(id: string, patch: Partial<Pick<Invoice, "status" | "lines" | "total_cents" | "paid_cents" | "paid_on" | "due_on" | "notes" | "tax_year" | "tax_cents" | "payer" | "archived_at">>) { return unwrap(await this.db.from("invoices").update(patch).eq("id", id).select("*").single()) as Invoice; }
   async nextInvoiceNumber() {
     const rows = unwrap(await this.db.from("invoices").select("number").order("number", { ascending: false }).limit(1)) as { number: string }[];
     const n = rows[0] ? Number(rows[0].number.replace(/\D/g, "")) + 1 : 1;

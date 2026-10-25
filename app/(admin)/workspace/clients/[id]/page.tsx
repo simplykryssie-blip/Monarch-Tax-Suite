@@ -17,6 +17,7 @@ import { describeEvent } from "@/lib/workspace/activity.ts";
 import { balance, dollars, invoiceView, splitName } from "@/lib/workspace/rules.ts";
 import { ENTITY_TYPES, PAYERS, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
 import { PaymentPlan } from "@/components/contacts/payment-plan";
+import { EditInvoice } from "@/components/contacts/edit-invoice";
 import { RecordPayment } from "@/components/contacts/record-payment";
 import { paymentsFor } from "@/lib/workspace/receipts";
 import { InvoiceLink, loadSheetContext } from "@/components/contacts/invoice-sheet";
@@ -28,7 +29,7 @@ import { pipelinesRepo } from "@/lib/pipelines/server";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 import { TagInput } from "@/app/(admin)/leads/tag-input";
 import { invitePortalAction } from "@/app/portal-staff-actions";
-import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, deleteClientDocAction, invoiceStatusAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, openClientDocAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
+import { archiveInvoiceAction, addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, deleteClientDocAction, invoiceStatusAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, openClientDocAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
 import { emailConfig, emailKeyProblems } from "@/lib/automation/email.ts";
@@ -390,7 +391,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             <div className="monarch-table-wrap"><table>
               <thead><tr><th>INVOICE</th><th>YEAR</th><th>TOTAL</th><th>PAID</th><th>STATUS</th><th>PAYMENT TYPE</th><th></th></tr></thead>
               <tbody>
-                {invoices.length === 0 ? <EmptyRow colSpan={7}>No invoices yet.</EmptyRow> : invoices.map((i) => {
+                {invoices.filter((i) => !i.archived_at).length === 0 ? <EmptyRow colSpan={7}>No invoices yet.</EmptyRow> : invoices.filter((i) => !i.archived_at).map((i) => {
                   const view = invoiceView(i, today);
                   return (
                     <tr key={i.id}>
@@ -407,6 +408,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                           {i.status === "draft" && <button name="do" value="send" className="monarch-link">Send to client</button>}
                           {i.status !== "void" && i.paid_cents === 0 && <button name="do" value="void" className="monarch-link is-danger">Void</button>}
                         </form>
+                        <EditInvoice invoice={i} back={back} />
+                        {i.status === "void" && <form action={archiveInvoiceAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="archive" value="yes" /><button className="monarch-link">Archive</button></form>}
                         {i.status !== "paid" && i.status !== "void" && <RecordPayment invoice={i} back={back} today={today} />}
                         <PaymentPlan invoice={i} plan={invoicePlans.filter((x) => x.invoice_id === i.id)} back={back} />
                       </td>
