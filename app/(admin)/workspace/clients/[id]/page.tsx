@@ -4,7 +4,6 @@ import { PortalPanel } from "@/components/portal/panel";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
-import { ClientDocUpload } from "@/components/workspace/client-doc-upload";
 import { DetailsCard, type Details } from "@/components/contacts/details-card";
 import { MergeChoice } from "@/components/contacts/merge-choice";
 import { MessageComposer } from "@/components/contacts/message-composer";
@@ -13,8 +12,7 @@ import { Modal } from "@/components/ui/modal";
 import { duplicatesOfClient } from "@/lib/contacts/duplicates.ts";
 import { loadContacts } from "@/lib/contacts/server";
 import { documentDeps } from "@/lib/documents/server";
-import { portalMemberRepo, portalStaffRepo } from "@/lib/portal/server";
-import type { StaffDoc } from "@/lib/portal/staff-docs.ts";
+import { portalMemberRepo } from "@/lib/portal/server";
 import { describeEvent } from "@/lib/workspace/activity.ts";
 import { balance, dollars, invoiceView, splitName } from "@/lib/workspace/rules.ts";
 import { ENTITY_TYPES, PAYERS, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
@@ -28,8 +26,9 @@ import { workflowTasksFor } from "@/lib/workspace/workflow-tasks";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 import { TagInput } from "@/app/(admin)/leads/tag-input";
-import { invitePortalAction, shareDocAction } from "@/app/portal-staff-actions";
-import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, deleteClientDocAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, openClientDocAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
+import { invitePortalAction } from "@/app/portal-staff-actions";
+import { ClientDrive } from "../../../documents/client-drive";
+import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
 import { emailConfig, emailKeyProblems } from "@/lib/automation/email.ts";
@@ -43,7 +42,7 @@ const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other", po
 const FIVE = 5;
 
 /** One client: the Overview with everything about them at a glance, their documents, messages and billing. */
-export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; notice?: string; error?: string }> }) {
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; folder?: string; notice?: string; error?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
   if (!UUID.test(id)) notFound();
@@ -76,7 +75,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     const signatures = await Promise.all(deliveries.map((d) => (d.kind === "signature" ? docsDeps.repo.getSignatureByDelivery(d.id).catch(() => null) : null)));
     return deliveries.map((d, i) => ({ d, name: names.get(d.document_id) ?? d.file_name, sig: signatures[i] }));
   })() : [];
-  const shared = tab === "documents" ? new Map((await portalStaffRepo(client.tenant_id).listDocs(id).catch(() => [])).map((x) => [x.id, x])) : new Map<string, StaffDoc>();
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
   const ssnOnFile = await hasStoredSsn(ssnDeps(), client.id).catch(() => false);
@@ -317,7 +315,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       {tab === "documents" && (
         <>
           <PortalPanel area="admin" mode="documents" part="actions" tab="documents" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`}
-            extraActions={<Modal label="Add a document" title="Add a document" className="monarch-primary"><ClientDocUpload clientId={client.id} returns={newestFirst.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></Modal>} />
+            />
           {sent.length > 0 && (
             <section className="monarch-panel">
               <div className="monarch-panel-head"><div><h2>Sent to {client.full_name.split(" ")[0]}</h2></div></div>
@@ -336,34 +334,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               </table></div>
             </section>
           )}
-          <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Files</h2></div></div>
-            <div className="monarch-table-wrap"><table>
-              <thead><tr><th>TITLE</th><th>RETURN</th><th>FROM</th><th>PORTAL</th><th>ADDED</th><th></th></tr></thead>
-              <tbody>
-                {docs.length === 0 ? <EmptyRow colSpan={6}>No files yet.</EmptyRow> : docs.map((d) => {
-                  const s = shared.get(d.id);
-                  return (
-                    <tr key={d.id}>
-                      <td><b>{d.title}</b><small className="monarch-subcell">{d.file_type.toUpperCase()}</small></td>
-                      <td>{d.return_id ? (() => { const r = returns.find((x) => x.id === d.return_id); return r ? returnLabel(r) : "—"; })() : "—"}</td>
-                      <td>{s?.source === "client" ? "The client" : "Your office"}</td>
-                      <td>
-                        {s?.source === "client" ? "Always visible"
-                          : s ? <form action={shareDocAction}><input type="hidden" name="area" value="admin" /><input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="doc_id" value={d.id} /><input type="hidden" name="shared" value={s.shared_with_client ? "0" : "1"} /><button className="monarch-link">{s.shared_with_client ? "Shared · Hide" : "Not shared · Share"}</button></form>
-                          : "—"}
-                      </td>
-                      <td>{when(d.created_at)}</td>
-                      <td style={{ display: "flex", gap: 8 }}>
-                        <form action={openClientDocAction}><input type="hidden" name="id" value={d.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link">Download</button></form>
-                        <form action={deleteClientDocAction}><input type="hidden" name="id" value={d.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link is-danger">Delete</button></form>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table></div>
-          </section>
+          <ClientDrive clientId={client.id} folderId={sp.folder} base={`/workspace/clients/${client.id}?tab=documents`} />
           <PortalPanel area="admin" mode="documents" part="lists" tab="documents" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`} />
         </>
       )}

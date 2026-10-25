@@ -37,7 +37,7 @@ export default async function DocumentPage({ params, searchParams }: { params: P
 
   return (
     <>
-      <PageTitle title={doc.name} back={{ href: "/documents", label: "Documents" }}>
+      <PageTitle title={doc.name} back={{ href: doc.folder_id ? `/documents?internal=1&folder=${doc.folder_id}` : "/documents?internal=1", label: "Internal docs" }}>
         {doc.file_type.toUpperCase()}{doc.status === "archived" ? " · Archived" : ""}{doc.description ? ` · ${doc.description}` : ""}
       </PageTitle>
       <Flash notice={notice} error={error} />

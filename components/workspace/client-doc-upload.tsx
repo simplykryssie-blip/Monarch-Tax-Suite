@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { finishClientDocAction, startClientDocAction } from "@/app/(admin)/workspace/actions";
 
 /** Uploads a file straight to private storage with a one-time link, then asks the server to check it. */
-export function ClientDocUpload({ clientId, returns }: { clientId: string; returns: { id: string; label: string }[] }) {
+export function ClientDocUpload({ clientId, returns, folderId }: { clientId: string; returns: { id: string; label: string }[]; /** Put the file in this client folder. */ folderId?: string }) {
   const file = useRef<HTMLInputElement>(null);
   const title = useRef<HTMLInputElement>(null);
   const ret = useRef<HTMLSelectElement>(null);
@@ -19,7 +19,7 @@ export function ClientDocUpload({ clientId, returns }: { clientId: string; retur
     setBusy(true);
     setMsg(null);
     try {
-      const t = await startClientDocAction({ clientId, title: title.current?.value ?? "", fileName: f.name, sizeBytes: f.size, returnId: ret.current?.value || undefined });
+      const t = await startClientDocAction({ clientId, title: title.current?.value ?? "", fileName: f.name, sizeBytes: f.size, returnId: ret.current?.value || undefined, folderId });
       if (!t.ok) return setMsg({ ok: false, text: t.error });
       const res = await fetch(t.uploadUrl, { method: "PUT", headers: { "content-type": t.contentType, "x-upsert": "false" }, body: f });
       if (!res.ok) return setMsg({ ok: false, text: `The upload failed (storage answered ${res.status}). Try again.` });

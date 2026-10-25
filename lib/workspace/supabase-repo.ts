@@ -100,7 +100,7 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   async listDocs(clientId: string) { return unwrap(await this.db.from("client_docs").select("*").eq("client_id", clientId).eq("status", "stored").order("created_at", { ascending: false })) as ClientDoc[]; }
   async getDoc(id: string) { return unwrap(await this.db.from("client_docs").select("*").eq("id", id).maybeSingle()) as ClientDoc | null; }
   async insertDoc(input: Omit<ClientDoc, "id" | "tenant_id" | "created_at">) { return unwrap(await this.db.from("client_docs").insert(input).select("*").single()) as ClientDoc; }
-  async updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status">>) { return unwrap(await this.db.from("client_docs").update(patch).eq("id", id).select("*").single()) as ClientDoc; }
+  async updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status" | "folder_id">>) { return unwrap(await this.db.from("client_docs").update(patch).eq("id", id).select("*").single()) as ClientDoc; }
   async deleteDoc(id: string) { unwrap(await this.db.from("client_docs").delete().eq("id", id)); }
   async listStalePendingDocs(before: string) { return unwrap(await this.db.from("client_docs").select("*").eq("status", "pending").lt("created_at", before).limit(200)) as ClientDoc[]; }
 

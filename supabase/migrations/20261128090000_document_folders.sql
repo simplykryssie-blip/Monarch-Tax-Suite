@@ -2,8 +2,10 @@
 -- Additive only: one new column on documents, one new table, and a wider list of allowed file types. Nothing is dropped
 -- and no existing value is changed; every existing document stays where it is, outside any folder. Safe to run again.
 --
--- documents.folder_id   the folder a document is kept in, or none.
--- document_folders      a folder, optionally inside another folder.
+-- documents.folder_id   the folder an internal document is kept in, or none.
+-- document_folders      a folder, optionally inside another folder. With a client_id it is one of that client's folders
+--                       (their files are kept in it); without one it is an internal-documents folder.
+-- client_docs.folder_id the client folder a client's file is kept in, or none (the top of the client's own folder).
 -- documents.file_type   now also allows xlsx, png and jpg (it already allowed pdf and docx).
 
 set local lock_timeout = '10s';
@@ -13,14 +15,16 @@ create table if not exists public.document_folders (
   tenant_id uuid not null references public.tenants(id),
   name text not null check (length(name) between 1 and 80),
   parent_id uuid,
+  client_id uuid,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   constraint document_folders_not_own_parent check (parent_id is null or parent_id <> id)
 );
 create unique index if not exists document_folders_tenant_id_id_key on public.document_folders (tenant_id, id);
-create unique index if not exists document_folders_name_key on public.document_folders (tenant_id, coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(name));
+create unique index if not exists document_folders_name_key on public.document_folders (tenant_id, coalesce(client_id, '00000000-0000-0000-0000-000000000000'::uuid), coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(name));
 
 alter table public.documents add column if not exists folder_id uuid;
+alter table public.client_docs add column if not exists folder_id uuid;
 
 alter table public.documents drop constraint if exists documents_file_type_check;
 alter table public.documents add constraint documents_file_type_check check (file_type in ('pdf', 'docx', 'xlsx', 'png', 'jpg'));
@@ -51,6 +55,12 @@ do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'document_folders_parent_id_same_tenant') then
     alter table public.document_folders add constraint document_folders_parent_id_same_tenant foreign key (tenant_id, parent_id) references public.document_folders (tenant_id, id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'document_folders_client_id_same_tenant') then
+    alter table public.document_folders add constraint document_folders_client_id_same_tenant foreign key (tenant_id, client_id) references public.clients (tenant_id, id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'client_docs_folder_id_same_tenant') then
+    alter table public.client_docs add constraint client_docs_folder_id_same_tenant foreign key (tenant_id, folder_id) references public.document_folders (tenant_id, id);
   end if;
   if not exists (select 1 from pg_constraint where conname = 'documents_folder_id_same_tenant') then
     alter table public.documents add constraint documents_folder_id_same_tenant foreign key (tenant_id, folder_id) references public.document_folders (tenant_id, id);

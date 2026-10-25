@@ -10,17 +10,18 @@ import { DragCard, DragRow, DropLink } from "@/components/ui/folder-dnd";
 import { folderPaths } from "@/lib/documents/folders.ts";
 import { inView, viewCounts, viewOf } from "@/lib/archive.ts";
 import type { DocumentFolder } from "@/lib/documents/types.ts";
-import { ClientsFolder } from "./clients-view";
+import { ClientDrive } from "./client-drive";
+import { ClientsList } from "./clients-list";
 import { createFolderAction, deleteFolderAction, moveByDragAction, moveDocumentAction, renameFolderAction } from "./actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The document library: folders, then the documents in the folder you're looking at. Everything else is on a document's own page. */
-export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ view?: string; folder?: string; clients?: string; client?: string; q?: string; notice?: string; error?: string }> }) {
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ view?: string; folder?: string; internal?: string; clients?: string; client?: string; q?: string; notice?: string; error?: string }> }) {
   await requireAdmin();
   const sp = await searchParams;
   const view = viewOf(sp.view);
-  const inClients = sp.clients === "1" || UUID.test(sp.client ?? "");
+  const where = UUID.test(sp.client ?? "") ? "client" : sp.clients === "1" ? "clients" : sp.internal === "1" || sp.folder || sp.view || sp.q ? "internal" : "root";
   const q = (sp.q ?? "").trim().toLowerCase().slice(0, 80);
   const result = await load(async () => {
     const deps = documentDeps();
@@ -41,22 +42,29 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const counts = viewCounts(all);
   return (
     <>
-      <PageTitle title="Documents">Your forms and letters. Open one to send it to a client.</PageTitle>
+      <PageTitle title="Documents">Client files and your office&apos;s own documents, in folders.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? (
         <SetupRequired message={result.message} />
-      ) : inClients ? (
-        <ClientsFolder clientId={sp.client} q={q} />
+      ) : where === "client" ? (
+        <ClientDrive clientId={sp.client!} folderId={sp.folder} base={`/documents?client=${sp.client}`} prefix={<><Link href="/documents">All documents</Link> / <Link href="/documents?clients=1">Clients</Link> / </>} />
+      ) : where === "clients" ? (
+        <ClientsList q={q} />
+      ) : where === "root" ? (
+        <div className="pl-grid">
+          <section className="monarch-panel pl-card pl-folder"><Link className="pl-name" href="/documents?clients=1">Clients</Link><small className="monarch-muted">A folder for each client, named with their name and the last four of their SSN. What clients upload lands here too.</small></section>
+          <section className="monarch-panel pl-card pl-folder"><Link className="pl-name" href="/documents?internal=1">Internal docs</Link><small className="monarch-muted">Your office&apos;s own files and folders.</small></section>
+        </div>
       ) : (
         <>
           <div className="monarch-page-actions">
             <nav className="pl-crumbs" aria-label="Folder">
-              <DropLink scope="document" move={moveByDragAction} to={null} href="/documents" current={!current && view === "current"}>All documents</DropLink>
-              {crumbs.map((f) => <span key={f.id}> / <DropLink scope="document" move={moveByDragAction} to={f.id} href={`/documents?folder=${f.id}`} current={f.id === current?.id}>{f.name}</DropLink></span>)}
-              {counts.archived > 0 && <span> · <Link href={view === "archived" ? "/documents" : "/documents?view=archived"} aria-current={view === "archived" ? "page" : undefined}>{view === "archived" ? "Back to documents" : `Archived (${counts.archived})`}</Link></span>}
+              <Link href="/documents">All documents</Link> / <DropLink scope="document" move={moveByDragAction} to={null} href="/documents?internal=1" current={!current && view === "current"}>Internal docs</DropLink>
+              {crumbs.map((f) => <span key={f.id}> / <DropLink scope="document" move={moveByDragAction} to={f.id} href={`/documents?internal=1&folder=${f.id}`} current={f.id === current?.id}>{f.name}</DropLink></span>)}
+              {counts.archived > 0 && <span> · <Link href={view === "archived" ? "/documents?internal=1" : "/documents?internal=1&view=archived"} aria-current={view === "archived" ? "page" : undefined}>{view === "archived" ? "Back to documents" : `Archived (${counts.archived})`}</Link></span>}
             </nav>
             <span className="cl-card-actions">
-              <form method="get" action="/documents" role="search"><input name="q" defaultValue={sp.q ?? ""} placeholder="Search documents" aria-label="Search documents" maxLength={80} /></form>
+              <form method="get" action="/documents" role="search"><input type="hidden" name="internal" value="1" /><input name="q" defaultValue={sp.q ?? ""} placeholder="Search documents" aria-label="Search documents" maxLength={80} /></form>
               <Modal label="New folder" title="New folder" className="monarch-secondary">
                 <form action={createFolderAction} className="monarch-form">{here}<label>Name *<input name="name" required maxLength={80} placeholder="Engagement letters" /></label><div className="is-wide"><SubmitOnce className="monarch-primary" busy="Creating…">Create folder</SubmitOnce></div></form>
               </Modal>
@@ -67,20 +75,11 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
             </span>
           </div>
 
-          {!current && !searching && view === "current" && (
-            <div className="pl-grid">
-              <section className="monarch-panel pl-card pl-folder">
-                <Link className="pl-name" href="/documents?clients=1">Clients</Link>
-                <small className="monarch-muted">A folder for each client</small>
-              </section>
-            </div>
-          )}
-
           {subfolders.length > 0 && (
             <div className="pl-grid">
               {subfolders.map((f) => (
                 <DragCard key={f.id} scope="document" move={moveByDragAction} kind="folder" id={f.id} dropTo={f.id} className="monarch-panel pl-card pl-folder">
-                  <Link className="pl-name" href={`/documents?folder=${f.id}`}>{f.name}</Link>
+                  <Link className="pl-name" href={`/documents?internal=1&folder=${f.id}`}>{f.name}</Link>
                   <small className="monarch-muted">{all.filter((d) => !d.archived_at && d.folder_id === f.id).length} documents · {folders.filter((x) => x.parent_id === f.id).length} folders</small>
                   <span className="cl-card-actions">
                     <Modal label="Rename" title="Rename folder" className="monarch-link"><form action={renameFolderAction} className="monarch-form">{here}<input type="hidden" name="id" value={f.id} /><label>Name *<input name="name" required maxLength={80} defaultValue={f.name} /></label><div className="is-wide"><button className="monarch-primary">Save</button></div></form></Modal>
@@ -105,7 +104,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
                       <td>{result.data.sent.get(d.id) ?? 0}</td>
                       <td>{view === "archived" ? when(d.archived_at ?? null) : when(d.updated_at)}</td>
                       <td>
-                        {view === "archived" ? <ArchiveRowButton entity="document" id={d.id} archived back="/documents?view=archived" /> : (
+                        {view === "archived" ? <ArchiveRowButton entity="document" id={d.id} archived back="/documents?internal=1&view=archived" /> : (
                           <span className="cl-card-actions">
                             <Link className="monarch-link" href={`/documents/${d.id}`}>Send</Link>
                             {paths.length > 0 && (

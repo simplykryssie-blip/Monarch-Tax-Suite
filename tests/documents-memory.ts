@@ -35,8 +35,8 @@ export class MemoryDocumentsRepo implements DocumentsRepo {
   }
 
   folders: DocumentFolder[] = [];
-  async listFolders() { return this.folders.map((f) => ({ ...f })); }
-  async insertFolder(input: { name: string; parent_id: string | null; created_by: string | null }) { const f: DocumentFolder = { ...input, id: randomUUID(), tenant_id: this.tenantId, created_at: this.now() }; this.folders.push(f); return { ...f }; }
+  async listFolders(scope: { clientId: string | null } = { clientId: null }) { return this.folders.filter((f) => f.client_id === scope.clientId).map((f) => ({ ...f })); }
+  async insertFolder(input: { name: string; parent_id: string | null; client_id: string | null; created_by: string | null }) { const f: DocumentFolder = { ...input, id: randomUUID(), tenant_id: this.tenantId, created_at: this.now() }; this.folders.push(f); return { ...f }; }
   async updateFolder(id: string, patch: Partial<Pick<DocumentFolder, "name" | "parent_id">>) { const f = this.folders.find((x) => x.id === id)!; Object.assign(f, patch); return { ...f }; }
   async removeFolder(id: string) { this.folders = this.folders.filter((f) => f.id !== id); }
   async listDeliveriesForClient(clientId: string, limit: number) { return this.deliveries.filter((d) => d.client_id === clientId).slice(0, limit).map((d) => ({ ...d })); }

@@ -58,7 +58,7 @@ export type ClientWork = {
 };
 export type WorkInput = Pick<ClientWork, "client_id" | "pipeline_id" | "stage_id" | "title" | "due_on" | "notes">;
 
-export type ClientDoc = { id: string; tenant_id: string; client_id: string; return_id: string | null; title: string; file_path: string; file_type: string; size_bytes: number | null; status: "pending" | "stored"; uploaded_by: string | null; created_at: string };
+export type ClientDoc = { id: string; tenant_id: string; client_id: string; return_id: string | null; title: string; file_path: string; file_type: string; size_bytes: number | null; status: "pending" | "stored"; uploaded_by: string | null; /** The client folder it is kept in; none = the top of the client's own folder. */ folder_id?: string | null; created_at: string };
 export type ClientMessage = {
   id: string; tenant_id: string; client_id: string; direction: "out" | "in"; channel: "email" | "sms" | "call" | "other" | "portal"; subject: string | null; body: string; occurred_at: string; created_by: string | null; created_at: string;
   /** "logged": written down by staff; "sent" / "failed": sent from the profile. */
@@ -151,7 +151,7 @@ export interface WorkspaceRepo {
   listDocs(clientId: string): Promise<ClientDoc[]>;
   getDoc(id: string): Promise<ClientDoc | null>;
   insertDoc(input: Omit<ClientDoc, "id" | "tenant_id" | "created_at">): Promise<ClientDoc>;
-  updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status">>): Promise<ClientDoc>;
+  updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status" | "folder_id">>): Promise<ClientDoc>;
   deleteDoc(id: string): Promise<void>;
   /** Uploads started before `before` that were never finished. */
   listStalePendingDocs(before: string): Promise<ClientDoc[]>;

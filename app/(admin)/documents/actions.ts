@@ -8,7 +8,7 @@ import { automationDeps } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { documentDeps } from "@/lib/documents/server";
 import { finishVersionUpload, revokeDelivery, setConsentText, startVersionUpload } from "@/lib/documents/service.ts";
-import { createFolder, deleteFolder, moveDocument, moveFolder, renameFolder } from "@/lib/documents/folders.ts";
+import { createFolder, deleteFolder, internalScope, moveFile, moveFolder, renameFolder } from "@/lib/documents/folders.ts";
 import { sendDocumentToClient } from "@/lib/portal/send-document.ts";
 import { ssnDeps } from "@/lib/ssn/server";
 import { workspaceRepo } from "@/lib/workspace/server";
@@ -45,7 +45,7 @@ export async function startDocumentUploadAction(input: { documentId: string | nu
   if (input.documentId && !UUID.test(input.documentId)) return { ok: false, error: "Invalid document." };
   try {
     const t = await startVersionUpload(documentDeps(), { documentId: input.documentId, name: String(input.name ?? "").slice(0, 120), fileName: String(input.fileName).slice(0, 300), sizeBytes: Number(input.sizeBytes), adminId: admin.userId });
-    if (!input.documentId && input.folderId && UUID.test(input.folderId)) await moveDocument(documentDeps().repo, t.document.id, input.folderId).catch(() => null);
+    if (!input.documentId && input.folderId && UUID.test(input.folderId)) await moveFile(internal(), t.document.id, input.folderId).catch(() => null);
     return { ok: true, versionId: t.version.id, documentId: t.document.id, uploadUrl: t.uploadUrl, contentType: t.contentType };
   } catch (e) {
     if (e instanceof ValidationError) return { ok: false, error: e.message };
@@ -99,25 +99,26 @@ export async function revokeDeliveryAction(form: FormData) {
 }
 
 /** Where to come back to: the library, inside the folder the person was looking at. */
-const here = (form: FormData) => (UUID.test(str(form, "folder")) ? `/documents?folder=${str(form, "folder")}` : "/documents");
+const here = (form: FormData) => (UUID.test(str(form, "folder")) ? `/documents?internal=1&folder=${str(form, "folder")}` : "/documents?internal=1");
+const internal = () => internalScope(documentDeps().repo);
 
 export async function createFolderAction(form: FormData) {
   await act(here(form), async (adminId) => {
-    await createFolder(documentDeps().repo, { name: str(form, "name"), parent_id: str(form, "folder") }, adminId);
+    await createFolder(internal(), { name: str(form, "name"), parent_id: str(form, "folder") }, adminId);
     return { notice: "Folder created." };
   });
 }
 
 export async function renameFolderAction(form: FormData) {
   await act(here(form), async () => {
-    await renameFolder(documentDeps().repo, str(form, "id"), str(form, "name"));
+    await renameFolder(internal(), str(form, "id"), str(form, "name"));
     return { notice: "Folder renamed." };
   });
 }
 
 export async function deleteFolderAction(form: FormData) {
   await act(here(form), async () => {
-    const f = await deleteFolder(documentDeps().repo, str(form, "id"));
+    const f = await deleteFolder(internal(), str(form, "id"));
     return { notice: `Folder "${f.name}" deleted. What was inside moved up.` };
   });
 }
@@ -125,7 +126,7 @@ export async function deleteFolderAction(form: FormData) {
 export async function moveDocumentAction(form: FormData) {
   const back = str(form, "back");
   await act(/^\/documents\/[0-9a-f-]{36}\?tab=settings$/i.test(back) ? back : here(form), async () => {
-    await moveDocument(documentDeps().repo, str(form, "id"), str(form, "to"));
+    await moveFile(internal(), str(form, "id"), str(form, "to"));
     return { notice: "Moved." };
   });
 }
@@ -135,8 +136,8 @@ export async function moveByDragAction(kind: "item" | "folder", itemId: string, 
   try {
     await requireAdmin();
     if (!UUID.test(itemId) || (to !== null && !UUID.test(to))) throw new ValidationError("That item could not be found.");
-    if (kind === "folder") await moveFolder(documentDeps().repo, itemId, to);
-    else await moveDocument(documentDeps().repo, itemId, to);
+    if (kind === "folder") await moveFolder(internal(), itemId, to);
+    else await moveFile(internal(), itemId, to);
     revalidatePath("/documents", "layout");
     return { ok: true };
   } catch (e) {

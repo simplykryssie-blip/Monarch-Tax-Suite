@@ -13,6 +13,9 @@ import { emitInvoicePaid, emitReturnStage, emitTagChanges, emitWorkStage } from 
 import { yesNo } from "@/lib/workspace/rules.ts";
 import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveBillingSettings, editInvoice, archiveInvoice, setPaymentPlan, removePaymentPlan, addFeeProduct, saveFeeProduct, archiveFeeProduct, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
+import { documentDeps } from "@/lib/documents/server";
+import { moveFile } from "@/lib/documents/folders.ts";
+import { clientScope, driveBack } from "@/lib/workspace/doc-folders.ts";
 import { setWorkflowTaskDone } from "@/lib/workspace/workflow-tasks";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
 import { loadBrand } from "@/lib/branding/server";
@@ -428,10 +431,11 @@ export async function archiveFeeProductAction(form: FormData) {
 
 export type Ticket = { ok: true; id: string; uploadUrl: string; contentType: string } | { ok: false; error: string };
 
-export async function startClientDocAction(input: { clientId: string; title: string; fileName: string; sizeBytes: number; returnId?: string }): Promise<Ticket> {
+export async function startClientDocAction(input: { clientId: string; title: string; fileName: string; sizeBytes: number; returnId?: string; folderId?: string }): Promise<Ticket> {
   try {
     const admin = await requireAdmin();
     const t = await startClientDoc(docDeps(), input, admin.userId);
+    if (input.folderId) await moveFile(clientScope(documentDeps().repo, workspaceRepo(), input.clientId), t.doc.id, input.folderId).catch(() => undefined);
     return { ok: true, id: t.doc.id, uploadUrl: t.uploadUrl, contentType: t.contentType };
   } catch (e) {
     unstable_rethrow(e);
@@ -458,14 +462,14 @@ export async function openClientDocAction(form: FormData) {
     url = await clientDocLink(docDeps(), str(form, "id"));
   } catch (e) {
     unstable_rethrow(e);
-    redirect(to(clientPage(str(form, "client_id"), "documents"), "error", failure(e)));
+    redirect(to(driveBack(str(form, "back"), clientPage(str(form, "client_id"), "documents")), "error", failure(e)));
   }
   redirect(url);
 }
 
 export async function deleteClientDocAction(form: FormData) {
   const client = str(form, "client_id");
-  await act(clientPage(client, "documents"), async () => {
+  await act(driveBack(str(form, "back"), clientPage(client, "documents")), async () => {
     await deleteClientDoc(docDeps(), str(form, "id"));
     return { notice: deletedNotice("Document") };
   });

@@ -33,8 +33,11 @@ export class SupabaseDocumentsRepo implements DocumentsRepo {
     unwrap(await this.db.from("documents").delete().eq("id", id));
   }
 
-  async listFolders() { return unwrap(await this.db.from("document_folders").select("*").order("name")) as DocumentFolder[]; }
-  async insertFolder(input: { name: string; parent_id: string | null; created_by: string | null }) { return unwrap(await this.db.from("document_folders").insert(input).select("*").single()) as DocumentFolder; }
+  async listFolders(scope: { clientId: string | null } = { clientId: null }) {
+    const q = this.db.from("document_folders").select("*");
+    return unwrap(await (scope.clientId ? q.eq("client_id", scope.clientId) : q.is("client_id", null)).order("name")) as DocumentFolder[];
+  }
+  async insertFolder(input: { name: string; parent_id: string | null; client_id: string | null; created_by: string | null }) { return unwrap(await this.db.from("document_folders").insert(input).select("*").single()) as DocumentFolder; }
   async updateFolder(id: string, patch: Partial<Pick<DocumentFolder, "name" | "parent_id">>) { return unwrap(await this.db.from("document_folders").update(patch).eq("id", id).select("*").single()) as DocumentFolder; }
   async removeFolder(id: string) { unwrap(await this.db.from("document_folders").delete().eq("id", id)); }
   async listDeliveriesForClient(clientId: string, limit: number) {

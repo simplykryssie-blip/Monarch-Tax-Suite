@@ -37,7 +37,7 @@ export type LibraryDocument = {
   updated_at: string;
 } & ArchiveFields;
 
-export type DocumentFolder = { id: string; tenant_id: string; name: string; parent_id: string | null; created_by: string | null; created_at: string };
+export type DocumentFolder = { id: string; tenant_id: string; name: string; parent_id: string | null; /** The client it belongs to; none = an internal-documents folder. */ client_id: string | null; created_by: string | null; created_at: string };
 
 export type DocumentVersion = {
   id: string;
@@ -129,8 +129,9 @@ export interface DocumentsRepo {
   updateDocument(id: string, patch: Partial<Pick<LibraryDocument, "name" | "description" | "status" | "current_version_id" | "signature_consent" | "folder_id">>): Promise<LibraryDocument>;
   deleteDocument(id: string): Promise<void>;
 
-  listFolders(): Promise<DocumentFolder[]>;
-  insertFolder(input: { name: string; parent_id: string | null; created_by: string | null }): Promise<DocumentFolder>;
+  /** The internal folders (no client), or one client's. */
+  listFolders(scope?: { clientId: string | null }): Promise<DocumentFolder[]>;
+  insertFolder(input: { name: string; parent_id: string | null; client_id: string | null; created_by: string | null }): Promise<DocumentFolder>;
   updateFolder(id: string, patch: Partial<Pick<DocumentFolder, "name" | "parent_id">>): Promise<DocumentFolder>;
   removeFolder(id: string): Promise<void>;
   /** Deliveries made to one client, newest first. */
