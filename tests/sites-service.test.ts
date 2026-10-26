@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
-import { settingsOf, cleanPageSeo, pageTitleFor, pageIsIndexed, DEFAULT_SETTINGS } from "../lib/sites/settings.ts";
+import { googleFontsHref, settingsOf, cleanPageSeo, pageTitleFor, pageIsIndexed, DEFAULT_SETTINGS } from "../lib/sites/settings.ts";
 import { addCustomDomain, addPage, createSite, deleteSite, saveSiteSettings, hasUnpublishedChanges, movePage, publishSite, refreshDomain, removeDomain, removePage, savePage, setSubdomain, type DomainsPort, type Site, type SiteDomain, type SitePage, type SitesDeps, type SitesRepo } from "../lib/sites/service.ts";
 import { vercelDomains, vercelProblems } from "../lib/sites/vercel.ts";
 
@@ -292,7 +292,7 @@ describe("site settings and search details", () => {
     assert.equal(s.brand.primary, null);
     assert.equal(s.brand.accent, "#abcdef");
     assert.equal(s.brand.logoImageId, null);
-    assert.equal(s.fonts.heading, "system");
+    assert.equal(s.fonts.heading, "inter");
     assert.equal(s.header.ctaHref, "");
     assert.deepEqual(s.social, { instagram: "https://instagram.com/a" });
     assert.equal(s.seo.title.length, 70);
@@ -362,5 +362,16 @@ describe("a domain the platform owner already attached at the hosting side", () 
     own.deps.adoptOwn = true;
     const site = await createSite(own.deps, { name: "MKB", userId: null });
     for (const h of ["app.verexahq.com", "admin.verexahq.com", "www.monarchtaxsuite.com"]) await assert.rejects(addCustomDomain(own.deps, site, own.repo.domains, h, null), /belong to the platform|made for you automatically/i, h);
+  });
+});
+
+describe("site fonts", () => {
+  test("only the web fonts a site picked are requested; built-in fonts need no request", () => {
+    assert.equal(googleFontsHref({ heading: "georgia", body: "system" }), null);
+    const one = googleFontsHref({ heading: "inter", body: "inter" })!;
+    assert.equal(one.match(/family=/g)?.length, 1);
+    assert.match(one, /^https:\/\/fonts\.googleapis\.com\/css2\?family=Inter:wght@[0-9;]+&display=swap$/);
+    assert.equal(googleFontsHref({ heading: "playfair", body: "lora" })!.match(/family=/g)?.length, 2);
+    assert.equal(settingsOf({ fonts: { heading: "comic-sans" } }).fonts.heading, "inter");
   });
 });

@@ -3,13 +3,22 @@ import { cleanHref } from "./blocks.ts";
 // A website's look and details, and the search-engine (SEO) details of the website and of each page. Everything is plain data
 // that is checked on the way in: an unknown key is dropped, a bad color, link or picture is refused (left empty), never kept.
 
+/** `google` is the family name on Google Fonts (with weights); the page loads it only when a site picks it. The stack is the fallback while it loads. */
 export const FONT_CHOICES = {
-  system: { label: "Modern (clean sans-serif)", stack: 'system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif' },
-  georgia: { label: "Classic (serif)", stack: 'Georgia,"Times New Roman",serif' },
-  palatino: { label: "Elegant (book serif)", stack: '"Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif' },
-  trebuchet: { label: "Friendly (rounded sans-serif)", stack: '"Trebuchet MS","Lucida Grande",Verdana,sans-serif' },
-  verdana: { label: "Wide and easy to read", stack: "Verdana,Geneva,Tahoma,sans-serif" },
-} as const;
+  system: { label: "System (clean sans-serif)", stack: 'system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif' },
+  inter: { label: "Inter (modern, neutral)", stack: 'Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif', google: "Inter:wght@400;500;600;700;800" },
+  dmsans: { label: "DM Sans (friendly, geometric)", stack: '"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif', google: "DM+Sans:wght@400;500;600;700" },
+  poppins: { label: "Poppins (rounded, bold)", stack: 'Poppins,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif', google: "Poppins:wght@400;500;600;700" },
+  montserrat: { label: "Montserrat (strong, corporate)", stack: 'Montserrat,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif', google: "Montserrat:wght@400;500;600;700;800" },
+  opensans: { label: "Open Sans (easy to read)", stack: '"Open Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif', google: "Open+Sans:wght@400;600;700;800" },
+  raleway: { label: "Raleway (light, stylish)", stack: 'Raleway,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif', google: "Raleway:wght@400;500;600;700;800" },
+  playfair: { label: "Playfair Display (elegant serif)", stack: '"Playfair Display",Georgia,"Times New Roman",serif', google: "Playfair+Display:wght@400;600;700;800" },
+  lora: { label: "Lora (warm serif)", stack: 'Lora,Georgia,"Times New Roman",serif', google: "Lora:wght@400;500;600;700" },
+  georgia: { label: "Georgia (classic serif)", stack: 'Georgia,"Times New Roman",serif' },
+  palatino: { label: "Palatino (book serif)", stack: '"Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif' },
+  trebuchet: { label: "Trebuchet (rounded sans-serif)", stack: '"Trebuchet MS","Lucida Grande",Verdana,sans-serif' },
+  verdana: { label: "Verdana (wide, easy to read)", stack: "Verdana,Geneva,Tahoma,sans-serif" },
+} as const satisfies Record<string, { label: string; stack: string; google?: string }>;
 export type FontChoice = keyof typeof FONT_CHOICES;
 export const FONT_KEYS = Object.keys(FONT_CHOICES) as FontChoice[];
 
@@ -31,7 +40,7 @@ export type SiteSettings = {
 
 export const DEFAULT_SETTINGS: SiteSettings = {
   brand: { primary: null, accent: null, logoImageId: null, faviconImageId: null },
-  fonts: { heading: "system", body: "system" },
+  fonts: { heading: "inter", body: "inter" },
   header: { show: true, align: "left", showPhone: false, ctaLabel: "", ctaHref: "" },
   footer: { show: true, text: "", showContact: true, showHours: true, showSocial: true },
   contact: { phone: "", email: "", address: "" },
@@ -69,6 +78,12 @@ export function cleanSiteSettings(raw: unknown): SiteSettings {
   };
   for (const s of SOCIALS) { const url = https(social[s]); if (url) out.social[s] = url; }
   return out;
+}
+
+/** The Google Fonts stylesheet for the fonts a site picked, or null when it uses only fonts every device already has. */
+export function googleFontsHref(fonts: { heading: FontChoice; body: FontChoice }): string | null {
+  const fams = [...new Set([fonts.heading, fonts.body])].flatMap((k) => { const g = (FONT_CHOICES[k] as { google?: string }).google; return g ? [g] : []; });
+  return fams.length ? `https://fonts.googleapis.com/css2?${fams.map((f) => `family=${f}`).join("&")}&display=swap` : null;
 }
 
 /** The settings stored on a website, with anything missing filled from the defaults. */

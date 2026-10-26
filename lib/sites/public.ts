@@ -6,7 +6,7 @@ import { SupabaseDocumentsRepo } from "../documents/supabase-repo.ts";
 import { tenantClient } from "../supabase/service";
 import { imageIdsOf, type Block } from "./blocks.ts";
 import { cleanRequestHost } from "./host.ts";
-import { FONT_CHOICES, settingsOf, SOCIALS, type SiteSettings } from "./settings.ts";
+import { FONT_CHOICES, googleFontsHref, settingsOf, SOCIALS, type SiteSettings } from "./settings.ts";
 import { siteForHost, type PublicSite } from "./server";
 import type { SiteView } from "@/components/sites/render";
 
@@ -52,7 +52,7 @@ export async function viewFor(tenantId: string, siteName: string, pages: PublicS
     contact: { phone: settings.contact.phone || profile?.phone || null, email: settings.contact.email || profile?.email || null, address: settings.contact.address || profile?.address || null },
     images,
     look: {
-      headingFont: FONT_CHOICES[settings.fonts.heading].stack, bodyFont: FONT_CHOICES[settings.fonts.body].stack,
+      fontsHref: googleFontsHref(settings.fonts), headingFont: FONT_CHOICES[settings.fonts.heading].stack, bodyFont: FONT_CHOICES[settings.fonts.body].stack,
       header: settings.header, footer: settings.footer, hours: settings.hours,
       social: SOCIALS.flatMap((k) => (settings.social[k] ? [{ label: SOCIAL_LABEL[k], href: settings.social[k]! }] : [])),
     },

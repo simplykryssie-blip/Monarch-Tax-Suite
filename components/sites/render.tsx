@@ -19,7 +19,7 @@ export type SiteView = {
   images: Record<string, SiteImage>;
   /** Fonts, header and footer choices, hours and social links from the website's settings. */
   look?: {
-    headingFont: string; bodyFont: string;
+    headingFont: string; bodyFont: string; fontsHref?: string | null;
     header: { show: boolean; align: "left" | "center"; showPhone: boolean; ctaLabel: string; ctaHref: string };
     footer: { show: boolean; text: string; showContact: boolean; showHours: boolean; showSocial: boolean };
     hours: string; social: { label: string; href: string }[];
@@ -175,49 +175,57 @@ export const SITE_CSS = `
 .ws h1,.ws h2,.ws h3{font-family:var(--ws-heading-font,inherit)}
 .ws *,.ws *::before,.ws *::after{box-sizing:border-box}
 .ws a{color:var(--p)}
-.ws-header{border-bottom:1px solid #e7e5de;background:#fff}
-.ws-header-in{max-width:1040px;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px}
+.ws-header{border-bottom:1px solid #ece9e0;background:rgba(255,255,255,.92);backdrop-filter:saturate(1.4) blur(10px);position:sticky;top:0;z-index:20}
+.ws-header-in{max-width:1160px;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 28px;position:relative}
+.ws-header-in .ws-nav-d{margin-left:auto}.ws-header-in .ws-btn{min-height:40px;padding:8px 18px}
 .ws-brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;color:var(--a)!important;text-decoration:none}
 .ws-brand img{max-height:40px;width:auto;max-width:160px;height:auto}
 .ws-nav{display:flex;flex-wrap:wrap;gap:4px 14px;margin:0;padding:0;list-style:none}
-.ws-nav a{display:inline-block;padding:6px 2px;color:#1c1b17;text-decoration:none;font-weight:600;font-size:15px}
-.ws-nav a:hover,.ws-nav a[aria-current="page"]{color:var(--p);text-decoration:underline}
+.ws-nav a{display:inline-block;padding:8px 4px;color:#1c1b17;text-decoration:none;font-weight:600;font-size:15px}
+.ws-nav a:hover,.ws-nav a[aria-current="page"]{color:var(--p)}
+.ws-nav a[aria-current="page"]{box-shadow:inset 0 -2px 0 var(--p)}
+.ws-menu{display:none;margin-left:auto}.ws-menu summary{list-style:none;cursor:pointer;width:44px;height:44px;display:grid;place-items:center;border-radius:10px}.ws-menu summary::-webkit-details-marker{display:none}
+.ws-burger,.ws-burger::before,.ws-burger::after{display:block;width:22px;height:2px;background:#1c1b17;border-radius:2px;content:"";position:relative}.ws-burger::before{position:absolute;top:-7px}.ws-burger::after{position:absolute;top:7px}
+.ws-nav-m{position:absolute;left:0;right:0;top:100%;margin:0;padding:8px 16px 16px;list-style:none;background:#fff;border-bottom:1px solid #ece9e0;box-shadow:0 18px 30px rgba(0,0,0,.08)}.ws-nav-m a{display:block;padding:14px 4px;font-weight:600;text-decoration:none;color:#1c1b17;font-size:17px;border-bottom:1px solid #f1eee6}.ws-nav-m a[aria-current="page"]{color:var(--p)}
+@media (max-width:760px){.ws-nav-d{display:none}.ws-menu{display:block}.ws-header-in .ws-btn{display:none}}
 .ws main{flex:1}
-.ws-wrap{max-width:760px;margin:0 auto;padding:0 16px}
-.ws-section{padding:28px 0}
-.ws-pad-none{padding:0}.ws-pad-small{padding:14px 0}.ws-pad-large{padding:64px 0}
-.ws-w-wide{max-width:1040px}.ws-w-full{max-width:none}
-.ws-row{display:grid;gap:0 24px;min-width:0}
-.ws-gap-small{column-gap:12px}.ws-gap-large{column-gap:48px}
+.ws-wrap{max-width:820px;margin:0 auto;padding:0 20px}
+.ws-section{padding:44px 0}
+.ws-pad-none{padding:0}.ws-pad-small{padding:20px 0}.ws-pad-large{padding:clamp(56px,9vw,104px) 0}
+.ws-w-wide{max-width:1160px}.ws-w-full{max-width:none}
+.ws-row{display:grid;gap:0 32px;min-width:0}
+.ws-gap-small{column-gap:14px}.ws-gap-large{column-gap:64px}
 .ws-va-center{align-items:center}
 .ws-col{min-width:0}
 @media (max-width:900px){.ws-row.ws-cols-3,.ws-row.ws-cols-4{grid-template-columns:1fr 1fr!important}}
 @media (max-width:600px){.ws-row{grid-template-columns:1fr!important}}
 .ws-dev-tablet .ws-row.ws-cols-3,.ws-dev-tablet .ws-row.ws-cols-4{grid-template-columns:1fr 1fr!important}
 .ws-dev-mobile .ws-row{grid-template-columns:1fr!important}
-.ws-tone-soft{background:#f5f3ec}
+.ws-tone-soft{background:#f6f4ee}
 .ws-tone-accent{background:var(--p);color:var(--on-p)}
 .ws-tone-accent a:not(.ws-btn){color:var(--on-p)}
 .ws-tone-dark{background:#14130f;color:#f3f1ea}
 .ws-tone-dark a:not(.ws-btn){color:#f3f1ea}
-.ws-h{line-height:1.2;margin:1.2em 0 .4em;overflow-wrap:anywhere}
-h1.ws-h{font-size:clamp(28px,7vw,44px)}
-h2.ws-h{font-size:clamp(22px,5.5vw,32px)}
-h3.ws-h{font-size:clamp(18px,4.5vw,22px)}
-.ws-text p{margin:.8em 0;overflow-wrap:anywhere}
+.ws-h{line-height:1.15;letter-spacing:-.015em;font-weight:800;margin:1em 0 .4em;overflow-wrap:anywhere}
+h1.ws-h{font-size:clamp(32px,7.5vw,56px)}
+h2.ws-h{font-size:clamp(25px,5.5vw,38px)}
+h3.ws-h{font-size:clamp(19px,4.5vw,24px);font-weight:700}
+.ws-text p{margin:.9em 0;overflow-wrap:anywhere;font-size:1.0625rem}
 .ws-a-center{text-align:center}
 .ws-img{margin:1em 0}
-.ws-img img{display:block;max-width:100%;height:auto;border-radius:6px}
+.ws-img img{display:block;max-width:100%;height:auto;border-radius:14px}
 .ws-img-half{max-width:50%}
 .ws-a-center .ws-img img,.ws-img-half{margin-left:auto;margin-right:auto}
 @media (max-width:520px){.ws-img-half{max-width:100%}}
-.ws-btn{display:inline-block;min-height:44px;padding:11px 22px;border-radius:6px;font-weight:700;text-decoration:none;text-align:center;border:2px solid var(--p)}
+.ws-btn{display:inline-block;min-height:48px;padding:12px 26px;border-radius:10px;font-weight:700;text-decoration:none;text-align:center;border:2px solid var(--p);transition:transform .15s ease,box-shadow .15s ease,filter .15s ease}
+.ws-btn:hover{transform:translateY(-1px);filter:brightness(1.07);box-shadow:0 8px 18px rgba(0,0,0,.14)}
+.ws-btn:focus-visible,.ws a:focus-visible,.ws summary:focus-visible{outline:3px solid var(--p);outline-offset:2px}
 .ws-btn-primary{background:var(--p);color:var(--on-p)!important}
 .ws-btn-secondary{background:transparent;color:var(--p)!important}
 .ws-tone-accent .ws-btn-primary{background:var(--on-p);color:var(--p)!important;border-color:var(--on-p)}
 .ws-tone-accent .ws-btn-secondary{color:var(--on-p)!important;border-color:var(--on-p)}
 .ws-ph{border:2px dashed #b9b4a4;border-radius:6px;padding:18px;text-align:center;color:#4a483f;margin:1em 0}
-.ws-frame{display:block;width:100%;border:0;margin:1em 0;background:#fff;border-radius:6px}
+.ws-frame{display:block;width:100%;border:0;margin:1em 0;background:#fff;border-radius:12px}
 .ws-space-small{height:12px}.ws-space-medium{height:28px}.ws-space-large{height:56px}
 .ws-hr{border:0;border-top:1px solid #d9d4c7;margin:1.5em 0}
 .ws-a-left{text-align:left}.ws-a-right{text-align:right}
@@ -244,11 +252,17 @@ h3.ws-h{font-size:clamp(18px,4.5vw,22px)}
 @media (min-width:601px){.ws-hide-d{display:none!important}}
 .ws-dev-mobile .ws-hide-m{display:none!important}.ws-dev-mobile .ws-gallery-3,.ws-dev-mobile .ws-gallery-4{grid-template-columns:repeat(2,1fr)}
 .ws-dev-tablet .ws-hide-d,.ws-dev-desktop .ws-hide-d{display:none!important}
-.ws-footer{border-top:1px solid #e7e5de;background:#faf9f5;font-size:14px;color:#4a483f}
-.ws-footer-in{max-width:1040px;margin:0 auto;padding:20px 16px;display:grid;gap:4px}
+.ws-footer{border-top:1px solid #ece9e0;background:#faf9f5;font-size:14px;color:#4a483f}
+.ws-footer-in{max-width:1160px;margin:0 auto;padding:36px 20px;display:grid;gap:6px}
 .ws-footer a{color:inherit}
-@media (min-width:700px){.ws-wrap{padding:0 24px}.ws-header-in{padding:14px 24px}}
+@media (min-width:700px){.ws-wrap{padding:0 28px}.ws-header-in{padding:14px 28px}}
+.ws{scroll-behavior:smooth}.ws img{max-width:100%}
+@media (prefers-reduced-motion:reduce){.ws *{transition:none!important;scroll-behavior:auto!important}}
+@media (max-width:600px){.ws-section{padding:32px 0}.ws-pad-large{padding:52px 0}.ws-btn{display:block;width:100%}.ws-a-center .ws-btn,.ws-a-left .ws-btn{width:100%}.ws-row{row-gap:8px}}
 `;
+
+/** Loads the Google fonts a site picked (none when it uses only built-in fonts). */
+const FontLinks = ({ view }: { view: SiteView }) => view.look?.fontsHref ? <><link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" /><link rel="stylesheet" href={view.look.fontsHref} /></> : null;
 
 const fontVars = (view: SiteView): Record<string, string> => (view.look ? { "--ws-heading-font": view.look.headingFont, "--ws-body-font": view.look.bodyFont } : {});
 
@@ -259,6 +273,7 @@ export function SiteFrame({ view, currentPath, children }: { view: SiteView; cur
   return (
     <div className="ws" style={{ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, ...fontVars(view) } as React.CSSProperties}>
       <style dangerouslySetInnerHTML={{ __html: SITE_CSS }} />
+      <FontLinks view={view} />
       {(view.look?.header.show ?? true) && <header className="ws-header">
         <div className="ws-header-in" style={view.look?.header.align === "center" ? { flexDirection: "column", justifyContent: "center" } : undefined}>
           <Link className="ws-brand" href={view.base || "/"}>
@@ -269,7 +284,13 @@ export function SiteFrame({ view, currentPath, children }: { view: SiteView; cur
             <span>{view.name}</span>
           </Link>
           {view.nav.length > 1 && (
-            <nav aria-label="Pages"><ul className="ws-nav">{view.nav.map((n) => <li key={n.href}><Link href={n.href === "/" ? view.base || "/" : `${view.base ?? ""}${n.href}`} {...(n.href === currentPath ? { "aria-current": "page" as const } : {})}>{n.label}</Link></li>)}</ul></nav>
+            <>
+              <nav aria-label="Pages" className="ws-nav-d"><ul className="ws-nav">{view.nav.map((n) => <li key={n.href}><Link href={n.href === "/" ? view.base || "/" : `${view.base ?? ""}${n.href}`} {...(n.href === currentPath ? { "aria-current": "page" as const } : {})}>{n.label}</Link></li>)}</ul></nav>
+              <details className="ws-menu">
+                <summary aria-label="Menu"><span className="ws-burger" aria-hidden="true" /></summary>
+                <ul className="ws-nav-m">{view.nav.map((n) => <li key={n.href}><Link href={n.href === "/" ? view.base || "/" : `${view.base ?? ""}${n.href}`} {...(n.href === currentPath ? { "aria-current": "page" as const } : {})}>{n.label}</Link></li>)}</ul>
+              </details>
+            </>
           )}
           {view.look?.header.showPhone && view.contact.phone && <a href={`tel:${view.contact.phone.replace(/[^0-9+]/g, "")}`}>{view.contact.phone}</a>}
           {view.look?.header.ctaLabel && view.look.header.ctaHref && <a className="ws-btn ws-btn-primary" href={hrefOf(view.look.header.ctaHref, view.base)} {...(external(view.look.header.ctaHref) ? { target: "_blank", rel: "noopener noreferrer" } : {})}>{view.look.header.ctaLabel}</a>}
@@ -298,6 +319,7 @@ export function SitePreview({ view, blocks }: { view: SiteView; blocks: Block[] 
   return (
     <div className="ws" style={{ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, ...fontVars(view), minHeight: 0 } as React.CSSProperties}>
       <style dangerouslySetInnerHTML={{ __html: SITE_CSS }} />
+      <FontLinks view={view} />
       <Blocks blocks={blocks} view={{ ...view, preview: true }} />
     </div>
   );
