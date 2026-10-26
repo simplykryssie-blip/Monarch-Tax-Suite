@@ -120,3 +120,10 @@ test("custom html element: kept as written, limited, never empty, height clamped
   assert.equal(els([newElement("html", "abc131")]).length, 0, "a blank html element is not saved");
   assert.equal(els([{ type: "section", children: [{ type: "html", code: "<p>x</p>" }] }]).length, 1);
 });
+
+test("pages saved before sections had rows can still be read (images, emptiness)", () => {
+  const old = [{ id: "h1aaaa", type: "heading", text: "Hi" }, { id: "s1aaaa", type: "section", tone: "soft", children: [{ id: "i1aaaa", type: "image", imageId: IMG }] }] as never;
+  assert.deepEqual(imageIdsOf(old), [IMG]);
+  assert.equal(isEmptyPage(old), false);
+  assert.equal(isEmptyPage([{ type: "section", children: [] }] as never), true);
+});

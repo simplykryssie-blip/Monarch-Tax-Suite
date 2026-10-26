@@ -262,7 +262,9 @@ export function newSection(ids: () => string, layout: LayoutKey = "1"): SectionB
 
 /** Every element on the page, in reading order. */
 export function elementsOf(blocks: Block[]): LeafBlock[] {
-  return blocks.flatMap((s) => s.rows.flatMap((r) => r.columns.flatMap((c) => c.children)));
+  // A page saved before sections had rows is converted first, so every stored page can be read.
+  const sections = (blocks as unknown[]).every((s) => s && typeof s === "object" && Array.isArray((s as { rows?: unknown }).rows)) ? blocks : sectionsOf(blocks);
+  return sections.flatMap((s) => s.rows.flatMap((r) => r.columns.flatMap((c) => c.children)));
 }
 
 /** Image ids a page uses, so the renderer can look them all up at once. */
