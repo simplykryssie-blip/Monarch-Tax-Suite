@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { BLOCK_LABEL, LAYOUT_KEYS, LAYOUT_LABEL, LAYOUTS, LEAF_TYPES, newElement, newRow, newSection, ROW_GAPS, SECTION_PADS, SECTION_TONES, SECTION_WIDTHS, type Block, type ColumnBlock, type LayoutKey, type LeafBlock, type RowBlock, type SectionBlock } from "@/lib/sites/blocks.ts";
+import { BLOCK_LABEL, GRADIENT_KEYS, LAYOUT_KEYS, LAYOUT_LABEL, LAYOUTS, LEAF_TYPES, newElement, newRow, newSection, ROW_GAPS, SECTION_PADS, SECTION_TONES, SECTION_WIDTHS, type Block, type ColumnBlock, type LayoutKey, type LeafBlock, type RowBlock, type SectionBlock } from "@/lib/sites/blocks.ts";
 import { LeafFields, type PickBooking, type PickForm, type PickImage } from "./page-form";
-import { Blocks, Leaf, SITE_CSS, SiteFrame, siteVars, type SiteView } from "./render";
+import { Blocks, Leaf, SITE_CSS, SiteFrame, sectionClass, sectionStyle, siteVars, type SiteView } from "./render";
+import { StyleFields } from "./style-fields";
+import { lookClasses, lookCss, type Look } from "@/lib/sites/look.ts";
 import { SECTION_TEMPLATES } from "@/lib/sites/templates.ts";
 import type { SiteImageResult } from "@/app/sites-image-actions";
 
@@ -30,6 +32,7 @@ const PAD_LABEL = { none: "None", small: "Small", medium: "Medium", large: "Larg
 const WIDTH_LABEL = { narrow: "Narrow (text)", wide: "Wide", full: "Edge to edge" } as const;
 const HINT: Record<LeafBlock["type"], string> = {
   heading: "A title", text: "Paragraphs", image: "A picture", button: "A link button", booking: "Your booking page", form: "One of your forms", html: "Your own code", spacer: "Empty space", divider: "A thin line",
+  list: "Ticked points", faq: "Questions and answers", testimonial: "A client quote", video: "YouTube or Vimeo", gallery: "A grid of pictures", map: "An address on a map",
 };
 
 function locate(doc: Doc, id: string): Loc | null {
@@ -111,6 +114,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
   const [upload, setUpload] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
   const [h, setH] = useState<Hist>({ doc: initial, past: [], future: [], key: null, at: 0 });
   const [sel, setSel] = useState<Sel>(null);
+  const [itemTab, setItemTab] = useState<"content" | "style">("content");
   const [tab, setTab] = useState<"add" | "item" | "page">("add");
   const [device, setDevice] = useState<Device>("desktop");
   const [drop, setDrop] = useState<Drop>(null);
@@ -152,7 +156,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("beforeunload", onLeave); };
   });
 
-  const choose = (s: Sel) => { setSel(s); setTab((t) => (s ? "item" : t === "item" ? "add" : t)); setMenuCol(null); };
+  const choose = (s: Sel, stay = false) => { setSel(s); setTab((t) => (stay && t === "add" ? t : s ? "item" : t === "item" ? "add" : t)); setMenuCol(null); };
 
   // ---- changes
   const addElement = (type: LeafBlock["type"], colId?: string, index?: number) => {
@@ -163,7 +167,8 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
       col = col ?? pickColumn(d, shown);
       col.children.splice(index ?? col.children.length, 0, el);
     });
-    choose({ kind: "element", id: el.id });
+    // From the Add list you can keep adding; from a column or a drop, the new element opens for editing.
+    choose({ kind: "element", id: el.id }, colId === undefined);
   };
   const moveElementTo = (elId: string, colId: string, index: number) => commit((d) => {
     const from = locate(d, elId);
@@ -245,6 +250,22 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
       row.layout = layout;
     }
   }, `row:${id}`);
+  const lookTarget = (d: Doc, id: string) => {
+    const l = locate(d, id);
+    if (!l) return null;
+    if (l.kind === "section") return d[l.si];
+    if (l.kind === "row") return d[l.si].rows[l.ri!];
+    if (l.kind === "column") return d[l.si].rows[l.ri!].columns[l.ci!];
+    return d[l.si].rows[l.ri!].columns[l.ci!].children[l.ei!];
+  };
+  const patchLook = (id: string, patch: Partial<Look>) => commit((d) => {
+    const t = lookTarget(d, id);
+    if (!t) return;
+    const next: Record<string, unknown> = { ...(t.look ?? {}), ...patch };
+    for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
+    if (Object.keys(next).length) t.look = next as Look; else delete t.look;
+  }, `look:${id}`);
+  const resetLook = (id: string) => commit((d) => { const t = lookTarget(d, id); if (t) delete t.look; });
   const patchElement = (el: LeafBlock) => commit((d) => { const l = locate(d, el.id); if (l?.kind === "element") d[l.si].rows[l.ri!].columns[l.ci!].children[l.ei!] = el; }, `el:${el.id}`);
 
   // ---- dragging
@@ -325,7 +346,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
     <div
       key={c.id}
       data-col={c.id}
-      className={`ws-col ed-col${isSel(c.id) ? " is-sel" : ""}${drop?.colId === c.id ? " is-over" : ""}`}
+      className={`ws-col ed-col${isSel(c.id) ? " is-sel" : ""}${drop?.colId === c.id ? " is-over" : ""} ${lookClasses(c.look)}`} style={lookCss(c.look) as React.CSSProperties}
       onClick={(e) => { e.stopPropagation(); choose({ kind: "column", id: c.id }); }}
       onDragOver={(e) => { if (dragKind(e)) { e.preventDefault(); e.stopPropagation(); setDrop({ colId: c.id, index: c.children.length }); } }}
       onDrop={finishDrop}
@@ -371,6 +392,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
   const field = (labelText: string, node: React.ReactNode) => <label>{labelText}{node}</label>;
   const sectionOf = shown && loc ? doc[loc.si] : null;
   const rowOf = shown?.kind === "row" && loc ? doc[loc.si].rows[loc.ri!] : null;
+  const colOf = shown?.kind === "column" && loc ? doc[loc.si].rows[loc.ri!].columns[loc.ci!] : null;
   const elementOf = shown?.kind === "element" && loc ? doc[loc.si].rows[loc.ri!].columns[loc.ci!].children[loc.ei!] : null;
   const crumbs: { label: string; sel: Sel }[] = [];
   if (loc && sectionOf) {
@@ -492,7 +514,28 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
                 <nav className="ed-crumbs" aria-label="Where you are">
                   {crumbs.map((c, i) => <button key={i} type="button" className={c.sel?.id === shown.id ? "is-on" : undefined} onClick={() => choose(c.sel)}>{c.label}</button>)}
                 </nav>
-                {shown.kind === "section" && sectionOf && (
+                <div className="ed-subtabs" role="tablist">
+                  <button type="button" role="tab" aria-selected={itemTab === "content"} className={itemTab === "content" ? "is-on" : undefined} onClick={() => setItemTab("content")}>Content</button>
+                  <button type="button" role="tab" aria-selected={itemTab === "style"} className={itemTab === "style" ? "is-on" : undefined} onClick={() => setItemTab("style")}>Style</button>
+                </div>
+                {itemTab === "style" && (
+                  <>
+                    {shown.kind === "section" && sectionOf && (
+                      <div className="sf-bg">
+                        {field("Background style", <select value={sectionOf.gradient ?? ""} onChange={(e) => patchSection(sectionOf.id, { gradient: (e.target.value || undefined) as SectionBlock["gradient"] })}><option value="">Plain colour</option>{GRADIENT_KEYS.map((g) => <option key={g} value={g}>{g[0].toUpperCase() + g.slice(1)} gradient</option>)}</select>)}
+                        {field("Background picture", <select value={sectionOf.bgImage ?? ""} onChange={(e) => patchSection(sectionOf.id, { bgImage: e.target.value || undefined, bgOverlay: e.target.value ? (sectionOf.bgOverlay ?? 35) : undefined })}><option value="">None</option>{images.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select>)}
+                        {sectionOf.bgImage && field(`Darken the picture: ${sectionOf.bgOverlay ?? 35}%`, <input type="range" min={0} max={80} value={sectionOf.bgOverlay ?? 35} onChange={(e) => patchSection(sectionOf.id, { bgOverlay: Number(e.target.value) })} />)}
+                      </div>
+                    )}
+                    <StyleFields
+                      look={(shown.kind === "section" ? sectionOf?.look : shown.kind === "row" ? rowOf?.look : shown.kind === "column" ? colOf?.look : elementOf?.look) ?? {}}
+                      showText={shown.kind === "element" ? ["heading", "text", "button", "list", "faq", "testimonial"].includes(elementOf?.type ?? "") : true}
+                      onChange={(p) => patchLook(shown.id, p)}
+                      onReset={() => resetLook(shown.id)}
+                    />
+                  </>
+                )}
+                {itemTab === "content" && shown.kind === "section" && sectionOf && (
                   <>
                     {field("Background", <select value={sectionOf.tone} onChange={(e) => patchSection(sectionOf.id, { tone: e.target.value as SectionBlock["tone"] })}>{SECTION_TONES.map((t) => <option key={t} value={t}>{TONE_LABEL[t]}</option>)}</select>)}
                     {field("Space above and below", <select value={sectionOf.pad} onChange={(e) => patchSection(sectionOf.id, { pad: e.target.value as SectionBlock["pad"] })}>{SECTION_PADS.map((t) => <option key={t} value={t}>{PAD_LABEL[t]}</option>)}</select>)}
@@ -503,7 +546,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
                     </div>
                   </>
                 )}
-                {rowOf && (
+                {itemTab === "content" && rowOf && (
                   <>
                     {field("Columns", <select value={rowOf.layout} onChange={(e) => patchRow(rowOf.id, { layout: e.target.value as LayoutKey })}>{LAYOUT_KEYS.map((k) => <option key={k} value={k}>{LAYOUT_LABEL[k]}</option>)}</select>)}
                     {field("Space between columns", <select value={rowOf.gap} onChange={(e) => patchRow(rowOf.id, { gap: e.target.value as RowBlock["gap"] })}>{ROW_GAPS.map((g) => <option key={g} value={g}>{g[0].toUpperCase() + g.slice(1)}</option>)}</select>)}
@@ -511,8 +554,8 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
                     <p className="monarch-muted">On a phone the columns stack one under the other.</p>
                   </>
                 )}
-                {shown.kind === "column" && <p className="monarch-muted">Click an element to edit it. Use “+ Add element” in the column, or drag one in from the left.</p>}
-                {elementOf && <LeafFields block={elementOf} onChange={patchElement} images={images} bookings={bookings} forms={forms} />}
+                {itemTab === "content" && shown.kind === "column" && <p className="monarch-muted">Click an element to edit it. Use “+ Add element” in the column, or drag one in from the left.</p>}
+                {itemTab === "content" && elementOf && <LeafFields block={elementOf} onChange={patchElement} images={images} bookings={bookings} forms={forms} />}
                 {tools}
               </>
             ) : <p className="monarch-muted">Click anything on the page to edit it.</p>}
@@ -527,13 +570,13 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
               {between(-1)}
               {doc.map((s, si) => (
                 <div key={s.id}>
-                  <section className={`ws-section ws-tone-${s.tone} ws-pad-${s.pad} ed-section${isSel(s.id) ? " is-sel" : ""}`} onClick={(e) => { e.stopPropagation(); choose({ kind: "section", id: s.id }); }} onDragOver={overArea} onDrop={finishDrop}>
+                  <section className={`${sectionClass(s, merged)} ed-section${isSel(s.id) ? " is-sel" : ""}`} style={sectionStyle(s, merged)} onClick={(e) => { e.stopPropagation(); choose({ kind: "section", id: s.id }); }} onDragOver={overArea} onDrop={finishDrop}>
                     {isSel(s.id) && label("Section", s.id)}
                     <div className={`ws-wrap ws-w-${s.width}`}>
                       {s.rows.map((r) => (
                         <div key={r.id} className={`ed-row${isSel(r.id) ? " is-sel" : ""}`} onClick={(e) => { e.stopPropagation(); choose({ kind: "row", id: r.id }); }}>
                           {isSel(r.id) && label("Row", r.id)}
-                          <div className={`ws-row ws-gap-${r.gap} ws-va-${r.valign} ws-cols-${r.columns.length}`} style={{ gridTemplateColumns: LAYOUTS[r.layout].map((n) => `${n}fr`).join(" ") }}>
+                          <div className={`ws-row ws-gap-${r.gap} ws-va-${r.valign} ws-cols-${r.columns.length} ${lookClasses(r.look)}`} style={{ gridTemplateColumns: LAYOUTS[r.layout].map((n) => `${n}fr`).join(" "), ...(lookCss(r.look) as React.CSSProperties) }}>
                             {r.columns.map(column)}
                           </div>
                         </div>

@@ -90,6 +90,71 @@ export function LeafFields({ block, onChange, images, bookings, forms }: { block
           <p className="monarch-muted se-wide">Your code runs in its own box on the page, so it can&apos;t reach your account or this system. It grows to fit what you paste. Search engines may not read text inside it, so keep key wording in Heading and Text blocks. Links open in a new tab.</p>
         </div>
       );
+    case "list":
+      return (
+        <div className="se-fields">
+          <label className="se-wide">Lines (one per line)<textarea rows={6} value={block.items.join("\n")} maxLength={6000} onChange={(e) => set({ items: e.target.value.split("\n").slice(0, 30) })} /></label>
+          <label>Marker<select value={block.icon} onChange={(e) => set({ icon: e.target.value as "check" | "arrow" | "dot" })}><option value="check">Tick</option><option value="arrow">Arrow</option><option value="dot">Dot</option></select></label>
+        </div>
+      );
+    case "faq":
+      return (
+        <div className="se-fields">
+          {block.items.map((it, i) => (
+            <div key={i} className="se-wide fq-item">
+              <label>Question<input value={it.q} maxLength={200} onChange={(e) => set({ items: block.items.map((x, k) => (k === i ? { ...x, q: e.target.value } : x)) })} /></label>
+              <label>Answer<textarea rows={3} value={it.a} maxLength={2000} onChange={(e) => set({ items: block.items.map((x, k) => (k === i ? { ...x, a: e.target.value } : x)) })} /></label>
+              <button type="button" className="monarch-secondary" onClick={() => set({ items: block.items.filter((_, k) => k !== i) })} disabled={block.items.length < 2}>Remove this question</button>
+            </div>
+          ))}
+          {block.items.length < 20 && <button type="button" className="monarch-secondary se-wide" onClick={() => set({ items: [...block.items, { q: "New question?", a: "Answer." }] })}>+ Add a question</button>}
+        </div>
+      );
+    case "testimonial":
+      return (
+        <div className="se-fields">
+          <label className="se-wide">What they said<textarea rows={4} value={block.quote} maxLength={1000} onChange={(e) => set({ quote: e.target.value })} /></label>
+          <label>Name<input value={block.name} maxLength={80} onChange={(e) => set({ name: e.target.value })} /></label>
+          <label>Role or business<input value={block.role} maxLength={120} onChange={(e) => set({ role: e.target.value })} /></label>
+          <label className="se-wide">Picture (optional)
+            <select value={block.imageId} onChange={(e) => set({ imageId: e.target.value })}><option value="">None</option>{images.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select>
+          </label>
+        </div>
+      );
+    case "video":
+      return (
+        <div className="se-fields">
+          <label className="se-wide">YouTube or Vimeo link<input value={block.url} maxLength={300} placeholder="https://www.youtube.com/watch?v=…" onChange={(e) => set({ url: e.target.value })} /></label>
+          <p className="monarch-muted se-wide">Paste the link from the video&apos;s address bar. It plays right on your page.</p>
+        </div>
+      );
+    case "gallery":
+      return (
+        <div className="se-fields">
+          <p className="se-wide monarch-muted">Tick the pictures to show (up to 12). Upload more from the Add tab.</p>
+          <div className="se-wide fq-picks">
+            {images.map((x) => {
+              const on = block.imageIds.includes(x.id);
+              return (
+                <label key={x.id} className="se-check">
+                  <input type="checkbox" checked={on} onChange={(e) => set({ imageIds: e.target.checked ? [...block.imageIds, x.id].slice(0, 12) : block.imageIds.filter((i) => i !== x.id) })} />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={x.url} alt="" className="se-thumb" /> {x.label}
+                </label>
+              );
+            })}
+            {images.length === 0 && <p className="monarch-muted">No pictures yet.</p>}
+          </div>
+          <label>Columns<select value={block.columns} onChange={(e) => set({ columns: Number(e.target.value) as 2 | 3 | 4 })}><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option></select></label>
+        </div>
+      );
+    case "map":
+      return (
+        <div className="se-fields">
+          <label className="se-wide">Address<input value={block.address} maxLength={200} placeholder="123 Main St, Baton Rouge, LA" onChange={(e) => set({ address: e.target.value })} /></label>
+          <label>Height (pixels)<input type="number" min={200} max={800} step={20} value={block.height} onChange={(e) => set({ height: Number(e.target.value) })} /></label>
+        </div>
+      );
     case "spacer":
       return <div className="se-fields"><label>Space<select value={block.size} onChange={(e) => set({ size: e.target.value as "small" | "medium" | "large" })}><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select></label></div>;
     case "divider":

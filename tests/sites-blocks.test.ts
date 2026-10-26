@@ -127,3 +127,50 @@ test("pages saved before sections had rows can still be read (images, emptiness)
   assert.equal(isEmptyPage(old), false);
   assert.equal(isEmptyPage([{ type: "section", children: [] }] as never), true);
 });
+
+test("design controls: colours, numbers and options are checked; unknown or unsafe values are dropped", async () => {
+  const { cleanLook, lookCss } = await import("../lib/sites/look.ts");
+  const look = cleanLook({ color: "#ABCDEF", bg: "red", size: 999, weight: 650, padT: -5, padB: 40, radius: 12, borderW: 2, shadow: "huge", align: "justify", maxW: 50, hideMobile: "true", position: "fixed", background: "url(javascript:1)" });
+  assert.deepEqual(look, { color: "#abcdef", size: 120, weight: 700, padT: 0, padB: 40, radius: 12, borderW: 2, maxW: 120, hideMobile: true });
+  const css = lookCss(look);
+  assert.equal(css.paddingBottom, "40px");
+  assert.equal(css.borderStyle, "solid");
+  assert.ok(!("position" in css) && !("background" in css));
+});
+
+test("every level can carry a look, and a section can have a gradient or a picture with a veil", () => {
+  const [s] = sanitizeBlocks([{ type: "section", look: { bg: "#112233", padT: 30 }, gradient: "ocean", bgImage: IMG, bgOverlay: 200, rows: [{ look: { padB: 10 }, columns: [{ look: { radius: 8 }, children: [{ type: "heading", text: "Hi", look: { color: "#fff", size: 40 } }] }] }] }], fresh);
+  assert.deepEqual(s.look, { bg: "#112233", padT: 30 });
+  assert.equal(s.gradient, "ocean");
+  assert.deepEqual([s.bgImage, s.bgOverlay], [IMG, 80]);
+  assert.deepEqual(s.rows[0].look, { padB: 10 });
+  assert.deepEqual(s.rows[0].columns[0].look, { radius: 8 });
+  assert.deepEqual((s.rows[0].columns[0].children[0] as { look: unknown }).look, { color: "#ffffff", size: 40 });
+  assert.deepEqual(imageIdsOf([s]), [IMG]);
+  assert.equal(sanitizeBlocks([{ type: "section", gradient: "neon", rows: [] }], fresh)[0].gradient, undefined);
+});
+
+test("FAQ, checklist, testimonial, video, gallery and map elements", async () => {
+  const { videoEmbed } = await import("../lib/sites/blocks.ts");
+  const out = els([
+    { type: "faq", items: [{ q: "Q1?", a: "A1" }, { q: "", a: "dropped" }, { q: "no answer", a: " " }] },
+    { type: "list", items: ["One", "  ", "Two"], icon: "star" },
+    { type: "testimonial", quote: "Great", name: "Pat", role: "Owner", imageId: IMG },
+    { type: "testimonial", quote: "  " },
+    { type: "video", url: "https://youtu.be/dQw4w9WgXcQ" },
+    { type: "video", url: "https://evil.example.com/x" },
+    { type: "gallery", imageIds: [IMG, "nope", IMG], columns: 9 },
+    { type: "gallery", imageIds: [] },
+    { type: "map", address: "1 Main St, Baton Rouge", height: 5000 },
+    { type: "map", address: " " },
+  ]);
+  assert.deepEqual(out.map((e) => e.type), ["faq", "list", "testimonial", "video", "gallery", "map"]);
+  assert.equal((out[0] as { items: unknown[] }).items.length, 1);
+  assert.deepEqual((out[1] as { items: string[]; icon: string }).items, ["One", "Two"]);
+  assert.equal((out[1] as { icon: string }).icon, "check");
+  assert.equal((out[4] as { columns: number }).columns, 4);
+  assert.equal((out[5] as { height: number }).height, 800);
+  assert.equal(videoEmbed("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
+  assert.equal(videoEmbed("https://vimeo.com/123456789"), "https://player.vimeo.com/video/123456789");
+  for (const bad of ["http://youtu.be/dQw4w9WgXcQ", "https://youtube.com.evil.com/watch?v=dQw4w9WgXcQ", "javascript:alert(1)", "https://youtu.be/short", ""]) assert.equal(videoEmbed(bad), null, bad);
+});

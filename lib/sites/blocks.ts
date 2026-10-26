@@ -1,4 +1,5 @@
 import { ValidationError } from "../commerce/validation.ts";
+import { cleanLook, type Look } from "./look.ts";
 
 // The content of a page: a short list of blocks. Everything is plain data that is checked on the way in (an unknown block
 // type or field is dropped, never kept), and rendered as plain text by the renderer. The one exception is the "html"
@@ -17,19 +18,37 @@ export const MAX_HTML = 60000;
 export const SECTION_TONES = ["plain", "soft", "accent", "dark"] as const;
 export type SectionTone = (typeof SECTION_TONES)[number];
 
-export type HeadingBlock = { id: string; type: "heading"; text: string; level: 1 | 2 | 3; align: "left" | "center" };
-export type TextBlock = { id: string; type: "text"; text: string; align: "left" | "center" };
-export type ImageBlock = { id: string; type: "image"; imageId: string; alt: string; size: "full" | "half" };
-export type ButtonBlock = { id: string; type: "button"; label: string; href: string; style: "primary" | "secondary"; align: "left" | "center" };
+type Base = { id: string; /** Colours, type, spacing, border and shadow; see look.ts. */ look?: Look };
+export const GRADIENTS = { sunrise: "linear-gradient(135deg,#f6d37a,#e98a3a)", midnight: "linear-gradient(135deg,#0b0b0b,#2b2f4a)", ocean: "linear-gradient(135deg,#1d4ed8,#22c1c3)", forest: "linear-gradient(135deg,#14532d,#4ade80)", gold: "linear-gradient(115deg,#6e4105,#b87912,#f7d77f,#a96808,#ffe7a1,#b87912)", blush: "linear-gradient(135deg,#fde2e4,#e2ece9)" } as const;
+export type Gradient = keyof typeof GRADIENTS;
+export const GRADIENT_KEYS = Object.keys(GRADIENTS) as Gradient[];
+
+/** A list of questions that open to show their answers. */
+export type FaqBlock = Base & { type: "faq"; items: { q: string; a: string }[] };
+/** A checklist: short lines, each with a tick, arrow or dot. */
+export type ListBlock = Base & { type: "list"; items: string[]; icon: "check" | "arrow" | "dot" };
+/** A customer's words, optionally with their picture. */
+export type TestimonialBlock = Base & { type: "testimonial"; quote: string; name: string; role: string; imageId: string };
+/** A YouTube or Vimeo video, shown through their own player. */
+export type VideoBlock = Base & { type: "video"; url: string };
+/** A grid of the office's pictures. */
+export type GalleryBlock = Base & { type: "gallery"; imageIds: string[]; columns: 2 | 3 | 4 };
+/** A map of an address. */
+export type MapBlock = Base & { type: "map"; address: string; height: number };
+
+export type HeadingBlock = Base & { type: "heading"; text: string; level: 1 | 2 | 3; align: "left" | "center" };
+export type TextBlock = Base & { type: "text"; text: string; align: "left" | "center" };
+export type ImageBlock = Base & { type: "image"; imageId: string; alt: string; size: "full" | "half" };
+export type ButtonBlock = Base & { type: "button"; label: string; href: string; style: "primary" | "secondary"; align: "left" | "center" };
 /** A booking page of the office, by its link name (see Calendar → Appointment types). */
-export type BookingBlock = { id: string; type: "booking"; slug: string; height: number };
+export type BookingBlock = Base & { type: "booking"; slug: string; height: number };
 /** One of the office's published forms, by its public id. */
-export type FormBlock = { id: string; type: "form"; formId: string; height: number };
+export type FormBlock = Base & { type: "form"; formId: string; height: number };
 /** Custom HTML (with its own CSS and script) shown in a sandboxed frame. `height` is the starting height; the frame then fits its content. */
-export type HtmlBlock = { id: string; type: "html"; code: string; height: number };
-export type SpacerBlock = { id: string; type: "spacer"; size: "small" | "medium" | "large" };
-export type DividerBlock = { id: string; type: "divider" };
-export type LeafBlock = HeadingBlock | TextBlock | ImageBlock | ButtonBlock | BookingBlock | FormBlock | HtmlBlock | SpacerBlock | DividerBlock;
+export type HtmlBlock = Base & { type: "html"; code: string; height: number };
+export type SpacerBlock = Base & { type: "spacer"; size: "small" | "medium" | "large" };
+export type DividerBlock = Base & { type: "divider" };
+export type LeafBlock = HeadingBlock | TextBlock | ImageBlock | ButtonBlock | BookingBlock | FormBlock | HtmlBlock | SpacerBlock | DividerBlock | FaqBlock | ListBlock | TestimonialBlock | VideoBlock | GalleryBlock | MapBlock;
 export const SECTION_PADS = ["none", "small", "medium", "large"] as const;
 export const SECTION_WIDTHS = ["narrow", "wide", "full"] as const;
 export const ROW_GAPS = ["small", "medium", "large"] as const;
@@ -40,17 +59,17 @@ export const LAYOUT_KEYS = Object.keys(LAYOUTS) as LayoutKey[];
 export const LAYOUT_LABEL: Record<LayoutKey, string> = { "1": "1 column", "1-1": "2 columns", "1-1-1": "3 columns", "1-1-1-1": "4 columns", "2-1": "Wide + narrow", "1-2": "Narrow + wide" };
 
 /** A column holds elements, top to bottom. */
-export type ColumnBlock = { id: string; children: LeafBlock[] };
+export type ColumnBlock = { id: string; children: LeafBlock[]; look?: Look };
 /** A row splits a section into side-by-side columns (they stack on a phone). */
-export type RowBlock = { id: string; layout: LayoutKey; gap: (typeof ROW_GAPS)[number]; valign: "top" | "center"; columns: ColumnBlock[] };
+export type RowBlock = { id: string; layout: LayoutKey; gap: (typeof ROW_GAPS)[number]; valign: "top" | "center"; columns: ColumnBlock[]; look?: Look };
 /** A band of the page with its own background: sections hold rows, rows hold columns, columns hold elements. */
-export type SectionBlock = { id: string; type: "section"; tone: SectionTone; pad: (typeof SECTION_PADS)[number]; width: (typeof SECTION_WIDTHS)[number]; rows: RowBlock[] };
+export type SectionBlock = { id: string; type: "section"; tone: SectionTone; pad: (typeof SECTION_PADS)[number]; width: (typeof SECTION_WIDTHS)[number]; rows: RowBlock[]; look?: Look; /** A picture behind the section, with a dark veil over it (0 to 80 percent). */ bgImage?: string; bgOverlay?: number; gradient?: Gradient };
 /** A page is a list of sections. (Older pages stored loose elements and one-column sections; they are converted when read.) */
 export type Block = SectionBlock;
 
-export const LEAF_TYPES = ["heading", "text", "image", "button", "booking", "form", "html", "spacer", "divider"] as const;
+export const LEAF_TYPES = ["heading", "text", "image", "button", "list", "faq", "testimonial", "video", "gallery", "map", "booking", "form", "html", "spacer", "divider"] as const;
 export const BLOCK_LABEL: Record<LeafBlock["type"] | "section", string> = {
-  section: "Section", heading: "Heading", text: "Text", image: "Image", button: "Button", booking: "Booking", form: "Form", html: "Custom HTML", spacer: "Space", divider: "Divider",
+  section: "Section", heading: "Heading", text: "Text", image: "Image", button: "Button", booking: "Booking", form: "Form", html: "Custom HTML", spacer: "Space", divider: "Divider", list: "Checklist", faq: "FAQ", testimonial: "Testimonial", video: "Video", gallery: "Gallery", map: "Map",
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -89,7 +108,34 @@ export function cleanHref(raw: unknown): string | null {
 let counter = 0;
 const freshId = () => `b${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
+/** A YouTube or Vimeo address turned into the address of its player, or null for anything else. */
+export function videoEmbed(raw: unknown): string | null {
+  const v = typeof raw === "string" ? raw.trim() : "";
+  let u: URL;
+  try { u = new URL(v); } catch { return null; }
+  if (u.protocol !== "https:") return null;
+  const host = u.hostname.replace(/^www\./, "").replace(/^m\./, "");
+  let id = "";
+  if (host === "youtu.be") id = u.pathname.slice(1).split("/")[0];
+  else if (host === "youtube.com" || host === "youtube-nocookie.com") id = u.pathname.startsWith("/embed/") || u.pathname.startsWith("/shorts/") ? u.pathname.split("/")[2] : (u.searchParams.get("v") ?? "");
+  if (/^[A-Za-z0-9_-]{11}$/.test(id)) return `https://www.youtube-nocookie.com/embed/${id}`;
+  if (host === "vimeo.com" || host === "player.vimeo.com") {
+    const m = /(?:^|\/)(\d{6,12})(?:$|\/)/.exec(u.pathname);
+    if (m) return `https://player.vimeo.com/video/${m[1]}`;
+  }
+  return null;
+}
+
+const imageOf = (v: unknown) => (typeof v === "string" && UUID.test(v) ? v.toLowerCase() : "");
+
 function leaf(raw: unknown, fresh: () => string): LeafBlock | null {
+  const core = leafCore(raw, fresh);
+  if (!core) return null;
+  const look = cleanLook((raw as Record<string, unknown>).look);
+  return Object.keys(look).length ? { ...core, look } : core;
+}
+
+function leafCore(raw: unknown, fresh: () => string): LeafBlock | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as Record<string, unknown>;
   const id = idOf(b.id, fresh);
@@ -123,6 +169,30 @@ function leaf(raw: unknown, fresh: () => string): LeafBlock | null {
       const code = text(b.code, MAX_HTML).trim();
       return code ? { id, type: "html", code, height: clampInt(b.height, 100, 2000, 400) } : null;
     }
+    case "faq": {
+      const items = (Array.isArray(b.items) ? b.items : []).slice(0, 20).map((i) => ({ q: line((i as { q?: unknown })?.q, 200), a: text((i as { a?: unknown })?.a, 2000).trim() })).filter((i) => i.q && i.a);
+      return items.length ? { id, type: "faq", items } : null;
+    }
+    case "list": {
+      const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30).map((i) => line(i, 200)).filter(Boolean);
+      return items.length ? { id, type: "list", items, icon: oneOf(b.icon, ["check", "arrow", "dot"], "check") } : null;
+    }
+    case "testimonial": {
+      const quote = text(b.quote, 1000).trim();
+      return quote ? { id, type: "testimonial", quote, name: line(b.name, 80), role: line(b.role, 120), imageId: imageOf(b.imageId) } : null;
+    }
+    case "video": {
+      const url = typeof b.url === "string" ? b.url.trim().slice(0, 300) : "";
+      return videoEmbed(url) ? { id, type: "video", url } : null;
+    }
+    case "gallery": {
+      const ids = (Array.isArray(b.imageIds) ? b.imageIds : []).map(imageOf).filter(Boolean).slice(0, 12);
+      return ids.length ? { id, type: "gallery", imageIds: ids, columns: clampInt(b.columns, 2, 4, 3) as 2 | 3 | 4 } : null;
+    }
+    case "map": {
+      const address = line(b.address, 200);
+      return address ? { id, type: "map", address, height: clampInt(b.height, 200, 800, 360) } : null;
+    }
     case "spacer":
       return { id, type: "spacer", size: oneOf(b.size, ["small", "medium", "large"], "medium") };
     case "divider":
@@ -140,7 +210,9 @@ const cleanColumn = (raw: unknown, fresh: () => string, unique: (b: { id: string
   count.n += children.length;
   if (count.n > MAX_ELEMENTS) throw new ValidationError(`A page can have at most ${MAX_ELEMENTS} elements.`);
   children.forEach(unique);
-  const col = { id: idOf(r.id, fresh), children };
+  const col: ColumnBlock = { id: idOf(r.id, fresh), children };
+  const look = cleanLook(r.look);
+  if (Object.keys(look).length) col.look = look;
   unique(col);
   return col;
 };
@@ -160,6 +232,8 @@ function cleanRow(raw: unknown, fresh: () => string, unique: (b: { id: string })
   }
   while (columns.length < want) columns.push(cleanColumn({}, fresh, unique, count));
   const row: RowBlock = { id: idOf(r.id, fresh), layout, gap: oneOf(r.gap, ROW_GAPS, "medium"), valign: oneOf(r.valign, ["top", "center"], "top"), columns };
+  const look = cleanLook(r.look);
+  if (Object.keys(look).length) row.look = look;
   unique(row);
   return row;
 }
@@ -212,6 +286,11 @@ export function sanitizeBlocks(raw: unknown, fresh: () => string = freshId): Blo
         id: idOf(b.id, fresh), type: "section", tone: oneOf(b.tone, SECTION_TONES, "plain"),
         pad: oneOf(b.pad, SECTION_PADS, "medium"), width: oneOf(b.width, SECTION_WIDTHS, legacy ? "narrow" : "wide"), rows,
       };
+      const sl = cleanLook(b.look);
+      if (Object.keys(sl).length) sec.look = sl;
+      const bgImage = imageOf(b.bgImage);
+      if (bgImage) { sec.bgImage = bgImage; sec.bgOverlay = clampInt(b.bgOverlay, 0, 80, 35); }
+      if (typeof b.gradient === "string" && b.gradient in GRADIENTS) sec.gradient = b.gradient as Gradient;
       unique(sec);
       out.push(sec);
       if (out.length > MAX_SECTIONS) throw new ValidationError(`A page can have at most ${MAX_SECTIONS} sections.`);
@@ -245,6 +324,12 @@ export function newElement(type: LeafBlock["type"], id: string): LeafBlock {
     case "booking": return { id, type, slug: "", height: 760 };
     case "form": return { id, type, formId: "", height: 900 };
     case "html": return { id, type, code: "", height: 400 };
+    case "list": return { id, type, items: ["First point", "Second point", "Third point"], icon: "check" };
+    case "faq": return { id, type, items: [{ q: "A common question?", a: "Your answer goes here." }] };
+    case "testimonial": return { id, type, quote: "What a client says about working with you.", name: "Client name", role: "Business owner", imageId: "" };
+    case "video": return { id, type, url: "" };
+    case "gallery": return { id, type, imageIds: [], columns: 3 };
+    case "map": return { id, type, address: "", height: 360 };
     case "spacer": return { id, type, size: "medium" };
     case "divider": return { id, type };
   }
@@ -270,7 +355,12 @@ export function elementsOf(blocks: Block[]): LeafBlock[] {
 /** Image ids a page uses, so the renderer can look them all up at once. */
 export function imageIdsOf(blocks: Block[]): string[] {
   const ids = new Set<string>();
-  for (const e of elementsOf(blocks)) if (e.type === "image") ids.add(e.imageId);
+  for (const e of elementsOf(blocks)) {
+    if (e.type === "image") ids.add(e.imageId);
+    if (e.type === "testimonial" && e.imageId) ids.add(e.imageId);
+    if (e.type === "gallery") e.imageIds.forEach((i) => ids.add(i));
+  }
+  for (const s of blocks) if (s.bgImage) ids.add(s.bgImage);
   return [...ids];
 }
 
