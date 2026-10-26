@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Flash } from "@/components/admin/ui";
-import { SitePreview } from "@/components/sites/render";
-import { PageForm, type PickBooking, type PickForm, type PickImage } from "@/components/sites/page-form";
+import { PageEditor } from "@/components/sites/page-editor";
+import type { PickBooking, PickForm, PickImage } from "@/components/sites/page-form";
 import { appointmentDeps } from "@/lib/appointments/server";
 import { dnsInstructions, platformDomain } from "@/lib/sites/domains.ts";
 import { SupabaseFormsRepo } from "@/lib/forms/supabase-repo";
@@ -9,6 +9,7 @@ import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
 import { viewFor } from "@/lib/sites/public";
 import type { SiteContext, SitesContext } from "@/lib/sites/context";
 import { SettingsForm } from "@/components/sites/settings-form";
+import { sectionsOf } from "@/lib/sites/blocks.ts";
 import { cleanPageSeo, settingsOf } from "@/lib/sites/settings.ts";
 import { MAX_SITES } from "@/lib/sites/service.ts";
 import { hasUnpublishedChanges, MAX_CUSTOM_DOMAINS, MAX_PAGES } from "@/lib/sites/service.ts";
@@ -186,10 +187,10 @@ export async function PageEditorView({ ctx, id, sp }: { ctx: SiteContext; id: st
       <Link className="monarch-back" href={ctx.siteBase}>← {ctx.site.name}</Link>
       <h1 className="office-h1">{page.title}</h1>
       <Flash notice={sp.notice} error={sp.error} />
-      <section className="monarch-panel" style={{ padding: 20 }}>
-        <PageForm
+      <section className="monarch-panel" style={{ padding: 12 }}>
+        <PageEditor
           action={savePageAction} area={ctx.area} siteId={ctx.site.id} pageId={page.id} seo={cleanPageSeo(page.seo ?? {})} title={page.title} description={page.description ?? ""} showInNav={page.show_in_nav} isHome={page.is_home}
-          initial={page.draft} images={pick.images} bookings={pick.bookings} forms={pick.forms}
+          initial={sectionsOf(page.draft)} images={pick.images} bookings={pick.bookings} forms={pick.forms} view={view}
         />
       </section>
       <section className="monarch-panel" style={{ padding: 20 }}>
@@ -201,13 +202,6 @@ export async function PageEditorView({ ctx, id, sp }: { ctx: SiteContext; id: st
           <button className="monarch-primary">Upload</button>
         </form>
         <p className="monarch-muted">PNG, JPG or WebP, up to 4 MB. Save your draft first; uploading reloads the page. The picture then appears in each Image block&apos;s list.</p>
-      </section>
-      <section className="monarch-panel" style={{ padding: 20 }}>
-        <h2 style={{ marginTop: 0 }}>Preview of the saved draft</h2>
-        <div style={{ border: "1px solid #e7e5de", borderRadius: 8, overflow: "hidden" }}>
-          <SitePreview view={view} blocks={page.draft} />
-        </div>
-        <p className="monarch-muted">This is the draft you last saved. Visitors only see it after you publish.</p>
       </section>
     </>
   );

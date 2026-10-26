@@ -5,8 +5,13 @@ import { ValidationError } from "../commerce/validation.ts";
 // block: the owner's own code, which is never put into the page itself. It runs inside a sandboxed frame with no access
 // to the platform's origin (no cookies, no storage, no sign-in), so it cannot read or change anything on the platform.
 
-export const MAX_BLOCKS = 60;
-export const MAX_CHILDREN = 12;
+export const MAX_SECTIONS = 60;
+/** Kept for the old name; a page holds at most this many sections. */
+export const MAX_BLOCKS = MAX_SECTIONS;
+export const MAX_ROWS = 20;
+/** Elements in one column, and on the whole page. */
+export const MAX_CHILDREN = 20;
+export const MAX_ELEMENTS = 400;
 export const MAX_TEXT = 5000;
 export const MAX_HTML = 60000;
 export const SECTION_TONES = ["plain", "soft", "accent", "dark"] as const;
@@ -25,12 +30,26 @@ export type HtmlBlock = { id: string; type: "html"; code: string; height: number
 export type SpacerBlock = { id: string; type: "spacer"; size: "small" | "medium" | "large" };
 export type DividerBlock = { id: string; type: "divider" };
 export type LeafBlock = HeadingBlock | TextBlock | ImageBlock | ButtonBlock | BookingBlock | FormBlock | HtmlBlock | SpacerBlock | DividerBlock;
-/** A band of the page with its own background, holding other blocks. Sections do not nest. */
-export type SectionBlock = { id: string; type: "section"; tone: SectionTone; children: LeafBlock[] };
-export type Block = LeafBlock | SectionBlock;
+export const SECTION_PADS = ["none", "small", "medium", "large"] as const;
+export const SECTION_WIDTHS = ["narrow", "wide", "full"] as const;
+export const ROW_GAPS = ["small", "medium", "large"] as const;
+/** How a row is split into columns: "2-1" is a wide column then a narrow one. */
+export const LAYOUTS = { "1": [1], "1-1": [1, 1], "1-1-1": [1, 1, 1], "1-1-1-1": [1, 1, 1, 1], "2-1": [2, 1], "1-2": [1, 2] } as const;
+export type LayoutKey = keyof typeof LAYOUTS;
+export const LAYOUT_KEYS = Object.keys(LAYOUTS) as LayoutKey[];
+export const LAYOUT_LABEL: Record<LayoutKey, string> = { "1": "1 column", "1-1": "2 columns", "1-1-1": "3 columns", "1-1-1-1": "4 columns", "2-1": "Wide + narrow", "1-2": "Narrow + wide" };
+
+/** A column holds elements, top to bottom. */
+export type ColumnBlock = { id: string; children: LeafBlock[] };
+/** A row splits a section into side-by-side columns (they stack on a phone). */
+export type RowBlock = { id: string; layout: LayoutKey; gap: (typeof ROW_GAPS)[number]; valign: "top" | "center"; columns: ColumnBlock[] };
+/** A band of the page with its own background: sections hold rows, rows hold columns, columns hold elements. */
+export type SectionBlock = { id: string; type: "section"; tone: SectionTone; pad: (typeof SECTION_PADS)[number]; width: (typeof SECTION_WIDTHS)[number]; rows: RowBlock[] };
+/** A page is a list of sections. (Older pages stored loose elements and one-column sections; they are converted when read.) */
+export type Block = SectionBlock;
 
 export const LEAF_TYPES = ["heading", "text", "image", "button", "booking", "form", "html", "spacer", "divider"] as const;
-export const BLOCK_LABEL: Record<Block["type"], string> = {
+export const BLOCK_LABEL: Record<LeafBlock["type"] | "section", string> = {
   section: "Section", heading: "Heading", text: "Text", image: "Image", button: "Button", booking: "Booking", form: "Form", html: "Custom HTML", spacer: "Space", divider: "Divider",
 };
 
@@ -113,41 +132,112 @@ function leaf(raw: unknown, fresh: () => string): LeafBlock | null {
   }
 }
 
+const cleanColumn = (raw: unknown, fresh: () => string, unique: (b: { id: string }) => void, count: { n: number }): ColumnBlock => {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const kids = Array.isArray(r.children) ? r.children : [];
+  if (kids.length > MAX_CHILDREN) throw new ValidationError(`A column can hold at most ${MAX_CHILDREN} elements.`);
+  const children = kids.map((c) => leaf(c, fresh)).filter((c): c is LeafBlock => c !== null);
+  count.n += children.length;
+  if (count.n > MAX_ELEMENTS) throw new ValidationError(`A page can have at most ${MAX_ELEMENTS} elements.`);
+  children.forEach(unique);
+  const col = { id: idOf(r.id, fresh), children };
+  unique(col);
+  return col;
+};
+
+function cleanRow(raw: unknown, fresh: () => string, unique: (b: { id: string }) => void, count: { n: number }): RowBlock {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const given = Array.isArray(r.columns) ? r.columns : [];
+  const byCount: Record<number, LayoutKey> = { 1: "1", 2: "1-1", 3: "1-1-1", 4: "1-1-1-1" };
+  const layout = typeof r.layout === "string" && r.layout in LAYOUTS ? (r.layout as LayoutKey) : byCount[Math.min(4, Math.max(1, given.length))];
+  const want = LAYOUTS[layout].length;
+  const columns = given.slice(0, want).map((c) => cleanColumn(c, fresh, unique, count));
+  // Extra columns (a smaller layout) are folded into the last one so nothing is lost; missing ones start empty.
+  for (const extra of given.slice(want)) {
+    const e = cleanColumn(extra, fresh, unique, count);
+    columns[want - 1].children.push(...e.children);
+    if (columns[want - 1].children.length > MAX_CHILDREN) throw new ValidationError(`A column can hold at most ${MAX_CHILDREN} elements.`);
+  }
+  while (columns.length < want) columns.push(cleanColumn({}, fresh, unique, count));
+  const row: RowBlock = { id: idOf(r.id, fresh), layout, gap: oneOf(r.gap, ROW_GAPS, "medium"), valign: oneOf(r.valign, ["top", "center"], "top"), columns };
+  unique(row);
+  return row;
+}
+
 /**
- * Turns whatever the editor sent into a clean block list: unknown types and fields are dropped, text is trimmed and
- * limited, links are checked, sections hold only leaf blocks (no nesting), and counts are capped. Blocks that would be
- * empty (a heading with no words, a button with no safe link) are dropped rather than saved half-made.
+ * Turns whatever the editor sent (or an older page) into a clean list of sections: unknown types and fields are dropped,
+ * text is trimmed and limited, links are checked, rows have the columns their layout calls for, and counts are capped.
+ * Elements that would be empty (a heading with no words, a button with no safe link) are dropped rather than saved
+ * half-made. Loose elements from the old editor are gathered into a section; one-column sections become one row.
  */
 export function sanitizeBlocks(raw: unknown, fresh: () => string = freshId): Block[] {
   if (!Array.isArray(raw)) throw new ValidationError("The page content wasn't understood. Reload the page and try again.");
-  if (raw.length > MAX_BLOCKS) throw new ValidationError(`A page can have at most ${MAX_BLOCKS} blocks.`);
+  if (raw.length > MAX_ELEMENTS) throw new ValidationError(`A page can have at most ${MAX_SECTIONS} sections.`);
   const seen = new Set<string>();
-  const unique = (b: Block): Block => {
+  const unique = (b: { id: string }) => {
     if (seen.has(b.id)) b.id = fresh();
     seen.add(b.id);
-    return b;
   };
+  const count = { n: 0 };
   const out: Block[] = [];
+  let loose: LeafBlock[] = [];
+  const flush = () => {
+    if (!loose.length) return;
+    count.n += loose.length;
+    if (count.n > MAX_ELEMENTS) throw new ValidationError(`A page can have at most ${MAX_ELEMENTS} elements.`);
+    loose.forEach(unique);
+    const col: ColumnBlock = { id: fresh(), children: loose };
+    const row: RowBlock = { id: fresh(), layout: "1", gap: "medium", valign: "top", columns: [col] };
+    const sec: SectionBlock = { id: fresh(), type: "section", tone: "plain", pad: "medium", width: "narrow", rows: [row] };
+    [col, row, sec].forEach(unique);
+    out.push(sec);
+    loose = [];
+  };
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
     const b = item as Record<string, unknown>;
     if (b.type === "section") {
-      const children = Array.isArray(b.children) ? b.children : [];
-      if (children.length > MAX_CHILDREN) throw new ValidationError(`A section can hold at most ${MAX_CHILDREN} blocks.`);
-      const kids = children.map((c) => leaf(c, fresh)).filter((c): c is LeafBlock => c !== null).map((c) => unique(c) as LeafBlock);
-      out.push(unique({ id: idOf(b.id, fresh), type: "section", tone: oneOf(b.tone, SECTION_TONES, "plain"), children: kids }));
+      flush();
+      let rowsRaw: unknown[];
+      let legacy = false;
+      if (Array.isArray(b.rows)) rowsRaw = b.rows;
+      else {
+        legacy = true;
+        const children = Array.isArray(b.children) ? b.children : [];
+        rowsRaw = children.length ? [{ layout: "1", columns: [{ children }] }] : [];
+      }
+      if (rowsRaw.length > MAX_ROWS) throw new ValidationError(`A section can hold at most ${MAX_ROWS} rows.`);
+      const rows = rowsRaw.map((r) => cleanRow(r, fresh, unique, count));
+      const sec: SectionBlock = {
+        id: idOf(b.id, fresh), type: "section", tone: oneOf(b.tone, SECTION_TONES, "plain"),
+        pad: oneOf(b.pad, SECTION_PADS, "medium"), width: oneOf(b.width, SECTION_WIDTHS, legacy ? "narrow" : "wide"), rows,
+      };
+      unique(sec);
+      out.push(sec);
+      if (out.length > MAX_SECTIONS) throw new ValidationError(`A page can have at most ${MAX_SECTIONS} sections.`);
       continue;
     }
     const l = leaf(item, fresh);
-    if (l) out.push(unique(l));
+    if (l) loose.push(l);
   }
+  flush();
+  if (out.length > MAX_SECTIONS) throw new ValidationError(`A page can have at most ${MAX_SECTIONS} sections.`);
   return out;
 }
 
-/** A starting block of each kind for the "Add" menu. Fresh ids are made by the caller. */
-export function newBlock(type: Block["type"], id: string): Block {
+/** Sections for showing a stored page (never throws: a page that can't be read shows nothing). Ids are stable between calls. */
+export function sectionsOf(stored: unknown): Block[] {
+  let i = 0;
+  try {
+    return sanitizeBlocks(stored ?? [], () => `gen${(i++).toString(36).padStart(4, "0")}`);
+  } catch {
+    return [];
+  }
+}
+
+/** A starting element of each kind for the "Add" panel. Fresh ids are made by the caller. */
+export function newElement(type: LeafBlock["type"], id: string): LeafBlock {
   switch (type) {
-    case "section": return { id, type, tone: "plain", children: [] };
     case "heading": return { id, type, text: "Heading", level: 2, align: "left" };
     case "text": return { id, type, text: "Write something here.", align: "left" };
     case "image": return { id, type, imageId: "", alt: "", size: "full" };
@@ -160,15 +250,27 @@ export function newBlock(type: Block["type"], id: string): Block {
   }
 }
 
+/** An empty row for a layout. */
+export function newRow(layout: LayoutKey, ids: () => string): RowBlock {
+  return { id: ids(), layout, gap: "medium", valign: "top", columns: LAYOUTS[layout].map(() => ({ id: ids(), children: [] })) };
+}
+
+/** A new section with one empty row (one column, unless a layout is given). */
+export function newSection(ids: () => string, layout: LayoutKey = "1"): SectionBlock {
+  return { id: ids(), type: "section", tone: "plain", pad: "medium", width: "wide", rows: [newRow(layout, ids)] };
+}
+
+/** Every element on the page, in reading order. */
+export function elementsOf(blocks: Block[]): LeafBlock[] {
+  return blocks.flatMap((s) => s.rows.flatMap((r) => r.columns.flatMap((c) => c.children)));
+}
+
 /** Image ids a page uses, so the renderer can look them all up at once. */
 export function imageIdsOf(blocks: Block[]): string[] {
   const ids = new Set<string>();
-  for (const b of blocks) {
-    if (b.type === "image") ids.add(b.imageId);
-    if (b.type === "section") for (const c of b.children) if (c.type === "image") ids.add(c.imageId);
-  }
+  for (const e of elementsOf(blocks)) if (e.type === "image") ids.add(e.imageId);
   return [...ids];
 }
 
 /** True when the page would show nothing. */
-export const isEmptyPage = (blocks: Block[]) => blocks.every((b) => b.type === "section" ? b.children.length === 0 : b.type === "spacer" || b.type === "divider");
+export const isEmptyPage = (blocks: Block[]) => elementsOf(blocks).every((e) => e.type === "spacer" || e.type === "divider");
