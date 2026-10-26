@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import PizZip from "pizzip";
 import { PDFDocument } from "pdf-lib";
 import { checkDocumentFile, cleanDocumentName, sha256Hex } from "../lib/documents/files.ts";
-import { fillTemplate, missingValues, scanTemplate } from "../lib/documents/merge.ts";
+import { fillTemplate, missingValues, pdfBoxes, scanTemplate } from "../lib/documents/merge.ts";
 import { applySignature, isSignaturePng } from "../lib/documents/signing.ts";
 
 // Phase 2 Step 1, Piece 1: file checks, merge fields and signing. Fixtures are built here; no real documents.
@@ -82,7 +82,8 @@ describe("merge fields", () => {
     const filled = await fillTemplate(bytes, "pdf", { client_name: "Ana Ruiz", firm_name: "Acme Tax" });
     const reread = await PDFDocument.load(filled);
     assert.equal(reread.getForm().getFields().length, 0, "flattened");
-    await assert.rejects(scanTemplate(await makePdf(["Text1"]), "pdf"), /Unknown merge field: "Text1"/);
+    // An official form names its boxes anything: they are left blank until matched, not refused.
+    assert.deepEqual(await scanTemplate(await makePdf(["Text1"]), "pdf"), { fields: [], hasSignatureField: false });
   });
 
   test("a field with no value is reported, so the step fails instead of sending a blank", () => {
@@ -144,5 +145,32 @@ describe("Excel and image files", () => {
     await assert.rejects(checkDocumentFile(zip({ "[Content_Types].xml": "<Types/>", "xl/workbook.xml": "<workbook/>", "xl/vbaProject.bin": "x" }), "xlsx"), /macros/);
     await assert.rejects(checkDocumentFile(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 1, 2, 3, 4]), "xlsx"), /old \.xls/);
     await assert.rejects(checkDocumentFile(new Uint8Array([1, 2, 3, 4, 5]), "xlsx"), /not an Excel workbook/);
+  });
+});
+
+describe("matching the boxes of an official PDF", () => {
+  const MAP = { "f1_01[0]": "client_name", "f1_02[0]": "firm_name", "f1_03[0]": "ask.tax_years", "Sig_Taxpayer": "signature", "f1_04[0]": "signer_name" };
+  const official = () => makePdf(["f1_01[0]", "f1_02[0]", "f1_03[0]", "f1_04[0]", "f1_99[0]", "Sig_Taxpayer"]);
+
+  test("an official form's own box names are accepted, listed, and used once matched", async () => {
+    const bytes = await official();
+    assert.deepEqual((await pdfBoxes(bytes)).map((b) => b.name), ["f1_01[0]", "f1_02[0]", "f1_03[0]", "f1_04[0]", "f1_99[0]", "Sig_Taxpayer"]);
+    assert.deepEqual(await scanTemplate(bytes, "pdf"), { fields: [], hasSignatureField: false }, "nothing matched yet: nothing to fill");
+    assert.deepEqual(await scanTemplate(bytes, "pdf", MAP), { fields: ["ask.tax_years", "client_name", "firm_name", "signer_name"], hasSignatureField: true });
+  });
+
+  test("matched boxes are filled, the rest stay blank, and the signing boxes stay open until signing", async () => {
+    const filled = await fillTemplate(await official(), "pdf", { client_name: "Ana Ruiz", firm_name: "Acme Tax", "ask.tax_years": "2025" }, { keepSigning: true, map: MAP });
+    const form = (await PDFDocument.load(filled)).getForm();
+    assert.equal(form.getTextField("f1_01[0]").getText(), "Ana Ruiz");
+    assert.equal(form.getTextField("f1_02[0]").getText(), "Acme Tax");
+    assert.equal(form.getTextField("f1_03[0]").getText(), "2025");
+    assert.equal(form.getTextField("f1_99[0]").getText() ?? "", "", "an unmatched box is left alone");
+    assert.equal(form.getTextField("f1_04[0]").getText() ?? "", "", "the signer's name waits for the signing");
+    const facts2 = { documentName: "8879", requestId: "r1", firmName: "Acme", signerName: "Ana Ruiz", signerEmail: "a@x.test", consentText: "I agree.", originalSha256: "0".repeat(64), timeZone: "America/Chicago", ipHash: null, userAgent: null, timeline: [{ label: "Sent", at: new Date("2026-10-13T12:00:00Z") }] };
+    const signed = await applySignature({ pdf: filled, map: MAP, mark: { method: "typed", text: "Ana Ruiz" }, signedName: "Ana Ruiz", signedDate: "October 13, 2026", certificate: facts2 });
+    const doc = await PDFDocument.load(signed);
+    assert.equal(doc.getPageCount(), 2, "the certificate page is added after the form");
+    assert.equal(doc.getForm().getFields().length, 0, "flattened, with the name written where it was matched");
   });
 });

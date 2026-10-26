@@ -1,5 +1,5 @@
 import { PDFDocument, PDFTextField, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
-import { SIGNATURE_FIELD } from "./fields.ts";
+import { effectiveName, SIGNATURE_FIELD, type FieldMap } from "./fields.ts";
 
 // Builds the signed copy of a PDF: the signer's name and date in their fields, the signature in the signature box
 // (or on the certificate page when the template has none), the form flattened, and a signing certificate page with
@@ -77,7 +77,7 @@ async function drawMark(pdf: PDFDocument, page: PDFPage, mark: SignatureMark, bo
   page.drawText(text, { x: box.x + 2, y: box.y + (box.height - size) / 2 + size * 0.2, size, font, color: rgb(0.05, 0.1, 0.35) });
 }
 
-export async function applySignature(input: { pdf: Uint8Array; mark: SignatureMark; signedName: string; signedDate: string; certificate: CertificateFacts }): Promise<Uint8Array> {
+export async function applySignature(input: { pdf: Uint8Array; mark: SignatureMark; signedName: string; signedDate: string; certificate: CertificateFacts; map?: FieldMap }): Promise<Uint8Array> {
   const pdf = await PDFDocument.load(input.pdf, { updateMetadata: false });
   const form = pdf.getForm();
   const pages = pdf.getPages();
@@ -86,7 +86,7 @@ export async function applySignature(input: { pdf: Uint8Array; mark: SignatureMa
 
   const boxes: { page: PDFPage; x: number; y: number; width: number; height: number }[] = [];
   for (const field of form.getFields()) {
-    const name = field.getName().trim();
+    const name = effectiveName(field.getName().trim(), input.map);
     if (name === SIGNATURE_FIELD) {
       for (const widget of field.acroField.getWidgets()) {
         const ref = widget.P();

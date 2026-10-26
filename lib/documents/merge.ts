@@ -2,7 +2,7 @@ import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import { PDFDocument, PDFTextField, StandardFonts } from "pdf-lib";
 import { ValidationError } from "../commerce/validation.ts";
-import { isMergeField, SIGNATURE_FIELD, SIGNING_FIELDS } from "./fields.ts";
+import { effectiveName, isMergeField, SIGNATURE_FIELD, SIGNING_FIELDS, type FieldMap } from "./fields.ts";
 import type { DocumentFileType } from "./files.ts";
 
 // Templates: {{field}} typed in a Word document, or fillable PDF form fields named after the merge field.
@@ -36,7 +36,7 @@ function checkNames(names: string[], type: DocumentFileType): string[] {
 }
 
 /** Lists the merge fields a document uses. Throws on unknown or malformed fields. */
-export async function scanTemplate(bytes: Uint8Array, type: DocumentFileType): Promise<TemplateScan> {
+export async function scanTemplate(bytes: Uint8Array, type: DocumentFileType, map: FieldMap = {}): Promise<TemplateScan> {
   if (type !== "docx" && type !== "pdf") return { fields: [], hasSignatureField: false };
   if (type === "docx") {
     const zip = new PizZip(bytes);
@@ -53,9 +53,26 @@ export async function scanTemplate(bytes: Uint8Array, type: DocumentFileType): P
     return { fields: checkNames(names, type), hasSignatureField: false };
   }
   const pdf = await PDFDocument.load(bytes, { updateMetadata: false });
-  const names = pdf.getForm().getFields().map((f) => f.getName().trim());
+  // A box with a name that is not a merge field is left blank, not refused: official forms name their boxes anything.
+  // They are matched to what goes in them on the document's page.
+  const names = pdf.getForm().getFields().map((f) => effectiveName(f.getName().trim(), map)).filter((n) => n === SIGNATURE_FIELD || isMergeField(n));
   const hasSignatureField = names.includes(SIGNATURE_FIELD);
   return { fields: checkNames(names.filter((n) => n !== SIGNATURE_FIELD), type), hasSignatureField };
+}
+
+export type PdfBox = { name: string; kind: "text" | "other" };
+/** The boxes of a fillable PDF, in the order the form has them, for matching. */
+export async function pdfBoxes(bytes: Uint8Array): Promise<PdfBox[]> {
+  const pdf = await PDFDocument.load(bytes, { updateMetadata: false });
+  const seen = new Set<string>();
+  const out: PdfBox[] = [];
+  for (const f of pdf.getForm().getFields()) {
+    const name = f.getName().trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push({ name, kind: f instanceof PDFTextField ? "text" : "other" });
+  }
+  return out;
 }
 
 /** Fields the document uses that have no value. Filling must not happen while this is non-empty. */
@@ -75,7 +92,7 @@ function pdfSafe(v: string) {
  * `keepSigning` leaves the signing fields (and the signature box) open so they can be filled when the person signs;
  * otherwise the form is flattened so the copy cannot be edited.
  */
-export async function fillTemplate(bytes: Uint8Array, type: DocumentFileType, values: Record<string, string>, opts: { keepSigning?: boolean } = {}): Promise<Uint8Array> {
+export async function fillTemplate(bytes: Uint8Array, type: DocumentFileType, values: Record<string, string>, opts: { keepSigning?: boolean; map?: FieldMap } = {}): Promise<Uint8Array> {
   if (type !== "docx" && type !== "pdf") return bytes;
   if (type === "docx") {
     const zip = new PizZip(bytes);
@@ -93,7 +110,7 @@ export async function fillTemplate(bytes: Uint8Array, type: DocumentFileType, va
   const form = pdf.getForm();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   for (const field of form.getFields()) {
-    const name = field.getName().trim();
+    const name = effectiveName(field.getName().trim(), opts.map);
     if (!(field instanceof PDFTextField)) continue;
     if (name === SIGNATURE_FIELD || (opts.keepSigning && SIGNING_FIELDS.includes(name))) continue;
     if (!isMergeField(name)) continue;

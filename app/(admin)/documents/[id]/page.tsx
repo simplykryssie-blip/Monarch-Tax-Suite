@@ -11,7 +11,9 @@ import { VIEWABLE_TYPES } from "@/lib/documents/files.ts";
 import { folderPaths } from "@/lib/documents/folders.ts";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { ASK_FIELD, askLabel } from "@/lib/documents/fields.ts";
-import { moveDocumentAction, revokeDeliveryAction, saveConsentAction, saveDocumentDetailsAction, sendToClientAction } from "../actions";
+import { BOX_CHOICES } from "@/lib/documents/fields.ts";
+import { pdfBoxes, type PdfBox } from "@/lib/documents/merge.ts";
+import { moveDocumentAction, saveFieldMapAction, revokeDeliveryAction, saveConsentAction, saveDocumentDetailsAction, sendToClientAction } from "../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const kb = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
@@ -34,6 +36,8 @@ export default async function DocumentPage({ params, searchParams }: { params: P
   const tab = tabs.some(([k]) => k === askedTab) ? askedTab! : "file";
   const asks = (current?.merge_fields ?? []).filter((f) => ASK_FIELD.test(f));
   const paths = folderPaths(folders);
+  // The boxes of a fillable PDF, for matching them to what goes in them.
+  const boxes: PdfBox[] = tab === "file" && canSign && current ? await deps.store.download(current.storage_path).then((b) => (b ? pdfBoxes(b) : [])).catch(() => []) : [];
 
   return (
     <>
@@ -127,6 +131,36 @@ export default async function DocumentPage({ params, searchParams }: { params: P
             ) : <p className="monarch-muted">No file has been accepted yet. Upload one below.</p>}
             {doc.status === "active" && <><h3>Upload a new version</h3><DocumentUploader documentId={doc.id} accept={`.${doc.file_type}${doc.file_type === "jpg" ? ",.jpeg" : ""}`} /><p className="monarch-muted">Copies already sent keep the version they used.</p></>}
           </section>
+          {canSign && boxes.length > 0 && (
+            <section className="monarch-panel" style={{ padding: 20 }}>
+              <h2>Match the boxes</h2>
+              <p className="monarch-muted">An official form names its boxes with codes. Say what goes in each one, and it&apos;s filled in for every client you send it to. Boxes left as &ldquo;Leave blank&rdquo; stay empty.</p>
+              <form action={saveFieldMapAction}>
+                <input type="hidden" name="id" value={doc.id} />
+                <div className="monarch-table-wrap"><table>
+                  <thead><tr><th>BOX IN THE PDF</th><th>WHAT GOES IN IT</th></tr></thead>
+                  <tbody>
+                    {boxes.map((b) => (
+                      <tr key={b.name}>
+                        <td><code>{b.name}</code>{b.kind === "other" && <small className="monarch-subcell">not a text box: only a signature can go here</small>}</td>
+                        <td>
+                          <select name={`box:${b.name}`} defaultValue={doc.field_map?.[b.name] ?? ""} aria-label={`What goes in ${b.name}`}>
+                            <option value="">Leave blank</option>
+                            {BOX_CHOICES.map((g) => (
+                              <optgroup key={g.group} label={g.group}>
+                                {g.choices.filter((c) => b.kind === "text" || c.value === "signature").map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table></div>
+                <p><button className="monarch-primary">Save matches</button></p>
+              </form>
+            </section>
+          )}
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Versions</h2></div></div>
             <div className="monarch-table-wrap"><table>

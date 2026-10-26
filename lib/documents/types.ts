@@ -32,6 +32,8 @@ export type LibraryDocument = {
   signature_consent: string | null;
   /** The folder it is kept in, or none. */
   folder_id?: string | null;
+  /** For a PDF: its own box names matched to what goes in them (see fields.ts). */
+  field_map?: Record<string, string>;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -126,7 +128,7 @@ export interface DocumentsRepo {
   listDocuments(): Promise<LibraryDocument[]>;
   getDocument(id: string): Promise<LibraryDocument | null>;
   insertDocument(input: Pick<LibraryDocument, "name" | "description" | "file_type" | "created_by">): Promise<LibraryDocument>;
-  updateDocument(id: string, patch: Partial<Pick<LibraryDocument, "name" | "description" | "status" | "current_version_id" | "signature_consent" | "folder_id">>): Promise<LibraryDocument>;
+  updateDocument(id: string, patch: Partial<Pick<LibraryDocument, "name" | "description" | "status" | "current_version_id" | "signature_consent" | "folder_id" | "field_map">>): Promise<LibraryDocument>;
   deleteDocument(id: string): Promise<void>;
 
   /** The internal folders (no client), or one client's. */

@@ -7,7 +7,7 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { documentDeps } from "@/lib/documents/server";
-import { finishVersionUpload, revokeDelivery, setConsentText, startVersionUpload } from "@/lib/documents/service.ts";
+import { finishVersionUpload, revokeDelivery, saveFieldMap, setConsentText, startVersionUpload } from "@/lib/documents/service.ts";
 import { createFolder, deleteFolder, internalScope, moveFile, moveFolder, renameFolder } from "@/lib/documents/folders.ts";
 import { sendDocumentToClient } from "@/lib/portal/send-document.ts";
 import { ssnDeps } from "@/lib/ssn/server";
@@ -76,6 +76,17 @@ export async function saveDocumentDetailsAction(form: FormData) {
     if (name.length < 2) throw new ValidationError("Give the document a name.");
     await documentDeps().repo.updateDocument(id, { name, description: str(form, "description").trim().slice(0, 1000) || null });
     return { notice: "Saved." };
+  });
+}
+
+export async function saveFieldMapAction(form: FormData) {
+  const id = str(form, "id");
+  await act(`/documents/${id}?tab=file`, async (adminId) => {
+    if (!UUID.test(id)) throw new ValidationError("Document not found.");
+    const raw: Record<string, unknown> = {};
+    for (const [key, value] of form.entries()) if (key.startsWith("box:") && typeof value === "string") raw[key.slice(4)] = value;
+    await saveFieldMap(documentDeps(), id, raw, adminId);
+    return { notice: "Saved. The boxes are filled in this way every time it's sent." };
   });
 }
 

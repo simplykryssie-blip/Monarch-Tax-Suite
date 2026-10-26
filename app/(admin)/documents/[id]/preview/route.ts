@@ -21,7 +21,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!original) return new Response("Not found", { status: 404 });
   const sample = { ...SAMPLE_FIELD_VALUES };
   for (const f of version.merge_fields) if (f.startsWith("form.")) sample[f] = `Sample ${f.slice(5).replace(/_/g, " ")}`;
-  const filled = await fillTemplate(original, doc.file_type, sample);
+  const filled = await fillTemplate(original, doc.file_type, sample, { map: doc.field_map ?? {} });
   const name = `${doc.name.replace(/[^A-Za-z0-9._ -]/g, "_").slice(0, 100)} (sample).${doc.file_type}`;
   return new Response(Buffer.from(filled), {
     headers: {

@@ -3,7 +3,8 @@ import { ValidationError } from "../commerce/validation.ts";
 import { documentOpenedNotice } from "./activity.ts";
 import type { NewNotification } from "../notifications/types.ts";
 import { checkDocumentFile, cleanDocumentName, CONTENT_TYPES, DOCUMENT_URL_SECONDS, MAX_DOCUMENT_BYTES, sha256Hex, type DocumentFileType } from "./files.ts";
-import { fillTemplate, missingValues, scanTemplate } from "./merge.ts";
+import { isBoxChoice, type FieldMap } from "./fields.ts";
+import { fillTemplate, missingValues, pdfBoxes, scanTemplate } from "./merge.ts";
 import { applySignature, isSignaturePng, type SignatureMark } from "./signing.ts";
 import { formatDate } from "./values.ts";
 import type { Delivery, DeliveryKind, DocumentStore, DocumentsRepo, DocumentVersion, LibraryDocument, SignatureRequest } from "./types.ts";
@@ -87,6 +88,38 @@ export async function startVersionUpload(
   return { document, version, uploadUrl: url, contentType: CONTENT_TYPES[fileType] };
 }
 
+/**
+ * Saves which box of a PDF takes what (an official form names its boxes anything). Only boxes the PDF has, and only
+ * things a box may take; a box left on "Leave blank" is not saved. The document's merge fields are worked out again.
+ */
+export async function saveFieldMap(deps: DocumentDeps, documentId: string, raw: Record<string, unknown>, actorId: string | null): Promise<LibraryDocument> {
+  const document = await deps.repo.getDocument(documentId);
+  if (!document) throw new ValidationError("Document not found.");
+  if (document.file_type !== "pdf") throw new ValidationError("Only a PDF has boxes to match.");
+  const version = document.current_version_id ? await deps.repo.getVersion(document.current_version_id) : null;
+  if (!version || version.status !== "ready") throw new ValidationError("Add the file first.");
+  const bytes = await deps.store.download(ownPath(deps, version.storage_path));
+  if (!bytes) throw new ValidationError("The document file is missing from storage.");
+  const boxes = new Set((await pdfBoxes(bytes)).map((b) => b.name));
+  const map: FieldMap = {};
+  for (const [name, value] of Object.entries(raw)) {
+    if (typeof value !== "string" || !value) continue;
+    if (!boxes.has(name)) throw new ValidationError("A box in your list isn't in this PDF. Reload the page and try again.");
+    if (!isBoxChoice(value)) throw new ValidationError("Choose from the list for each box.");
+    map[name] = value;
+  }
+  let scan;
+  try {
+    scan = await scanTemplate(bytes, "pdf", map);
+  } catch (e) {
+    throw e instanceof ValidationError ? e : new ValidationError("This PDF could not be read.");
+  }
+  const saved = await deps.repo.updateDocument(documentId, { field_map: map });
+  await deps.repo.updateVersion(version.id, { merge_fields: scan.fields, has_signature_field: scan.hasSignatureField });
+  await deps.repo.addEvent({ document_id: documentId, delivery_id: null, signature_request_id: null, type: "boxes_matched", actor_id: actorId, detail: { matched: Object.keys(map).length } });
+  return saved;
+}
+
 /** Checks the uploaded file by content, finds its merge fields, and makes it the current version. */
 export async function finishVersionUpload(deps: DocumentDeps, versionId: string, actorId: string | null): Promise<{ document: LibraryDocument; version: DocumentVersion }> {
   const version = await deps.repo.getVersion(versionId);
@@ -106,7 +139,7 @@ export async function finishVersionUpload(deps: DocumentDeps, versionId: string,
   let scan;
   try {
     await checkDocumentFile(bytes, document.file_type);
-    scan = await scanTemplate(bytes, document.file_type);
+    scan = await scanTemplate(bytes, document.file_type, document.field_map ?? {});
   } catch (e) {
     return reject(e instanceof ValidationError ? e.message : "This file could not be read, so it was rejected.");
   }
@@ -198,7 +231,7 @@ export async function createDelivery(deps: DocumentDeps, input: DeliveryInput): 
   if (missing.length) throw new MissingValuesError(missing);
   const original = await deps.store.download(ownPath(deps, version.storage_path));
   if (!original) throw new Error("The document file is missing from storage.");
-  const filled = await fillTemplate(original, document.file_type, input.values, { keepSigning: input.kind === "signature" });
+  const filled = await fillTemplate(original, document.file_type, input.values, { keepSigning: input.kind === "signature", map: document.field_map ?? {} });
   const id = randomUUID();
   const path = deliveryPath(deps, id, document.file_type);
   await deps.store.upload(ownPath(deps, path), filled, CONTENT_TYPES[document.file_type]);
@@ -308,6 +341,7 @@ export async function signDocument(deps: DocumentDeps, token: string, input: Sig
   if (!copy || sha256Hex(copy) !== signature.original_sha256) throw new Error("The document copy does not match what was sent.");
   const signed = await applySignature({
     pdf: copy,
+    map: document.field_map ?? {},
     mark: input.mark.method === "typed" ? { method: "typed", text: input.mark.text.trim().slice(0, 120) } : input.mark,
     signedName,
     signedDate: formatDate(now, input.timeZone),
