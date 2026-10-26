@@ -46,6 +46,7 @@ export async function viewFor(tenantId: string, siteName: string, pages: PublicS
   return {
     name: siteName || brand?.name || profile?.display_name || "",
     primary: pick(settings.brand.primary, brand?.primary, "#2563eb"),
+    pageBg: settings.brand.pageBg,
     accent: pick(settings.brand.accent, brand?.accent, "#171714"),
     logoUrl: logo ?? brand?.logoUrl ?? null,
     nav,

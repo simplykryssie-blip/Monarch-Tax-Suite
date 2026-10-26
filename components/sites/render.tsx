@@ -13,6 +13,8 @@ export type SiteView = {
   name: string;
   primary: string;
   accent: string;
+  /** Background behind every page; null = white. */
+  pageBg?: string | null;
   logoUrl: string | null;
   nav: { href: string; label: string }[];
   contact: { phone: string | null; email: string | null; address: string | null };
@@ -171,7 +173,7 @@ export function Blocks({ blocks, view }: { blocks: Block[]; view: SiteView }) {
 }
 
 export const SITE_CSS = `
-.ws{--p:var(--ws-primary,#2563eb);--on-p:var(--ws-on-primary,#fff);--a:var(--ws-accent,#171714);margin:0;min-height:100vh;display:flex;flex-direction:column;background:#fff;color:#1c1b17;font:16px/1.65 var(--ws-body-font,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif);-webkit-text-size-adjust:100%}
+.ws{--p:var(--ws-primary,#2563eb);--on-p:var(--ws-on-primary,#fff);--a:var(--ws-accent,#171714);margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--ws-bg,#fff);color:var(--ws-text,#1c1b17);font:16px/1.65 var(--ws-body-font,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif);-webkit-text-size-adjust:100%}
 .ws h1,.ws h2,.ws h3{font-family:var(--ws-heading-font,inherit)}
 .ws *,.ws *::before,.ws *::after{box-sizing:border-box}
 .ws a{color:var(--p)}
@@ -264,7 +266,8 @@ h3.ws-h{font-size:clamp(19px,4.5vw,24px);font-weight:700}
 /** Loads the Google fonts a site picked (none when it uses only built-in fonts). */
 const FontLinks = ({ view }: { view: SiteView }) => view.look?.fontsHref ? <><link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" /><link rel="stylesheet" href={view.look.fontsHref} /></> : null;
 
-const fontVars = (view: SiteView): Record<string, string> => (view.look ? { "--ws-heading-font": view.look.headingFont, "--ws-body-font": view.look.bodyFont } : {});
+const bgVars = (view: SiteView): Record<string, string> => (view.pageBg ? { "--ws-bg": view.pageBg, "--ws-text": onColor(view.pageBg) === "#fff" || onColor(view.pageBg) === "#ffffff" ? "#f3f1ea" : "#1c1b17" } : {});
+const fontVars = (view: SiteView): Record<string, string> => ({ ...bgVars(view), ...(view.look ? { "--ws-heading-font": view.look.headingFont, "--ws-body-font": view.look.bodyFont } : {}) });
 
 /** The colour and font variables a site's styles read, for a wrapper element. */
 export const siteVars = (view: SiteView): React.CSSProperties => ({ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, ...fontVars(view) } as React.CSSProperties);

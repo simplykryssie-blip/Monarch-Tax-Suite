@@ -375,3 +375,11 @@ describe("site fonts", () => {
     assert.equal(settingsOf({ fonts: { heading: "comic-sans" } }).fonts.heading, "inter");
   });
 });
+
+describe("page background", () => {
+  test("a valid colour is kept; anything else means white", () => {
+    assert.equal(settingsOf({ brand: { pageBg: "#F6F4EE" } }).brand.pageBg, "#f6f4ee");
+    assert.equal(settingsOf({ brand: { pageBg: "url(x)" } }).brand.pageBg, null);
+    assert.equal(settingsOf({}).brand.pageBg, null);
+  });
+});

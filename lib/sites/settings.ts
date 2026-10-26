@@ -26,7 +26,7 @@ export const SOCIALS = ["facebook", "instagram", "linkedin", "youtube", "x", "ti
 export type Social = (typeof SOCIALS)[number];
 
 export type SiteSettings = {
-  brand: { primary: string | null; accent: string | null; logoImageId: string | null; faviconImageId: string | null };
+  brand: { primary: string | null; accent: string | null; /** Behind every page of the website; null = white. */ pageBg: string | null; logoImageId: string | null; faviconImageId: string | null };
   fonts: { heading: FontChoice; body: FontChoice };
   header: { show: boolean; align: "left" | "center"; showPhone: boolean; ctaLabel: string; ctaHref: string };
   footer: { show: boolean; text: string; showContact: boolean; showHours: boolean; showSocial: boolean };
@@ -39,7 +39,7 @@ export type SiteSettings = {
 };
 
 export const DEFAULT_SETTINGS: SiteSettings = {
-  brand: { primary: null, accent: null, logoImageId: null, faviconImageId: null },
+  brand: { primary: null, accent: null, pageBg: null, logoImageId: null, faviconImageId: null },
   fonts: { heading: "inter", body: "inter" },
   header: { show: true, align: "left", showPhone: false, ctaLabel: "", ctaHref: "" },
   footer: { show: true, text: "", showContact: true, showHours: true, showSocial: true },
@@ -67,7 +67,7 @@ export function cleanSiteSettings(raw: unknown): SiteSettings {
   const cta = line(header.ctaHref, 500);
   const d = DEFAULT_SETTINGS;
   const out: SiteSettings = {
-    brand: { primary: color(brand.primary), accent: color(brand.accent), logoImageId: imageId(brand.logoImageId), faviconImageId: imageId(brand.faviconImageId) },
+    brand: { primary: color(brand.primary), accent: color(brand.accent), pageBg: color(brand.pageBg), logoImageId: imageId(brand.logoImageId), faviconImageId: imageId(brand.faviconImageId) },
     fonts: { heading: font(fonts.heading, d.fonts.heading), body: font(fonts.body, d.fonts.body) },
     header: { show: bool(header.show, d.header.show), align: header.align === "center" ? "center" : "left", showPhone: bool(header.showPhone, d.header.showPhone), ctaLabel: line(header.ctaLabel, 40), ctaHref: cta && cleanHref(cta) ? cleanHref(cta)! : "" },
     footer: { show: bool(footer.show, d.footer.show), text: para(footer.text, SEO_LIMITS.footerText), showContact: bool(footer.showContact, d.footer.showContact), showHours: bool(footer.showHours, d.footer.showHours), showSocial: bool(footer.showSocial, d.footer.showSocial) },

@@ -42,6 +42,14 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
         </div>
       </SettingRow>
 
+      <SettingRow title="Page background" desc="The colour behind every page of this website. Sections you colour yourself still show on top.">
+        <div className="sx-card-panel">
+          <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg === null} onChange={() => patch("brand", { pageBg: null })} /> <span>White</span></label>
+          <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg !== null} onChange={() => patch("brand", { pageBg: s.brand.pageBg ?? "#f6f4ee" })} /> <span>Choose a colour</span></label>
+          {s.brand.pageBg !== null && <label>Colour<span className="sx-color"><input type="color" value={s.brand.pageBg} onChange={(e) => patch("brand", { pageBg: e.target.value })} /><code>{s.brand.pageBg}</code></span></label>}
+        </div>
+      </SettingRow>
+
       <SettingRow title="Logo and font" desc="The logo goes at the top-left of every page.">
         <div className="sx-card-panel">
           <label>Logo{imageSelect(s.brand.logoImageId, (v) => patch("brand", { logoImageId: v }), "Use my firm's logo")}</label>
