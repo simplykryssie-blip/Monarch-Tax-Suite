@@ -35,7 +35,8 @@ async function attempt<T>(label: string, notes: string[], run: () => Promise<T>)
 export async function loadContacts(): Promise<ContactsData> {
   const tier = await currentTier();
   const notes: string[] = [];
-  const wantLeads = allows(tier, "leads");
+  // Leads are in every plan's Contacts: people who book, fill in a form or are added from the calendar land here.
+  const wantLeads = true;
   const wantCustomers = allows(tier, "store");
   const [leadRows, clientRows, customerRows, orderRows] = await Promise.all([
     wantLeads ? attempt("Leads", notes, () => leadsDeps().repo.listLeads({ limit: 5000 })) : Promise.resolve(null),

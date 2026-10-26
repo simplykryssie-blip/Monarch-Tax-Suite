@@ -4,6 +4,7 @@ import { PortalPanel } from "@/components/portal/panel";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
+import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { DetailsCard, type Details } from "@/components/contacts/details-card";
 import { MergeChoice } from "@/components/contacts/merge-choice";
 import { MessageComposer } from "@/components/contacts/message-composer";
@@ -283,6 +284,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                   })}</ul>
                 </section>
               )}
+
+              <AppointmentsCard email={client.email} />
 
               <section className="monarch-panel cl-card">
                 <div className="cl-card-head"><h2>Tasks</h2>{tasks.length > 0 && <Link className="monarch-link" href={`/workspace/clients/${id}?tab=tasks`}>See all ({tasks.length})</Link>}</div>

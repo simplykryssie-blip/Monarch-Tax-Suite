@@ -2,8 +2,11 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { Badge, money, PageTitle, when } from "@/components/admin/ui";
+import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { DUPLICATE_REASON, parseContactKey } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
+import { allows } from "@/lib/tier.ts";
+import { currentTier } from "@/lib/tier-server";
 
 // One person, wherever they are kept. Read-only: it shows which records are combined here and links to each one's own page.
 // Sensitive personal details stay on the client's own page, not here.
@@ -35,6 +38,8 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
         {contact.tags.map((t) => <span key={t} className="monarch-badge">{t}</span>)}
       </div>
 
+      <div style={{ marginBottom: 14 }}><AppointmentsCard email={contact.email} /></div>
+
       <section className="monarch-panel" style={{ marginBottom: 14 }}>
         <div className="monarch-panel-head"><h2>Records combined here</h2></div>
         <p style={{ padding: "0 20px", color: "#77746b", fontSize: 12 }}>One person, one contact. These are the records found for them. Each keeps its own page; nothing has been merged or changed.</p>
@@ -43,7 +48,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
             <thead><tr><th>RECORD</th><th>STATUS</th><th>LAST UPDATED</th><th /></tr></thead>
             <tbody>
               {client && <tr><td><b>Client</b></td><td>{client.archived_at ? "Archived" : "Current"}</td><td>{when(client.updated_at)}</td><td><Link href={`/workspace/clients/${client.id}`}>Open client</Link></td></tr>}
-              {lead && <tr><td><b>Lead</b><small className="monarch-subcell">from {lead.source}</small></td><td><Badge value={lead.status} /></td><td>{when(lead.updated_at)}</td><td><Link href={`/leads/${lead.id}`}>Open lead</Link></td></tr>}
+              {lead && <tr><td><b>Lead</b><small className="monarch-subcell">from {lead.source}</small></td><td><Badge value={lead.status} /></td><td>{when(lead.updated_at)}</td><td>{allows(await currentTier(), "leads") && <Link href={`/leads/${lead.id}`}>Open lead</Link>}</td></tr>}
               {customers.map((c) => <tr key={c.id}><td><b>Customer</b></td><td><Badge value={c.status} /></td><td>{when(c.updated_at)}</td><td><Link href={`/customers/${c.id}`}>Open customer</Link></td></tr>)}
             </tbody>
           </table>

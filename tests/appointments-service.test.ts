@@ -1,3 +1,4 @@
+import { bookingProblems, wantsTexts } from "../lib/appointments/booking-form.ts";
 import { intakeStatus } from "../lib/appointments/intake.ts";
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
@@ -367,4 +368,14 @@ test("booking, moving and cancelling tell the bell, saying who did it", async ()
   // A problem telling the bell never undoes the booking.
   deps.activity = async () => { throw new Error("bell down"); };
   await bookPublic(deps, t.slug, { ...person, email: "z@example.com", starts_at: "2026-10-12T19:00:00.000Z" });
+});
+
+test("the public booking page marks each detail that needs fixing, and texts only apply with a mobile number", () => {
+  const ok = { name: "Jane Smith", email: "jane@example.com", phone: "", starts_at: "2026-10-12T15:00:00.000Z" };
+  assert.deepEqual(bookingProblems(ok), {});
+  assert.deepEqual(Object.keys(bookingProblems({ ...ok, name: "", email: "nope", phone: "12", starts_at: "" })).sort(), ["email", "name", "phone", "starts_at"]);
+  assert.match(bookingProblems({ ...ok, email: "nope" }).email!, /valid email/);
+  assert.equal(wantsTexts(true, ""), false, "no number, no texts, and the booking still goes through");
+  assert.equal(wantsTexts(true, "(337) 555-0100"), true);
+  assert.equal(wantsTexts(false, "(337) 555-0100"), false);
 });

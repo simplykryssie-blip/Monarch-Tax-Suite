@@ -952,3 +952,7 @@ html[data-popup] body{background:#fff}
 .monarch-form label.na-consent{flex-direction:row;display:flex;align-items:center;gap:10px}.monarch-form label.na-consent input{width:auto}
 
 .msg-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:6px}.msg-gap{flex:1;min-width:48px}
+.bk-form label.has-problem input,.bk-form label.has-problem textarea{border-color:#c0392b;background:#fff7f6}.bk-problem{display:block;color:#b02a1c;font-size:13px;font-weight:600;margin-top:4px}.bk-picker.has-problem{outline:2px solid #c0392b;outline-offset:6px;border-radius:8px}
+.bk-form label.bk-consent{align-items:flex-start;font-weight:400;line-height:1.45}.bk-form label.bk-consent input{margin-top:3px;flex:0 0 auto}
+.bk-submit{padding:13px 28px;font-size:16px;cursor:pointer}.bk-submit[disabled]{opacity:.7;cursor:default}
+.bk-summary{margin:12px 0 18px;padding:16px 18px;border:1px solid #dbe3ef;border-radius:12px;background:#f7faff;line-height:1.5}.bk-summary b{display:block;font-size:18px}.bk-actions{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}

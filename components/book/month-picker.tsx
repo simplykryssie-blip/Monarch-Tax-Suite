@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 
-type Props = { slots: string[]; officeTz: string; name?: string };
+type Props = { slots: string[]; officeTz: string; name?: string; /** Marks the picker and says what to do, after a try without a time. */ problem?: string };
 
 const noopSubscribe = () => () => {};
 const dayKey = (iso: string, tz: string) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
@@ -14,7 +14,7 @@ const monthName = (y: number, m: number) => new Intl.DateTimeFormat("en-US", { t
  * A month calendar to pick a day from (days with open times are enabled), then that day's times. Times are shown in the
  * visitor's own time zone (the office's until the browser is known); the zone travels with the booking.
  */
-export function MonthPicker({ slots, officeTz, name = "starts_at" }: Props) {
+export function MonthPicker({ slots, officeTz, name = "starts_at", problem }: Props) {
   const browserTz = useSyncExternalStore(noopSubscribe, () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; } }, () => "");
   const tz = browserTz || officeTz;
   const byDay = useMemo(() => {
@@ -41,7 +41,7 @@ export function MonthPicker({ slots, officeTz, name = "starts_at" }: Props) {
   const times = day ? byDay.get(day) ?? [] : [];
 
   return (
-    <div className="bk-picker">
+    <div className={"bk-picker" + (problem ? " has-problem" : "")}>
       <input type="hidden" name="time_zone" value={tz} />
       <input name="_pick" required value={picked ?? ""} readOnly tabIndex={-1} aria-hidden="true" className="bk-guard" />
       <div className="bk-month">
@@ -62,6 +62,7 @@ export function MonthPicker({ slots, officeTz, name = "starts_at" }: Props) {
           })}
         </div>
         <p className="monarch-muted bk-tz">Times are shown in {tz.replace(/_/g, " ")}.</p>
+        {problem && <p className="bk-problem" role="alert">{problem}</p>}
       </div>
       <div className="bk-times">
         {!day ? <p className="monarch-muted">Choose a day to see its times.</p> : (
@@ -70,7 +71,7 @@ export function MonthPicker({ slots, officeTz, name = "starts_at" }: Props) {
             <div className="bk-slots">
               {times.map((s) => (
                 <label key={s} className={"bk-slot" + (picked === s ? " is-on" : "")}>
-                  <input type="radio" name={name} value={s} required onChange={() => setPicked(s)} />
+                  <input type="radio" name={name} value={s} required checked={picked === s} onChange={() => setPicked(s)} />
                   {fmtTime(s, tz)}
                 </label>
               ))}

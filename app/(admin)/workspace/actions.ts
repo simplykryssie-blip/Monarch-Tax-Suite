@@ -111,10 +111,9 @@ export async function addContactAction(form: FormData): Promise<{ error: string;
       if (ssn) await storeSsn(ssnDeps(), { clientId: c.id, ssn, actorId: admin.userId });
       to = clientPage(c.id);
     } else if (kind === "lead") {
-      if (!allows(tier, "leads")) throw new ValidationError("Leads aren't part of this plan.");
       if (!str(form, "first_name").trim()) throw new ValidationError("Enter the first name.");
       const lead = await createLead(leadsDeps(), { ...fields, full_name: name }, admin.userId);
-      to = `/leads/${lead.id}`;
+      to = allows(tier, "leads") ? `/leads/${lead.id}` : `/contacts/lead-${lead.id}`;
     } else if (kind === "customer") {
       if (!allows(tier, "store")) throw new ValidationError("Customers aren't part of this plan.");
       const email = str(form, "email").trim().toLowerCase();
