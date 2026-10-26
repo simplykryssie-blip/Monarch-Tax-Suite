@@ -12,7 +12,7 @@ import type { SiteContext, SitesContext } from "@/lib/sites/context";
 import { SettingsForm } from "@/components/sites/settings-form";
 import { SettingRow } from "@/components/sites/setting-row";
 import { loadBrand } from "@/lib/branding/server";
-import { sectionsOf } from "@/lib/sites/blocks.ts";
+import { isEmptyPage, sectionsOf } from "@/lib/sites/blocks.ts";
 import { cleanPageSeo, settingsOf } from "@/lib/sites/settings.ts";
 import { MAX_SITES } from "@/lib/sites/service.ts";
 import { hasUnpublishedChanges, MAX_CUSTOM_DOMAINS, MAX_PAGES } from "@/lib/sites/service.ts";
@@ -35,6 +35,8 @@ const STATUS: Record<string, string> = { active: "Connected", pending: "Waiting 
 async function SiteHeader({ ctx, here }: { ctx: SiteContext; here: "pages" | "settings" }) {
   const [pages, domains] = await Promise.all([ctx.deps.repo.listPages(ctx.site.id), ctx.deps.repo.listDomains(ctx.site.id)]);
   const live = ctx.site.status === "published";
+  const home = pages.find((p) => p.is_home);
+  const homeEmpty = !home || isEmptyPage(sectionsOf(home.draft));
   const changed = hasUnpublishedChanges(pages, ctx.site);
   const host = domains.find((d) => d.kind === "custom" && d.status === "active") ?? domains.find((d) => d.kind === "subdomain");
   const tab = (key: typeof here, href: string, label: string) => <Link href={href} className={here === key ? "is-on" : undefined} aria-current={here === key ? "page" : undefined}>{label}</Link>;
@@ -47,12 +49,12 @@ async function SiteHeader({ ctx, here }: { ctx: SiteContext; here: "pages" | "se
           <p className="sx-meta">
             <span className={`sx-pill ${live ? "is-live" : ""}`}>{live ? "Live" : "Not published"}</span>
             {host && (live ? <a href={`https://${host.hostname}`} target="_blank" rel="noreferrer">{host.hostname}</a> : <span>{host.hostname}</span>)}
-            {changed && <span className="sx-note">{live ? "Unpublished changes" : "Nothing is public yet"}</span>}
+            {homeEmpty ? <Link className="sx-note" href={home ? `${ctx.siteBase}/pages/${home.id}` : ctx.siteBase}>Your home page is empty: add something to it to publish →</Link> : changed && <span className="sx-note">{live ? "Unpublished changes" : "Nothing is public yet"}</span>}
           </p>
         </div>
         <div className="sx-actions">
           {live && <form action={unpublishAction}><Hidden ctx={ctx} /><button className="monarch-secondary">Take offline</button></form>}
-          <form action={publishAction}><Hidden ctx={ctx} /><button className="monarch-primary">{live ? "Publish changes" : "Publish"}</button></form>
+          <form action={publishAction}><Hidden ctx={ctx} /><button className="monarch-primary" disabled={homeEmpty} title={homeEmpty ? "Add something to your home page first" : undefined}>{live ? "Publish changes" : "Publish"}</button></form>
         </div>
       </div>
       <nav className="sx-tabs" aria-label="Website">
