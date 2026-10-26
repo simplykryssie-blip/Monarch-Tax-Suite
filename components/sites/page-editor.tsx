@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BLOCK_LABEL, elementsOf, LAYOUT_KEYS, LAYOUT_LABEL, LAYOUTS, LEAF_TYPES, newElement, newRow, newSection, ROW_GAPS, SECTION_PADS, SECTION_TONES, SECTION_WIDTHS, type Block, type ColumnBlock, type LayoutKey, type LeafBlock, type RowBlock, type SectionBlock } from "@/lib/sites/blocks.ts";
 import { LeafFields, type PickBooking, type PickForm, type PickImage } from "./page-form";
-import { Leaf, SITE_CSS, siteVars, type SiteView } from "./render";
+import { Blocks, Leaf, SiteFrame, type SiteView } from "./render";
+import { SECTION_TEMPLATES } from "@/lib/sites/templates.ts";
 import type { SiteImageResult } from "@/app/sites-image-actions";
 
 // The page builder: a palette on the left, the page itself in the middle (click anything to edit it, drag elements to move
@@ -74,6 +75,8 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
   backHref: string; siteName: string; uploadImage: (form: FormData) => Promise<SiteImageResult>;
 }) {
   const [images, setImages] = useState<PickImage[]>(initialImages);
+  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [betweenAt, setBetweenAt] = useState<number | null>(null);
   const [rail, setRail] = useState<"elements" | "layouts">("elements");
   const [drag, setDrag] = useState<"new" | "move" | null>(null);
   const [upload, setUpload] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
@@ -152,6 +155,11 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
       d.splice(l ? l.si + 1 : d.length, 0, s);
     });
     choose({ kind: "section", id: s.id });
+  };
+  const addSectionAt = (index: number, make: SectionBlock) => {
+    commit((d) => { d.splice(index, 0, make); });
+    setBetweenAt(null);
+    choose({ kind: "section", id: make.id });
   };
   const addRow = (sectionId: string, layout: LayoutKey) => {
     const r = newRow(layout, uid);
@@ -270,6 +278,20 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
     return null;
   };
 
+  /** The "+" between sections: opens a small list of starting sections and layouts to put there. */
+  const between = (after: number) => (
+    <div className={`ed-between${betweenAt === after ? " is-open" : ""}`} key={`b${after}`}>
+      <button type="button" className="ed-between-btn" onClick={(e) => { e.stopPropagation(); setBetweenAt(betweenAt === after ? null : after); }} aria-expanded={betweenAt === after}>+ Add section</button>
+      {betweenAt === after && (
+        <div className="ed-menu ed-menu-wide" role="menu" onClick={(e) => e.stopPropagation()}>
+          <b>Start from</b>
+          {SECTION_TEMPLATES.map((t) => <button key={t.key} type="button" role="menuitem" onClick={() => addSectionAt(after + 1, t.make(uid))}>{t.label}<small>{t.hint}</small></button>)}
+          <b>Or an empty layout</b>
+          {LAYOUT_KEYS.map((k) => <button key={k} type="button" role="menuitem" onClick={() => addSectionAt(after + 1, newSection(uid, k))}>{LAYOUT_LABEL[k]}</button>)}
+        </div>
+      )}
+    </div>
+  );
   const column = (c: ColumnBlock) => (
     <div
       key={c.id}
@@ -359,6 +381,9 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
           <button type="button" className="monarch-secondary" onClick={undo} disabled={!h.past.length} aria-label="Undo">↶ Undo</button>
           <button type="button" className="monarch-secondary" onClick={redo} disabled={!h.future.length} aria-label="Redo">↷ Redo</button>
         </div>
+        <div className="ed-top-group">
+          <button type="button" className={`monarch-secondary${mode === "preview" ? " is-on" : ""}`} aria-pressed={mode === "preview"} onClick={() => { setMode(mode === "preview" ? "edit" : "preview"); choose(null); }}>{mode === "preview" ? "← Back to editing" : "Preview"}</button>
+        </div>
         <div className="ed-top-group" role="group" aria-label="Preview size">
           {(Object.keys(DEVICE_LABEL) as Device[]).map((d) => <button key={d} type="button" className={`monarch-secondary${device === d ? " is-on" : ""}`} aria-pressed={device === d} onClick={() => setDevice(d)}>{DEVICE_LABEL[d]}</button>)}
         </div>
@@ -368,7 +393,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
         </div>
       </div>
 
-      <div className="ed-body">
+      <div className={`ed-body${mode === "preview" ? " is-preview" : ""}`}>
         <aside className="ed-palette" aria-label="Add to the page">
           <div className="ed-rail-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={rail === "elements"} className={rail === "elements" ? "is-on" : undefined} onClick={() => setRail("elements")}>Elements</button>
@@ -411,7 +436,11 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
             </>
           ) : (
             <>
-              <p className="monarch-muted">Add a section with its first row.</p>
+              <p className="monarch-muted">Start from a ready-made section, then reword it.</p>
+              <ul className="ed-layouts">
+                {SECTION_TEMPLATES.map((t) => <li key={t.key}><button type="button" onClick={() => addSectionAt(shown ? (loc ? loc.si + 1 : doc.length) : doc.length, t.make(uid))}><b>{t.label}</b><small>{t.hint}</small></button></li>)}
+              </ul>
+              <p className="monarch-muted">Or an empty layout:</p>
               <ul className="ed-layouts">
                 {LAYOUT_KEYS.map((k) => <li key={k}><button type="button" onClick={() => addSection(k)}><span className="ed-mini" style={{ gridTemplateColumns: LAYOUTS[k].map((n) => `${n}fr`).join(" ") }}>{LAYOUTS[k].map((_, i) => <i key={i} />)}</span>{LAYOUT_LABEL[k]}</button></li>)}
               </ul>
@@ -420,26 +449,38 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
         </aside>
 
         <div className="ed-stage" onClick={() => choose(null)} onDragOver={overArea} onDrop={finishDrop} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null); }}>
+          {mode === "preview" && <p className="ed-banner" role="status">Preview of your draft as visitors will see it. Links and buttons are turned off here.</p>}
           <div className={`ed-frame ed-${device}`}>
-            <div className={`ws ed-canvas ws-dev-${device}`} style={{ ...siteVars(merged), minHeight: 0 }}>
-              <style dangerouslySetInnerHTML={{ __html: SITE_CSS }} />
-              {doc.length === 0 && <div className="ed-blank"><p><b>This page is blank.</b></p><p>Pick a layout under Sections to start, or drag an element onto the page.</p></div>}
-              {doc.map((s) => (
-                <section key={s.id} className={`ws-section ws-tone-${s.tone} ws-pad-${s.pad} ed-section${isSel(s.id) ? " is-sel" : ""}`} onClick={(e) => { e.stopPropagation(); choose({ kind: "section", id: s.id }); }} onDragOver={overArea} onDrop={finishDrop}>
-                  {isSel(s.id) && label("Section", s.id)}
-                  <div className={`ws-wrap ws-w-${s.width}`}>
-                    {s.rows.map((r) => (
-                      <div key={r.id} className={`ed-row${isSel(r.id) ? " is-sel" : ""}`} onClick={(e) => { e.stopPropagation(); choose({ kind: "row", id: r.id }); }}>
-                        {isSel(r.id) && label("Row", r.id)}
-                        <div className={`ws-row ws-gap-${r.gap} ws-va-${r.valign} ws-cols-${r.columns.length}`} style={{ gridTemplateColumns: LAYOUTS[r.layout].map((n) => `${n}fr`).join(" ") }}>
-                          {r.columns.map(column)}
-                        </div>
+            <div className={`ed-canvas ws-dev-${device}${mode === "preview" ? " is-preview" : ""}`} onClickCapture={mode === "preview" ? (e) => { if ((e.target as HTMLElement).closest("a")) e.preventDefault(); } : undefined}>
+              <SiteFrame view={mode === "preview" ? { ...merged, preview: false } : merged} currentPath="/">
+                {mode === "preview" ? (
+                  doc.length === 0 ? <p className="ed-blank">This page is blank.</p> : <Blocks blocks={doc} view={{ ...merged, preview: false }} />
+                ) : (
+                  <>
+                    {doc.length === 0 && <div className="ed-blank"><p><b>This page is blank.</b></p><p>Choose a section from the left to start, or use the + below.</p></div>}
+                    {between(-1)}
+                    {doc.map((s, si) => (
+                      <div key={s.id}>
+                        <section className={`ws-section ws-tone-${s.tone} ws-pad-${s.pad} ed-section${isSel(s.id) ? " is-sel" : ""}`} onClick={(e) => { e.stopPropagation(); choose({ kind: "section", id: s.id }); }} onDragOver={overArea} onDrop={finishDrop}>
+                          {isSel(s.id) && label("Section", s.id)}
+                          <div className={`ws-wrap ws-w-${s.width}`}>
+                            {s.rows.map((r) => (
+                              <div key={r.id} className={`ed-row${isSel(r.id) ? " is-sel" : ""}`} onClick={(e) => { e.stopPropagation(); choose({ kind: "row", id: r.id }); }}>
+                                {isSel(r.id) && label("Row", r.id)}
+                                <div className={`ws-row ws-gap-${r.gap} ws-va-${r.valign} ws-cols-${r.columns.length}`} style={{ gridTemplateColumns: LAYOUTS[r.layout].map((n) => `${n}fr`).join(" ") }}>
+                                  {r.columns.map(column)}
+                                </div>
+                              </div>
+                            ))}
+                            {s.rows.length === 0 && <div className="ed-empty">No rows yet. Select this section and add a row.</div>}
+                          </div>
+                        </section>
+                        {between(si)}
                       </div>
                     ))}
-                    {s.rows.length === 0 && <div className="ed-empty">No rows yet. Select this section and add a row.</div>}
-                  </div>
-                </section>
-              ))}
+                  </>
+                )}
+              </SiteFrame>
             </div>
           </div>
           <p className="monarch-muted ed-hint">{count} element{count === 1 ? "" : "s"}. Double-click a heading, text or button to type on the page. Undo with Ctrl+Z.</p>

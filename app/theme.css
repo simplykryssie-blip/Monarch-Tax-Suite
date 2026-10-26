@@ -1014,3 +1014,23 @@ html[data-popup] body{background:#fff}
 .ed-upload{border-top:1px solid #e3dfd2;padding-top:10px;display:grid;gap:6px}.ed-upload label{cursor:pointer;text-align:center}.ed-upload p{margin:0;font-size:12px}
 .ed-stage{min-height:70vh}
 @media (max-width:1100px){.ed-body{grid-template-columns:minmax(0,1fr)}}
+
+/* page builder: it looks like the site, with controls only where you point */
+.ed-canvas .ws{min-height:0}
+.ed-canvas .ws-header,.ed-canvas .ws-footer{pointer-events:none;opacity:.9}
+.ed-addwrap{opacity:0;transition:opacity .1s}
+.ed-col:hover .ed-addwrap,.ed-col.is-sel .ed-addwrap,.ed-addwrap:focus-within{opacity:1}
+.ed-empty{opacity:1}
+.ed-between{position:relative;height:0;z-index:4;text-align:center}
+.ed-between-btn{position:absolute;left:50%;top:-14px;transform:translateX(-50%);opacity:0;border:1px solid #236fcd;background:#fff;color:#236fcd;border-radius:999px;padding:3px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;min-height:28px;transition:opacity .1s}
+.ed-between:hover .ed-between-btn,.ed-between.is-open .ed-between-btn,.ed-between-btn:focus-visible{opacity:1}
+.ed-between::before{content:"";position:absolute;left:0;right:0;top:-12px;height:24px}
+.ed-menu-wide{left:50%;transform:translateX(-50%);top:14px;min-width:240px;text-align:left}
+.ed-menu b{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#6b685c;padding:6px 10px 2px}
+.ed-menu small{display:block;color:#6b685c;font-size:12px}
+.ed-layouts li button small{display:block;font-weight:400;color:#6b685c;font-size:12px}
+.ed-layouts li button{text-align:left}
+.ed-banner{background:#fff6d6;border:1px solid #ecd98a;border-radius:6px;padding:8px 12px;margin:0 0 8px;font-size:13px}
+.ed-body.is-preview{grid-template-columns:minmax(0,1fr)}.ed-body.is-preview .ed-palette,.ed-body.is-preview .ed-panel{display:none}
+.ed-canvas.is-preview *{cursor:default}
+@media (hover:none){.ed-addwrap,.ed-between-btn{opacity:1}}
