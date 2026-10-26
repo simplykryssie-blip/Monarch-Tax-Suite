@@ -2,7 +2,7 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import { documentOpenedNotice } from "./activity.ts";
 import type { NewNotification } from "../notifications/types.ts";
-import { checkDocumentFile, cleanDocumentName, CONTENT_TYPES, DOCUMENT_URL_SECONDS, MAX_DOCUMENT_BYTES, sha256Hex, type DocumentFileType } from "./files.ts";
+import { checkDocumentFile, cleanDocumentName, stripPdfActiveContent, CONTENT_TYPES, DOCUMENT_URL_SECONDS, MAX_DOCUMENT_BYTES, sha256Hex, type DocumentFileType } from "./files.ts";
 import { isBoxChoice, type FieldMap } from "./fields.ts";
 import { fillTemplate, missingValues, pdfBoxes, scanTemplate } from "./merge.ts";
 import { applySignature, isSignaturePng, type SignatureMark } from "./signing.ts";
@@ -133,11 +133,25 @@ export async function finishVersionUpload(deps: DocumentDeps, versionId: string,
     if (!document.current_version_id) await deps.repo.deleteDocument(document.id).catch(() => undefined);
     throw new ValidationError(message);
   };
-  const bytes = await deps.store.download(ownPath(deps, version.storage_path));
+  let bytes = await deps.store.download(ownPath(deps, version.storage_path));
   if (!bytes) throw new ValidationError("The file did not arrive. Try the upload again.");
   if (bytes.byteLength !== version.size_bytes) return reject("The uploaded file's size does not match, so it was rejected. Try again.");
   let scan;
+  let stripped = false;
   try {
+    if (document.file_type === "pdf") {
+      // Official forms (such as the IRS 8879) carry scripts: strip them, keep the fillable boxes, and store the clean copy.
+      const clean = await stripPdfActiveContent(bytes);
+      if (clean.stripped) {
+        const path = versionPath(deps, document.id);
+        await deps.store.upload(ownPath(deps, path), clean.bytes, CONTENT_TYPES.pdf);
+        await deps.store.remove([ownPath(deps, version.storage_path)]).catch(() => undefined);
+        await deps.repo.updateVersion(version.id, { storage_path: path, size_bytes: clean.bytes.byteLength });
+        version.storage_path = path;
+        bytes = clean.bytes;
+        stripped = true;
+      }
+    }
     await checkDocumentFile(bytes, document.file_type);
     scan = await scanTemplate(bytes, document.file_type, document.field_map ?? {});
   } catch (e) {
@@ -145,7 +159,7 @@ export async function finishVersionUpload(deps: DocumentDeps, versionId: string,
   }
   const ready = await deps.repo.updateVersion(version.id, { status: "ready", sha256: sha256Hex(bytes), merge_fields: scan.fields, has_signature_field: scan.hasSignatureField, ready_at: iso(deps) });
   const updated = await deps.repo.updateDocument(document.id, { current_version_id: ready.id });
-  await deps.repo.addEvent({ document_id: document.id, delivery_id: null, signature_request_id: null, type: "version_uploaded", actor_id: actorId, detail: { version: ready.version, fields: scan.fields.length } });
+  await deps.repo.addEvent({ document_id: document.id, delivery_id: null, signature_request_id: null, type: "version_uploaded", actor_id: actorId, detail: { version: ready.version, fields: scan.fields.length, ...(stripped ? { scripts_removed: true } : {}) } });
   return { document: updated, version: ready };
 }
 

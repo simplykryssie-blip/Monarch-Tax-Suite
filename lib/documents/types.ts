@@ -142,7 +142,7 @@ export interface DocumentsRepo {
   listVersions(documentId: string): Promise<DocumentVersion[]>;
   getVersion(id: string): Promise<DocumentVersion | null>;
   insertVersion(input: Pick<DocumentVersion, "document_id" | "version" | "storage_path" | "file_name" | "size_bytes" | "created_by">): Promise<DocumentVersion>;
-  updateVersion(id: string, patch: Partial<Pick<DocumentVersion, "status" | "sha256" | "merge_fields" | "has_signature_field" | "ready_at">>): Promise<DocumentVersion>;
+  updateVersion(id: string, patch: Partial<Pick<DocumentVersion, "status" | "sha256" | "merge_fields" | "has_signature_field" | "ready_at" | "storage_path" | "size_bytes">>): Promise<DocumentVersion>;
 
   insertDelivery(input: NewDelivery): Promise<Delivery>;
   getDelivery(id: string): Promise<Delivery | null>;

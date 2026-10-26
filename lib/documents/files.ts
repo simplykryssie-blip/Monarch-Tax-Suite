@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import PizZip from "pizzip";
-import { PDFDocument } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream } from "pdf-lib";
 import { ValidationError } from "../commerce/validation.ts";
 
 // Uploaded documents are checked by what they contain, not by their name. PDF, Word (.docx), Excel (.xlsx) and images
@@ -93,4 +93,56 @@ export async function checkDocumentFile(bytes: Uint8Array, type: DocumentFileTyp
   const types = zip.file("[Content_Types].xml")?.asText() ?? "";
   if (zip.file(/vbaProject\.bin$/i).length || /macroEnabled/i.test(types)) throw new ValidationError("This Word file contains macros, which are not accepted. Save it as a regular .docx and upload that.");
   if (zip.file(/^word\/embeddings\//i).length || zip.file(/activeX/i).length) throw new ValidationError("This Word file contains embedded objects or controls, which are not accepted. Remove them and upload it again.");
+}
+
+const ACTIVE = /\/(JavaScript|JS|Launch|EmbeddedFile)\b/;
+
+/** True when the PDF's raw bytes mention scripts, launch actions or embedded files. */
+export const pdfHasActiveContent = (bytes: Uint8Array) => ACTIVE.test(latin1(bytes));
+
+/**
+ * Removes scripts, launch actions, embedded files and XFA forms from a PDF but keeps its pages and fillable boxes (AcroForm
+ * fields), so an official form such as the IRS Form 8879 can be used after the active parts are stripped. Returns the
+ * original bytes when nothing active is found. The result is checked again by `checkDocumentFile`.
+ */
+export async function stripPdfActiveContent(bytes: Uint8Array): Promise<{ bytes: Uint8Array; stripped: boolean }> {
+  if (!startsWith(bytes, PDF_MAGIC) || /\/Encrypt\b/.test(latin1(bytes)) || !pdfHasActiveContent(bytes)) return { bytes, stripped: false };
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  } catch {
+    throw new ValidationError("This PDF could not be read. It may be damaged; export it again and upload the new copy.");
+  }
+  const ctx = doc.context;
+  const name = (n: string) => PDFName.of(n);
+  const dictOf = (o: unknown): PDFDict | undefined => (o instanceof PDFDict ? o : o instanceof PDFStream ? o.dict : undefined);
+  const drop = (d: PDFDict, ...keys: string[]) => { for (const k of keys) { const v = d.get(name(k)); if (v instanceof PDFRef) ctx.delete(v); d.delete(name(k)); } };
+  const catalog = doc.catalog;
+  drop(catalog, "OpenAction", "AA", "AF", "Collection");
+  const names = ctx.lookupMaybe(catalog.get(name("Names")), PDFDict);
+  if (names) drop(names, "JavaScript", "EmbeddedFiles");
+  const form = ctx.lookupMaybe(catalog.get(name("AcroForm")), PDFDict);
+  if (form) drop(form, "XFA");
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    const d = dictOf(obj);
+    if (!d) continue;
+    const s = d.get(name("S"));
+    const type = d.get(name("Type"));
+    if ((s instanceof PDFName && (s.asString() === "/JavaScript" || s.asString() === "/Launch")) || d.has(name("JS")) || (type instanceof PDFName && type.asString() === "/EmbeddedFile")) { ctx.delete(ref); continue; }
+    drop(d, "AA", "EF", "RF");
+    const a = ctx.lookupMaybe(d.get(name("A")), PDFDict);
+    const as = a?.get(name("S"));
+    if (a && as instanceof PDFName && (as.asString() === "/JavaScript" || as.asString() === "/Launch")) drop(d, "A");
+  }
+  // Attached-file annotations are removed from their pages.
+  for (const page of doc.getPages()) {
+    const annots = page.node.lookupMaybe(name("Annots"), PDFArray);
+    if (!annots) continue;
+    for (let i = annots.size() - 1; i >= 0; i--) {
+      const an = ctx.lookupMaybe(annots.get(i), PDFDict);
+      const st = an?.get(name("Subtype"));
+      if (!an || (st instanceof PDFName && st.asString() === "/FileAttachment")) annots.remove(i);
+    }
+  }
+  return { bytes: await doc.save({ useObjectStreams: false }), stripped: true };
 }
