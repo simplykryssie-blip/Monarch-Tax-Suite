@@ -1,6 +1,6 @@
-import { DomainsView } from "@/components/sites/views";
-import { requireSite } from "@/lib/sites/context";
+import { redirect } from "next/navigation";
 
-export default async function Page({ params, searchParams }: { params: Promise<{ siteId: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
-  return <DomainsView ctx={await requireSite("practice", (await params).siteId)} sp={await searchParams} />;
+// Addresses now live under Site settings.
+export default async function Page({ params }: { params: Promise<{ siteId: string }> }) {
+  redirect(`/practice/website/${(await params).siteId}/settings`);
 }

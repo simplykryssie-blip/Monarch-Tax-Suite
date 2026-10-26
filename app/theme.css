@@ -1002,3 +1002,15 @@ html[data-popup] body{background:#fff}
 .ed-crumbs{display:flex;flex-wrap:wrap;gap:4px}.ed-crumbs button{border:1px solid #d9d4c7;background:#faf9f5;border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;min-height:28px}.ed-crumbs button.is-on{background:#236fcd;color:#fff;border-color:#236fcd}
 .ed-tools,.ed-layouts-row{display:flex;flex-wrap:wrap;gap:6px}
 @media (max-width:1100px){.ed-body{grid-template-columns:minmax(0,1fr)}.ed-palette,.ed-panel{position:static;max-height:none}.ed-palette ul{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}.ed-top{position:static}}
+
+/* page builder: compact rail */
+.ed-body{grid-template-columns:200px minmax(0,1fr) 300px}
+.ed-title{flex:1 1 220px;min-width:0}.ed-title b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ed-title .monarch-back{margin:0;white-space:nowrap}
+.ed-rail-tabs{display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid #e3dfd2}
+.ed-rail-tabs button{flex:1;padding:6px 4px;background:none;border:0;border-bottom:3px solid transparent;cursor:pointer;font:inherit;font-weight:600;color:#4b4943}
+.ed-rail-tabs button.is-on{color:#111;border-bottom-color:#236fcd}
+.ed-tiles{display:grid;grid-template-columns:1fr 1fr;gap:6px;list-style:none;margin:0 0 12px;padding:0}
+.ed-palette .ed-tiles li button{width:100%;min-height:44px;padding:6px 4px;text-align:center;display:block;font-size:13px;font-weight:600;line-height:1.2}
+.ed-upload{border-top:1px solid #e3dfd2;padding-top:10px;display:grid;gap:6px}.ed-upload label{cursor:pointer;text-align:center}.ed-upload p{margin:0;font-size:12px}
+.ed-stage{min-height:70vh}
+@media (max-width:1100px){.ed-body{grid-template-columns:minmax(0,1fr)}}

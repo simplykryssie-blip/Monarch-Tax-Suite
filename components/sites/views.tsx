@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Flash } from "@/components/admin/ui";
+import { Modal } from "@/components/ui/modal";
 import { PageEditor } from "@/components/sites/page-editor";
 import type { PickBooking, PickForm, PickImage } from "@/components/sites/page-form";
 import { appointmentDeps } from "@/lib/appointments/server";
@@ -28,7 +29,7 @@ const Hidden = ({ ctx }: { ctx: SitesContext | SiteContext }) => (
 );
 const STATUS: Record<string, string> = { active: "Connected", pending: "Waiting for DNS", error: "Needs attention" };
 
-function Tabs({ ctx, here }: { ctx: SiteContext; here: "pages" | "settings" | "domains" }) {
+function Tabs({ ctx, here }: { ctx: SiteContext; here: "pages" | "settings" }) {
   const tab = (key: typeof here, href: string, label: string) => <Link href={href} className={here === key ? "is-on" : undefined} aria-current={here === key ? "page" : undefined}>{label}</Link>;
   return (
     <>
@@ -37,7 +38,6 @@ function Tabs({ ctx, here }: { ctx: SiteContext; here: "pages" | "settings" | "d
       <nav className="cl-tabs" aria-label="Website">
         {tab("pages", ctx.siteBase, "Pages")}
         {tab("settings", `${ctx.siteBase}/settings`, "Site settings")}
-        {tab("domains", `${ctx.siteBase}/domains`, "Addresses")}
       </nav>
     </>
   );
@@ -93,21 +93,23 @@ export async function SitesList({ ctx, sp }: { ctx: SitesContext; sp: Search }) 
   );
 }
 
-/** One website's settings: look, header and footer, contact, and its search details. */
+/** One website's settings: its name and addresses, look, header and footer, contact, and search details, in one place. */
 export async function SiteSettingsView({ ctx, sp }: { ctx: SiteContext; sp: Search }) {
   const pick = await pickers(ctx);
-  return (
+  const general = (
     <>
-      <Tabs ctx={ctx} here="settings" />
-      <Flash notice={sp.notice} error={sp.error} />
       <section className="monarch-panel" style={{ padding: 20 }}>
         <h2 style={{ marginTop: 0 }}>Website name</h2>
         <form action={renameSiteAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}><Hidden ctx={ctx} /><input name="name" required maxLength={80} defaultValue={ctx.site.name} aria-label="Website name" /><button className="monarch-secondary">Rename</button></form>
       </section>
-      <section className="monarch-panel" style={{ padding: 20 }}>
-        <SettingsForm action={saveSiteSettingsAction} area={ctx.area} siteId={ctx.site.id} initial={settingsOf(ctx.site.settings ?? {})} images={pick.images} siteName={ctx.site.name} />
-        <p className="monarch-muted">Changes go live the next time you publish this website.</p>
-      </section>
+      <Addresses ctx={ctx} />
+    </>
+  );
+  return (
+    <>
+      <Tabs ctx={ctx} here="settings" />
+      <Flash notice={sp.notice} error={sp.error} />
+      <SettingsForm action={saveSiteSettingsAction} area={ctx.area} siteId={ctx.site.id} initial={settingsOf(ctx.site.settings ?? {})} images={pick.images} siteName={ctx.site.name} general={general} />
     </>
   );
 }
@@ -134,7 +136,19 @@ export async function SitesOverview({ ctx, sp }: { ctx: SiteContext; sp: Search 
         {!live && sub && <p className="monarch-muted" style={{ marginBottom: 0 }}>Once published, your site is at <b>{sub.hostname}</b>.</p>}
       </section>
       <section className="monarch-panel">
-        <div className="monarch-panel-head"><div><h2>Pages</h2><p>Start with a blank page and add sections and blocks. The menu follows this order.</p></div></div>
+        <div className="monarch-panel-head">
+          <div><h2>Pages</h2><p>The menu follows this order.</p></div>
+          {pages.length < MAX_PAGES && (
+            <Modal label="Add a page" title="Add a page">
+              <form action={addPageAction} className="monarch-form">
+                <Hidden ctx={ctx} />
+                <label className="is-wide">Page name<input name="title" required maxLength={120} placeholder="For example, About us" autoFocus /></label>
+                <p className="monarch-muted is-wide">It starts blank. You&apos;ll add its content next.</p>
+                <div className="is-wide"><button className="monarch-primary">Add page</button></div>
+              </form>
+            </Modal>
+          )}
+        </div>
         <div className="monarch-table-wrap"><table>
           <thead><tr><th>PAGE</th><th>ADDRESS</th><th>MENU</th><th></th></tr></thead>
           <tbody>
@@ -154,12 +168,6 @@ export async function SitesOverview({ ctx, sp }: { ctx: SiteContext; sp: Search 
           </tbody>
         </table></div>
       </section>
-      {pages.length < MAX_PAGES && (
-        <section className="monarch-panel" style={{ padding: 20 }}>
-          <h2 style={{ marginTop: 0 }}>Add a page</h2>
-          <form action={addPageAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}><Hidden ctx={ctx} /><input name="title" required maxLength={120} placeholder="For example, About us" aria-label="Page title" /><button className="monarch-primary">Add page</button></form>
-        </section>
-      )}
     </>
   );
 }
@@ -184,30 +192,18 @@ export async function PageEditorView({ ctx, id, sp }: { ctx: SiteContext; id: st
   const view = await viewFor(ctx.tenantId, ctx.site.name, pages, page.draft, settingsOf(ctx.site.settings ?? {}));
   return (
     <>
-      <Link className="monarch-back" href={ctx.siteBase}>← {ctx.site.name}</Link>
-      <h1 className="office-h1">{page.title}</h1>
       <Flash notice={sp.notice} error={sp.error} />
-      <section className="monarch-panel" style={{ padding: 12 }}>
-        <PageEditor
-          action={savePageAction} area={ctx.area} siteId={ctx.site.id} pageId={page.id} seo={cleanPageSeo(page.seo ?? {})} title={page.title} description={page.description ?? ""} showInNav={page.show_in_nav} isHome={page.is_home}
-          initial={sectionsOf(page.draft)} images={pick.images} bookings={pick.bookings} forms={pick.forms} view={view}
-        />
-      </section>
-      <section className="monarch-panel" style={{ padding: 20 }}>
-        <h2 style={{ marginTop: 0 }}>Upload a picture</h2>
-        <form action={uploadSiteImageAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
-          <Hidden ctx={ctx} /><input type="hidden" name="page_id" value={page.id} />
-          <input type="file" name="file" required accept="image/png,image/jpeg,image/webp" aria-label="Picture (PNG, JPG or WebP, up to 4 MB)" />
-          <input name="alt" maxLength={200} placeholder="Describe the picture" aria-label="Picture description" />
-          <button className="monarch-primary">Upload</button>
-        </form>
-        <p className="monarch-muted">PNG, JPG or WebP, up to 4 MB. Save your draft first; uploading reloads the page. The picture then appears in each Image block&apos;s list.</p>
-      </section>
+      <PageEditor
+        action={savePageAction} area={ctx.area} siteId={ctx.site.id} pageId={page.id} seo={cleanPageSeo(page.seo ?? {})} title={page.title} description={page.description ?? ""} showInNav={page.show_in_nav} isHome={page.is_home}
+        initial={sectionsOf(page.draft)} images={pick.images} bookings={pick.bookings} forms={pick.forms} view={view}
+        backHref={ctx.siteBase} siteName={ctx.site.name} uploadImage={uploadSiteImageAction}
+      />
     </>
   );
 }
 
-export async function DomainsView({ ctx, sp }: { ctx: SiteContext; sp: Search }) {
+
+async function Addresses({ ctx }: { ctx: SiteContext }) {
   const domains = await ctx.deps.repo.listDomains(ctx.site.id);
   const sub = domains.find((d) => d.kind === "subdomain");
   const custom = domains.filter((d) => d.kind === "custom");
@@ -215,8 +211,6 @@ export async function DomainsView({ ctx, sp }: { ctx: SiteContext; sp: Search })
   const problems = vercelProblems(process.env);
   return (
     <>
-      <Tabs ctx={ctx} here="domains" />
-      <Flash notice={sp.notice} error={sp.error} />
       <section className="monarch-panel" style={{ padding: 20 }}>
         <h2 style={{ marginTop: 0 }}>Your free address</h2>
         <p>Every website gets an address on {platform} automatically. You can change the first part; the old address stops working right away.</p>

@@ -7,10 +7,10 @@ import type { PickImage } from "./page-form";
 // One website's settings, in four small tabs so the page stays calm. The whole thing is sent as a single field and
 // checked again on the server; nothing here is trusted.
 
-const TABS = ["Look & feel", "Header & footer", "Contact & hours", "Search (SEO)"] as const;
+const TABS = ["General", "Look & feel", "Header & footer", "Contact & hours", "Search (SEO)"] as const;
 const SOCIAL_LABEL: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn", youtube: "YouTube", x: "X", tiktok: "TikTok" };
 
-export function SettingsForm({ action, area, siteId, initial, images, siteName }: { action: (f: FormData) => void | Promise<void>; area: string; siteId: string; initial: SiteSettings; images: PickImage[]; siteName: string }) {
+export function SettingsForm({ action, area, siteId, initial, images, siteName, general }: { action: (f: FormData) => void | Promise<void>; area: string; siteId: string; initial: SiteSettings; images: PickImage[]; siteName: string; general: React.ReactNode }) {
   const [s, setS] = useState<SiteSettings>(initial);
   const [tab, setTab] = useState<(typeof TABS)[number]>(TABS[0]);
   const patch = <K extends keyof SiteSettings>(k: K, v: Partial<SiteSettings[K]>) => setS((cur) => ({ ...cur, [k]: { ...(cur[k] as object), ...(v as object) } }));
@@ -20,16 +20,19 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName }
   const fontSelect = (value: FontChoice, onChange: (v: FontChoice) => void) => (
     <select value={value} onChange={(e) => onChange(e.target.value as FontChoice)}>{(Object.keys(FONT_CHOICES) as FontChoice[]).map((k) => <option key={k} value={k}>{FONT_CHOICES[k].label}</option>)}</select>
   );
+  const nav = (
+    <nav className="cl-tabs" aria-label="Website settings" role="tablist">
+      {TABS.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? "is-on" : undefined} onClick={() => setTab(t)}>{t}</button>)}
+    </nav>
+  );
+  // The name and addresses have forms of their own, so they sit outside this form; the tab state is shared.
+  if (tab === "General") return <div>{nav}{general}</div>;
   return (
-    <form action={action} className="monarch-form se-form">
+    <form action={action} className="monarch-form se-form monarch-panel" style={{ padding: 20 }}>
       <input type="hidden" name="area" value={area} />
       <input type="hidden" name="site_id" value={siteId} />
       <input type="hidden" name="settings" value={JSON.stringify(s)} />
-      <div className="is-wide">
-        <nav className="cl-tabs" aria-label="Website settings" role="tablist">
-          {TABS.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? "is-on" : undefined} onClick={() => setTab(t)}>{t}</button>)}
-        </nav>
-      </div>
+      <div className="is-wide">{nav}</div>
 
       {tab === "Look & feel" && (
         <div className="se-fields is-wide">
@@ -84,7 +87,7 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName }
           </div>
         </div>
       )}
-      <div className="is-wide"><button className="monarch-primary">Save settings</button></div>
+      <div className="is-wide"><button className="monarch-primary">Save settings</button> <span className="monarch-muted">Changes go live the next time you publish this website.</span></div>
     </form>
   );
 }

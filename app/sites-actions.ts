@@ -136,28 +136,28 @@ export async function unpublishAction(form: FormData) {
 }
 
 export async function setSubdomainAction(form: FormData) {
-  await run(form, "/domains", async (ctx) => {
+  await run(form, "/settings", async (ctx) => {
     await setSubdomain(ctx.deps, ctx.site, await ctx.deps.repo.listDomains(ctx.site.id), form.get("label"));
     return { notice: "Address changed. The old address no longer works." };
   });
 }
 
 export async function addDomainAction(form: FormData) {
-  await run(form, "/domains", async (ctx) => {
+  await run(form, "/settings", async (ctx) => {
     const d = await addCustomDomain(ctx.deps, ctx.site, await ctx.deps.repo.listDomains(ctx.site.id), form.get("host"), ctx.userId);
     return { notice: `${d.hostname} added. Add the records below at your domain provider, then check it.` };
   });
 }
 
 export async function refreshDomainAction(form: FormData) {
-  await run(form, "/domains", async (ctx) => {
+  await run(form, "/settings", async (ctx) => {
     const d = await refreshDomain(ctx.deps, str(form, "domain_id"));
     return { notice: d.status === "active" ? `${d.hostname} is connected and live.` : `${d.hostname} isn't connected yet. DNS changes can take a while; check again later.` };
   });
 }
 
 export async function removeDomainAction(form: FormData) {
-  await run(form, "/domains", async (ctx) => {
+  await run(form, "/settings", async (ctx) => {
     await removeDomain(ctx.deps, str(form, "domain_id"));
     return { notice: "Domain removed." };
   });

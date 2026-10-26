@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BLOCK_LABEL, elementsOf, LAYOUT_KEYS, LAYOUT_LABEL, LAYOUTS, LEAF_TYPES, newElement, newRow, newSection, ROW_GAPS, SECTION_PADS, SECTION_TONES, SECTION_WIDTHS, type Block, type ColumnBlock, type LayoutKey, type LeafBlock, type RowBlock, type SectionBlock } from "@/lib/sites/blocks.ts";
 import { LeafFields, type PickBooking, type PickForm, type PickImage } from "./page-form";
 import { Leaf, SITE_CSS, siteVars, type SiteView } from "./render";
+import type { SiteImageResult } from "@/app/sites-image-actions";
 
 // The page builder: a palette on the left, the page itself in the middle (click anything to edit it, drag elements to move
 // them), and the settings of whatever is selected on the right. A page is sections > rows > columns > elements. Every change
@@ -66,10 +68,15 @@ function pickColumn(d: Doc, sel: Sel): ColumnBlock {
   return d[si].rows[ri].columns[0];
 }
 
-export function PageEditor({ action, area, siteId, pageId, seo, title, description, showInNav, isHome, initial, images, bookings, forms, view }: {
+export function PageEditor({ action, area, siteId, pageId, seo, title, description, showInNav, isHome, initial, images: initialImages, bookings, forms, view, backHref, siteName, uploadImage }: {
   action: Action; area: string; siteId: string; pageId: string; seo: { title: string; shareImageId: string | null; noindex: boolean };
   title: string; description: string; showInNav: boolean; isHome: boolean; initial: Block[]; images: PickImage[]; bookings: PickBooking[]; forms: PickForm[]; view: SiteView;
+  backHref: string; siteName: string; uploadImage: (form: FormData) => Promise<SiteImageResult>;
 }) {
+  const [images, setImages] = useState<PickImage[]>(initialImages);
+  const [rail, setRail] = useState<"elements" | "layouts">("elements");
+  const [drag, setDrag] = useState<"new" | "move" | null>(null);
+  const [upload, setUpload] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
   const [h, setH] = useState<Hist>({ doc: initial, past: [], future: [], key: null, at: 0 });
   const [sel, setSel] = useState<Sel>(null);
   const [tab, setTab] = useState<"page" | "item">("page");
@@ -204,16 +211,42 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
   const patchElement = (el: LeafBlock) => commit((d) => { const l = locate(d, el.id); if (l?.kind === "element") d[l.si].rows[l.ri!].columns[l.ci!].children[l.ei!] = el; }, `el:${el.id}`);
 
   // ---- dragging
-  const dragKind = (e: React.DragEvent) => (e.dataTransfer.types.includes(NEW) ? NEW : e.dataTransfer.types.includes(MOVE) ? MOVE : null);
+  // Some browsers hide what is being dragged until it is dropped, so what we started dragging is remembered here too.
+  const dragKind = (e: React.DragEvent) => (drag ? (drag === "new" ? NEW : MOVE) : e.dataTransfer.types.includes(NEW) ? NEW : e.dataTransfer.types.includes(MOVE) ? MOVE : null);
+  /** The column nearest to the pointer inside `root`, so a drop anywhere on a section or the page lands somewhere sensible. */
+  const nearestColumn = (root: HTMLElement, x: number, y: number): string | null => {
+    let best: string | null = null;
+    let bestD = Infinity;
+    root.querySelectorAll<HTMLElement>("[data-col]").forEach((el) => {
+      const r = el.getBoundingClientRect();
+      const dx = Math.max(r.left - x, 0, x - r.right);
+      const dy = Math.max(r.top - y, 0, y - r.bottom);
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = el.dataset.col ?? null; }
+    });
+    return best;
+  };
+  const overArea = (e: React.DragEvent) => {
+    if (!dragKind(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const id = nearestColumn(e.currentTarget as HTMLElement, e.clientX, e.clientY);
+    if (!id) { setDrop(null); return; }
+    const l = locate(doc, id);
+    const count = l?.kind === "column" ? doc[l.si].rows[l.ri!].columns[l.ci!].children.length : 0;
+    setDrop({ colId: id, index: count });
+  };
   const finishDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const target = drop;
     setDrop(null);
-    if (!target) return;
+    setDrag(null);
     const type = e.dataTransfer.getData(NEW) as LeafBlock["type"];
     const elId = e.dataTransfer.getData(MOVE);
-    if (type && (LEAF_TYPES as readonly string[]).includes(type)) addElement(type, target.colId, target.index);
+    const known = type && (LEAF_TYPES as readonly string[]).includes(type);
+    if (!target) { if (known) addElement(type); return; }
+    if (known) addElement(type, target.colId, target.index);
     else if (elId) moveElementTo(elId, target.colId, target.index);
   };
 
@@ -240,9 +273,10 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
   const column = (c: ColumnBlock) => (
     <div
       key={c.id}
+      data-col={c.id}
       className={`ws-col ed-col${isSel(c.id) ? " is-sel" : ""}${drop?.colId === c.id ? " is-over" : ""}`}
       onClick={(e) => { e.stopPropagation(); choose({ kind: "column", id: c.id }); }}
-      onDragOver={(e) => { if (dragKind(e)) { e.preventDefault(); setDrop({ colId: c.id, index: c.children.length }); } }}
+      onDragOver={(e) => { if (dragKind(e)) { e.preventDefault(); e.stopPropagation(); setDrop({ colId: c.id, index: c.children.length }); } }}
       onDrop={finishDrop}
     >
       {c.children.map((el, ei) => (
@@ -251,8 +285,8 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
           <div
             className={`ed-el${isSel(el.id) ? " is-sel" : ""}`}
             draggable={editing !== el.id}
-            onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData(MOVE, el.id); e.dataTransfer.effectAllowed = "move"; choose({ kind: "element", id: el.id }); }}
-            onDragEnd={() => setDrop(null)}
+            onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData(MOVE, el.id); e.dataTransfer.effectAllowed = "move"; setDrag("move"); choose({ kind: "element", id: el.id }); }}
+            onDragEnd={() => { setDrop(null); setDrag(null); }}
             onDragOver={(e) => {
               if (!dragKind(e)) return;
               e.preventDefault();
@@ -317,6 +351,10 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
       <input type="hidden" name="blocks" value={JSON.stringify(doc)} />
 
       <div className="ed-top">
+        <div className="ed-top-group ed-title">
+          <Link className="monarch-back" href={backHref}>← {siteName}</Link>
+          <b>{title}</b>
+        </div>
         <div className="ed-top-group">
           <button type="button" className="monarch-secondary" onClick={undo} disabled={!h.past.length} aria-label="Undo">↶ Undo</button>
           <button type="button" className="monarch-secondary" onClick={redo} disabled={!h.future.length} aria-label="Redo">↷ Redo</button>
@@ -332,30 +370,62 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
 
       <div className="ed-body">
         <aside className="ed-palette" aria-label="Add to the page">
-          <h2>Elements</h2>
-          <p className="monarch-muted">Drag onto the page, or click to add.</p>
-          <ul>
-            {LEAF_TYPES.map((t) => (
-              <li key={t}>
-                <button type="button" draggable onDragStart={(e) => { e.dataTransfer.setData(NEW, t); e.dataTransfer.effectAllowed = "copy"; }} onDragEnd={() => setDrop(null)} onClick={() => addElement(t)}>
-                  <b>{BLOCK_LABEL[t]}</b><span>{HINT[t]}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          <h2>Sections</h2>
-          <ul className="ed-layouts">
-            {LAYOUT_KEYS.map((k) => <li key={k}><button type="button" onClick={() => addSection(k)}><span className="ed-mini" style={{ gridTemplateColumns: LAYOUTS[k].map((n) => `${n}fr`).join(" ") }}>{LAYOUTS[k].map((_, i) => <i key={i} />)}</span>{LAYOUT_LABEL[k]}</button></li>)}
-          </ul>
+          <div className="ed-rail-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={rail === "elements"} className={rail === "elements" ? "is-on" : undefined} onClick={() => setRail("elements")}>Elements</button>
+            <button type="button" role="tab" aria-selected={rail === "layouts"} className={rail === "layouts" ? "is-on" : undefined} onClick={() => setRail("layouts")}>Sections</button>
+          </div>
+          {rail === "elements" ? (
+            <>
+              <p className="monarch-muted">Drag onto the page, or click to add.</p>
+              <ul className="ed-tiles">
+                {LEAF_TYPES.map((t) => (
+                  <li key={t}>
+                    <button type="button" draggable title={HINT[t]} onDragStart={(e) => { e.dataTransfer.setData(NEW, t); e.dataTransfer.effectAllowed = "copy"; setDrag("new"); }} onDragEnd={() => { setDrop(null); setDrag(null); }} onClick={() => addElement(t)}>{BLOCK_LABEL[t]}</button>
+                  </li>
+                ))}
+              </ul>
+              <div className="ed-upload">
+                <label className="monarch-secondary">
+                  {upload.busy ? "Uploading…" : "Upload a picture"}
+                  <input
+                    type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={upload.busy}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file) return;
+                      setUpload({ busy: true, message: "" });
+                      const fd = new FormData();
+                      fd.set("area", area); fd.set("site_id", siteId); fd.set("file", file);
+                      const r = await uploadImage(fd).catch(() => ({ ok: false as const, error: "The picture could not be uploaded. Please try again." }));
+                      if (r.ok) {
+                        setImages((list) => [r.image, ...list]);
+                        const cur = shown?.kind === "element" && loc ? doc[loc.si].rows[loc.ri!].columns[loc.ci!].children[loc.ei!] : null;
+                        if (cur?.type === "image" && !cur.imageId) patchElement({ ...cur, imageId: r.image.id });
+                        setUpload({ busy: false, message: "Picture added. Choose it in an Image element." });
+                      } else setUpload({ busy: false, message: r.error });
+                    }}
+                  />
+                </label>
+                <p className="monarch-muted" role="status">{upload.message || "PNG, JPG or WebP, up to 4 MB."}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="monarch-muted">Add a section with its first row.</p>
+              <ul className="ed-layouts">
+                {LAYOUT_KEYS.map((k) => <li key={k}><button type="button" onClick={() => addSection(k)}><span className="ed-mini" style={{ gridTemplateColumns: LAYOUTS[k].map((n) => `${n}fr`).join(" ") }}>{LAYOUTS[k].map((_, i) => <i key={i} />)}</span>{LAYOUT_LABEL[k]}</button></li>)}
+              </ul>
+            </>
+          )}
         </aside>
 
-        <div className="ed-stage" onClick={() => choose(null)}>
+        <div className="ed-stage" onClick={() => choose(null)} onDragOver={overArea} onDrop={finishDrop} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null); }}>
           <div className={`ed-frame ed-${device}`}>
             <div className={`ws ed-canvas ws-dev-${device}`} style={{ ...siteVars(merged), minHeight: 0 }}>
               <style dangerouslySetInnerHTML={{ __html: SITE_CSS }} />
               {doc.length === 0 && <div className="ed-blank"><p><b>This page is blank.</b></p><p>Pick a layout under Sections to start, or drag an element onto the page.</p></div>}
               {doc.map((s) => (
-                <section key={s.id} className={`ws-section ws-tone-${s.tone} ws-pad-${s.pad} ed-section${isSel(s.id) ? " is-sel" : ""}`} onClick={(e) => { e.stopPropagation(); choose({ kind: "section", id: s.id }); }}>
+                <section key={s.id} className={`ws-section ws-tone-${s.tone} ws-pad-${s.pad} ed-section${isSel(s.id) ? " is-sel" : ""}`} onClick={(e) => { e.stopPropagation(); choose({ kind: "section", id: s.id }); }} onDragOver={overArea} onDrop={finishDrop}>
                   {isSel(s.id) && label("Section", s.id)}
                   <div className={`ws-wrap ws-w-${s.width}`}>
                     {s.rows.map((r) => (
