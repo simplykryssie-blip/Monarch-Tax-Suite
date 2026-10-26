@@ -956,3 +956,7 @@ html[data-popup] body{background:#fff}
 .bk-form label.bk-consent{align-items:flex-start;font-weight:400;line-height:1.45}.bk-form label.bk-consent input{margin-top:3px;flex:0 0 auto}
 .bk-submit{padding:13px 28px;font-size:16px;cursor:pointer}.bk-submit[disabled]{opacity:.7;cursor:default}
 .bk-summary{margin:12px 0 18px;padding:16px 18px;border:1px solid #dbe3ef;border-radius:12px;background:#f7faff;line-height:1.5}.bk-summary b{display:block;font-size:18px}.bk-actions{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}
+
+.cl-tabs button{padding:7px 14px;background:none;border:0;border-bottom:3px solid transparent;cursor:pointer;color:#4b4943;font:inherit;font-weight:600}.cl-tabs button.is-on{color:#111;border-bottom-color:#236fcd}
+.se-seo{border:1px solid #e3dfd2;border-radius:8px;padding:10px 14px}.se-seo summary{cursor:pointer;font-weight:600}
+.se-serp{display:grid;gap:2px;border:1px solid #e3dfd2;border-radius:8px;padding:12px 14px;background:#fff}.se-serp b{color:#1a0dab;font-weight:500}.se-serp span{color:#4d5156;font-size:14px}

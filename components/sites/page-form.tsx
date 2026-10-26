@@ -131,8 +131,8 @@ function AddMenu({ onAdd, allowSection }: { onAdd: (type: Block["type"]) => void
   );
 }
 
-export function PageForm({ action, area, pageId, title, description, showInNav, isHome, initial, images, bookings, forms }: {
-  action: Action; area: string; pageId: string; title: string; description: string; showInNav: boolean; isHome: boolean;
+export function PageForm({ action, area, siteId, pageId, seo, title, description, showInNav, isHome, initial, images, bookings, forms }: {
+  action: Action; area: string; siteId: string; pageId: string; seo: { title: string; shareImageId: string | null; noindex: boolean }; title: string; description: string; showInNav: boolean; isHome: boolean;
   initial: Block[]; images: PickImage[]; bookings: PickBooking[]; forms: PickForm[];
 }) {
   const [blocks, setBlocks] = useState<Block[]>(initial);
@@ -141,11 +141,22 @@ export function PageForm({ action, area, pageId, title, description, showInNav, 
   return (
     <form action={action} className="monarch-form se-form">
       <input type="hidden" name="area" value={area} />
+      <input type="hidden" name="site_id" value={siteId} />
       <input type="hidden" name="page_id" value={pageId} />
       <input type="hidden" name="blocks" value={JSON.stringify(blocks)} />
       <label>Page title *<input name="title" required maxLength={120} defaultValue={title} /></label>
       {!isHome && <label className="se-check"><input type="checkbox" name="show_in_nav" defaultChecked={showInNav} /> Show in the menu</label>}
-      <label className="is-wide">Short description (shown in search results)<input name="description" maxLength={300} defaultValue={description} /></label>
+      <label className="is-wide">Short description (shown in search results)<input name="description" maxLength={160} defaultValue={description} /></label>
+      <details className="is-wide se-seo">
+        <summary>Search engine settings for this page</summary>
+        <div className="se-fields">
+          <label className="se-wide">Search title (blank = the page title)<input name="seo_title" maxLength={70} defaultValue={seo.title} /></label>
+          <label className="se-wide">Picture shown when shared
+            <select name="seo_image" defaultValue={seo.shareImageId ?? ""}><option value="">Use the website&apos;s picture</option>{images.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select>
+          </label>
+          <label className="se-check se-wide"><input type="checkbox" name="seo_noindex" defaultChecked={seo.noindex} /> Hide this page from search engines</label>
+        </div>
+      </details>
 
       <div className="is-wide se-blocks">
         {blocks.length === 0 && <p className="monarch-muted">This page is blank. Add a section or a block to start.</p>}

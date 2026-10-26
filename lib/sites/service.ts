@@ -1,26 +1,31 @@
 import { randomUUID } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import { type Block, isEmptyPage, sanitizeBlocks } from "./blocks.ts";
+import { cleanPageSeo, cleanSiteSettings, SEO_LIMITS } from "./settings.ts";
 import { cleanCustomHost, cleanLabel, labelFromName, platformDomain, subdomainHost } from "./domains.ts";
 
 // A website for one office. Everything acts on the tenant the repository is built for; nothing here can name another.
 
-export type Site = { id: string; tenant_id: string; name: string; slug: string; status: "draft" | "published"; published_at: string | null; created_at: string };
+export type Site = { id: string; tenant_id: string; name: string; slug: string; status: "draft" | "published"; published_at: string | null; created_at: string; /** The look and details, as a draft; see settings.ts. */ settings?: unknown; /** The copy visitors see. */ published_settings?: unknown | null };
 export type SitePage = {
   id: string; tenant_id: string; site_id: string; slug: string; title: string; description: string | null; is_home: boolean; show_in_nav: boolean; position: number;
   draft: Block[]; published: Block[] | null; published_title: string | null; published_description: string | null; published_at: string | null; updated_at: string;
+  /** Search details (see settings.ts): the draft and the copy visitors see. */
+  seo?: unknown; published_seo?: unknown | null;
 };
 export type DomainDetail = { verification?: { type: string; domain: string; value: string; reason?: string }[]; misconfigured?: boolean; error?: string };
 export type SiteDomain = { id: string; tenant_id: string; site_id: string; hostname: string; kind: "subdomain" | "custom"; status: "pending" | "active" | "error"; detail: DomainDetail; last_checked_at: string | null; created_at: string };
 
 export interface SitesRepo {
-  getSite(): Promise<Site | null>;
+  listSites(): Promise<Site[]>;
+  getSite(id: string): Promise<Site | null>;
   insertSite(input: { name: string; slug: string; created_by: string | null }): Promise<Site>;
-  updateSite(id: string, patch: Partial<Pick<Site, "name" | "slug">>): Promise<Site>;
+  updateSite(id: string, patch: Partial<Pick<Site, "name" | "slug" | "settings">>): Promise<Site>;
+  removeSite(id: string): Promise<void>;
   listPages(siteId: string): Promise<SitePage[]>;
   getPage(id: string): Promise<SitePage | null>;
   insertPage(input: { site_id: string; slug: string; title: string; is_home: boolean; position: number }): Promise<SitePage>;
-  updatePage(id: string, patch: Partial<Pick<SitePage, "title" | "description" | "show_in_nav" | "position" | "draft" | "slug">>): Promise<SitePage>;
+  updatePage(id: string, patch: Partial<Pick<SitePage, "title" | "description" | "show_in_nav" | "position" | "draft" | "slug" | "seo">>): Promise<SitePage>;
   removePage(id: string): Promise<void>;
   listDomains(siteId: string): Promise<SiteDomain[]>;
   getDomain(id: string): Promise<SiteDomain | null>;
@@ -53,11 +58,13 @@ const cleanText = (v: unknown, max: number) => (typeof v === "string" ? v.replac
 
 // ------------------------------------------------------------------ site
 
-/** The office's site, made on first use: a blank home page and the default address. Safe to call on every visit. */
-export async function ensureSite(deps: SitesDeps, input: { name: string; userId: string | null }): Promise<Site> {
-  const existing = await deps.repo.getSite();
-  if (existing) return existing;
-  const name = cleanText(input.name, 120) || "My website";
+export const MAX_SITES = 10;
+
+/** A new website: a blank home page and its own free address, taken from the name. */
+export async function createSite(deps: SitesDeps, input: { name: string; userId: string | null }): Promise<Site> {
+  if ((await deps.repo.listSites()).length >= MAX_SITES) fail(`A workspace can have up to ${MAX_SITES} websites.`);
+  const name = cleanText(input.name, 120);
+  if (!name) fail("Give the website a name.");
   const base = (() => { try { return cleanLabel(labelFromName(name)); } catch { return `office-${(deps.newId ?? randomUUID)().slice(0, 6)}`; } })();
   let site: Site | null = null;
   for (let i = 0; i < 12 && !site; i++) {
@@ -67,13 +74,35 @@ export async function ensureSite(deps: SitesDeps, input: { name: string; userId:
       site = await deps.repo.insertSite({ name, slug: label, created_by: input.userId });
     } catch (e) {
       if (!isDuplicate(e) && !(e instanceof ValidationError)) throw e;
-      if (i === 11) throw new ValidationError("A web address couldn't be chosen automatically. Pick one in Domains.");
+      if (i === 11) throw new ValidationError("A web address couldn't be chosen automatically. Try a different name, then change it under Addresses.");
     }
   }
   const made = site!;
   await deps.repo.insertDomain({ site_id: made.id, hostname: subdomainHost(made.slug, platformOf(deps)), kind: "subdomain", status: "active", detail: {}, created_by: input.userId });
   await deps.repo.insertPage({ site_id: made.id, slug: "", title: "Home", is_home: true, position: 0 });
   return made;
+}
+
+export async function renameSite(deps: SitesDeps, siteId: string, raw: unknown): Promise<Site> {
+  const name = cleanText(raw, 120);
+  if (!name) fail("Give the website a name.");
+  if (!(await deps.repo.getSite(siteId))) fail("That website wasn't found.");
+  return deps.repo.updateSite(siteId, { name });
+}
+
+/** Saves a website's look and details (colors, fonts, header, footer, contact, hours, social, search). Visitors see them after it is published. */
+export async function saveSiteSettings(deps: SitesDeps, siteId: string, raw: unknown): Promise<Site> {
+  if (!(await deps.repo.getSite(siteId))) fail("That website wasn't found.");
+  return deps.repo.updateSite(siteId, { settings: cleanSiteSettings(raw) });
+}
+
+/** Deletes a website: its pages and addresses go with it, and any address of your own is released at the website host. */
+export async function deleteSite(deps: SitesDeps, siteId: string): Promise<void> {
+  if (!(await deps.repo.getSite(siteId))) fail("That website wasn't found.");
+  for (const d of await deps.repo.listDomains(siteId)) {
+    if (d.kind === "custom" && deps.domains) await deps.domains.remove(d.hostname).catch(() => undefined);
+  }
+  await deps.repo.removeSite(siteId);
 }
 
 // ----------------------------------------------------------------- pages
@@ -89,7 +118,7 @@ export async function addPage(deps: SitesDeps, siteId: string, raw: { title?: un
   return deps.repo.insertPage({ site_id: siteId, slug, title, is_home: false, position: pages.reduce((n, p) => Math.max(n, p.position), 0) + 1 });
 }
 
-export async function savePage(deps: SitesDeps, pageId: string, raw: { title?: unknown; description?: unknown; show_in_nav?: unknown; blocks?: unknown }): Promise<SitePage> {
+export async function savePage(deps: SitesDeps, pageId: string, raw: { title?: unknown; description?: unknown; show_in_nav?: unknown; blocks?: unknown; seo?: unknown }): Promise<SitePage> {
   const page = (await deps.repo.getPage(pageId)) ?? fail("That page wasn't found.");
   const title = cleanText(raw.title, 120);
   if (!title) fail("Give the page a title.");
@@ -101,7 +130,7 @@ export async function savePage(deps: SitesDeps, pageId: string, raw: { title?: u
     throw new ValidationError("The page content wasn't understood. Reload the page and try again.");
   }
   return deps.repo.updatePage(page!.id, {
-    title, description: cleanText(raw.description, 300) || null, draft: blocks,
+    title, description: cleanText(raw.description, SEO_LIMITS.description) || null, draft: blocks, seo: cleanPageSeo(raw.seo),
     show_in_nav: page!.is_home ? true : raw.show_in_nav === true || raw.show_in_nav === "on" || raw.show_in_nav === "1",
   });
 }
@@ -138,7 +167,10 @@ export async function unpublishSite(deps: SitesDeps, siteId: string): Promise<vo
 }
 
 /** Pages whose draft differs from what visitors see. */
-export const hasUnpublishedChanges = (pages: SitePage[]) => pages.some((p) => p.published === null || JSON.stringify(p.published) !== JSON.stringify(p.draft) || p.published_title !== p.title || (p.published_description ?? null) !== (p.description ?? null));
+export const hasUnpublishedChanges = (pages: SitePage[], site?: Pick<Site, "settings" | "published_settings">) =>
+  pages.some((p) => p.published === null || JSON.stringify(p.published) !== JSON.stringify(p.draft) || p.published_title !== p.title || (p.published_description ?? null) !== (p.description ?? null)
+    || JSON.stringify(cleanPageSeo(p.published_seo ?? {})) !== JSON.stringify(cleanPageSeo(p.seo ?? {})))
+  || (site !== undefined && site.published_settings !== null && site.published_settings !== undefined && JSON.stringify(cleanSiteSettings(site.published_settings)) !== JSON.stringify(cleanSiteSettings(site.settings ?? {})));
 
 // ----------------------------------------------------------------- domains
 

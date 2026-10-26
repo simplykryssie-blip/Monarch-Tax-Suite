@@ -7,7 +7,7 @@ import { SupabaseImageStore } from "@/lib/commerce/supabase-repo.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { uploadLibraryImage } from "@/lib/images/service.ts";
 import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
-import { isSitesArea, requireSites } from "@/lib/sites/context";
+import { isSitesArea, requireSite } from "@/lib/sites/context";
 import { tenantClient } from "@/lib/supabase/service";
 
 // A picture for a website page: stored in the office's own private image library and shown through /media.
@@ -15,9 +15,9 @@ import { tenantClient } from "@/lib/supabase/service";
 export async function uploadSiteImageAction(form: FormData) {
   const area = String(form.get("area") ?? "");
   if (!isSitesArea(area)) redirect("/");
-  const ctx = await requireSites(area);
+  const ctx = await requireSite(area, String(form.get("site_id") ?? ""));
   const pageId = String(form.get("page_id") ?? "");
-  const back = `${ctx.base}/pages/${pageId.replace(/[^0-9a-f-]/gi, "")}`;
+  const back = `${ctx.siteBase}/pages/${pageId.replace(/[^0-9a-f-]/gi, "")}`;
   let target: string;
   try {
     const file = form.get("file");

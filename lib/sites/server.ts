@@ -30,8 +30,8 @@ export async function siteForHost(rawHost: string): Promise<PublicSite | null> {
   if (!data) return null;
   const tenantId = data.tenant_id as string;
   const repo = new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken);
-  const site = await repo.getSite();
-  if (!site || site.id !== data.site_id) return null;
+  const site = await repo.getSite(data.site_id as string);
+  if (!site) return null;
   const pages = await repo.listPages(site.id);
   return { tenantId, site, pages, domain: { hostname: data.hostname as string, kind: data.kind as SiteDomain["kind"], status: data.status as SiteDomain["status"] } };
 }

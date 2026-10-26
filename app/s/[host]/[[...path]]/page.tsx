@@ -3,6 +3,8 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { Blocks, SiteFrame } from "@/components/sites/render";
 import { buildView, loadPublicSite, requestSiteHost } from "@/lib/sites/public";
+import { cleanPageSeo, pageDescriptionFor, pageIsIndexed, pageTitleFor, settingsOf } from "@/lib/sites/settings.ts";
+import { tenantClient } from "@/lib/supabase/service";
 
 // A published website page. The proxy rewrites every request on an office's address here; the page shows only what
 // the office published (never a draft), and nothing at all on an address no office uses.
@@ -23,11 +25,30 @@ async function resolve({ params }: Params) {
 export async function generateMetadata(input: Params): Promise<Metadata> {
   const r = await resolve(input).catch(() => null);
   if (!r?.ps || !r.page) return { title: "Website", robots: { index: false, follow: false } };
-  const view = await buildView(r.ps, null);
+  const settings = settingsOf(r.ps.site.published_settings ?? r.ps.site.settings ?? {});
+  const seo = cleanPageSeo(r.page.published_seo ?? {});
+  const indexed = pageIsIndexed(settings, seo);
+  const imageId = seo.shareImageId ?? settings.seo.shareImageId;
+  let share: string | undefined;
+  if (imageId) {
+    const { data } = await tenantClient(r.ps.tenantId).from("tenant_images").select("storage_path").eq("id", imageId).maybeSingle();
+    if (data?.storage_path) share = `/media/${r.ps.tenantId}/${data.storage_path as string}`;
+  }
+  const title = pageTitleFor({ siteName: r.ps.site.name, settings, pageTitle: r.page.published_title ?? r.page.title, seo, isHome: r.page.is_home });
+  const description = pageDescriptionFor({ description: r.page.published_description, settings });
+  const faviconId = settings.brand.faviconImageId;
+  let icon: string | undefined;
+  if (faviconId) {
+    const { data } = await tenantClient(r.ps.tenantId).from("tenant_images").select("storage_path").eq("id", faviconId).maybeSingle();
+    if (data?.storage_path) icon = `/media/${r.ps.tenantId}/${data.storage_path as string}`;
+  }
   return {
-    title: r.page.is_home ? view.name : `${r.page.published_title ?? r.page.title} | ${view.name}`,
-    description: r.page.published_description ?? undefined,
-    robots: { index: true, follow: true },
+    title,
+    description,
+    alternates: { canonical: `https://${r.ps.domain.hostname}${r.page.is_home ? "/" : `/${r.page.slug}`}` },
+    robots: { index: indexed, follow: indexed },
+    openGraph: { title, description, type: "website", ...(share ? { images: [share] } : {}) },
+    ...(icon ? { icons: { icon } } : {}),
   };
 }
 

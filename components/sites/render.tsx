@@ -16,6 +16,13 @@ export type SiteView = {
   nav: { href: string; label: string }[];
   contact: { phone: string | null; email: string | null; address: string | null };
   images: Record<string, SiteImage>;
+  /** Fonts, header and footer choices, hours and social links from the website's settings. */
+  look?: {
+    headingFont: string; bodyFont: string;
+    header: { show: boolean; align: "left" | "center"; showPhone: boolean; ctaLabel: string; ctaHref: string };
+    footer: { show: boolean; text: string; showContact: boolean; showHours: boolean; showSocial: boolean };
+    hours: string; social: { label: string; href: string }[];
+  };
   /** In the editor: booking pages and forms are described instead of loaded (they belong to the live address). */
   preview?: boolean;
   /** "" on a website address; "/s/<address>" when a Preview shows the site on the deployment's own address. */
@@ -84,7 +91,8 @@ export function Blocks({ blocks, view }: { blocks: Block[]; view: SiteView }) {
 }
 
 const CSS = `
-.ws{--p:var(--ws-primary,#2563eb);--on-p:var(--ws-on-primary,#fff);--a:var(--ws-accent,#171714);margin:0;min-height:100vh;display:flex;flex-direction:column;background:#fff;color:#1c1b17;font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
+.ws{--p:var(--ws-primary,#2563eb);--on-p:var(--ws-on-primary,#fff);--a:var(--ws-accent,#171714);margin:0;min-height:100vh;display:flex;flex-direction:column;background:#fff;color:#1c1b17;font:16px/1.65 var(--ws-body-font,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif);-webkit-text-size-adjust:100%}
+.ws h1,.ws h2,.ws h3{font-family:var(--ws-heading-font,inherit)}
 .ws *,.ws *::before,.ws *::after{box-sizing:border-box}
 .ws a{color:var(--p)}
 .ws-header{border-bottom:1px solid #e7e5de;background:#fff}
@@ -128,12 +136,14 @@ h3.ws-h{font-size:clamp(18px,4.5vw,22px)}
 @media (min-width:700px){.ws-wrap{padding:0 24px}.ws-header-in{padding:14px 24px}}
 `;
 
+const fontVars = (view: SiteView): Record<string, string> => (view.look ? { "--ws-heading-font": view.look.headingFont, "--ws-body-font": view.look.bodyFont } : {});
+
 export function SiteFrame({ view, currentPath, children }: { view: SiteView; currentPath: string; children: React.ReactNode }) {
   return (
-    <div className="ws" style={{ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent } as React.CSSProperties}>
+    <div className="ws" style={{ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, ...fontVars(view) } as React.CSSProperties}>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
-      <header className="ws-header">
-        <div className="ws-header-in">
+      {(view.look?.header.show ?? true) && <header className="ws-header">
+        <div className="ws-header-in" style={view.look?.header.align === "center" ? { flexDirection: "column", justifyContent: "center" } : undefined}>
           <Link className="ws-brand" href={view.base || "/"}>
             {view.logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -144,17 +154,24 @@ export function SiteFrame({ view, currentPath, children }: { view: SiteView; cur
           {view.nav.length > 1 && (
             <nav aria-label="Pages"><ul className="ws-nav">{view.nav.map((n) => <li key={n.href}><Link href={n.href === "/" ? view.base || "/" : `${view.base ?? ""}${n.href}`} {...(n.href === currentPath ? { "aria-current": "page" as const } : {})}>{n.label}</Link></li>)}</ul></nav>
           )}
+          {view.look?.header.showPhone && view.contact.phone && <a href={`tel:${view.contact.phone.replace(/[^0-9+]/g, "")}`}>{view.contact.phone}</a>}
+          {view.look?.header.ctaLabel && view.look.header.ctaHref && <a className="ws-btn ws-btn-primary" href={hrefOf(view.look.header.ctaHref, view.base)} {...(external(view.look.header.ctaHref) ? { target: "_blank", rel: "noopener noreferrer" } : {})}>{view.look.header.ctaLabel}</a>}
         </div>
-      </header>
+      </header>}
       <main>{children}</main>
-      <footer className="ws-footer">
+      {(view.look?.footer.show ?? true) && <footer className="ws-footer">
         <div className="ws-footer-in">
           <strong>{view.name}</strong>
-          {view.contact.address && <span style={{ whiteSpace: "pre-line" }}>{view.contact.address}</span>}
-          {view.contact.phone && <span><a href={`tel:${view.contact.phone.replace(/[^0-9+]/g, "")}`}>{view.contact.phone}</a></span>}
-          {view.contact.email && <span><a href={`mailto:${view.contact.email}`}>{view.contact.email}</a></span>}
+          {view.look?.footer.text && <span style={{ whiteSpace: "pre-line" }}>{view.look.footer.text}</span>}
+          {(view.look?.footer.showContact ?? true) && <>
+            {view.contact.address && <span style={{ whiteSpace: "pre-line" }}>{view.contact.address}</span>}
+            {view.contact.phone && <span><a href={`tel:${view.contact.phone.replace(/[^0-9+]/g, "")}`}>{view.contact.phone}</a></span>}
+            {view.contact.email && <span><a href={`mailto:${view.contact.email}`}>{view.contact.email}</a></span>}
+          </>}
+          {(view.look?.footer.showHours ?? true) && view.look?.hours && <span style={{ whiteSpace: "pre-line" }}>{view.look.hours}</span>}
+          {(view.look?.footer.showSocial ?? true) && view.look && view.look.social.length > 0 && <span>{view.look.social.map((s, i) => <span key={s.label}>{i > 0 && " · "}<a href={s.href} target="_blank" rel="noopener noreferrer">{s.label}</a></span>)}</span>}
         </div>
-      </footer>
+      </footer>}
     </div>
   );
 }
@@ -162,7 +179,7 @@ export function SiteFrame({ view, currentPath, children }: { view: SiteView; cur
 /** The page body inside the site's look, without the header and footer: the preview in the editor. */
 export function SitePreview({ view, blocks }: { view: SiteView; blocks: Block[] }) {
   return (
-    <div className="ws" style={{ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, minHeight: 0 } as React.CSSProperties}>
+    <div className="ws" style={{ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, ...fontVars(view), minHeight: 0 } as React.CSSProperties}>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <Blocks blocks={blocks} view={{ ...view, preview: true }} />
     </div>

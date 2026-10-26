@@ -1,31 +1,44 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
-import { addCustomDomain, addPage, ensureSite, hasUnpublishedChanges, movePage, publishSite, refreshDomain, removeDomain, removePage, savePage, setSubdomain, type DomainsPort, type Site, type SiteDomain, type SitePage, type SitesDeps, type SitesRepo } from "../lib/sites/service.ts";
+import { settingsOf, cleanPageSeo, pageTitleFor, pageIsIndexed, DEFAULT_SETTINGS } from "../lib/sites/settings.ts";
+import { addCustomDomain, addPage, createSite, deleteSite, saveSiteSettings, hasUnpublishedChanges, movePage, publishSite, refreshDomain, removeDomain, removePage, savePage, setSubdomain, type DomainsPort, type Site, type SiteDomain, type SitePage, type SitesDeps, type SitesRepo } from "../lib/sites/service.ts";
 import { vercelDomains, vercelProblems } from "../lib/sites/vercel.ts";
 
 // One shared "platform" so two offices can collide on addresses like they would in the database.
 class Platform { slugs = new Set<string>(); hosts = new Set<string>(); }
 class Repo implements SitesRepo {
-  site: Site | null = null;
+  sites: Site[] = [];
+  /** The first website, for tests about one. */
+  get site(): Site | null { return this.sites[0] ?? null; }
   pages: SitePage[] = [];
   domains: SiteDomain[] = [];
   published = 0;
   platform: Platform;
   tenant: string;
   constructor(platform: Platform, tenant: string) { this.platform = platform; this.tenant = tenant; }
-  async getSite() { return this.site; }
+  async listSites() { return this.sites.slice(); }
+  async getSite(id: string) { return this.sites.find((s) => s.id === id) ?? null; }
+  async removeSite(id: string) {
+    const s = this.sites.find((x) => x.id === id);
+    if (s) this.platform.slugs.delete(s.slug);
+    this.sites = this.sites.filter((x) => x.id !== id);
+    this.pages = this.pages.filter((p) => p.site_id !== id);
+    this.domains = this.domains.filter((d) => d.site_id !== id);
+  }
   async insertSite(i: { name: string; slug: string; created_by: string | null }) {
     if (this.platform.slugs.has(i.slug)) throw new Error('duplicate key value violates unique constraint "sites_slug_key"');
     this.platform.slugs.add(i.slug);
-    this.site = { id: randomUUID(), tenant_id: this.tenant, name: i.name, slug: i.slug, status: "draft", published_at: null, created_at: "" };
-    return this.site;
+    const site: Site = { id: randomUUID(), tenant_id: this.tenant, name: i.name, slug: i.slug, status: "draft", published_at: null, created_at: "", settings: {}, published_settings: null };
+    this.sites.push(site);
+    return site;
   }
-  async updateSite(_id: string, p: Partial<Pick<Site, "name" | "slug">>) {
-    if (p.slug && p.slug !== this.site!.slug && this.platform.slugs.has(p.slug)) throw new Error('duplicate key value violates unique constraint "sites_slug_key"');
-    if (p.slug) { this.platform.slugs.delete(this.site!.slug); this.platform.slugs.add(p.slug); }
-    this.site = { ...this.site!, ...p };
-    return this.site;
+  async updateSite(id: string, p: Partial<Pick<Site, "name" | "slug" | "settings">>) {
+    const cur = this.sites.find((s) => s.id === id)!;
+    if (p.slug && p.slug !== cur.slug && this.platform.slugs.has(p.slug)) throw new Error('duplicate key value violates unique constraint "sites_slug_key"');
+    if (p.slug) { this.platform.slugs.delete(cur.slug); this.platform.slugs.add(p.slug); }
+    Object.assign(cur, p);
+    return cur;
   }
   async listPages(siteId: string) { return this.pages.filter((p) => p.site_id === siteId); }
   async getPage(id: string) { return this.pages.find((p) => p.id === id) ?? null; }
@@ -51,7 +64,8 @@ class Repo implements SitesRepo {
   async publish(siteId: string) {
     const mine = this.pages.filter((p) => p.site_id === siteId);
     if (!mine.length) throw new Error("SITE_EMPTY");
-    for (const p of mine) { p.published = p.draft; p.published_title = p.title; p.published_description = p.description; }
+    for (const p of mine) { p.published = p.draft; p.published_title = p.title; p.published_description = p.description; p.published_seo = p.seo; }
+    this.site!.published_settings = this.site!.settings;
     this.published++;
     this.site!.status = "published";
     return mine.length;
@@ -73,29 +87,46 @@ function setup(platform = new Platform(), tenant = randomUUID(), domains: Domain
   return { repo, deps, platform };
 }
 
-describe("a site is made on first use", () => {
-  test("a blank home page and the default address, once", async () => {
+describe("creating a website", () => {
+  test("a blank home page and the default address", async () => {
     const { repo, deps } = setup();
-    const site = await ensureSite(deps, { name: "Smith & Sons Tax", userId: "u1" });
+    const site = await createSite(deps, { name: "Smith & Sons Tax", userId: "u1" });
     assert.equal(site.slug, "smith-sons-tax");
     assert.equal(repo.pages.length, 1);
     assert.deepEqual([repo.pages[0].slug, repo.pages[0].is_home, repo.pages[0].draft], ["", true, []]);
     assert.deepEqual(repo.domains.map((d) => [d.hostname, d.kind, d.status]), [["smith-sons-tax.monarchtaxsuite.com", "subdomain", "active"]]);
-    assert.equal((await ensureSite(deps, { name: "Other name", userId: "u1" })).id, site.id);
+  });
+  test("an office can have several websites, each with its own pages, address and settings", async () => {
+    const { repo, deps } = setup();
+    const a = await createSite(deps, { name: "Smith Tax", userId: "u1" });
+    const b = await createSite(deps, { name: "Smith Bookkeeping", userId: "u1" });
+    assert.notEqual(a.id, b.id);
+    assert.equal(repo.pages.length, 2);
+    assert.deepEqual((await repo.listSites()).map((s) => s.slug).sort(), ["smith-bookkeeping", "smith-tax"]);
+    await saveSiteSettings(deps, b.id, { brand: { primary: "#112233" } });
+    assert.equal(settingsOf((await repo.getSite(a.id))!.settings).brand.primary, null);
+    assert.equal(settingsOf((await repo.getSite(b.id))!.settings).brand.primary, "#112233");
+    await deleteSite(deps, b.id);
+    assert.equal((await repo.listSites()).length, 1);
     assert.equal(repo.pages.length, 1);
+  });
+  test("at most ten websites", async () => {
+    const { deps } = setup();
+    for (let i = 0; i < 10; i++) await createSite(deps, { name: `Site ${i}`, userId: null });
+    await assert.rejects(createSite(deps, { name: "One more", userId: null }), /up to/i);
   });
   test("two offices with the same name get different addresses", async () => {
     const platform = new Platform();
     const a = setup(platform);
     const b = setup(platform);
-    const sa = await ensureSite(a.deps, { name: "Smith Tax", userId: null });
-    const sb = await ensureSite(b.deps, { name: "Smith Tax", userId: null });
+    const sa = await createSite(a.deps, { name: "Smith Tax", userId: null });
+    const sb = await createSite(b.deps, { name: "Smith Tax", userId: null });
     assert.equal(sa.slug, "smith-tax");
     assert.equal(sb.slug, "smith-tax-2");
   });
   test("a name that would be a reserved address still gets one", async () => {
     const { deps } = setup();
-    const site = await ensureSite(deps, { name: "Admin", userId: null });
+    const site = await createSite(deps, { name: "Admin", userId: null });
     assert.notEqual(site.slug, "admin");
   });
 });
@@ -103,7 +134,7 @@ describe("a site is made on first use", () => {
 describe("pages", () => {
   test("add, save with cleaned blocks, move, remove; the home page is protected", async () => {
     const { repo, deps } = setup();
-    const site = await ensureSite(deps, { name: "Smith Tax", userId: null });
+    const site = await createSite(deps, { name: "Smith Tax", userId: null });
     const about = await addPage(deps, site.id, { title: "About Us" });
     assert.equal(about.slug, "about-us");
     await assert.rejects(addPage(deps, site.id, { title: "About us" }), /already exists/);
@@ -127,7 +158,7 @@ describe("pages", () => {
   });
   test("at most 20 pages", async () => {
     const { deps } = setup();
-    const site = await ensureSite(deps, { name: "Smith Tax", userId: null });
+    const site = await createSite(deps, { name: "Smith Tax", userId: null });
     for (let i = 0; i < 19; i++) await addPage(deps, site.id, { title: `Page ${i}` });
     await assert.rejects(addPage(deps, site.id, { title: "One more" }), /at most 20/);
   });
@@ -136,7 +167,7 @@ describe("pages", () => {
 describe("publishing", () => {
   test("needs a home page with something on it; publishes drafts; changes are noticed", async () => {
     const { repo, deps } = setup();
-    const site = await ensureSite(deps, { name: "Smith Tax", userId: null });
+    const site = await createSite(deps, { name: "Smith Tax", userId: null });
     await assert.rejects(publishSite(deps, site.id), /Add something to the home page/);
     const home = repo.pages[0];
     await savePage(deps, home.id, { title: "Home", blocks: [{ type: "heading", text: "Welcome" }] });
@@ -155,8 +186,8 @@ describe("domains", () => {
     const platform = new Platform();
     const a = setup(platform);
     const b = setup(platform);
-    const sa = await ensureSite(a.deps, { name: "Alpha Tax", userId: null });
-    await ensureSite(b.deps, { name: "Beta Tax", userId: null });
+    const sa = await createSite(a.deps, { name: "Alpha Tax", userId: null });
+    await createSite(b.deps, { name: "Beta Tax", userId: null });
     await assert.rejects(setSubdomain(a.deps, sa, a.repo.domains, "beta-tax"), /taken/);
     await assert.rejects(setSubdomain(a.deps, sa, a.repo.domains, "www"), /reserved/);
     const renamed = await setSubdomain(a.deps, sa, a.repo.domains, "alpha-cpa");
@@ -167,7 +198,7 @@ describe("domains", () => {
   test("a custom domain: added at the host, shows records, goes live only when the host says so", async () => {
     const fake = new FakeDomains();
     const { repo, deps } = setup(new Platform(), randomUUID(), fake);
-    const site = await ensureSite(deps, { name: "Smith Tax", userId: null });
+    const site = await createSite(deps, { name: "Smith Tax", userId: null });
     const d = await addCustomDomain(deps, site, repo.domains, "https://WWW.Smith-Tax.com/", "u1");
     assert.equal(d.hostname, "www.smith-tax.com");
     assert.equal(d.status, "pending");
@@ -188,8 +219,8 @@ describe("domains", () => {
     const fakeA = new FakeDomains();
     const a = setup(platform, randomUUID(), fakeA);
     const b = setup(platform, randomUUID(), new FakeDomains());
-    const sa = await ensureSite(a.deps, { name: "Alpha Tax", userId: null });
-    const sb = await ensureSite(b.deps, { name: "Beta Tax", userId: null });
+    const sa = await createSite(a.deps, { name: "Alpha Tax", userId: null });
+    const sb = await createSite(b.deps, { name: "Beta Tax", userId: null });
     await addCustomDomain(a.deps, sa, a.repo.domains, "alpha.com", null);
     const fakeB = b.deps.domains as FakeDomains;
     await assert.rejects(addCustomDomain(b.deps, sb, b.repo.domains, "alpha.com", null), /already connected/);
@@ -197,18 +228,18 @@ describe("domains", () => {
   });
   test("the platform's own domain, three-domain limit, and unconfigured hosting", async () => {
     const { repo, deps } = setup();
-    const site = await ensureSite(deps, { name: "Smith Tax", userId: null });
+    const site = await createSite(deps, { name: "Smith Tax", userId: null });
     await assert.rejects(addCustomDomain(deps, site, repo.domains, "x.monarchtaxsuite.com", null), /made for you/);
     for (const h of ["one.com", "two.com", "three.com"]) await addCustomDomain(deps, site, repo.domains, h, null);
     await assert.rejects(addCustomDomain(deps, site, repo.domains, "four.com", null), /at most 3/);
     const none = setup(new Platform(), randomUUID(), null);
-    const s2 = await ensureSite(none.deps, { name: "No Host", userId: null });
+    const s2 = await createSite(none.deps, { name: "No Host", userId: null });
     await assert.rejects(addCustomDomain(none.deps, s2, none.repo.domains, "x.com", null), /aren't turned on/);
   });
   test("removing a custom domain removes it at the host; the default address stays", async () => {
     const fake = new FakeDomains();
     const { repo, deps } = setup(new Platform(), randomUUID(), fake);
-    const site = await ensureSite(deps, { name: "Smith Tax", userId: null });
+    const site = await createSite(deps, { name: "Smith Tax", userId: null });
     const d = await addCustomDomain(deps, site, repo.domains, "smith-tax.com", null);
     await removeDomain(deps, d.id);
     assert.ok(fake.calls.includes("remove:smith-tax.com"));
@@ -252,5 +283,47 @@ describe("the hosting platform's API", () => {
     await assert.rejects(vercelDomains(env, mk(500, {}))!.add("x.com"), /vercel add domain 500/);
     assert.equal(await vercelDomains(env, mk(404, {}))!.check("x.com"), null);
     await vercelDomains(env, mk(404, {}))!.remove("x.com");
+  });
+});
+
+describe("site settings and search details", () => {
+  test("settings are cleaned: bad colours, links and unknown keys are dropped", () => {
+    const s = settingsOf({ brand: { primary: "red", accent: "#ABCDEF", logoImageId: "nope" }, fonts: { heading: "comic" }, header: { ctaLabel: "Call", ctaHref: "javascript:alert(1)" }, social: { facebook: "http://x.com", instagram: "https://instagram.com/a" }, evil: 1, seo: { title: "x".repeat(200), noindex: "on" } });
+    assert.equal(s.brand.primary, null);
+    assert.equal(s.brand.accent, "#abcdef");
+    assert.equal(s.brand.logoImageId, null);
+    assert.equal(s.fonts.heading, "system");
+    assert.equal(s.header.ctaHref, "");
+    assert.deepEqual(s.social, { instagram: "https://instagram.com/a" });
+    assert.equal(s.seo.title.length, 70);
+    assert.equal(s.seo.noindex, true);
+    assert.deepEqual(settingsOf(undefined), DEFAULT_SETTINGS);
+  });
+  test("titles: the page's own title wins, the website's suffix is added, the home page uses the website's title", () => {
+    const settings = settingsOf({ seo: { title: "Smith Tax | Atlanta", titleSuffix: "Smith Tax" } });
+    const base = { siteName: "Smith", settings, seo: cleanPageSeo({}) };
+    assert.equal(pageTitleFor({ ...base, pageTitle: "About", isHome: false }), "About | Smith Tax");
+    assert.equal(pageTitleFor({ ...base, seo: cleanPageSeo({ title: "Who we are" }), pageTitle: "About", isHome: false }), "Who we are | Smith Tax");
+    assert.equal(pageTitleFor({ ...base, pageTitle: "Home", isHome: true }), "Smith Tax | Atlanta");
+  });
+  test("a page or the whole website can be hidden from search engines", () => {
+    assert.equal(pageIsIndexed(settingsOf({}), cleanPageSeo({})), true);
+    assert.equal(pageIsIndexed(settingsOf({}), cleanPageSeo({ noindex: true })), false);
+    assert.equal(pageIsIndexed(settingsOf({ seo: { noindex: true } }), cleanPageSeo({})), false);
+  });
+  test("saving a page keeps its search details, and changing settings or search details counts as unpublished", async () => {
+    const { repo, deps } = setup();
+    const site = await createSite(deps, { name: "Smith Tax", userId: null });
+    const home = repo.pages[0];
+    await savePage(deps, home.id, { title: "Home", description: "d".repeat(400), show_in_nav: "on", blocks: JSON.stringify([{ type: "heading", text: "Hello" }]), seo: { title: "Tax help", noindex: true } });
+    const saved = (await repo.getPage(home.id))!;
+    assert.equal((saved.description ?? "").length, 160);
+    assert.deepEqual(cleanPageSeo(saved.seo), { title: "Tax help", shareImageId: null, noindex: true });
+    await publishSite(deps, site.id);
+    const pages = await repo.listPages(site.id);
+    const fresh = (await repo.getSite(site.id))!;
+    assert.equal(hasUnpublishedChanges(pages, fresh), false);
+    await saveSiteSettings(deps, site.id, { hours: "Mon-Fri 9-5" });
+    assert.equal(hasUnpublishedChanges(pages, (await repo.getSite(site.id))!), true);
   });
 });
