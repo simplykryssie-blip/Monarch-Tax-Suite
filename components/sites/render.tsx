@@ -191,6 +191,7 @@ export const SITE_CSS = `
 .ws-menu{display:none;margin-left:auto}.ws-menu summary{list-style:none;cursor:pointer;width:44px;height:44px;display:grid;place-items:center;border-radius:10px}.ws-menu summary::-webkit-details-marker{display:none}
 .ws-burger,.ws-burger::before,.ws-burger::after{display:block;width:22px;height:2px;background:#1c1b17;border-radius:2px;content:"";position:relative}.ws-burger::before{position:absolute;top:-7px}.ws-burger::after{position:absolute;top:7px}
 .ws-nav-m{position:absolute;left:0;right:0;top:100%;margin:0;padding:8px 16px 16px;list-style:none;background:#fff;border-bottom:1px solid #ece9e0;box-shadow:0 18px 30px rgba(0,0,0,.08)}.ws-nav-m a{display:block;padding:14px 4px;font-weight:600;text-decoration:none;color:#1c1b17;font-size:17px;border-bottom:1px solid #f1eee6}.ws-nav-m a[aria-current="page"]{color:var(--p)}
+.ws-dev-tablet .ws-nav-d,.ws-dev-mobile .ws-nav-d{display:none}.ws-dev-tablet .ws-menu,.ws-dev-mobile .ws-menu{display:block}.ws-dev-mobile .ws-header-in .ws-btn{display:none}.ws-dev-mobile .ws-btn{display:block;width:100%}.ws-dev-mobile .ws-section{padding:32px 0}
 @media (max-width:760px){.ws-nav-d{display:none}.ws-menu{display:block}.ws-header-in .ws-btn{display:none}}
 .ws main{flex:1}
 .ws-wrap{max-width:820px;margin:0 auto;padding:0 20px}
@@ -282,9 +283,9 @@ const fontVars = (view: SiteView): Record<string, string> => ({ ...bgVars(view),
 /** The color and font variables a site's styles read, for a wrapper element. */
 export const siteVars = (view: SiteView): React.CSSProperties => ({ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, ...fontVars(view) } as React.CSSProperties);
 
-export function SiteFrame({ view, currentPath, children }: { view: SiteView; currentPath: string; children: React.ReactNode }) {
+export function SiteFrame({ view, currentPath, children, className }: { view: SiteView; currentPath: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="ws" style={{ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, ...fontVars(view) } as React.CSSProperties}>
+    <div className={className ? `ws ${className}` : "ws"} style={{ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, ...fontVars(view) } as React.CSSProperties}>
       <style dangerouslySetInnerHTML={{ __html: SITE_CSS }} />
       <FontLinks view={view} />
       {(view.look?.header.show ?? true) && <header className="ws-header">

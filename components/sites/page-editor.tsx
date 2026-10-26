@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BLOCK_LABEL, GRADIENT_KEYS, LAYOUT_KEYS, LAYOUT_LABEL, LAYOUTS, LEAF_TYPES, newElement, newRow, newSection, ROW_GAPS, SECTION_PADS, SECTION_TONES, SECTION_WIDTHS, type Block, type ColumnBlock, type LayoutKey, type LeafBlock, type RowBlock, type SectionBlock } from "@/lib/sites/blocks.ts";
 import { LeafFields, type PickBooking, type PickForm, type PickImage } from "./page-form";
-import { Blocks, Leaf, SITE_CSS, SiteFrame, sectionClass, sectionStyle, siteVars, type SiteView } from "./render";
+import { Leaf, SiteFrame, sectionClass, sectionStyle, type SiteView } from "./render";
 import { StyleFields } from "./style-fields";
 import { lookClasses, lookCss, type Look } from "@/lib/sites/look.ts";
 import { SECTION_TEMPLATES } from "@/lib/sites/templates.ts";
@@ -72,50 +72,20 @@ function pickColumn(d: Doc, sel: Sel): ColumnBlock {
   return d[si].rows[ri].columns[0];
 }
 
-const DESIGN_WIDTH: Record<Device, number> = { desktop: 1100, tablet: 780, mobile: 390 };
-
-/** The finished page at its real width for the chosen device, scaled down to fit the pane, so what you see is what visitors get. */
-function ScaledPreview({ device, children }: { device: Device; children: React.ReactNode }) {
-  const outer = useRef<HTMLDivElement>(null);
-  const inner = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState({ scale: 1, height: 0, left: 0 });
-  useEffect(() => {
-    const measure = () => {
-      const w = outer.current?.clientWidth ?? 0;
-      const natural = DESIGN_WIDTH[device];
-      const scale = w > 0 ? Math.min(1, w / natural) : 1;
-      setFit({ scale, height: (inner.current?.scrollHeight ?? 0) * scale, left: Math.max(0, (w - natural * scale) / 2) });
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (outer.current) ro.observe(outer.current);
-    if (inner.current) ro.observe(inner.current);
-    return () => ro.disconnect();
-  }, [device]);
-  const natural = DESIGN_WIDTH[device];
-  return (
-    <div ref={outer} className="ed-scaled" style={{ height: fit.height || undefined }}>
-      <div ref={inner} className={`ed-scaled-in ws-dev-${device}`} style={{ width: natural, marginLeft: fit.left, transform: `scale(${fit.scale})`, transformOrigin: "top left" }} onClickCapture={(e) => { if ((e.target as HTMLElement).closest("a")) e.preventDefault(); }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 export function PageEditor({ action, area, siteId, pageId, seo, title, description, showInNav, isHome, initial, images: initialImages, bookings, forms, view, backHref, siteName, uploadImage }: {
   action: Action; area: string; siteId: string; pageId: string; seo: { title: string; shareImageId: string | null; noindex: boolean };
   title: string; description: string; showInNav: boolean; isHome: boolean; initial: Block[]; images: PickImage[]; bookings: PickBooking[]; forms: PickForm[]; view: SiteView;
   backHref: string; siteName: string; uploadImage: (form: FormData) => Promise<SiteImageResult>;
 }) {
   const [images, setImages] = useState<PickImage[]>(initialImages);
-  const [showPreview, setShowPreview] = useState(true);
   const [betweenAt, setBetweenAt] = useState<number | null>(null);
   const [drag, setDrag] = useState<"new" | "move" | null>(null);
   const [upload, setUpload] = useState<{ busy: boolean; message: string }>({ busy: false, message: "" });
   const [h, setH] = useState<Hist>({ doc: initial, past: [], future: [], key: null, at: 0 });
   const [sel, setSel] = useState<Sel>(null);
   const [itemTab, setItemTab] = useState<"content" | "style">("content");
-  const [tab, setTab] = useState<"add" | "item" | "page">("add");
+  /** Something is selected but the person is choosing what to add: the rail shows the add list instead of its settings. */
+  const [adding, setAdding] = useState(false);
   const [device, setDevice] = useState<Device>("desktop");
   const [drop, setDrop] = useState<Drop>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -156,7 +126,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("beforeunload", onLeave); };
   });
 
-  const choose = (s: Sel, stay = false) => { setSel(s); setTab((t) => (stay && t === "add" ? t : s ? "item" : t === "item" ? "add" : t)); setMenuCol(null); };
+  const choose = (s: Sel, stay = false) => { setSel(s); setAdding(stay && s !== null); setMenuCol(null); };
 
   // ---- changes
   const addElement = (type: LeafBlock["type"], colId?: string, index?: number) => {
@@ -432,7 +402,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
           <button type="button" className="monarch-secondary" onClick={redo} disabled={!h.future.length} aria-label="Redo">↷ Redo</button>
         </div>
         <div className="ed-top-group">
-          <button type="button" className={`monarch-secondary${showPreview ? " is-on" : ""}`} aria-pressed={showPreview} onClick={() => setShowPreview(!showPreview)}>{showPreview ? "Hide live preview" : "Show live preview"}</button>
+          <div className="ed-top-group" role="group" aria-label="Page width">{(Object.keys(DEVICE_LABEL) as Device[]).map((d) => <button key={d} type="button" className={`monarch-secondary${device === d ? " is-on" : ""}`} aria-pressed={device === d} onClick={() => setDevice(d)}>{DEVICE_LABEL[d]}</button>)}</div>
         </div>
         <div className="ed-top-group">
           <span className="monarch-muted" role="status">{dirty ? "Unsaved changes" : "All changes saved"}</span>
@@ -440,14 +410,12 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
         </div>
       </div>
 
-      <div className={`ed-body${showPreview ? "" : " no-preview"}`}>
+      <div className="ed-body">
         <aside className="ed-palette" aria-label="Build your page">
-          <div className="ed-rail-tabs" role="tablist">
-            <button type="button" role="tab" aria-selected={tab === "add"} className={tab === "add" ? "is-on" : undefined} onClick={() => setTab("add")}>Add</button>
-            <button type="button" role="tab" aria-selected={tab === "item"} className={tab === "item" ? "is-on" : undefined} onClick={() => setTab("item")} disabled={!shown}>Selected</button>
-            <button type="button" role="tab" aria-selected={tab === "page"} className={tab === "page" ? "is-on" : undefined} onClick={() => setTab("page")}>Page</button>
-          </div>
-          <div hidden={tab !== "add"} className="ed-add-pane">
+          {shown && (adding
+            ? <button type="button" className="monarch-secondary ed-rail-switch" onClick={() => setAdding(false)}>← Back to settings</button>
+            : <button type="button" className="monarch-secondary ed-rail-switch" onClick={() => setAdding(true)}>+ Add something</button>)}
+          <div hidden={!!shown && !adding} className="ed-add-pane">
             <>
               <p className="monarch-muted">Drag onto the page, or click to add.</p>
               <ul className="ed-tiles">
@@ -494,7 +462,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
               </ul>
             </>
           </div>
-          <div hidden={tab !== "page"} className="ed-fields">
+          <details className="ed-pagebox"><summary>Page settings</summary><div className="ed-fields">
             {field("Page title *", <input name="title" maxLength={120} defaultValue={title} />)}
             {!isHome && <label className="se-check"><input type="checkbox" name="show_in_nav" defaultChecked={showInNav} /> Show in the menu</label>}
             {field("Short description (shown in search results)", <input name="description" maxLength={160} defaultValue={description} />)}
@@ -506,9 +474,9 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
                 <label className="se-check"><input type="checkbox" name="seo_noindex" defaultChecked={seo.noindex} /> Hide this page from search engines</label>
               </div>
             </details>
-          </div>
+          </div></details>
 
-          <div hidden={tab !== "item"} className="ed-fields">
+          <div hidden={!shown || adding} className="ed-fields">
             {shown ? (
               <>
                 <nav className="ed-crumbs" aria-label="Where you are">
@@ -563,9 +531,8 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
         </aside>
 
         <div className="ed-stage" onClick={() => choose(null)} onDragOver={overArea} onDrop={finishDrop} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null); }}>
-          <div className="ed-frame">
-            <div className="ws ed-canvas" style={siteVars(merged)}>
-              <style dangerouslySetInnerHTML={{ __html: SITE_CSS }} />
+          <div className={`ed-frame ed-${device}`}>
+            <SiteFrame className={`ed-canvas ws-dev-${device}`} view={merged} currentPath="/">
               {doc.length === 0 && <div className="ed-blank"><p><b>This page is blank.</b></p><p>Choose a section on the left to start, or use the + below.</p></div>}
               {between(-1)}
               {doc.map((s, si) => (
@@ -587,28 +554,11 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
                   {between(si)}
                 </div>
               ))}
-            </div>
+            </SiteFrame>
           </div>
           <p className="monarch-muted ed-hint">Click anything to edit it. Double-click a heading, text or button to type on the page. Undo with Ctrl+Z.</p>
         </div>
 
-        {showPreview && (
-          <aside className="ed-live" aria-label="Live preview">
-            <div className="ed-live-head">
-              <b>Live preview</b>
-              <div className="ed-top-group" role="group" aria-label="Preview size">
-                {(Object.keys(DEVICE_LABEL) as Device[]).map((d) => <button key={d} type="button" className={`monarch-secondary${device === d ? " is-on" : ""}`} aria-pressed={device === d} onClick={() => setDevice(d)}>{DEVICE_LABEL[d]}</button>)}
-              </div>
-            </div>
-            <div className="ed-live-body">
-              <ScaledPreview device={device}>
-                <SiteFrame view={{ ...merged, preview: false }} currentPath="/">
-                  {doc.length === 0 ? <p className="ed-blank">Your page is blank. Add a section to see it here.</p> : <Blocks blocks={doc} view={{ ...merged, preview: false }} />}
-                </SiteFrame>
-              </ScaledPreview>
-            </div>
-          </aside>
-        )}
       </div>
     </form>
   );

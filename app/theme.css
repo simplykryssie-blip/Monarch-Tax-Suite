@@ -1149,3 +1149,10 @@ label.sx-check input{width:18px;height:18px;flex:none;margin:0}
 .sx-settings-body{min-width:0}.sx-settings-title{font-size:22px;margin:0 0 4px}
 .sx-settings .sx-set{grid-template-columns:minmax(0,1fr);gap:10px;padding:18px 0}
 @media (max-width:820px){.sx-settings{grid-template-columns:minmax(0,1fr)}.sx-sidenav{position:static;display:flex;overflow-x:auto;gap:6px;padding-bottom:6px}.sx-sidenav a{flex:0 0 auto;border-color:#e7e3d6;background:#fff}.sx-sidenav a span{display:none}}
+
+/* One build-and-preview page: the page itself is the preview, with its header and footer, at the chosen width. */
+.ed-body,.ed-body.no-preview{grid-template-columns:290px minmax(0,1fr)}
+.ed-canvas .ws-header{position:static}
+.ed-rail-switch{width:100%;margin-bottom:10px}
+.ed-pagebox{margin-top:16px;border-top:1px solid #e3dfd2;padding-top:10px}.ed-pagebox>summary{cursor:pointer;font-weight:700;padding:4px 0}
+@media (max-width:1100px){.ed-body,.ed-body.no-preview{grid-template-columns:minmax(0,1fr)}}
