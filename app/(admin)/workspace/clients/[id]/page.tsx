@@ -26,7 +26,9 @@ import { workflowTasksFor } from "@/lib/workspace/workflow-tasks";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 import { TagInput } from "@/app/(admin)/leads/tag-input";
-import { invitePortalAction } from "@/app/portal-staff-actions";
+import { cancelFormInviteAction, invitePortalAction } from "@/app/portal-staff-actions";
+import { formDeps } from "@/lib/forms/server";
+import { inviteStatus } from "@/lib/forms/invites.ts";
 import { ClientDrive } from "../../../documents/client-drive";
 import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
@@ -74,6 +76,12 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     const names = new Map(library.map((d) => [d.id, d.name]));
     const signatures = await Promise.all(deliveries.map((d) => (d.kind === "signature" ? docsDeps.repo.getSignatureByDelivery(d.id).catch(() => null) : null)));
     return deliveries.map((d, i) => ({ d, name: names.get(d.document_id) ?? d.file_name, sig: signatures[i] }));
+  })() : [];
+  const sentForms = tab === "documents" ? await (async () => {
+    const fd = formDeps();
+    const [invites, list] = await Promise.all([fd.repo.listInvitesForClient(id, 50).catch(() => []), fd.repo.listForms().catch(() => [])]);
+    const names = new Map(list.map((f) => [f.id, f.name]));
+    return invites.map((i) => ({ i, name: names.get(i.form_id) ?? "Form", status: inviteStatus(i) }));
   })() : [];
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
@@ -316,20 +324,30 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         <>
           <PortalPanel area="admin" mode="documents" part="actions" tab="documents" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`}
             />
-          {sent.length > 0 && (
+          {sent.length + sentForms.length > 0 && (
             <section className="monarch-panel">
               <div className="monarch-panel-head"><div><h2>Sent to {client.full_name.split(" ")[0]}</h2></div></div>
               <div className="monarch-table-wrap"><table>
-                <thead><tr><th>DOCUMENT</th><th>HOW</th><th>STATUS</th><th>SENT</th></tr></thead>
+                <thead><tr><th>NAME</th><th>HOW</th><th>STATUS</th><th>SENT</th><th /></tr></thead>
                 <tbody>
-                  {sent.map(({ d, name, sig }) => (
-                    <tr key={d.id}>
-                      <td><Link href={`/documents/${d.document_id}?tab=sent`}><b>{name}</b></Link></td>
-                      <td>{d.kind === "signature" ? "To sign" : "To read"}</td>
-                      <td>{d.revoked_at ? "Cancelled" : sig?.status === "signed" ? `Signed ${when(sig.signed_at)}` : sig?.status === "declined" ? "Declined" : sig?.status === "viewed" || d.first_opened_at ? "Opened" : "Not opened yet"}</td>
-                      <td>{when(d.created_at)}</td>
-                    </tr>
-                  ))}
+                  {[
+                    ...sent.map(({ d, name, sig }) => ({ at: d.created_at, row: (
+                      <tr key={`d-${d.id}`}>
+                        <td><Link href={`/documents/${d.document_id}?tab=sent`}><b>{name}</b></Link></td>
+                        <td>{d.kind === "signature" ? "Document to sign" : "Document to read"}</td>
+                        <td>{d.revoked_at ? "Cancelled" : sig?.status === "signed" ? `Signed ${when(sig.signed_at)}` : sig?.status === "declined" ? "Declined" : sig?.status === "viewed" || d.first_opened_at ? "Opened" : "Not opened yet"}</td>
+                        <td>{when(d.created_at)}</td>
+                        <td />
+                      </tr>) })),
+                    ...sentForms.map(({ i, name, status }) => ({ at: i.created_at, row: (
+                      <tr key={`f-${i.id}`}>
+                        <td><b>{name}</b></td>
+                        <td>Form</td>
+                        <td>{status === "completed" ? "Completed" : status === "opened" ? "Opened" : status === "sent" ? "Not opened yet" : status === "expired" ? "Link expired" : "Cancelled"}</td>
+                        <td>{when(i.created_at)}</td>
+                        <td>{(status === "sent" || status === "opened") && <form action={cancelFormInviteAction}><input type="hidden" name="area" value="admin" /><input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="invite_id" value={i.id} /><button className="monarch-link is-danger">Cancel</button></form>}</td>
+                      </tr>) })),
+                  ].sort((x, y) => y.at.localeCompare(x.at)).map((r) => r.row)}
                 </tbody>
               </table></div>
             </section>

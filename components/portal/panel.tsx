@@ -1,6 +1,7 @@
-import { sendDocumentAction, cancelRequestAction, invitePortalAction, openStaffDocAction, requestDocAction, setPortalAccessAction, shareDocAction, withdrawPortalAction } from "@/app/portal-staff-actions";
+import { sendFormAction, sendDocumentAction, cancelRequestAction, invitePortalAction, openStaffDocAction, requestDocAction, setPortalAccessAction, shareDocAction, withdrawPortalAction } from "@/app/portal-staff-actions";
 import { Modal } from "@/components/ui/modal";
 import { documentDeps } from "@/lib/documents/server";
+import { formDeps } from "@/lib/forms/server";
 import { folderPaths } from "@/lib/documents/folders.ts";
 import { askFieldsFor } from "@/lib/portal/signing.ts";
 import { portalMemberRepo, portalStaffRepo } from "@/lib/portal/server";
@@ -35,6 +36,22 @@ export async function PortalPanel({ area, tenantId, clientId, email, signDocId, 
           {signing && (
             <Modal label="Send a document" title="Send a document" className="monarch-primary" defaultOpen={Boolean(signDocId)}>
               <SendDocumentForm signing={signing} signDocId={signDocId} backHref={backHref} tab={tab} email={email} hidden={hidden} />
+            </Modal>
+          )}
+          {signing && signing.forms.length > 0 && (
+            <Modal label="Send a form" title="Send a form" className="monarch-secondary">
+              <form action={sendFormAction} className="monarch-form">
+                {hidden}
+                <label className="is-wide">Form
+                  <select name="form_id" required defaultValue="">
+                    <option value="" disabled>Choose a form…</option>
+                    {signing.forms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                </label>
+                <p className="is-wide monarch-muted">They get a personal link by email. Their details are filled in, and when they finish, the PDF goes into their files.</p>
+                <label className="is-wide">Message to the client (optional)<input name="message" maxLength={1000} /></label>
+                <div className="is-wide"><button className="monarch-primary" disabled={!email}>Send to {email ?? "the client"}</button></div>
+              </form>
             </Modal>
           )}
         </div>
@@ -238,5 +255,6 @@ async function signingChoices(tenantId: string, clientId: string, signDocId?: st
       error = e instanceof Error ? e.message : "That document can't be sent.";
     }
   }
-  return { docs: sendable, chosen, asks, ssnOnFile, error };
+  const forms = (await formDeps(tenantId).repo.listForms().catch(() => [])).filter((f) => f.status === "published").map((f) => ({ id: f.id, name: f.name }));
+  return { docs: sendable, chosen, asks, ssnOnFile, error, forms };
 }

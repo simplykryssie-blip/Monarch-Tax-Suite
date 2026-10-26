@@ -5,6 +5,11 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { automationDeps } from "@/lib/automation/server";
 import { documentDeps } from "@/lib/documents/server";
+import { formDeps } from "@/lib/forms/server";
+import { formLink } from "@/lib/forms/link";
+import { revokeInvite } from "@/lib/forms/invites.ts";
+import { readSettings } from "@/lib/forms/settings.ts";
+import { sendFormToClient } from "@/lib/portal/send-form.ts";
 import { sendDocumentToClient } from "@/lib/portal/send-document.ts";
 import { ssnDeps } from "@/lib/ssn/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
@@ -130,6 +135,26 @@ export async function openStaffDocAction(form: FormData) {
     message = failure(e);
   }
   redirect(url ?? to(back, "error", message));
+}
+
+/** Admin workspace only: sends a published form to the client as a personal link. */
+export async function sendFormAction(form: FormData) {
+  await run(form, async (s) => {
+    if (str(form, "area") !== "admin") throw new ValidationError("Sending forms is available from the main workspace.");
+    const deps = formDeps(s.tenantId);
+    return sendFormToClient(automationDeps(s.tenantId), deps, {
+      formId: str(form, "form_id"), client: s.client, message: str(form, "message"), actorId: s.userId,
+      linkFor: (f) => formLink(deps, f.public_id, readSettings(f.settings)),
+    });
+  });
+}
+
+/** Cancels a form that was sent but not yet completed. */
+export async function cancelFormInviteAction(form: FormData) {
+  await run(form, async (s) => {
+    await revokeInvite(formDeps(s.tenantId), str(form, "invite_id"), s.client.id);
+    return "The form was cancelled. Its link no longer works.";
+  });
 }
 
 /** Admin workspace only: the document library lives there. Sends a library document to the client, to read or to sign, and emails the link. */

@@ -51,6 +51,8 @@ export type Submission = {
   text_consent: boolean;
   respondent_name: string | null;
   customer_id: string | null;
+  /** The client it came from, when it was filled in through a personal link. */
+  client_id?: string | null;
   organization_id: string | null;
   firm_status: FirmStatus;
   firm_error: string | null;
@@ -99,9 +101,20 @@ export type UploadRow = {
 
 export type FormEvent = { id: string; form_id: string | null; submission_id: string | null; type: string; actor_id: string | null; detail: Record<string, unknown>; created_at: string };
 
+/** A form sent to one client: their personal link. Only a hash of the link is kept. */
+export type FormInvite = {
+  id: string; tenant_id: string; form_id: string; client_id: string; token_hash: string; sent_to: string | null;
+  expires_at: string; opened_at: string | null; submission_id: string | null; revoked_at: string | null; created_by: string | null; created_at: string;
+};
+export type NewFormInvite = Pick<FormInvite, "form_id" | "client_id" | "token_hash" | "sent_to" | "expires_at" | "created_by">;
+
 export type SubmissionQuery = { status?: SubmissionStatus | "all"; search?: string; limit: number; offset?: number; includeTests?: boolean };
 
 export interface FormsRepo {
+  insertInvite(input: NewFormInvite): Promise<FormInvite>;
+  getInviteByHash(hash: string): Promise<FormInvite | null>;
+  updateInvite(id: string, patch: Partial<Pick<FormInvite, "opened_at" | "submission_id" | "revoked_at">>): Promise<FormInvite>;
+  listInvitesForClient(clientId: string, limit: number): Promise<FormInvite[]>;
   listForms(): Promise<FormRow[]>;
   getForm(id: string): Promise<FormRow | null>;
   getFormByPublicId(publicId: string): Promise<FormRow | null>;

@@ -69,12 +69,12 @@ export async function saveFormForLaterAction(publicId: string, input: { token: s
   }
 }
 
-export async function submitFormAction(publicId: string, input: { token: string | null; answers: RawAnswers; signature: SignaturePayload; honeypot: string; stamp: string }): Promise<SubmitResult> {
+export async function submitFormAction(publicId: string, input: { token: string | null; answers: RawAnswers; signature: SignaturePayload; honeypot: string; stamp: string; inviteToken?: string | null }): Promise<SubmitResult> {
   try {
     const who = await formVisitor(publicId, "submit");
     const ctx = await context(publicId);
     const { submission, receiptToken, pf } = await submitForm(ctx.deps, publicId, {
-      token: tokenOf(input.token), answers: input.answers ?? {}, signature: signatureFrom(input.signature), honeypot: str(input.honeypot, 200), stamp: str(input.stamp, 80),
+      token: tokenOf(input.token), answers: input.answers ?? {}, signature: signatureFrom(input.signature), honeypot: str(input.honeypot, 200), stamp: str(input.stamp, 80), inviteToken: tokenOf(input.inviteToken),
     }, who);
     (await cookies()).set(RECEIPT_COOKIE, `${submission.id}.${receiptToken}`, { httpOnly: true, secure: true, sameSite: "lax", path: `/f/${publicId}`, maxAge: 3600 });
     // The PDF, records, notices and workflows run after the respondent sees the confirmation.

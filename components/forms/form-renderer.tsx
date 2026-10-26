@@ -29,6 +29,8 @@ export type FormRendererProps = {
   stamp: string;
   initialAnswers?: RawAnswers;
   initialToken?: string | null;
+  /** The personal link this form was opened from, when it was sent to a client. */
+  inviteToken?: string | null;
   mode: Mode;
   /** Test mode: the administrator's test-submission action. */
   testSubmit?: (input: { token: string | null; answers: RawAnswers; signature: SignaturePayload; stamp: string }) => Promise<SubmitResult>;
@@ -169,7 +171,7 @@ export function FormRenderer(props: FormRendererProps) {
     try {
       await queue.current;
       const input = { token: token.current, answers: props.textConsentLabel ? { ...answers, _text_consent: textOk ? "yes" : "no" } : answers, signature: signaturePayload(), stamp: props.stamp };
-      const result = mode === "test" && props.testSubmit ? await props.testSubmit(input) : await submitFormAction(props.publicId, { ...input, honeypot: honeypot.current?.value ?? "" });
+      const result = mode === "test" && props.testSubmit ? await props.testSubmit(input) : await submitFormAction(props.publicId, { ...input, honeypot: honeypot.current?.value ?? "", inviteToken: props.inviteToken ?? null });
       if (result.ok) {
         // Say so straight away, then load the confirmation page in full. A soft navigation right after an action that
         // sets the receipt cookie can be undone by the action's own refresh, which left people looking at the form.

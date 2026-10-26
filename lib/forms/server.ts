@@ -1,4 +1,5 @@
 import { notify } from "../notifications/server";
+import { saveFormToClient } from "./client-files.ts";
 import { SupabaseCampaignRepo } from "../campaigns/supabase-repo.ts";
 import { captureFormLead } from "../leads/service.ts";
 import { leadsDeps } from "../leads/server";
@@ -32,7 +33,7 @@ export function formDeps(tenantId: string = currentTenantId()): FormDeps {
   const db = tenantClient(tenantId);
   const docs = new SupabaseDocumentsRepo(db);
   const senders = new SupabaseSendersRepo(db);
-  return {
+  const self: FormDeps = {
     tenantId,
     repo: new SupabaseFormsRepo(db),
     stores: { uploads: new SupabaseDocumentStore(db, UPLOAD_BUCKET), pdfs: new SupabaseDocumentStore(db) },
@@ -42,6 +43,11 @@ export function formDeps(tenantId: string = currentTenantId()): FormDeps {
     linkKey: createHmac("sha256", master).update("monarch:form-links:v1").digest(),
     profile: () => docs.getProfile().catch(() => null),
     told: (n) => notify(tenantId, n),
+    saveToClient: (submission, form) => saveFormToClient(db, self, submission, form),
+    clientFor: async (clientId) => {
+      const { data } = await db.from("clients").select("full_name, email, phone, address").eq("id", clientId).maybeSingle();
+      return (data as { full_name: string; email: string | null; phone: string | null; address: string | null } | null) ?? null;
+    },
     addLead: async (input) => {
       const lead = await captureFormLead(leadsDeps(tenantId), input);
       // Filling in a form that adds people to Leads is their opt-in to hear from the office (campaign consent, basis "form");
@@ -54,6 +60,7 @@ export function formDeps(tenantId: string = currentTenantId()): FormDeps {
       return brandCatalogFrom(domains, list);
     },
   };
+  return self;
 }
 
 /** Which tenant a public form id belongs to, or null. Reads one column of one row. */

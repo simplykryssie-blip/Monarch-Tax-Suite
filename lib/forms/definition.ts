@@ -1,6 +1,8 @@
 // A form's definition: pages, sections, fields and logic. Pure data and checks with no server imports, so the builder,
 // the public page and the server all use the same code. The server re-checks every definition it saves or publishes.
 
+import { eachText, unknownTokens } from "./merge.ts";
+
 export const FIELD_TYPES = [
   "short_text", "long_text", "number", "email", "phone", "date", "dropdown", "radio", "checkboxes", "file", "signature", "address", "heading", "paragraph",
 ] as const;
@@ -311,7 +313,7 @@ function cleanConditions(raw: unknown, ownerName: string, before: Map<string, Fi
  * Checks and cleans a definition from the builder. Throws DefinitionError naming the problem (and where it is).
  * Rules may only test fields that come before their target, and skips only jump forward, so logic can never loop.
  */
-export function checkDefinition(raw: unknown): FormDefinition {
+function checkDefinitionBase(raw: unknown): FormDefinition {
   const r = (raw ?? {}) as Record<string, unknown>;
   const rawPages = Array.isArray(r.pages) ? r.pages : [];
   if (!rawPages.length) throw new DefinitionError("A form needs at least one page.");
@@ -402,4 +404,14 @@ export function checkDefinition(raw: unknown): FormDefinition {
 /** A definition that can be published: at least one field that takes an answer. */
 export function checkPublishable(def: FormDefinition) {
   if (!inputFields(def).length) throw new DefinitionError("Add at least one question before publishing.");
+}
+
+/** Checks a form definition, including that every {{detail}} used in its text is one the form may show. */
+export function checkDefinition(raw: unknown): FormDefinition {
+  const def = checkDefinitionBase(raw);
+  eachText(def, (text, target) => {
+    const bad = unknownTokens(text);
+    if (bad.length) throw new DefinitionError(`${bad.map((b) => `{{${b}}}`).join(", ")} is not a detail a form can show. Use the "Insert a detail" menu.`, target);
+  });
+  return def;
 }

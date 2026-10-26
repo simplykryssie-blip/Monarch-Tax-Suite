@@ -31,6 +31,7 @@ export const KINDS = {
   portalUpload: "portal_upload",
   portalMessage: "portal_message",
   portalRequestDone: "portal_request_done",
+  formOpened: "form_opened",
   formSubmitted: "form_submitted",
   invoicePaid: "invoice_paid",
 } as const;

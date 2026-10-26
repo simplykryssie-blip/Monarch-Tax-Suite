@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { FirmsRepo, FormEvent, FormRow, FormsRepo, FormVersion, Submission, SubmissionPatch, SubmissionQuery, SubmissionStatus, UploadRow } from "../lib/forms/types.ts";
+import type { FirmsRepo, FormEvent, FormInvite, NewFormInvite, FormRow, FormsRepo, FormVersion, Submission, SubmissionPatch, SubmissionQuery, SubmissionStatus, UploadRow } from "../lib/forms/types.ts";
 
 /**
  * One tenant's form rows in memory. Mirrors the database rules that matter here: answers lock once submitted,
@@ -23,6 +23,11 @@ export class MemoryFormsRepo implements FormsRepo {
   async listForms() { return this.c(this.forms); }
   async getForm(id: string) { return this.c(this.forms.find((f) => f.id === id) ?? null); }
   async getFormByPublicId(p: string) { return this.c(this.forms.find((f) => f.public_id === p) ?? null); }
+  invites: FormInvite[] = [];
+  async insertInvite(input: NewFormInvite) { const i: FormInvite = { ...input, id: randomUUID(), tenant_id: "t", opened_at: null, submission_id: null, revoked_at: null, created_at: new Date().toISOString() }; this.invites.push(i); return { ...i }; }
+  async getInviteByHash(hash: string) { const i = this.invites.find((x) => x.token_hash === hash); return i ? { ...i } : null; }
+  async updateInvite(id: string, patch: Partial<FormInvite>) { const i = this.invites.find((x) => x.id === id)!; Object.assign(i, patch); return { ...i }; }
+  async listInvitesForClient(clientId: string, limit: number) { return this.invites.filter((i) => i.client_id === clientId).slice(0, limit).map((i) => ({ ...i })); }
   async insertForm(input: Partial<FormRow>) {
     const f = { description: null, status: "draft", draft_updated_at: null, current_version_id: null, signature_consent: null, submission_seq: 0, ...input, id: randomUUID(), tenant_id: this.tenantId, created_at: this.now(), updated_at: this.now() } as FormRow;
     this.forms.push(f);
