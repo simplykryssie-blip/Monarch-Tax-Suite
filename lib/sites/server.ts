@@ -4,6 +4,7 @@ import { vercelDomains } from "./vercel.ts";
 import type { Site, SiteDomain, SitePage, SitesDeps } from "./service.ts";
 import { SupabaseSitesRepo } from "./supabase-repo.ts";
 import { cleanRequestHost } from "./host.ts";
+import { MONARCH_TENANT_ID } from "../tenants.ts";
 
 // Server wiring for websites. The editor acts as the signed-in office (tenant client). The public renderer finds which
 // office a hostname belongs to with one logged platform lookup of site_domains, and from then on acts as that office.
@@ -16,7 +17,7 @@ async function hostnameTaken(host: string): Promise<boolean> {
 }
 
 export function sitesDeps(tenantId: string): SitesDeps {
-  return { repo: new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken), domains: vercelDomains() };
+  return { repo: new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken), domains: vercelDomains(), adoptOwn: tenantId === MONARCH_TENANT_ID };
 }
 
 export type PublicSite = {

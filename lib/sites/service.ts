@@ -45,7 +45,16 @@ export interface DomainsPort {
   remove(host: string): Promise<void>;
 }
 
-export type SitesDeps = { repo: SitesRepo; domains: DomainsPort | null; platform?: string; now?: () => Date; newId?: () => string };
+/**
+ * `adoptOwn`: set only for the platform owner's own workspace. A domain the owner already attached to the hosting project by
+ * hand (their firm's domain, for example) can then be connected to a website without being added again. Other offices never get
+ * this: it would let them put a site on a domain the platform owner controls.
+ */
+export type SitesDeps = { repo: SitesRepo; domains: DomainsPort | null; platform?: string; now?: () => Date; newId?: () => string; adoptOwn?: boolean };
+
+/** Addresses the platform itself answers on; never connectable to a website. */
+const PLATFORM_HOSTS = ["verexahq.com", "monarchtaxsuite.com"];
+const isPlatformHost = (host: string, platform: string) => [...PLATFORM_HOSTS, platform].some((p) => host === p || host.endsWith(`.${p}`));
 const nowOf = (d: SitesDeps) => (d.now ? d.now() : new Date());
 const platformOf = (d: SitesDeps) => d.platform ?? platformDomain();
 const fail = (m: string): never => { throw new ValidationError(m); };
@@ -201,8 +210,20 @@ export async function addCustomDomain(deps: SitesDeps, site: Site, domains: Site
   if (domains.some((d) => d.hostname === host)) fail("That domain is already connected to your site.");
   // Checked before the hosting side is touched: removing a domain another office uses would take their site down.
   if (await deps.repo.hostnameTaken(host)) fail("That domain is already connected to a website.");
+  if (isPlatformHost(host, platformOf(deps))) fail("That address belongs to the platform itself. Use your own domain.");
   let added: Awaited<ReturnType<DomainsPort["add"]>>;
   try {
+    // The owner's own workspace may connect a domain that is already attached at the hosting side.
+    const existing = deps.adoptOwn ? await deps.domains!.check(host) : null;
+    if (existing) {
+      const live = existing.verified && !existing.misconfigured;
+      try {
+        return await deps.repo.insertDomain({ site_id: site.id, hostname: host, kind: "custom", status: live ? "active" : "pending", detail: { verification: existing.verification }, created_by: userId });
+      } catch (e) {
+        if (isDuplicate(e)) fail("That domain is already connected to a website.");
+        throw e;
+      }
+    }
     added = await deps.domains!.add(host);
   } catch (e) {
     if (e instanceof ValidationError) throw e;

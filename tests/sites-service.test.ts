@@ -278,7 +278,7 @@ describe("the hosting platform's API", () => {
   });
   test("a domain in use elsewhere, an unknown domain and a failing host are told apart", async () => {
     const mk = (status: number, json: unknown) => (async () => ({ ok: status < 300, status, json: async () => json }) as Response) as unknown as typeof fetch;
-    await assert.rejects(vercelDomains(env, mk(409, { error: { code: "domain_already_in_use" } }))!.add("x.com"), /already in use/);
+    await assert.rejects(vercelDomains(env, mk(409, { error: { code: "domain_already_in_use" } }))!.add("x.com"), /already attached/);
     await assert.rejects(vercelDomains(env, mk(400, { error: { code: "invalid_domain" } }))!.add("x.com"), /doesn't accept/);
     await assert.rejects(vercelDomains(env, mk(500, {}))!.add("x.com"), /vercel add domain 500/);
     assert.equal(await vercelDomains(env, mk(404, {}))!.check("x.com"), null);
@@ -336,5 +336,31 @@ describe("a free address saved under an older platform domain", () => {
     sub.hostname = "smith-tax.oldplatform.com";
     await setSubdomain(deps, site, repo.domains, "smith-tax");
     assert.equal(repo.domains.find((d) => d.kind === "subdomain")!.hostname, "smith-tax.monarchtaxsuite.com");
+  });
+});
+
+describe("a domain the platform owner already attached at the hosting side", () => {
+  test("the owner's workspace connects it without adding it again; others still add it normally", async () => {
+    const fake = new FakeDomains();
+    fake.verified = true;
+    fake.misconfigured = false;
+    const own = setup(new Platform(), randomUUID(), fake);
+    own.deps.adoptOwn = true;
+    const site = await createSite(own.deps, { name: "MKB", userId: null });
+    const d = await addCustomDomain(own.deps, site, own.repo.domains, "www.mkbfinancialgroup.com", null);
+    assert.equal(d.status, "active");
+    assert.ok(!fake.calls.includes("add:www.mkbfinancialgroup.com"));
+    const other = new FakeDomains();
+    const them = setup(new Platform(), randomUUID(), other);
+    const s2 = await createSite(them.deps, { name: "Other", userId: null });
+    await addCustomDomain(them.deps, s2, them.repo.domains, "www.other.com", null);
+    assert.ok(other.calls.includes("add:www.other.com"));
+    assert.ok(!other.calls.some((c) => c.startsWith("check:")), "no adopting for other offices");
+  });
+  test("the platform's own addresses can never be connected", async () => {
+    const own = setup();
+    own.deps.adoptOwn = true;
+    const site = await createSite(own.deps, { name: "MKB", userId: null });
+    for (const h of ["app.verexahq.com", "admin.verexahq.com", "www.monarchtaxsuite.com"]) await assert.rejects(addCustomDomain(own.deps, site, own.repo.domains, h, null), /belong to the platform|made for you automatically/i, h);
   });
 });
