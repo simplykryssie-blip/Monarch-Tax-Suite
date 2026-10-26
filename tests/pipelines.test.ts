@@ -30,7 +30,7 @@ class MemoryPipelines implements PipelinesRepo {
 }
 
 describe("pipelines", () => {
-  test("stages are checked: 2 to 15, named once each, a finishing stage, a hex colour", () => {
+  test("stages are checked: 2 to 15, named once each, a finishing stage, a hex color", () => {
     assert.throws(() => checkStages([{ name: "Only" }]), /at least 2/);
     assert.throws(() => checkStages(Array.from({ length: 16 }, (_, i) => ({ name: `S${i}`, done: i === 15 }))), /up to 15/);
     assert.throws(() => checkStages([{ name: "A" }, { name: "a", done: true }]), /Two stages are named/);

@@ -17,7 +17,7 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
   const b = brandOf(row, result.ok ? result.data.profile?.display_name : null);
   return (
     <>
-      <PageTitle title="Branding">Make {PLATFORM.name} look like your own firm. Your name, logo and colours go on everything your clients and customers see (emails, forms, documents). {PLATFORM.name} never appears to them unless you choose to show it.</PageTitle>
+      <PageTitle title="Branding">Make {PLATFORM.name} look like your own firm. Your name, logo and colors go on everything your clients and customers see (emails, forms, documents). {PLATFORM.name} never appears to them unless you choose to show it.</PageTitle>
       <Flash notice={notice} error={error} />
       {!result.ok ? <SetupRequired message={result.message} /> : (
         <>
@@ -60,12 +60,12 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
               <input type="hidden" name="mark_url" value={row?.mark_url ?? ""} />
               <small className="monarch-muted">Used where space is tight: the top bar and the collapsed menu.</small>
             </label>
-            <ColorField name="primary_color" label="Main colour (buttons, email header)" value={row?.primary_color ?? null} />
-            <ColorField name="accent_color" label="Accent colour" value={row?.accent_color ?? null} />
-            <ColorField name="sidebar_color" label="Menu and header colour (dark works best)" value={row?.sidebar_color ?? null} />
+            <ColorField name="primary_color" label="Main color (buttons, email header)" value={row?.primary_color ?? null} />
+            <ColorField name="accent_color" label="Accent color" value={row?.accent_color ?? null} />
+            <ColorField name="sidebar_color" label="Menu and header color (dark works best)" value={row?.sidebar_color ?? null} />
 
             <h2 className="is-wide">Who sees what</h2>
-            <label className="monarch-check is-wide"><input type="checkbox" name="white_label_admin" defaultChecked={b.whiteLabelAdmin} /> <span><b>White-label my admin and sign-in page.</b> My team sees my logo, name and colours instead of {PLATFORM.name}.</span></label>
+            <label className="monarch-check is-wide"><input type="checkbox" name="white_label_admin" defaultChecked={b.whiteLabelAdmin} /> <span><b>White-label my admin and sign-in page.</b> My team sees my logo, name and colors instead of {PLATFORM.name}.</span></label>
             <label className="monarch-check is-wide"><input type="checkbox" name="show_powered_by" defaultChecked={b.showPoweredBy} /> <span><b>Show &ldquo;Powered by {PLATFORM.name}&rdquo;</b> at the bottom of emails and forms my clients see. Leave this off for a fully white-label look.</span></label>
             <div className="is-wide"><SubmitOnce className="monarch-primary" busy="Saving…">Save branding</SubmitOnce></div>
           </form>

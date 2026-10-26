@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-/** A colour that can also be left alone ("use the standard look"): submits an empty value when switched off. */
+/** A color that can also be left alone ("use the standard look"): submits an empty value when switched off. */
 export function ColorField({ name, label, value }: { name: string; label: string; value: string | null }) {
   const [on, setOn] = useState(!!value);
   const [color, setColor] = useState(value ?? "#1f3a5f");

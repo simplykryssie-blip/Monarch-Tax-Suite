@@ -196,9 +196,9 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         <p className="monarch-muted is-wide" style={{ margin: 0 }}>Make the public form match your office. Anything you leave on &ldquo;Standard&rdquo; keeps the default look. <a href={`/forms/${form.id}/preview`} target="_blank" rel="noreferrer">Preview the draft</a>{link && version && form.status === "published" ? <> · <a href={link} target="_blank" rel="noreferrer">Open the live form</a></> : null}</p>
         <ColorField name="background" label="Page background" value={theme.background} />
         <ColorField name="card" label="Form background" value={theme.card} />
-        <ColorField name="header" label="Header colour" value={theme.header} />
-        <ColorField name="text" label="Text colour" value={theme.text} />
-        <ColorField name="button" label="Button colour" value={theme.button} />
+        <ColorField name="header" label="Header color" value={theme.header} />
+        <ColorField name="text" label="Text color" value={theme.text} />
+        <ColorField name="button" label="Button color" value={theme.button} />
         <label>Font<select name="font" defaultValue={theme.font}>{Object.entries(FORM_FONTS).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}</select></label>
         {(["logo", "header"] as const).map((field) => {
           const current = field === "logo" ? theme.logo_url : theme.header_image_url;
@@ -224,7 +224,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         })}
         <label className="is-wide">Custom CSS (optional, for designers)
           <textarea name="custom_css" rows={8} maxLength={10000} spellCheck={false} defaultValue={theme.custom_css} style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }} placeholder={"body { background: #faf7f0; }\nh1 { font-family: Georgia, serif; color: #12324f; }\n.monarch-primary { border-radius: 999px; }"} />
-          <small className="monarch-muted">Change the page background, text colours, fonts and overall look. Your CSS only affects this form: <code>body</code> means the form&apos;s page. Imports, scripts, fixed-position overlays and unsafe values are removed automatically. Images must be https:// addresses.</small>
+          <small className="monarch-muted">Change the page background, text colors, fonts and overall look. Your CSS only affects this form: <code>body</code> means the form&apos;s page. Imports, scripts, fixed-position overlays and unsafe values are removed automatically. Images must be https:// addresses.</small>
         </label>
         <div className="is-wide"><button className="monarch-primary">Save the look</button></div>
       </form>

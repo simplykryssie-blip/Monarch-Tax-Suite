@@ -106,7 +106,7 @@ export function BarRows({ rows, total, empty }: { rows: BarRow[]; total?: number
 
 export type DonutSlice = { label: string; value: number; color: string; href?: string };
 
-/** Ring chart with the total in the centre. The legend beside it repeats every value as text, so colour is never the only cue. */
+/** Ring chart with the total in the centre. The legend beside it repeats every value as text, so color is never the only cue. */
 export function Donut({ slices, centre, caption }: { slices: DonutSlice[]; centre: string; caption: string }) {
   const total = slices.reduce((n, s) => n + s.value, 0);
   const R = 52, C = 2 * Math.PI * R;

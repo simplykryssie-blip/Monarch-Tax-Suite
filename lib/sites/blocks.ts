@@ -18,7 +18,7 @@ export const MAX_HTML = 60000;
 export const SECTION_TONES = ["plain", "soft", "accent", "dark"] as const;
 export type SectionTone = (typeof SECTION_TONES)[number];
 
-type Base = { id: string; /** Colours, type, spacing, border and shadow; see look.ts. */ look?: Look };
+type Base = { id: string; /** Colors, type, spacing, border and shadow; see look.ts. */ look?: Look };
 export const GRADIENTS = { sunrise: "linear-gradient(135deg,#f6d37a,#e98a3a)", midnight: "linear-gradient(135deg,#0b0b0b,#2b2f4a)", ocean: "linear-gradient(135deg,#1d4ed8,#22c1c3)", forest: "linear-gradient(135deg,#14532d,#4ade80)", gold: "linear-gradient(115deg,#6e4105,#b87912,#f7d77f,#a96808,#ffe7a1,#b87912)", blush: "linear-gradient(135deg,#fde2e4,#e2ece9)" } as const;
 export type Gradient = keyof typeof GRADIENTS;
 export const GRADIENT_KEYS = Object.keys(GRADIENTS) as Gradient[];

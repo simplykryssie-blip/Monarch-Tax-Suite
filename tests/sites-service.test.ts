@@ -287,7 +287,7 @@ describe("the hosting platform's API", () => {
 });
 
 describe("site settings and search details", () => {
-  test("settings are cleaned: bad colours, links and unknown keys are dropped", () => {
+  test("settings are cleaned: bad colors, links and unknown keys are dropped", () => {
     const s = settingsOf({ brand: { primary: "red", accent: "#ABCDEF", logoImageId: "nope" }, fonts: { heading: "comic" }, header: { ctaLabel: "Call", ctaHref: "javascript:alert(1)" }, social: { facebook: "http://x.com", instagram: "https://instagram.com/a" }, evil: 1, seo: { title: "x".repeat(200), noindex: "on" } });
     assert.equal(s.brand.primary, null);
     assert.equal(s.brand.accent, "#abcdef");
@@ -377,7 +377,7 @@ describe("site fonts", () => {
 });
 
 describe("page background", () => {
-  test("a valid colour is kept; anything else means white", () => {
+  test("a valid color is kept; anything else means white", () => {
     assert.equal(settingsOf({ brand: { pageBg: "#F6F4EE" } }).brand.pageBg, "#f6f4ee");
     assert.equal(settingsOf({ brand: { pageBg: "url(x)" } }).brand.pageBg, null);
     assert.equal(settingsOf({}).brand.pageBg, null);
@@ -386,7 +386,7 @@ describe("page background", () => {
 
 describe("page background photo", () => {
   const id = "8f0c1c1e-2b7a-4c55-9d6e-0a1b2c3d4e5f";
-  test("a photo id, veil and text colour are checked", () => {
+  test("a photo id, veil and text color are checked", () => {
     const b = settingsOf({ brand: { pageBgImageId: id, pageBgVeil: 200, pageBgText: "light" } }).brand;
     assert.equal(b.pageBgImageId, id);
     assert.equal(b.pageBgVeil, 80);

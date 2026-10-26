@@ -1,5 +1,5 @@
-// The design controls of a page: colours, type, spacing, borders and shadows for an element, a column, a row or a section, and
-// whether it shows on a computer or a phone. Everything is plain data checked on the way in (a bad colour or an out-of-range
+// The design controls of a page: colors, type, spacing, borders and shadows for an element, a column, a row or a section, and
+// whether it shows on a computer or a phone. Everything is plain data checked on the way in (a bad color or an out-of-range
 // number is dropped, never kept) and turned into inline CSS by `lookCss`, so there is no free-form CSS anywhere.
 
 export type Look = {

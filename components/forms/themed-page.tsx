@@ -1,7 +1,7 @@
 import { isThemed, sanitizeCss, themeVars, THEME_SCOPE, type FormTheme } from "@/lib/forms/theme.ts";
 
 /**
- * The page a respondent sees: the form's card on its page, in the office's colours, font and header, with the
+ * The page a respondent sees: the form's card on its page, in the office's colors, font and header, with the
  * office's own (cleaned and scoped) CSS. An unthemed form looks exactly as it always did.
  */
 export function ThemedPage({ theme, firm, maxWidth = 820, wrapper = "main", poweredBy = false, children }: { theme: FormTheme; firm?: string; maxWidth?: number; wrapper?: "main" | "div"; poweredBy?: boolean; children: React.ReactNode }) {

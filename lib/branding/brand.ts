@@ -51,7 +51,7 @@ const clean = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[
 function color(raw: unknown, what: string): string | null {
   const v = clean(raw, 9);
   if (!v) return null;
-  if (!HEX.test(v)) throw new BrandError(`${what} must be a colour like #1a2b3c.`);
+  if (!HEX.test(v)) throw new BrandError(`${what} must be a color like #1a2b3c.`);
   const l = v.toLowerCase();
   return l.length === 4 ? `#${l[1]}${l[1]}${l[2]}${l[2]}${l[3]}${l[3]}` : l;
 }
@@ -81,9 +81,9 @@ export function checkBrand(raw: unknown): BrandInput {
     tagline: clean(r.tagline, 120) || null,
     logo_url: imageRef(r.logo_url, "The logo address"),
     mark_url: imageRef(r.mark_url, "The small logo (mark) address"),
-    primary_color: color(r.primary_color, "The main colour"),
-    accent_color: color(r.accent_color, "The accent colour"),
-    sidebar_color: color(r.sidebar_color, "The menu colour"),
+    primary_color: color(r.primary_color, "The main color"),
+    accent_color: color(r.accent_color, "The accent color"),
+    sidebar_color: color(r.sidebar_color, "The menu color"),
     support_email: support || null,
     white_label_admin: flag(r.white_label_admin),
     show_powered_by: flag(r.show_powered_by),
@@ -109,21 +109,21 @@ export function brandOf(row: Partial<TenantBrandRow> | null | undefined, fallbac
   };
 }
 
-/** What emails need: the name, a header colour and the logo, plus whether to say "Powered by". */
+/** What emails need: the name, a header color and the logo, plus whether to say "Powered by". */
 export type EmailBrand = { name: string; color: string; textColor: string; logoUrl: string | null; supportEmail: string | null; poweredBy: boolean };
 
 export function emailBrandOf(b: Brand): EmailBrand {
   return { name: b.name, color: b.sidebar, textColor: onColor(b.sidebar), logoUrl: b.logoUrl && /^https:\/\//.test(b.logoUrl) ? b.logoUrl : null, supportEmail: b.supportEmail, poweredBy: b.showPoweredBy };
 }
 
-/** CSS custom properties that recolour the admin for a white-labelled tenant. */
+/** CSS custom properties that recolor the admin for a white-labelled tenant. */
 export function adminBrandVars(b: Brand): Record<string, string> {
   return { "--gold": b.primary, "--gold-deep": b.primary, "--brand-primary": b.primary, "--brand-accent": b.accent, "--brand-sidebar": b.sidebar, "--brand-on-primary": onColor(b.primary) };
 }
 
 /**
  * A public form's theme with the account's brand underneath: whatever the form sets stays, and anything it leaves
- * alone (header colour, button colour, logo) comes from the brand. Forms of an account with no brand are unchanged.
+ * alone (header color, button color, logo) comes from the brand. Forms of an account with no brand are unchanged.
  */
 export function brandedTheme(theme: FormTheme, b: Brand | null): FormTheme {
   if (!b?.custom) return theme;

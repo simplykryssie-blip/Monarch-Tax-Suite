@@ -18,7 +18,7 @@ describe("rich text", () => {
     assert.match(out, /<a href="https:\/\/example.com\/a\?b=1&amp;c=2"/);
   });
 
-  test("colour and size spans accept only a hex colour and 10 to 40 px", () => {
+  test("color and size spans accept only a hex color and 10 to 40 px", () => {
     assert.match(html("[Big]{color=#B00020 size=24}"), /color:#b00020;font-size:24px;/);
     assert.equal(html("[x]{color=red size=99}"), '<p style="margin:0 0 14px;line-height:1.6">[x]{color=red size=99}</p>');
     assert.ok(!html("[x]{color=#fff;background:url(x) size=18}").includes("url("));

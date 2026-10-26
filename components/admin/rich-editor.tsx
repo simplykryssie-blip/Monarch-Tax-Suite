@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { editorToMarkdown, markdownToEditorHtml } from "@/lib/richtext-editor.ts";
 
-// A visual editor that saves Markdown (see lib/richtext.ts). "email" has the full bar: text type, size, colour, bold,
+// A visual editor that saves Markdown (see lib/richtext.ts). "email" has the full bar: text type, size, color, bold,
 // italic, underline, lists, placeholders, links and pictures. "form" is the short bar for a form's paragraph blocks.
 
 type Placeholder = { name: string; note: string };
@@ -67,7 +67,7 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
   }
   function run(cmd: string, value?: string) {
     restore();
-    // Colour is written as a style; bold, italic and underline as plain <b>, <i> and <u> tags.
+    // Color is written as a style; bold, italic and underline as plain <b>, <i> and <u> tags.
     document.execCommand("styleWithCSS", false, cmd === "foreColor" ? "true" : "false");
     document.execCommand(cmd, false, value);
     sync();
@@ -154,7 +154,7 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
             {SIZES.map(([l, px]) => <option key={l} value={px}>{l}</option>)}
           </select>
         )}
-        {email && <label className="re-color" title="Text colour"><span aria-hidden="true">A</span><input type="color" aria-label="Text colour" defaultValue="#b00020" onChange={(e) => run("foreColor", e.target.value)} disabled={source} /></label>}
+        {email && <label className="re-color" title="Text color"><span aria-hidden="true">A</span><input type="color" aria-label="Text color" defaultValue="#b00020" onChange={(e) => run("foreColor", e.target.value)} disabled={source} /></label>}
         <ToolButton title="Bold" onClick={() => run("bold")}><b>B</b></ToolButton>
         <ToolButton title="Italic" onClick={() => run("italic")}><i>I</i></ToolButton>
         <ToolButton title="Underline" onClick={() => run("underline")}><u>U</u></ToolButton>

@@ -128,7 +128,7 @@ test("pages saved before sections had rows can still be read (images, emptiness)
   assert.equal(isEmptyPage([{ type: "section", children: [] }] as never), true);
 });
 
-test("design controls: colours, numbers and options are checked; unknown or unsafe values are dropped", async () => {
+test("design controls: colors, numbers and options are checked; unknown or unsafe values are dropped", async () => {
   const { cleanLook, lookCss } = await import("../lib/sites/look.ts");
   const look = cleanLook({ color: "#ABCDEF", bg: "red", size: 999, weight: 650, padT: -5, padB: 40, radius: 12, borderW: 2, shadow: "huge", align: "justify", maxW: 50, hideMobile: "true", position: "fixed", background: "url(javascript:1)" });
   assert.deepEqual(look, { color: "#abcdef", size: 120, weight: 700, padT: 0, padB: 40, radius: 12, borderW: 2, maxW: 120, hideMobile: true });

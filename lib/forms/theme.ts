@@ -1,4 +1,4 @@
-// How a public form looks: colours, font, logo and header image, plus optional custom CSS written by the office.
+// How a public form looks: colors, font, logo and header image, plus optional custom CSS written by the office.
 // Pure (no server imports) so the settings page, the public page and the tests share the same rules.
 //
 // Custom CSS is the office's own, but it is shown to its clients, so it is cleaned before use: every rule is scoped
@@ -41,7 +41,7 @@ const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 function color(raw: unknown, what: string): string | null {
   const v = typeof raw === "string" ? raw.trim() : "";
   if (!v) return null;
-  if (!HEX.test(v)) throw new ThemeError(`${what} must be a colour like #1a2b3c.`);
+  if (!HEX.test(v)) throw new ThemeError(`${what} must be a color like #1a2b3c.`);
   return v.length === 4 ? `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}`.toLowerCase() : v.toLowerCase();
 }
 function imageUrl(raw: unknown, what: string): string | null {
@@ -79,9 +79,9 @@ export function checkTheme(raw: unknown): FormTheme {
   return {
     background: color(r.background, "The page background"),
     card: color(r.card, "The form background"),
-    text: color(r.text, "The text colour"),
-    header: color(r.header, "The header colour"),
-    button: color(r.button, "The button colour"),
+    text: color(r.text, "The text color"),
+    header: color(r.header, "The header color"),
+    button: color(r.button, "The button color"),
     font,
     logo_url: imageUrl(r.logo_url, "The logo address"),
     header_image_url: imageUrl(r.header_image_url, "The header image address"),

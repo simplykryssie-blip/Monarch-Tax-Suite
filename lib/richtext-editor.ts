@@ -67,7 +67,7 @@ export function editorToMarkdown(root: HTMLElement): string {
     const inner = kids();
     if (!inner.trim()) return inner;
     const wrap = (mark: string) => wrapWith(inner, mark);
-    // A browser can put colour or size straight on a <b>, <i> or <u>.
+    // A browser can put color or size straight on a <b>, <i> or <u>.
     const styled = (core: string) => {
       const color = cssColorToHex(el.style.color);
       const px = /^(\d{2})px$/.exec(el.style.fontSize)?.[1];

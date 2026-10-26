@@ -46,11 +46,11 @@ const TEXT_ONLY: (keyof Look)[] = ["size", "weight", "italic", "upper", "spacing
 const without = (look: Look, keys: (keyof Look)[]): Look => { const c = { ...look }; for (const k of keys) delete c[k]; return c; };
 const only = (look: Look, keys: (keyof Look)[]): Look => { const c: Look = {}; for (const k of keys) if (look[k] !== undefined) (c as Record<string, unknown>)[k] = look[k]; return c; };
 
-/** One element with its design controls (spacing, background, border, colour, type, hiding on a computer or phone). */
+/** One element with its design controls (spacing, background, border, color, type, hiding on a computer or phone). */
 export function Leaf({ block, view }: { block: LeafBlock; view: SiteView }) {
   const look = block.look;
   if (!hasLook(look)) return <LeafBody block={block} view={view} />;
-  // A button's colours, type and border belong on the button itself; the wrapper keeps spacing and showing/hiding.
+  // A button's colors, type and border belong on the button itself; the wrapper keeps spacing and showing/hiding.
   const BUTTON_OWN: (keyof Look)[] = ["color", "bg", "radius", "borderW", "borderColor", "shadow", ...TEXT_ONLY.filter((k) => k !== "align")];
   const wrapLook = block.type === "button" ? without(look!, BUTTON_OWN) : look!;
   return (
@@ -140,7 +140,7 @@ function LeafBody({ block, view }: { block: LeafBlock; view: SiteView }) {
 }
 
 /** The page's sections, rows and columns. Older pages (loose elements, one-column sections) are converted on the way in. */
-/** The background of a section: its own colour, a gradient, or a picture with a veil over it. */
+/** The background of a section: its own color, a gradient, or a picture with a veil over it. */
 export function sectionStyle(s: Block, view: SiteView): React.CSSProperties {
   const css: Record<string, string | number> = { ...lookCss(s.look) };
   if (s.gradient) css.background = GRADIENTS[s.gradient];
@@ -279,7 +279,7 @@ const bgVars = (view: SiteView): Record<string, string> => {
 };
 const fontVars = (view: SiteView): Record<string, string> => ({ ...bgVars(view), ...(view.look ? { "--ws-heading-font": view.look.headingFont, "--ws-body-font": view.look.bodyFont } : {}) });
 
-/** The colour and font variables a site's styles read, for a wrapper element. */
+/** The color and font variables a site's styles read, for a wrapper element. */
 export const siteVars = (view: SiteView): React.CSSProperties => ({ "--ws-primary": view.primary, "--ws-on-primary": onColor(view.primary), "--ws-accent": view.accent, ...fontVars(view) } as React.CSSProperties);
 
 export function SiteFrame({ view, currentPath, children }: { view: SiteView; currentPath: string; children: React.ReactNode }) {

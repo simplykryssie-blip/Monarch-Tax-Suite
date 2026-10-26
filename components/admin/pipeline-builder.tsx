@@ -5,7 +5,7 @@ import { SubmitOnce } from "./submit-once";
 import { MAX_STAGES, MIN_STAGES, STAGE_COLORS } from "@/lib/pipelines/service.ts";
 import type { Stage } from "@/lib/pipelines/types.ts";
 
-/** A visual pipeline: stages in a row you can drag (or nudge with the arrows), rename, colour and remove. */
+/** A visual pipeline: stages in a row you can drag (or nudge with the arrows), rename, color and remove. */
 export function PipelineBuilder({ id, name, stages: initial, action, canSave = true }: { id: string; name: string; stages: Stage[]; action: (form: FormData) => Promise<void>; canSave?: boolean }) {
   const [stages, setStages] = useState<Stage[]>(initial);
   const [title, setTitle] = useState(name);
@@ -52,8 +52,8 @@ export function PipelineBuilder({ id, name, stages: initial, action, canSave = t
               <button type="button" className="pb-icon is-danger" aria-label={`Remove ${s.name}`} disabled={stages.length <= MIN_STAGES} onClick={() => setStages(stages.filter((_, j) => j !== i))}>✕</button>
             </div>
             <input aria-label={`Name of stage ${i + 1}`} value={s.name} maxLength={40} onChange={(e) => patch(i, { name: e.target.value })} />
-            <div className="pb-colors" role="group" aria-label="Colour">
-              {STAGE_COLORS.map((c) => <button key={c} type="button" className={"pb-swatch" + (s.color === c ? " is-on" : "")} style={{ background: c }} aria-label={`Colour ${c}`} aria-pressed={s.color === c} onClick={() => patch(i, { color: c })} />)}
+            <div className="pb-colors" role="group" aria-label="Color">
+              {STAGE_COLORS.map((c) => <button key={c} type="button" className={"pb-swatch" + (s.color === c ? " is-on" : "")} style={{ background: c }} aria-label={`Color ${c}`} aria-pressed={s.color === c} onClick={() => patch(i, { color: c })} />)}
             </div>
             <label className="pb-done"><input type="checkbox" checked={s.done} onChange={(e) => patch(i, { done: e.target.checked })} /> Work is finished here</label>
           </li>

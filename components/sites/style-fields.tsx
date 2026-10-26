@@ -2,7 +2,7 @@
 
 import { SHADOWS, WEIGHTS, type Look } from "@/lib/sites/look.ts";
 
-// The design controls in the page builder's right-hand panel, for whatever is selected: colours, type, background and border,
+// The design controls in the page builder's right-hand panel, for whatever is selected: colors, type, background and border,
 // spacing, and where it shows. A change is a small patch; `undefined` clears a setting so the site's own style applies again.
 
 type Patch = Partial<Look>;
@@ -35,7 +35,7 @@ export function StyleFields({ look, onChange, onReset, showText }: { look: Look;
         <details open>
           <summary>Text</summary>
           <div className="sf-body">
-            <ColorField label="Colour" value={look.color} onChange={(v) => onChange({ color: v })} fallback="#171714" />
+            <ColorField label="Color" value={look.color} onChange={(v) => onChange({ color: v })} fallback="#171714" />
             <div className="sf-grid">
               <NumField label="Size" value={look.size} min={10} max={120} onChange={(v) => onChange({ size: v })} />
               <label className="sf-num">Weight
@@ -62,7 +62,7 @@ export function StyleFields({ look, onChange, onReset, showText }: { look: Look;
             <NumField label="Rounded corners" value={look.radius} min={0} max={80} onChange={(v) => onChange({ radius: v })} />
             <NumField label="Border width" value={look.borderW} min={0} max={12} onChange={(v) => onChange({ borderW: v })} />
           </div>
-          {look.borderW ? <ColorField label="Border colour" value={look.borderColor} onChange={(v) => onChange({ borderColor: v })} fallback="#d9d4c7" /> : null}
+          {look.borderW ? <ColorField label="Border color" value={look.borderColor} onChange={(v) => onChange({ borderColor: v })} fallback="#d9d4c7" /> : null}
           <label className="sf-num">Shadow
             <select value={look.shadow ?? ""} onChange={(e) => onChange({ shadow: (e.target.value || undefined) as Look["shadow"] })}>
               <option value="">None</option>{(Object.keys(SHADOWS) as (keyof typeof SHADOWS)[]).map((k) => <option key={k} value={k}>{k === "sm" ? "Soft" : k === "md" ? "Medium" : "Strong"}</option>)}

@@ -301,7 +301,7 @@ export async function saveSettings(deps: FormDeps, formId: string, raw: unknown,
   return settings;
 }
 
-/** Saves how the public form looks (colours, font, images, custom CSS). Checked; the rest of the settings are kept. */
+/** Saves how the public form looks (colors, font, images, custom CSS). Checked; the rest of the settings are kept. */
 export async function saveTheme(deps: FormDeps, formId: string, raw: unknown, adminId: string): Promise<FormSettings> {
   const form = await mustForm(deps, formId);
   let theme: FormTheme;

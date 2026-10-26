@@ -49,7 +49,7 @@ export type FormSettings = {
   close_at: string | null;
   max_submissions: number | null;
   allow_save_later: boolean;
-  /** How the public page looks: colours, font, logo, header image and custom CSS. */
+  /** How the public page looks: colors, font, logo, header image and custom CSS. */
   theme: FormTheme;
 };
 

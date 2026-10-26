@@ -107,7 +107,7 @@ export async function movePipeline(repo: PipelinesRepo, id: string, folderId: un
   return repo.update(id, { folder_id });
 }
 
-/** Stages as sent from the builder, checked: 2 to 15, named, a hex colour, unique ids, at least one that finishes the work. */
+/** Stages as sent from the builder, checked: 2 to 15, named, a hex color, unique ids, at least one that finishes the work. */
 export function checkStages(raw: unknown): Stage[] {
   let list: unknown = raw;
   if (typeof raw === "string") {

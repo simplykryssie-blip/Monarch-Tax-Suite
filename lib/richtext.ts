@@ -6,7 +6,7 @@
 //   - bullet             1. numbered
 //   **bold**   *italic*   ++underline++
 //   [text](https://link)      ![alt](https://picture)
-//   [coloured text]{color=#b00020 size=18}    (colour as #rrggbb, size 10 to 40 px)
+//   [colored text]{color=#b00020 size=18}    (color as #rrggbb, size 10 to 40 px)
 //   {{placeholder}}      (email templates only; filled in per recipient)
 
 export type Inline =

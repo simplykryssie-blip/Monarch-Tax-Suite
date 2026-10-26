@@ -109,7 +109,7 @@ describe("staff-only fields", () => {
 });
 
 describe("the look of the form", () => {
-  test("colours, fonts and images are checked", () => {
+  test("colors, fonts and images are checked", () => {
     const t = checkTheme({ background: "#FFF", button: "#1a2b3c", font: "serif", logo_url: "https://cdn.example.com/logo.png", custom_css: "" });
     assert.equal(t.background, "#ffffff");
     assert.equal(isThemed(t), true);

@@ -13,7 +13,7 @@ What changed in the Form Builder, and where.
 | 7 | After submission: two clear choices, thank-you message or redirect. | same page |
 | 8 | Public links never use a Vercel address: they use the form's firm's web address (Settings → Email sending). With none set, no link is shown and the office is told to add one. A form opened on a `*.vercel.app` address in production redirects to the firm's address. | `lib/brands.ts` (`formPublicUrl`, `isPlatformHost`), `lib/forms/link.ts`, `app/f/[id]/page.tsx` |
 | 9 | Custom CSS, cleaned and scoped to the form: imports, scripts, fixed overlays and unsafe values are dropped; `body` means the form page. | `lib/forms/theme.ts` (`sanitizeCss`) |
-| 10 | Theme: page, form, header, text and button colours, font, logo and header image (uploads go to public image storage under `forms/<form id>/`). | Settings → Look of the form, `components/forms/themed-page.tsx` |
+| 10 | Theme: page, form, header, text and button colors, font, logo and header image (uploads go to public image storage under `forms/<form id>/`). | Settings → Look of the form, `components/forms/themed-page.tsx` |
 
 ## Migration
 

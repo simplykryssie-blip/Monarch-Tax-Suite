@@ -27,7 +27,7 @@ const MOVE = "application/x-ws-el";
 const clock = () => Date.now();
 const uid = () => `b${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-3)}`;
 const DEVICE_LABEL: Record<Device, string> = { desktop: "Desktop", tablet: "Tablet", mobile: "Mobile" };
-const TONE_LABEL: Record<(typeof SECTION_TONES)[number], string> = { plain: "White", soft: "Soft grey", accent: "Brand colour", dark: "Dark" };
+const TONE_LABEL: Record<(typeof SECTION_TONES)[number], string> = { plain: "White", soft: "Soft grey", accent: "Brand color", dark: "Dark" };
 const PAD_LABEL = { none: "None", small: "Small", medium: "Medium", large: "Large" } as const;
 const WIDTH_LABEL = { narrow: "Narrow (text)", wide: "Wide", full: "Edge to edge" } as const;
 const HINT: Record<LeafBlock["type"], string> = {
@@ -522,7 +522,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
                   <>
                     {shown.kind === "section" && sectionOf && (
                       <div className="sf-bg">
-                        {field("Background style", <select value={sectionOf.gradient ?? ""} onChange={(e) => patchSection(sectionOf.id, { gradient: (e.target.value || undefined) as SectionBlock["gradient"] })}><option value="">Plain colour</option>{GRADIENT_KEYS.map((g) => <option key={g} value={g}>{g[0].toUpperCase() + g.slice(1)} gradient</option>)}</select>)}
+                        {field("Background style", <select value={sectionOf.gradient ?? ""} onChange={(e) => patchSection(sectionOf.id, { gradient: (e.target.value || undefined) as SectionBlock["gradient"] })}><option value="">Plain color</option>{GRADIENT_KEYS.map((g) => <option key={g} value={g}>{g[0].toUpperCase() + g.slice(1)} gradient</option>)}</select>)}
                         {field("Background picture", <select value={sectionOf.bgImage ?? ""} onChange={(e) => patchSection(sectionOf.id, { bgImage: e.target.value || undefined, bgOverlay: e.target.value ? (sectionOf.bgOverlay ?? 35) : undefined })}><option value="">None</option>{images.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select>)}
                         {sectionOf.bgImage && field(`Darken the picture: ${sectionOf.bgOverlay ?? 35}%`, <input type="range" min={0} max={80} value={sectionOf.bgOverlay ?? 35} onChange={(e) => patchSection(sectionOf.id, { bgOverlay: Number(e.target.value) })} />)}
                       </div>

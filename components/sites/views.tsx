@@ -130,7 +130,7 @@ export async function SitesList({ ctx, sp }: { ctx: SitesContext; sp: Search }) 
   );
 }
 
-/** One website's settings, on one page: name and address, then colours, business details, header and footer, and search. */
+/** One website's settings, on one page: name and address, then colors, business details, header and footer, and search. */
 export async function SiteSettingsView({ ctx, sp }: { ctx: SiteContext; sp: Search }) {
   const [pick, brand] = await Promise.all([pickers(ctx), loadBrand(ctx.tenantId)]);
   return (

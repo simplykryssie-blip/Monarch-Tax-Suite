@@ -6,7 +6,7 @@ import { FONT_CHOICES, SEO_LIMITS, SOCIALS, type FontChoice, type SiteSettings }
 import { SettingRow } from "./setting-row";
 import type { PickImage } from "./page-form";
 
-// One website's settings on a single page, in plain parts: colours, logo and font; business details; header and footer; and how it
+// One website's settings on a single page, in plain parts: colors, logo and font; business details; header and footer; and how it
 // shows in search and when shared. The whole thing is sent as a single field and checked again on the server.
 
 const SOCIAL_LABEL: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn", youtube: "YouTube", x: "X", tiktok: "TikTok" };
@@ -28,24 +28,24 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
       <input type="hidden" name="site_id" value={siteId} />
       <input type="hidden" name="settings" value={JSON.stringify(s)} />
 
-      <SettingRow title="Colours" desc="Used for buttons, links and banners across this website.">
+      <SettingRow title="Colors" desc="Used for buttons, links and banners across this website.">
         <div className="sx-card-panel">
-          <label className="sx-check"><input type="radio" name="colours" checked={!own} onChange={() => patch("brand", { primary: null, accent: null })} /> <span>Use my firm&apos;s colours <i className="sx-swatch" style={{ background: firm.primary }} /><i className="sx-swatch" style={{ background: firm.accent }} /></span></label>
-          <label className="sx-check"><input type="radio" name="colours" checked={own} onChange={() => patch("brand", { primary: primary, accent: accent })} /> <span>Choose colours for this website</span></label>
+          <label className="sx-check"><input type="radio" name="colors" checked={!own} onChange={() => patch("brand", { primary: null, accent: null })} /> <span>Use my firm&apos;s colors <i className="sx-swatch" style={{ background: firm.primary }} /><i className="sx-swatch" style={{ background: firm.accent }} /></span></label>
+          <label className="sx-check"><input type="radio" name="colors" checked={own} onChange={() => patch("brand", { primary: primary, accent: accent })} /> <span>Choose colors for this website</span></label>
           {own && (
             <div className="sx-grid">
-              <label>Main colour<span className="sx-color"><input type="color" value={primary} onChange={(e) => patch("brand", { primary: e.target.value })} /><code>{primary}</code></span></label>
-              <label>Second colour<span className="sx-color"><input type="color" value={accent} onChange={(e) => patch("brand", { accent: e.target.value })} /><code>{accent}</code></span></label>
+              <label>Main color<span className="sx-color"><input type="color" value={primary} onChange={(e) => patch("brand", { primary: e.target.value })} /><code>{primary}</code></span></label>
+              <label>Second color<span className="sx-color"><input type="color" value={accent} onChange={(e) => patch("brand", { accent: e.target.value })} /><code>{accent}</code></span></label>
             </div>
           )}
-          {firm.brandingHref && <p className="sx-hint">Your firm&apos;s colours are set under <Link href={firm.brandingHref}>Settings → Branding</Link>.</p>}
+          {firm.brandingHref && <p className="sx-hint">Your firm&apos;s colors are set under <Link href={firm.brandingHref}>Settings → Branding</Link>.</p>}
         </div>
       </SettingRow>
 
-      <SettingRow title="Page background" desc="The colour behind every page of this website. Sections you colour yourself still show on top.">
+      <SettingRow title="Page background" desc="The color behind every page of this website. Sections you color yourself still show on top.">
         <div className="sx-card-panel">
           <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg === null && s.brand.pageBgImageId === null} onChange={() => patch("brand", { pageBg: null, pageBgImageId: null })} /> <span>White</span></label>
-          <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg !== null && s.brand.pageBgImageId === null} onChange={() => patch("brand", { pageBg: s.brand.pageBg ?? "#f6f4ee", pageBgImageId: null })} /> <span>Choose a colour</span></label>
+          <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg !== null && s.brand.pageBgImageId === null} onChange={() => patch("brand", { pageBg: s.brand.pageBg ?? "#f6f4ee", pageBgImageId: null })} /> <span>Choose a color</span></label>
           <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBgImageId !== null} onChange={() => patch("brand", { pageBgImageId: s.brand.pageBgImageId ?? images[0]?.id ?? null })} disabled={images.length === 0} /> <span>Use a photo{images.length === 0 ? " (upload a picture from any page in the editor first)" : ""}</span></label>
           {s.brand.pageBgImageId !== null && (
             <div className="sx-grid">
@@ -54,7 +54,7 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
               <label>Softening veil: {s.brand.pageBgVeil}%<input type="range" min={0} max={80} step={5} value={s.brand.pageBgVeil} onChange={(e) => patch("brand", { pageBgVeil: Number(e.target.value) })} /></label>
             </div>
           )}
-          {s.brand.pageBg !== null && s.brand.pageBgImageId === null && <label>Colour<span className="sx-color"><input type="color" value={s.brand.pageBg} onChange={(e) => patch("brand", { pageBg: e.target.value })} /><code>{s.brand.pageBg}</code></span></label>}
+          {s.brand.pageBg !== null && s.brand.pageBgImageId === null && <label>Color<span className="sx-color"><input type="color" value={s.brand.pageBg} onChange={(e) => patch("brand", { pageBg: e.target.value })} /><code>{s.brand.pageBg}</code></span></label>}
         </div>
       </SettingRow>
 

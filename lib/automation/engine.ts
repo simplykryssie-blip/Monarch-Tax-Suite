@@ -36,7 +36,7 @@ export type AutomationConfig = {
   testRecipients: string[];
 };
 
-/** A tenant's look for its customer emails (name, logo, colour, support address). Absent: the Monarch default. */
+/** A tenant's look for its customer emails (name, logo, color, support address). Absent: the Monarch default. */
 export type EmailBrandSource = () => Promise<import("../branding/brand.ts").EmailBrand | null>;
 
 export type AutomationDeps = {

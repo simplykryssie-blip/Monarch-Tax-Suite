@@ -837,7 +837,7 @@ html[data-popup] body{background:#fff}
 @media(max-width:560px){.mt-account span{display:none}}
 .mt-topmark{display:flex;align-items:center;flex-shrink:0}.mt-topmark img{height:26px;width:auto;display:block}
 
-/* White-labelled accounts: their menu colour and name in the shell. */
+/* White-labelled accounts: their menu color and name in the shell. */
 .is-white-label .mt-brand-plate{background:var(--brand-sidebar);border-color:rgba(255,255,255,.12);box-shadow:none}
 .is-white-label .mt-chess{background:var(--brand-sidebar);box-shadow:none}
 .mt-brand-name{color:#fff;font-size:20px;letter-spacing:.02em;text-align:center}
