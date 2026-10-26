@@ -4,7 +4,7 @@ import { Modal } from "@/components/ui/modal";
 import { PageEditor } from "@/components/sites/page-editor";
 import type { PickBooking, PickForm, PickImage } from "@/components/sites/page-form";
 import { appointmentDeps } from "@/lib/appointments/server";
-import { dnsInstructions, platformDomain } from "@/lib/sites/domains.ts";
+import { dnsInstructions, platformDomain, subdomainHost } from "@/lib/sites/domains.ts";
 import { SupabaseFormsRepo } from "@/lib/forms/supabase-repo";
 import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
 import { viewFor } from "@/lib/sites/public";
@@ -29,11 +29,20 @@ const Hidden = ({ ctx }: { ctx: SitesContext | SiteContext }) => (
     {"site" in ctx && <input type="hidden" name="site_id" value={ctx.site.id} />}
   </>
 );
+/** Where to open a live website from the office: its real address, or on a Preview deployment the same site through the deployment's own address. */
+const openUrl = (host: string) => (process.env.VERCEL_ENV === "production" || !process.env.VERCEL_ENV ? `https://${host}` : `/s/${host}`);
 const STATUS: Record<string, string> = { active: "Connected", pending: "Waiting for DNS", error: "Needs attention" };
 
 /** The website's name, whether it is live, its address, the Publish button, and the Pages / Site settings tabs. */
 async function SiteHeader({ ctx, here }: { ctx: SiteContext; here: "pages" | "settings" }) {
-  const [pages, domains] = await Promise.all([ctx.deps.repo.listPages(ctx.site.id), ctx.deps.repo.listDomains(ctx.site.id)]);
+  const [pages, domainList] = await Promise.all([ctx.deps.repo.listPages(ctx.site.id), ctx.deps.repo.listDomains(ctx.site.id)]);
+  // A free address saved under an older platform domain is brought up to the current one.
+  let domains = domainList;
+  const sub0 = domains.find((d) => d.kind === "subdomain");
+  const wantSub = subdomainHost(ctx.site.slug, platformDomain());
+  if (sub0 && sub0.hostname !== wantSub) {
+    try { await ctx.deps.repo.updateDomain(sub0.id, { hostname: wantSub }); domains = domains.map((d) => (d.id === sub0.id ? { ...d, hostname: wantSub } : d)); } catch { /* keep what is stored */ }
+  }
   const live = ctx.site.status === "published";
   const home = pages.find((p) => p.is_home);
   const homeEmpty = !home || isEmptyPage(sectionsOf(home.draft));
@@ -48,7 +57,7 @@ async function SiteHeader({ ctx, here }: { ctx: SiteContext; here: "pages" | "se
           <h1>{ctx.site.name}</h1>
           <p className="sx-meta">
             <span className={`sx-pill ${live ? "is-live" : ""}`}>{live ? "Live" : "Not published"}</span>
-            {host && (live ? <a href={`https://${host.hostname}`} target="_blank" rel="noreferrer">{host.hostname}</a> : <span>{host.hostname}</span>)}
+            {host && (live ? <a href={openUrl(host.hostname)} target="_blank" rel="noreferrer">{host.hostname} ↗</a> : <span>{host.hostname}</span>)}
             {homeEmpty ? <Link className="sx-note" href={home ? `${ctx.siteBase}/pages/${home.id}` : ctx.siteBase}>Your home page is empty: add something to it to publish →</Link> : changed && <span className="sx-note">{live ? "Unpublished changes" : "Nothing is public yet"}</span>}
           </p>
         </div>

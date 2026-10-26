@@ -327,3 +327,14 @@ describe("site settings and search details", () => {
     assert.equal(hasUnpublishedChanges(pages, (await repo.getSite(site.id))!), true);
   });
 });
+
+describe("a free address saved under an older platform domain", () => {
+  test("changing to the same name brings the address up to the current domain", async () => {
+    const { repo, deps } = setup();
+    const site = await createSite(deps, { name: "Smith Tax", userId: null });
+    const sub = repo.domains.find((d) => d.kind === "subdomain")!;
+    sub.hostname = "smith-tax.oldplatform.com";
+    await setSubdomain(deps, site, repo.domains, "smith-tax");
+    assert.equal(repo.domains.find((d) => d.kind === "subdomain")!.hostname, "smith-tax.monarchtaxsuite.com");
+  });
+});

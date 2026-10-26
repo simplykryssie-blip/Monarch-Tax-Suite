@@ -177,8 +177,13 @@ export const hasUnpublishedChanges = (pages: SitePage[], site?: Pick<Site, "sett
 /** Changes the default address label. The old address stops answering at once. */
 export async function setSubdomain(deps: SitesDeps, site: Site, domains: SiteDomain[], raw: unknown): Promise<Site> {
   const label = cleanLabel(raw);
-  if (label === site.slug) return site;
   const sub = domains.find((d) => d.kind === "subdomain");
+  if (label === site.slug) {
+    // Same name, but the stored address may be on an older platform domain: bring it up to date.
+    const want = subdomainHost(label, platformOf(deps));
+    if (sub && sub.hostname !== want) await deps.repo.updateDomain(sub.id, { hostname: want });
+    return site;
+  }
   try {
     const updated = await deps.repo.updateSite(site.id, { slug: label });
     if (sub) await deps.repo.updateDomain(sub.id, { hostname: subdomainHost(label, platformOf(deps)) });
