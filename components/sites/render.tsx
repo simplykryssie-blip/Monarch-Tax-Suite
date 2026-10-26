@@ -15,6 +15,8 @@ export type SiteView = {
   accent: string;
   /** Background behind every page; null = white. */
   pageBg?: string | null;
+  /** A photo behind every page; the veil is a percentage; light means white text. */
+  pageBgImage?: { url: string; veil: number; light: boolean } | null;
   logoUrl: string | null;
   nav: { href: string; label: string }[];
   contact: { phone: string | null; email: string | null; address: string | null };
@@ -173,7 +175,7 @@ export function Blocks({ blocks, view }: { blocks: Block[]; view: SiteView }) {
 }
 
 export const SITE_CSS = `
-.ws{--p:var(--ws-primary,#2563eb);--on-p:var(--ws-on-primary,#fff);--a:var(--ws-accent,#171714);margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--ws-bg,#fff);color:var(--ws-text,#1c1b17);font:16px/1.65 var(--ws-body-font,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif);-webkit-text-size-adjust:100%}
+.ws{--p:var(--ws-primary,#2563eb);--on-p:var(--ws-on-primary,#fff);--a:var(--ws-accent,#171714);margin:0;min-height:100vh;display:flex;flex-direction:column;background-color:var(--ws-bg,#fff);background-image:var(--ws-bg-img,none);background-position:center;background-size:cover;background-attachment:fixed;color:var(--ws-text,#1c1b17);font:16px/1.65 var(--ws-body-font,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif);-webkit-text-size-adjust:100%}
 .ws h1,.ws h2,.ws h3{font-family:var(--ws-heading-font,inherit)}
 .ws *,.ws *::before,.ws *::after{box-sizing:border-box}
 .ws a{color:var(--p)}
@@ -260,13 +262,21 @@ h3.ws-h{font-size:clamp(19px,4.5vw,24px);font-weight:700}
 @media (min-width:700px){.ws-wrap{padding:0 28px}.ws-header-in{padding:14px 28px}}
 .ws{scroll-behavior:smooth}.ws img{max-width:100%}
 @media (prefers-reduced-motion:reduce){.ws *{transition:none!important;scroll-behavior:auto!important}}
+@media (max-width:760px){.ws{background-attachment:scroll}}
 @media (max-width:600px){.ws-section{padding:32px 0}.ws-pad-large{padding:52px 0}.ws-btn{display:block;width:100%}.ws-a-center .ws-btn,.ws-a-left .ws-btn{width:100%}.ws-row{row-gap:8px}}
 `;
 
 /** Loads the Google fonts a site picked (none when it uses only built-in fonts). */
 const FontLinks = ({ view }: { view: SiteView }) => view.look?.fontsHref ? <><link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" /><link rel="stylesheet" href={view.look.fontsHref} /></> : null;
 
-const bgVars = (view: SiteView): Record<string, string> => (view.pageBg ? { "--ws-bg": view.pageBg, "--ws-text": onColor(view.pageBg) === "#fff" || onColor(view.pageBg) === "#ffffff" ? "#f3f1ea" : "#1c1b17" } : {});
+const bgVars = (view: SiteView): Record<string, string> => {
+  const img = view.pageBgImage;
+  if (img) {
+    const v = img.veil / 100, rgb = img.light ? "0,0,0" : "255,255,255";
+    return { "--ws-bg-img": `${v ? `linear-gradient(rgba(${rgb},${v}),rgba(${rgb},${v})),` : ""}url("${img.url}")`, "--ws-text": img.light ? "#f3f1ea" : "#1c1b17" };
+  }
+  return view.pageBg ? { "--ws-bg": view.pageBg, "--ws-text": onColor(view.pageBg) === "#ffffff" ? "#f3f1ea" : "#1c1b17" } : {};
+};
 const fontVars = (view: SiteView): Record<string, string> => ({ ...bgVars(view), ...(view.look ? { "--ws-heading-font": view.look.headingFont, "--ws-body-font": view.look.bodyFont } : {}) });
 
 /** The colour and font variables a site's styles read, for a wrapper element. */

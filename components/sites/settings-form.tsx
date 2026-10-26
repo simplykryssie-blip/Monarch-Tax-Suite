@@ -44,9 +44,17 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
 
       <SettingRow title="Page background" desc="The colour behind every page of this website. Sections you colour yourself still show on top.">
         <div className="sx-card-panel">
-          <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg === null} onChange={() => patch("brand", { pageBg: null })} /> <span>White</span></label>
-          <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg !== null} onChange={() => patch("brand", { pageBg: s.brand.pageBg ?? "#f6f4ee" })} /> <span>Choose a colour</span></label>
-          {s.brand.pageBg !== null && <label>Colour<span className="sx-color"><input type="color" value={s.brand.pageBg} onChange={(e) => patch("brand", { pageBg: e.target.value })} /><code>{s.brand.pageBg}</code></span></label>}
+          <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg === null && s.brand.pageBgImageId === null} onChange={() => patch("brand", { pageBg: null, pageBgImageId: null })} /> <span>White</span></label>
+          <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg !== null && s.brand.pageBgImageId === null} onChange={() => patch("brand", { pageBg: s.brand.pageBg ?? "#f6f4ee", pageBgImageId: null })} /> <span>Choose a colour</span></label>
+          <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBgImageId !== null} onChange={() => patch("brand", { pageBgImageId: s.brand.pageBgImageId ?? images[0]?.id ?? null })} disabled={images.length === 0} /> <span>Use a photo{images.length === 0 ? " (upload a picture from any page in the editor first)" : ""}</span></label>
+          {s.brand.pageBgImageId !== null && (
+            <div className="sx-grid">
+              <label>Photo{imageSelect(s.brand.pageBgImageId, (v) => patch("brand", { pageBgImageId: v }), "Choose a picture…")}</label>
+              <label>Text on the photo<select value={s.brand.pageBgText} onChange={(e) => patch("brand", { pageBgText: e.target.value === "light" ? "light" : "dark" })}><option value="dark">Dark text (light photo)</option><option value="light">White text (dark photo)</option></select></label>
+              <label>Softening veil: {s.brand.pageBgVeil}%<input type="range" min={0} max={80} step={5} value={s.brand.pageBgVeil} onChange={(e) => patch("brand", { pageBgVeil: Number(e.target.value) })} /></label>
+            </div>
+          )}
+          {s.brand.pageBg !== null && s.brand.pageBgImageId === null && <label>Colour<span className="sx-color"><input type="color" value={s.brand.pageBg} onChange={(e) => patch("brand", { pageBg: e.target.value })} /><code>{s.brand.pageBg}</code></span></label>}
         </div>
       </SettingRow>
 

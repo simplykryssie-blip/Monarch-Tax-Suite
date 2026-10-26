@@ -383,3 +383,15 @@ describe("page background", () => {
     assert.equal(settingsOf({}).brand.pageBg, null);
   });
 });
+
+describe("page background photo", () => {
+  const id = "8f0c1c1e-2b7a-4c55-9d6e-0a1b2c3d4e5f";
+  test("a photo id, veil and text colour are checked", () => {
+    const b = settingsOf({ brand: { pageBgImageId: id, pageBgVeil: 200, pageBgText: "light" } }).brand;
+    assert.equal(b.pageBgImageId, id);
+    assert.equal(b.pageBgVeil, 80);
+    assert.equal(b.pageBgText, "light");
+    const bad = settingsOf({ brand: { pageBgImageId: "../x", pageBgVeil: "zz", pageBgText: "red" } }).brand;
+    assert.deepEqual([bad.pageBgImageId, bad.pageBgVeil, bad.pageBgText], [null, 0, "dark"]);
+  });
+});

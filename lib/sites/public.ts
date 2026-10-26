@@ -32,7 +32,7 @@ const SOCIAL_LABEL: Record<(typeof SOCIALS)[number], string> = { facebook: "Face
 export async function viewFor(tenantId: string, siteName: string, pages: PublicSite["pages"], blocks: Block[] | null, settings: SiteSettings = settingsOf({})): Promise<SiteView> {
   const db = tenantClient(tenantId);
   const [brand, profile] = await Promise.all([loadBrand(tenantId).catch(() => null), new SupabaseDocumentsRepo(db).getProfile().catch(() => null)]);
-  const ids = [...(blocks ? imageIdsOf(blocks) : []), ...(settings.brand.logoImageId ? [settings.brand.logoImageId] : [])];
+  const ids = [...(blocks ? imageIdsOf(blocks) : []), ...(settings.brand.logoImageId ? [settings.brand.logoImageId] : []), ...(settings.brand.pageBgImageId ? [settings.brand.pageBgImageId] : [])];
   const images: SiteView["images"] = {};
   if (ids.length) {
     const { data } = await db.from("tenant_images").select("id, storage_path, width, height").in("id", ids);
@@ -47,6 +47,7 @@ export async function viewFor(tenantId: string, siteName: string, pages: PublicS
     name: siteName || brand?.name || profile?.display_name || "",
     primary: pick(settings.brand.primary, brand?.primary, "#2563eb"),
     pageBg: settings.brand.pageBg,
+    pageBgImage: settings.brand.pageBgImageId && images[settings.brand.pageBgImageId] ? { url: images[settings.brand.pageBgImageId].url, veil: settings.brand.pageBgVeil, light: settings.brand.pageBgText === "light" } : null,
     accent: pick(settings.brand.accent, brand?.accent, "#171714"),
     logoUrl: logo ?? brand?.logoUrl ?? null,
     nav,
