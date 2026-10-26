@@ -21,14 +21,14 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
     <select value={value} onChange={(e) => onChange(e.target.value as FontChoice)}>{(Object.keys(FONT_CHOICES) as FontChoice[]).map((k) => <option key={k} value={k}>{FONT_CHOICES[k].label}</option>)}</select>
   );
   const nav = (
-    <nav className="cl-tabs" aria-label="Website settings" role="tablist">
+    <nav className="sx-subtabs" aria-label="Website settings" role="tablist">
       {TABS.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? "is-on" : undefined} onClick={() => setTab(t)}>{t}</button>)}
     </nav>
   );
   // The name and addresses have forms of their own, so they sit outside this form; the tab state is shared.
   if (tab === "General") return <div>{nav}{general}</div>;
   return (
-    <form action={action} className="monarch-form se-form monarch-panel" style={{ padding: 20 }}>
+    <form action={action} className="monarch-form se-form sx-card-panel">
       <input type="hidden" name="area" value={area} />
       <input type="hidden" name="site_id" value={siteId} />
       <input type="hidden" name="settings" value={JSON.stringify(s)} />
