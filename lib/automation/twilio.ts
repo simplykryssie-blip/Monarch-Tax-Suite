@@ -58,10 +58,10 @@ export function platformLogin(p: PlatformTwilio): { username: string; password: 
 /** What is missing before the owner's account can sign in to Twilio. Names variables, never their values. */
 export function platformProblems(p: PlatformTwilio): string[] {
   const problems: string[] = [];
-  if (!p.accountSid) problems.push("Set TWILIO_ACCOUNT_SID in Vercel (server-side).");
+  if (!p.accountSid) problems.push("Set TWILIO_ACCOUNT_SID in the server settings.");
   else if (!isAccountSid(p.accountSid)) problems.push("TWILIO_ACCOUNT_SID doesn't look like a Twilio Account SID (it starts with AC).");
   if (p.apiKeySid && !p.apiKeySecret && !p.authToken) problems.push("TWILIO_API_KEY is set without its secret: set TWILIO_API_SECRET (or TWILIO_AUTH_TOKEN).");
-  else if (!p.authToken && !(p.apiKeySid && p.apiKeySecret)) problems.push("Set TWILIO_AUTH_TOKEN (or TWILIO_API_KEY and TWILIO_API_SECRET) in Vercel (server-side).");
+  else if (!p.authToken && !(p.apiKeySid && p.apiKeySecret)) problems.push("Set TWILIO_AUTH_TOKEN (or TWILIO_API_KEY and TWILIO_API_SECRET) in the server settings.");
   else if (p.apiKeySid && !isKeySid(p.apiKeySid)) problems.push("TWILIO_API_KEY doesn't look like a Twilio API key SID (it starts with SK).");
   return problems;
 }

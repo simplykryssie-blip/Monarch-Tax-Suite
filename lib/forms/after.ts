@@ -1,3 +1,4 @@
+import { formSubmittedNotice } from "./activity.ts";
 import { emitEvent, senderFor, type AutomationDeps } from "../automation/engine.ts";
 import { sanitizeError } from "../automation/sanitize.ts";
 import { formatInZone } from "../documents/signing.ts";
@@ -128,6 +129,8 @@ export async function afterSubmit(auto: AutomationDeps, deps: FormDeps, submissi
     await deps.addLead?.({ formName: pf.form.name, name: submission.respondent_name, email: submission.respondent_email, phone: typeof phone === "string" ? phone : null, textConsent: submission.text_consent });
   });
   const fresh = (await deps.repo.getSubmission(submission.id).catch(() => null)) ?? submission;
+  await step("client files", async () => { if (fresh.client_id) await deps.saveToClient?.(fresh, pf.form); });
+  await step("bell", async () => { await deps.told?.(formSubmittedNotice(pf.form, fresh)); });
   await step("notify", () => notifyFirm(auto, deps, fresh));
   await step("confirm", () => confirmRespondent(auto, deps, fresh));
   await step("event", async () => {

@@ -329,7 +329,7 @@ export async function checkSmsStatusAction() {
 
 // ---------------------------------------------------------------- business hours and closures
 
-const HOURS_PAGE = "/settings/business-hours";
+const HOURS_PAGE = "/settings/firm";
 
 export async function saveBusinessHoursAction(form: FormData) {
   await act(HOURS_PAGE, async () => {

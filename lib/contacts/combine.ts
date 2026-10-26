@@ -159,7 +159,7 @@ export function possibleDuplicates(contacts: Contact[]): PossibleDuplicate[] {
 
 // --------------------------------------------------------------------------- the list: filters, counts, order
 
-export type ContactFilter = { q?: string; kind?: ContactKind | "inactive" | "" };
+export type ContactFilter = { q?: string; kind?: ContactKind | "inactive" | ""; /** Only contacts with this tag. */ tag?: string };
 
 export function filterContacts(contacts: Contact[], f: ContactFilter): Contact[] {
   const term = (f.q ?? "").trim().toLowerCase();
@@ -168,6 +168,7 @@ export function filterContacts(contacts: Contact[], f: ContactFilter): Contact[]
     if (f.kind === "inactive") { if (c.active) return false; }
     else if (f.kind && !c.kinds.includes(f.kind)) return false;
     else if (!f.kind && !c.active) return false;
+    if (f.tag && !c.tags.includes(f.tag)) return false;
     if (!term) return true;
     return c.name.toLowerCase().includes(term) || (c.email ?? "").includes(term) || (digits.length >= 4 && (normalizePhone(c.phone) ?? "").includes(digits)) || c.tags.some((t) => t.toLowerCase().includes(term));
   });

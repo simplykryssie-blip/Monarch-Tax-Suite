@@ -1,3 +1,4 @@
+import { installDefaults, missingDefaults } from "../lib/automation/defaults.ts";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -38,6 +39,8 @@ class MemoryContacts implements ContactPort {
     this.tasks.push(t);
     return true;
   }
+  moves: { pipelineId: string; stageId: string }[] = [];
+  async moveStage(_e: unknown, pipelineId: string, stageId: string) { this.moves.push({ pipelineId, stageId }); return { moved: true, from: "New", to: "Done" }; }
   async sendText(c: Contact, body: string) { this.texts.push({ to: c.phone, body }); return { ok: true as const }; }
 }
 
@@ -293,6 +296,7 @@ test("validation explains bad steps in plain words", () => {
   bad({ type: "send_email", template_id: "nope" }, /email template/);
   bad({ type: "add_tag", tag: "a, b" }, /one tag/);
   bad({ type: "update_contact", value: "winning" }, /lead status/);
+  bad({ type: "move_stage", pipeline_id: "", stage_id: "" }, /pipeline and the stage/);
   bad({ type: "send_text", body: "" }, /Write the text/);
   bad({ type: "send_text", body: "x".repeat(321) }, /320/);
   bad({ type: "create_task", title: "" }, /title/);
@@ -307,4 +311,29 @@ test("a date-based trigger takes days before or after", () => {
   const v = validateWorkflowInput({ name: "Reminder", trigger_event: "date.return_due", offset_days: "-7", conditions: [], steps: [{ type: "create_task", title: "Check return", due_days: 0 }] }, tpl);
   assert.deepEqual(v.trigger_config, { offset_days: -7 });
   assert.throws(() => validateWorkflowInput({ name: "Reminder", trigger_event: "date.return_due", offset_days: "999", conditions: [], steps: [{ type: "record_note", note: "n" }] }, tpl), /-365 and 365/);
+});
+
+test("a move-to-a-stage step moves the return it is about", async () => {
+  const { repo, contacts, make, fire } = await setup();
+  await make([{ type: "move_stage", pipeline_id: "p1", stage_id: "s3" }], {}, "return.stage_changed");
+  const r = await fire("return.stage_changed", undefined, "return", { stage_id: "s1" });
+  const done = (await repo.getExecution(r.executionIds[0]))!;
+  assert.equal(done.status, "succeeded");
+  assert.deepEqual(contacts.moves, [{ pipelineId: "p1", stageId: "s3" }]);
+  assert.match(done.action_log[0].detail ?? "", /Moved from New to Done/);
+});
+
+test("a tax office gets its own starter set, with nothing about licenses or installations", async () => {
+  const { repo } = await setup();
+  const missing = await missingDefaults(repo, "office");
+  assert.deepEqual(missing.workflows.map((w) => w.key).sort(), ["office_accepted", "office_docs_reminder_14", "office_efiled", "office_review_request"]);
+  assert.equal(missing.workflows.every((w) => w.status === "paused"), true);
+  assert.equal(missing.templates.some((t) => /license|install|GoHighLevel|calculator/i.test(t.name)), false);
+  const done = await installDefaults(repo, null, "office");
+  assert.deepEqual(done, { templates: 4, workflows: 4 });
+  assert.deepEqual(await installDefaults(repo, null, "office"), { templates: 0, workflows: 0 });
+  const review = (await repo.listWorkflows()).find((w) => w.workflow_key === "office_review_request")!;
+  assert.deepEqual(review.steps?.map((s) => s.type), ["wait", "send_email"]);
+  const reminder = (await repo.listWorkflows()).find((w) => w.workflow_key === "office_docs_reminder_14")!;
+  assert.equal(reminder.trigger_config?.offset_days, -14);
 });

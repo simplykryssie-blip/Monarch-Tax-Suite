@@ -3,7 +3,7 @@ import { digitsOf, formatAddress, formatEin, formatPhone, formatZip } from "../f
 import { STATE_CODES } from "../format/states.ts";
 import { parseCsv } from "../leads/csv.ts";
 import { MONARCH_TEMPLATE, parseMoney } from "../fees/engine.ts";
-import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS, type BusinessInput, type Client, type ClientInput, type DependentInput, type SpouseInput, type ClientReturn, type Invoice, type InvoiceLine, type MatchKind, type PaymentRowInsert, type ReturnKind } from "./types.ts";
+import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS, type BusinessInput, type Client, type ClientInput, type ClientWork, type DependentInput, type SpouseInput, type ClientReturn, type Invoice, type InvoiceLine, type MatchKind, type PaymentRowInsert, type ReturnKind } from "./types.ts";
 
 // The pure rules of My Workspace: what a client, return, task and invoice may contain, how the My Work board groups
 // returns, how an invoice's balance and overdue state are worked out, and how a bank statement row is read and matched.
@@ -191,7 +191,7 @@ export function checkReturn(raw: Record<string, unknown>, existing: ClientReturn
   return { client_id, tax_year, kind, parent_id, due_on: day(raw.due_on, "The due date") ?? defaultDue(tax_year, kind), notes: one(raw.notes, 2000) || null };
 }
 
-export type BoardCard = { id: string; clientId: string; clientName: string; taxYear: number; kind: ReturnKind; stageId: string; dueOn: string | null; late: boolean; parentId: string | null };
+export type BoardCard = { id: string; clientId: string; clientName: string; label: string; taxYear: number | null; kind: ReturnKind | null; stageId: string; dueOn: string | null; late: boolean; parentId: string | null };
 export type BoardColumn = { stage: { id: string; name: string; color: string; done: boolean }; cards: BoardCard[] };
 
 /** The My Work board for a year: one column per stage, a card per return (extensions and amendments are their own cards). */
@@ -202,10 +202,30 @@ export function buildBoard(stages: { id: string; name: string; color: string; do
     // A card in a stage that was removed from the pipeline shows in the first stage until someone moves it.
     const col = cols.find((c) => c.stage.id === (known.has(r.stage_id) ? r.stage_id : stages[0]?.id));
     if (!col) continue;
-    col.cards.push({ id: r.id, clientId: r.client_id, clientName: clients.get(r.client_id)?.full_name ?? "Unknown client", taxYear: r.tax_year, kind: r.kind, stageId: col.stage.id, dueOn: r.due_on, late: Boolean(r.due_on && r.due_on < today && !col.stage.done), parentId: r.parent_id });
+    col.cards.push({ id: r.id, clientId: r.client_id, clientName: clients.get(r.client_id)?.full_name ?? "Unknown client", label: String(r.tax_year), taxYear: r.tax_year, kind: r.kind, stageId: col.stage.id, dueOn: r.due_on, late: Boolean(r.due_on && r.due_on < today && !col.stage.done), parentId: r.parent_id });
   }
   for (const c of cols) c.cards.sort((a, b) => (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999") || a.clientName.localeCompare(b.clientName));
   return cols;
+}
+
+/** The board for a pipeline that is not tax returns: a card per piece of work. */
+export function buildWorkBoard(stages: { id: string; name: string; color: string; done: boolean }[], work: ClientWork[], clients: Map<string, Client>, today: string): BoardColumn[] {
+  const known = new Set(stages.map((s) => s.id));
+  const cols: BoardColumn[] = stages.map((stage) => ({ stage, cards: [] }));
+  for (const w of work.filter((x) => !x.archived_at)) {
+    const col = cols.find((c) => c.stage.id === (known.has(w.stage_id) ? w.stage_id : stages[0]?.id));
+    if (!col) continue;
+    col.cards.push({ id: w.id, clientId: w.client_id, clientName: clients.get(w.client_id)?.full_name ?? "Unknown client", label: w.title ?? "", taxYear: null, kind: null, stageId: col.stage.id, dueOn: w.due_on, late: Boolean(w.due_on && w.due_on < today && !col.stage.done), parentId: null });
+  }
+  for (const c of cols) c.cards.sort((a, b) => (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999") || a.clientName.localeCompare(b.clientName));
+  return cols;
+}
+
+/** Work typed on the Add form: who it is for, and an optional label, due date and note. */
+export function checkWork(raw: Record<string, unknown>): { client_id: string; title: string | null; due_on: string | null; notes: string | null } {
+  const client_id = one(raw.client_id, 40);
+  if (!client_id) throw new ValidationError("Choose a client.");
+  return { client_id, title: one(raw.title, 200) || null, due_on: day(raw.due_on, "The due date"), notes: one(raw.notes, 4000) || null };
 }
 
 // ---------------------------------------------------------------- tasks
@@ -219,6 +239,27 @@ export function checkTask(raw: Record<string, unknown>): { title: string; due_on
 // ---------------------------------------------------------------- invoices
 
 export const dollars = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+/** Sales tax on an amount at a percent, to the nearest cent. */
+export const taxOn = (subtotalCents: number, percent: number) => Math.round((subtotalCents * percent) / 100);
+
+/** The Billing settings form: the refund policy and terms printed on invoices, and the sales tax percent (0 to 25). */
+export function checkBillingSettings(raw: Record<string, unknown>): { refund_policy: string | null; terms: string | null; tax_percent: number } {
+  const text = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\r\n/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").trim().slice(0, max) : "");
+  const pctText = one(raw.tax_percent, 10).replace(/%/g, "");
+  const pct = pctText === "" ? 0 : Number(pctText);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 25) throw new ValidationError("Sales tax can be 0% to 25%.");
+  return { refund_policy: text(raw.refund_policy, 4000) || null, terms: text(raw.terms, 8000) || null, tax_percent: Math.round(pct * 1000) / 1000 };
+}
+
+/** A tax software or bank product with the fees it charges: a name and up to 12 fee lines. */
+export function checkFeeProduct(raw: Record<string, unknown>): { kind: "software" | "bank"; name: string; lines: InvoiceLine[] } {
+  const kind = raw.kind === "bank" ? "bank" : raw.kind === "software" ? "software" : null;
+  if (!kind) throw new ValidationError("Choose tax software or bank product.");
+  const name = one(raw.name, 80);
+  if (!name) throw new ValidationError("Give it a name.");
+  return { kind, name, lines: checkLines(raw, 12) };
+}
+
 export const invoiceTotal = (lines: InvoiceLine[]) => lines.reduce((n, l) => n + l.amount_cents, 0);
 export const balance = (i: Pick<Invoice, "total_cents" | "paid_cents">) => Math.max(0, i.total_cents - i.paid_cents);
 

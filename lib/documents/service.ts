@@ -1,7 +1,10 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
-import { checkDocumentFile, cleanDocumentName, CONTENT_TYPES, DOCUMENT_URL_SECONDS, MAX_DOCUMENT_BYTES, sha256Hex, type DocumentFileType } from "./files.ts";
-import { fillTemplate, missingValues, scanTemplate } from "./merge.ts";
+import { documentOpenedNotice } from "./activity.ts";
+import type { NewNotification } from "../notifications/types.ts";
+import { checkDocumentFile, cleanDocumentName, stripPdfActiveContent, CONTENT_TYPES, DOCUMENT_URL_SECONDS, MAX_DOCUMENT_BYTES, sha256Hex, type DocumentFileType } from "./files.ts";
+import { isBoxChoice, type FieldMap } from "./fields.ts";
+import { fillTemplate, missingValues, pdfBoxes, scanTemplate, typeIntoBoxes } from "./merge.ts";
 import { applySignature, isSignaturePng, type SignatureMark } from "./signing.ts";
 import { formatDate } from "./values.ts";
 import type { Delivery, DeliveryKind, DocumentStore, DocumentsRepo, DocumentVersion, LibraryDocument, SignatureRequest } from "./types.ts";
@@ -16,6 +19,8 @@ export type DocumentDeps = {
   /** Secret for secure links (derived from MONARCH_ENCRYPTION_KEY). Links are HMACs of the delivery id. */
   linkKey: Buffer;
   now?: () => Date;
+  /** Told when a sent document is opened, signed or declined, for the bell. Never allowed to fail the action. */
+  told?: (n: NewNotification) => Promise<void>;
 };
 
 export const LINK_DAYS_DEFAULT = 14;
@@ -72,7 +77,7 @@ export async function startVersionUpload(
     if (document.status === "archived") throw new ValidationError("This document is archived. Restore it before uploading a new version.");
     if (document.file_type !== fileType) throw new ValidationError(`This document is a ${document.file_type.toUpperCase()}. Upload a .${document.file_type} file as its new version, or add a new document.`);
   } else {
-    const name = (input.name ?? "").trim().slice(0, 120) || fileName.replace(/\.(pdf|docx)$/i, "");
+    const name = (input.name ?? "").trim().slice(0, 120) || fileName.replace(/\.[a-z]{3,4}$/i, "");
     if (name.length < 2) throw new ValidationError("Give the document a name.");
     document = await deps.repo.insertDocument({ name, description: input.description?.trim().slice(0, 1000) || null, file_type: fileType, created_by: input.adminId });
   }
@@ -81,6 +86,78 @@ export async function startVersionUpload(
   const version = await deps.repo.insertVersion({ document_id: document.id, version: next, storage_path: versionPath(deps, document.id), file_name: fileName, size_bytes: input.sizeBytes, created_by: input.adminId });
   const { url } = await deps.store.createUploadUrl(ownPath(deps, version.storage_path));
   return { document, version, uploadUrl: url, contentType: CONTENT_TYPES[fileType] };
+}
+
+/** Makes a new current version from bytes made here (an edit), checked like any upload. Copies already sent keep the version they used. */
+export async function addVersionFromBytes(deps: DocumentDeps, documentId: string, bytes: Uint8Array, actorId: string | null): Promise<{ document: LibraryDocument; version: DocumentVersion }> {
+  const document = await deps.repo.getDocument(documentId);
+  if (!document) throw new ValidationError("Document not found.");
+  if (document.status === "archived") throw new ValidationError("This document is archived. Restore it before changing it.");
+  const versions = await deps.repo.listVersions(documentId);
+  const current = versions.find((v) => v.id === document.current_version_id);
+  if (!current) throw new ValidationError("Add the file first.");
+  const next = versions.reduce((n, v) => Math.max(n, v.version), 0) + 1;
+  const path = versionPath(deps, documentId);
+  const version = await deps.repo.insertVersion({ document_id: documentId, version: next, storage_path: path, file_name: current.file_name, size_bytes: bytes.byteLength, created_by: actorId });
+  await deps.store.upload(ownPath(deps, path), bytes, CONTENT_TYPES[document.file_type]);
+  return finishVersionUpload(deps, version.id, actorId);
+}
+
+/** Types into the text boxes of the current PDF and saves the result as a new version (the form stays fillable). */
+export async function editBoxValues(deps: DocumentDeps, documentId: string, raw: Record<string, unknown>, actorId: string | null) {
+  const document = await deps.repo.getDocument(documentId);
+  if (!document) throw new ValidationError("Document not found.");
+  if (document.file_type !== "pdf") throw new ValidationError("Only a PDF has boxes to type into.");
+  const version = document.current_version_id ? await deps.repo.getVersion(document.current_version_id) : null;
+  if (!version || version.status !== "ready") throw new ValidationError("Add the file first.");
+  const bytes = await deps.store.download(ownPath(deps, version.storage_path));
+  if (!bytes) throw new ValidationError("The document file is missing from storage.");
+  const boxes = await pdfBoxes(bytes);
+  const known = new Map(boxes.filter((b) => b.kind === "text").map((b) => [b.name, b.value]));
+  const values: Record<string, string> = {};
+  for (const [name, v] of Object.entries(raw)) {
+    if (typeof v !== "string") continue;
+    if (!known.has(name)) throw new ValidationError("A box in your list isn't in this PDF. Reload the page and try again.");
+    const next = v.replace(/\r\n/g, "\n").slice(0, 500);
+    if (next !== known.get(name)) values[name] = next;
+  }
+  if (!Object.keys(values).length) throw new ValidationError("Nothing was changed.");
+  const edited = await typeIntoBoxes(bytes, values);
+  const saved = await addVersionFromBytes(deps, documentId, edited, actorId);
+  await deps.repo.addEvent({ document_id: documentId, delivery_id: null, signature_request_id: null, type: "edited", actor_id: actorId, detail: { boxes: Object.keys(values).length, version: saved.version.version } });
+  return saved;
+}
+
+/**
+ * Saves which box of a PDF takes what (an official form names its boxes anything). Only boxes the PDF has, and only
+ * things a box may take; a box left on "Leave blank" is not saved. The document's merge fields are worked out again.
+ */
+export async function saveFieldMap(deps: DocumentDeps, documentId: string, raw: Record<string, unknown>, actorId: string | null): Promise<LibraryDocument> {
+  const document = await deps.repo.getDocument(documentId);
+  if (!document) throw new ValidationError("Document not found.");
+  if (document.file_type !== "pdf") throw new ValidationError("Only a PDF has boxes to match.");
+  const version = document.current_version_id ? await deps.repo.getVersion(document.current_version_id) : null;
+  if (!version || version.status !== "ready") throw new ValidationError("Add the file first.");
+  const bytes = await deps.store.download(ownPath(deps, version.storage_path));
+  if (!bytes) throw new ValidationError("The document file is missing from storage.");
+  const boxes = new Set((await pdfBoxes(bytes)).map((b) => b.name));
+  const map: FieldMap = {};
+  for (const [name, value] of Object.entries(raw)) {
+    if (typeof value !== "string" || !value) continue;
+    if (!boxes.has(name)) throw new ValidationError("A box in your list isn't in this PDF. Reload the page and try again.");
+    if (!isBoxChoice(value)) throw new ValidationError("Choose from the list for each box.");
+    map[name] = value;
+  }
+  let scan;
+  try {
+    scan = await scanTemplate(bytes, "pdf", map);
+  } catch (e) {
+    throw e instanceof ValidationError ? e : new ValidationError("This PDF could not be read.");
+  }
+  const saved = await deps.repo.updateDocument(documentId, { field_map: map });
+  await deps.repo.updateVersion(version.id, { merge_fields: scan.fields, has_signature_field: scan.hasSignatureField });
+  await deps.repo.addEvent({ document_id: documentId, delivery_id: null, signature_request_id: null, type: "boxes_matched", actor_id: actorId, detail: { matched: Object.keys(map).length } });
+  return saved;
 }
 
 /** Checks the uploaded file by content, finds its merge fields, and makes it the current version. */
@@ -96,19 +173,33 @@ export async function finishVersionUpload(deps: DocumentDeps, versionId: string,
     if (!document.current_version_id) await deps.repo.deleteDocument(document.id).catch(() => undefined);
     throw new ValidationError(message);
   };
-  const bytes = await deps.store.download(ownPath(deps, version.storage_path));
+  let bytes = await deps.store.download(ownPath(deps, version.storage_path));
   if (!bytes) throw new ValidationError("The file did not arrive. Try the upload again.");
   if (bytes.byteLength !== version.size_bytes) return reject("The uploaded file's size does not match, so it was rejected. Try again.");
   let scan;
+  let stripped = false;
   try {
+    if (document.file_type === "pdf") {
+      // Official forms (such as the IRS 8879) carry scripts: strip them, keep the fillable boxes, and store the clean copy.
+      const clean = await stripPdfActiveContent(bytes);
+      if (clean.stripped) {
+        const path = versionPath(deps, document.id);
+        await deps.store.upload(ownPath(deps, path), clean.bytes, CONTENT_TYPES.pdf);
+        await deps.store.remove([ownPath(deps, version.storage_path)]).catch(() => undefined);
+        await deps.repo.updateVersion(version.id, { storage_path: path, size_bytes: clean.bytes.byteLength });
+        version.storage_path = path;
+        bytes = clean.bytes;
+        stripped = true;
+      }
+    }
     await checkDocumentFile(bytes, document.file_type);
-    scan = await scanTemplate(bytes, document.file_type);
+    scan = await scanTemplate(bytes, document.file_type, document.field_map ?? {});
   } catch (e) {
     return reject(e instanceof ValidationError ? e.message : "This file could not be read, so it was rejected.");
   }
   const ready = await deps.repo.updateVersion(version.id, { status: "ready", sha256: sha256Hex(bytes), merge_fields: scan.fields, has_signature_field: scan.hasSignatureField, ready_at: iso(deps) });
   const updated = await deps.repo.updateDocument(document.id, { current_version_id: ready.id });
-  await deps.repo.addEvent({ document_id: document.id, delivery_id: null, signature_request_id: null, type: "version_uploaded", actor_id: actorId, detail: { version: ready.version, fields: scan.fields.length } });
+  await deps.repo.addEvent({ document_id: document.id, delivery_id: null, signature_request_id: null, type: "version_uploaded", actor_id: actorId, detail: { version: ready.version, fields: scan.fields.length, ...(stripped ? { scripts_removed: true } : {}) } });
   return { document: updated, version: ready };
 }
 
@@ -194,7 +285,7 @@ export async function createDelivery(deps: DocumentDeps, input: DeliveryInput): 
   if (missing.length) throw new MissingValuesError(missing);
   const original = await deps.store.download(ownPath(deps, version.storage_path));
   if (!original) throw new Error("The document file is missing from storage.");
-  const filled = await fillTemplate(original, document.file_type, input.values, { keepSigning: input.kind === "signature" });
+  const filled = await fillTemplate(original, document.file_type, input.values, { keepSigning: input.kind === "signature", map: document.field_map ?? {} });
   const id = randomUUID();
   const path = deliveryPath(deps, id, document.file_type);
   await deps.store.upload(ownPath(deps, path), filled, CONTENT_TYPES[document.file_type]);
@@ -242,6 +333,10 @@ export async function markOpened(deps: DocumentDeps, delivery: Delivery) {
   if (delivery.first_opened_at) return;
   await deps.repo.updateDelivery(delivery.id, { first_opened_at: iso(deps) });
   await deps.repo.addEvent({ document_id: delivery.document_id, delivery_id: delivery.id, signature_request_id: null, type: "opened", actor_id: null, detail: {} });
+  if (!delivery.is_test && deps.told) {
+    const doc = await deps.repo.getDocument(delivery.document_id).catch(() => null);
+    if (doc) await deps.told(documentOpenedNotice(delivery, doc)).catch(() => undefined);
+  }
 }
 
 /** A 60-second download link for the copy behind a secure link (the signed copy once it is signed). */
@@ -300,6 +395,7 @@ export async function signDocument(deps: DocumentDeps, token: string, input: Sig
   if (!copy || sha256Hex(copy) !== signature.original_sha256) throw new Error("The document copy does not match what was sent.");
   const signed = await applySignature({
     pdf: copy,
+    map: document.field_map ?? {},
     mark: input.mark.method === "typed" ? { method: "typed", text: input.mark.text.trim().slice(0, 120) } : input.mark,
     signedName,
     signedDate: formatDate(now, input.timeZone),

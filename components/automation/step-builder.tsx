@@ -13,6 +13,7 @@ export type BuilderCatalog = {
   templates: { id: string; name: string; active: boolean }[];
   documents: { id: string; name: string; file_type: string }[];
   senders: { id: string; label: string }[];
+  pipelines: { id: string; name: string; stages: { id: string; name: string }[] }[];
 };
 type Draft = { type: string; [k: string]: unknown };
 type Cond = { field: string; op: string; value: string };
@@ -20,7 +21,7 @@ type Cond = { field: string; op: string; value: string };
 const KINDS: [string, string][] = [
   ["send_email", "Send an email"], ["send_text", "Send a text"], ["send_document", "Send a document"], ["request_signature", "Request a signature"],
   ["create_task", "Create a task"], ["add_tag", "Add a tag"], ["remove_tag", "Remove a tag"], ["update_contact", "Change the lead's status"],
-  ["wait", "Wait"], ["branch", "If / else"], ["record_note", "Record a note"],
+  ["move_stage", "Move to a stage"], ["wait", "Wait"], ["branch", "If / else"], ["record_note", "Record a note"],
 ];
 const kindName = (type: string) => KINDS.find(([k]) => k === type)?.[1] ?? type;
 
@@ -30,6 +31,7 @@ const blank = (kind: string): Draft => {
     case "send_document": return { type: kind, document_id: "", sender_id: "", message: "", link_days: 14 };
     case "request_signature": return { type: kind, document_id: "", sender_id: "", message: "", link_days: 14, reminder_days: "" };
     case "record_note": return { type: kind, note: "" };
+    case "move_stage": return { type: kind, pipeline_id: "", stage_id: "" };
     case "wait": return { type: kind, amount: 1, unit: "days", mode: "business" };
     case "branch": return { type: kind, conditions: [{ field: "contact.tags", op: "contains", value: "" }], then: [], else: [] };
     case "create_task": return { type: kind, title: "", due_days: "" };
@@ -122,6 +124,15 @@ function Editor({ step, onChange, cat, depth, eventFields, budget }: { step: Dra
           {step.type === "request_signature" && text("reminder_days", "Remind every (days, blank = off)", { type: "number", min: 1, max: 30 })}
         </div>
       );
+    case "move_stage": {
+      const chosen = cat.pipelines.find((p) => p.id === step.pipeline_id);
+      return (
+        <div className="monarch-form">
+          <label>Pipeline<select value={String(step.pipeline_id ?? "")} onChange={(e) => set({ pipeline_id: e.target.value, stage_id: "" })}><option value="">Choose…</option>{cat.pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+          <label>Move to<select value={String(step.stage_id ?? "")} onChange={(e) => set({ stage_id: e.target.value })} disabled={!chosen}><option value="">Choose…</option>{(chosen?.stages ?? []).map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}</select></label>
+        </div>
+      );
+    }
     case "record_note": return <div className="monarch-form">{text("note", "Note", { maxLength: 300 })}</div>;
     case "create_task": return <div className="monarch-form">{text("title", "Task", { maxLength: 200, placeholder: "Call about their return" })}{text("due_days", "Due in (days, blank = no date)", { type: "number", min: 0, max: 365 })}</div>;
     case "add_tag": case "remove_tag": return <div className="monarch-form">{text("tag", "Tag", { maxLength: 40, placeholder: "warm lead" })}<small className="monarch-muted is-wide">Applies to the person&apos;s lead and client records.</small></div>;

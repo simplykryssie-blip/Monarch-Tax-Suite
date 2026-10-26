@@ -72,3 +72,21 @@ export const SAMPLE_FIELD_VALUES: Record<string, string> = {
   signer_name: "Sample Client",
   signed_date: "January 1, 2027",
 };
+
+// ---------------------------------------------------------------- matching the boxes of a PDF
+
+/** A PDF's own box names (an official form's "f1_01[0]") matched to what goes in them. A box not in the list is named as it is. */
+export type FieldMap = Record<string, string>;
+export const effectiveName = (name: string, map: FieldMap | null | undefined): string => (map && Object.prototype.hasOwnProperty.call(map, name) ? map[name] : name);
+
+/** What a box can be matched to: grouped for the drop-down. `value` is the merge field name (or "signature"). */
+export type BoxChoice = { value: string; label: string };
+export const BOX_CHOICES: { group: string; choices: BoxChoice[] }[] = [
+  { group: "The client", choices: ["client_name", "client_first_name", "client_email", "client_phone", "client_address", "client_business_name", "client_ssn_last4", "client_ssn"].map((k) => ({ value: k, label: MERGE_FIELDS[k].label })) },
+  { group: "Your firm", choices: ["firm_name", "firm_legal_name", "firm_ptin", "firm_caf_number", "firm_email", "firm_phone", "firm_address"].map((k) => ({ value: k, label: MERGE_FIELDS[k].label })) },
+  { group: "Dates", choices: ["today", "current_year"].map((k) => ({ value: k, label: MERGE_FIELDS[k].label })) },
+  { group: "Signing", choices: [{ value: SIGNATURE_FIELD, label: "The signature goes here" }, ...["signer_name", "signed_date"].map((k) => ({ value: k, label: MERGE_FIELDS[k].label }))] },
+  { group: "Typed when you send it", choices: Object.entries(ASK_LABELS).map(([k, label]) => ({ value: `ask.${k}`, label })) },
+];
+/** Whether a match is one this document may have. */
+export const isBoxChoice = (v: string) => v === SIGNATURE_FIELD || (isMergeField(v) && !FORM_FIELD.test(v));

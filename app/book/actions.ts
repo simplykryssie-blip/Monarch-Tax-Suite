@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { bookingContext, bookingVisitor } from "@/lib/appointments/public";
+import { bookingProblems, wantsTexts, type BookingProblems } from "@/lib/appointments/booking-form.ts";
 import { bookPublic, cancelByToken, rescheduleByToken } from "@/lib/appointments/service.ts";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
@@ -17,21 +18,25 @@ const message = (e: unknown) => {
   return "Something went wrong on our side. Nothing was booked; please try again in a minute.";
 };
 
-export async function bookAction(slug: string, form: FormData) {
-  const path = `/book/${encodeURIComponent(slug)}`;
+export type BookResult = { error?: string; problems?: BookingProblems };
+
+/** Books from the public page. A problem comes back as a result, so the page keeps everything the visitor typed and marks what to fix. */
+export async function bookFormAction(slug: string, _previous: BookResult, form: FormData): Promise<BookResult> {
   let target: string;
   try {
     // A field real visitors never see: bots that fill every field are quietly turned away.
     if (str(form, "website")) throw new ValidationError("Something went wrong. Please try again.");
+    const name = str(form, "name", 200), email = str(form, "email", 254), phone = str(form, "phone", 40), startsAt = str(form, "starts_at", 40);
+    const problems = bookingProblems({ name, email, phone, starts_at: startsAt });
+    if (Object.keys(problems).length) return { error: "A few things need your attention.", problems };
     const { tenantId, deps } = await bookingContext();
     await bookingVisitor(tenantId, "book");
     const { token } = await bookPublic(deps, slug, {
-      name: str(form, "name", 200), email: str(form, "email", 254), phone: str(form, "phone", 40), notes: str(form, "notes", 1000),
-      starts_at: str(form, "starts_at", 40), time_zone: str(form, "time_zone", 64), sms_consent: form.get("sms_consent") === "on",
+      name, email, phone, notes: str(form, "notes", 1000), starts_at: startsAt, time_zone: str(form, "time_zone", 64), sms_consent: wantsTexts(form.get("sms_consent") === "on", phone),
     });
     target = `/book/manage/${token}?booked=1`;
   } catch (e) {
-    target = back(path, message(e));
+    return { error: message(e) };
   }
   redirect(target);
 }

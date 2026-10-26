@@ -1,3 +1,5 @@
+import { bookingProblems, wantsTexts } from "../lib/appointments/booking-form.ts";
+import { intakeStatus } from "../lib/appointments/intake.ts";
 import assert from "node:assert/strict";
 import { createHmac, randomUUID } from "node:crypto";
 import test from "node:test";
@@ -5,17 +7,20 @@ import { DEFAULT_WEEK } from "../lib/calendar/business.ts";
 import { ValidationError } from "../lib/commerce/validation.ts";
 import { appointmentIcs, reminderSms, whenFor } from "../lib/appointments/messages.ts";
 import {
-  addDateOverride, bookByStaff, bookPublic, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
+  addDateOverride, bookByStaff, bookPublic, saveBookingMessages, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
   rescheduleByStaff, rescheduleByToken, saveWeekly, sendDueReminders, slugOf, type AppointmentDeps,
 } from "../lib/appointments/service.ts";
 import type { Busy } from "../lib/appointments/slots.ts";
-import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type NewAppointment, type NewReminder, type Notifier, type ReminderRow, type RuleRow, type TypeInput } from "../lib/appointments/types.ts";
+import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type BookingMessages, type NewAppointment, type NewReminder, type Notifier, type ReminderRow, type RuleRow, type TypeInput } from "../lib/appointments/types.ts";
 import type { Lead, LeadsRepo } from "../lib/leads/types.ts";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NOW = new Date("2026-10-12T00:00:00Z"); // Sunday evening in New York
 
 class Memory implements AppointmentRepo {
+  messages: BookingMessages | null = null;
+  async getMessages() { return this.messages; }
+  async saveMessages(m: BookingMessages) { this.messages = m; }
   types: AppointmentType[] = [];
   rules: RuleRow[] = [];
   appts: Appointment[] = [];
@@ -293,4 +298,84 @@ test("messages show the client's time zone and the office's, and the calendar fi
   assert.match(ics, /DESCRIPTION:Bring W-2s\\, 1099s/);
   assert.ok(ics.endsWith("END:VCALENDAR\r\n"));
   assert.ok(reminderSms(appointment, t, "Acme Tax", "https://x.test/m").length < 320);
+});
+
+test("a booking sends the built-in confirmation email and text, or the wording the office wrote", async () => {
+  const { deps, sent } = make();
+  const t = await createType(deps, { ...TYPE, location: "12 Main St" });
+  await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
+  assert.match(sent[0].body, /^Confirmed: Tax Prep Consultation with Acme Tax\nHi Ana Ruiz,/);
+  assert.match(sent[0].body, /Where: 12 Main St/);
+  assert.equal(sent[1].channel, "sms", "a person who agreed to texts gets one");
+  assert.match(sent[1].body, /^Acme Tax: your Tax Prep Consultation is booked for .*Reply STOP/);
+  sent.length = 0;
+  await saveBookingMessages(deps, { confirm_subject: "See you, {{first_name}}!", confirm_body: "{{office}} will see you {{date_time}} at {{location}}. {{nonsense}}Change: {{manage_link}}", confirm_sms: "Booked: {{date_time}}" }, null);
+  await bookPublic(deps, t.slug, { ...person, email: "b@example.com", starts_at: "2026-10-12T15:00:00.000Z" });
+  assert.match(sent[0].body, /^See you, Ana!\nAcme Tax will see you .* at 12 Main St\. Change: https:\/\/book\.example\.com\/book\/manage\//);
+  assert.match(sent[1].body, /^Booked: /);
+  // No consent, no text.
+  sent.length = 0;
+  await bookPublic(deps, t.slug, { ...person, email: "c@example.com", sms_consent: undefined, starts_at: "2026-10-12T16:00:00.000Z" });
+  assert.deepEqual(sent.map((m) => m.channel), ["email"]);
+  // Clearing a message goes back to the built-in wording; too-long ones are refused.
+  await saveBookingMessages(deps, {}, null);
+  sent.length = 0;
+  await bookPublic(deps, t.slug, { ...person, email: "d@example.com", starts_at: "2026-10-12T17:00:00.000Z" });
+  assert.match(sent[0].body, /^Confirmed: /);
+  await assert.rejects(saveBookingMessages(deps, { confirm_sms: "x".repeat(321) }, null), /up to 320/);
+});
+
+test("every email carries the firm's name, address, phone and email at the bottom, and texts do not", async () => {
+  const { deps, sent } = make();
+  deps.firmSignature = async () => "Acme Tax\n12 Main St, Lake Charles, LA\n(337) 555-0100 · hello@acme.test";
+  const t = await createType(deps, TYPE);
+  await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
+  assert.match(sent[0].body, /\n\n--\nAcme Tax\n12 Main St, Lake Charles, LA\n\(337\) 555-0100 · hello@acme\.test$/);
+  assert.equal(sent[1].channel, "sms");
+  assert.doesNotMatch(sent[1].body, /--\n/);
+});
+
+test("an appointment type can ask for a form: the confirmation links to it, and the calendar knows if it was filled in", async () => {
+  const { deps, sent, repo } = make();
+  const FORM = "11111111-1111-4111-8111-111111111111";
+  deps.intakeLink = async (id) => (id === FORM ? "https://acme.test/f/AbCdEf1234567890" : null);
+  assert.throws(() => checkType({ name: "X", intake_form_id: "nope" }), /Choose a form/);
+  const t = await createType(deps, { ...TYPE, intake_form_id: FORM });
+  assert.equal(t.intake_form_id, FORM);
+  const { appointment } = await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
+  assert.match(sent[0].body, /please fill in this form: https:\/\/acme\.test\/f\/AbCdEf1234567890/);
+  const types = await repo.listTypes();
+  const sub = (at: string) => ({ form_id: FORM, respondent_email: person.email.toUpperCase(), submitted_at: at });
+  assert.equal(intakeStatus([appointment], types, []).get(appointment.id), "waiting");
+  assert.equal(intakeStatus([appointment], types, [sub("2020-01-01T00:00:00Z")]).get(appointment.id), "waiting", "an older submission does not count");
+  assert.equal(intakeStatus([appointment], types, [sub(new Date(Date.parse(appointment.created_at) + 1000).toISOString())]).get(appointment.id), "done");
+  const plain = await createType(deps, { ...TYPE, name: "Plain", slug: "plain" });
+  assert.equal(plain.intake_form_id, null);
+});
+
+test("booking, moving and cancelling tell the bell, saying who did it", async () => {
+  const { deps } = make();
+  const seen: string[] = [];
+  deps.activity = async (e) => { seen.push(`${e.kind}:${e.by}${e.actorId ? `:${e.actorId}` : ""}`); };
+  const t = await createType(deps, TYPE);
+  const online = await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
+  await rescheduleByToken(deps, online.token, "2026-10-12T15:00:00.000Z");
+  await cancelByToken(deps, online.token, "Plans changed");
+  const staffMade = await bookByStaff(deps, "u-staff", { type_id: t.id, name: "Walk In", email: "w@example.com", starts_at: "2026-10-12T17:00:00.000Z" });
+  await rescheduleByStaff(deps, staffMade.appointment.id, "2026-10-12T18:00:00.000Z", "u-staff");
+  await cancelByStaff(deps, staffMade.appointment.id, "", false, "u-staff");
+  assert.deepEqual(seen, ["booked:client", "rescheduled:client", "cancelled:client", "booked:staff:u-staff", "rescheduled:staff:u-staff", "cancelled:staff:u-staff"]);
+  // A problem telling the bell never undoes the booking.
+  deps.activity = async () => { throw new Error("bell down"); };
+  await bookPublic(deps, t.slug, { ...person, email: "z@example.com", starts_at: "2026-10-12T19:00:00.000Z" });
+});
+
+test("the public booking page marks each detail that needs fixing, and texts only apply with a mobile number", () => {
+  const ok = { name: "Jane Smith", email: "jane@example.com", phone: "", starts_at: "2026-10-12T15:00:00.000Z" };
+  assert.deepEqual(bookingProblems(ok), {});
+  assert.deepEqual(Object.keys(bookingProblems({ ...ok, name: "", email: "nope", phone: "12", starts_at: "" })).sort(), ["email", "name", "phone", "starts_at"]);
+  assert.match(bookingProblems({ ...ok, email: "nope" }).email!, /valid email/);
+  assert.equal(wantsTexts(true, ""), false, "no number, no texts, and the booking still goes through");
+  assert.equal(wantsTexts(true, "(337) 555-0100"), true);
+  assert.equal(wantsTexts(false, "(337) 555-0100"), false);
 });

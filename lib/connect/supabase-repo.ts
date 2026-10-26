@@ -23,6 +23,9 @@ export class SupabaseConnectRepo implements ConnectRepo {
   async getInvoice(id: string) {
     return unwrap(await this.db.from("invoices").select("id, client_id, number, status, total_cents, paid_cents").eq("id", id).maybeSingle()) as PayableInvoice | null;
   }
+  async installmentsFor(invoiceId: string) {
+    return unwrap(await this.db.from("invoice_installments").select("position, due_on, amount_cents").eq("invoice_id", invoiceId).order("position")) as { position: number; due_on: string; amount_cents: number }[];
+  }
   async openPaymentFor(invoiceId: string) {
     return unwrap(await this.db.from("invoice_payments").select("*").eq("invoice_id", invoiceId).eq("status", "open").maybeSingle()) as InvoicePayment | null;
   }

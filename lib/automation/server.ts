@@ -25,6 +25,7 @@ import { SupabaseAutomationRepo } from "./supabase-repo.ts";
 import { SupabaseContacts } from "./contact-supabase.ts";
 import { businessDeps } from "../calendar/server";
 import { loadCalendar } from "../calendar/service.ts";
+import { TEMPLATE_TYPES } from "../documents/files.ts";
 
 // Server wiring for the Automation Center. Secrets (Resend key, service role, encryption key) are read here
 // from the environment and never returned to callers or the browser.
@@ -97,7 +98,7 @@ export async function workflowCatalog(deps: AutomationDeps = automationDeps()): 
   const verified = new Map(domains.filter((d) => d.status === "verified").map((d) => [d.id, d]));
   return {
     forms,
-    documents,
+    documents: documents.filter((d) => TEMPLATE_TYPES.includes(d.file_type)),
     senders: senders.filter((s) => !s.archived_at && verified.has(s.domain_id)).map((s) => ({ ...s, address: `${s.local_part}@${verified.get(s.domain_id)!.domain}` })),
     attributes,
   };

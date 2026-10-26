@@ -10,6 +10,9 @@ import { brandedTheme } from "@/lib/branding/brand.ts";
 import { loadBrand } from "@/lib/branding/server";
 import { DEFAULT_THEME, type FormTheme } from "@/lib/forms/theme.ts";
 import { publicDefinition } from "@/lib/forms/definition.ts";
+import { checkInvite, INVITE_PROBLEMS, markInviteOpened } from "@/lib/forms/invites.ts";
+import { formOpenedNotice } from "@/lib/forms/activity.ts";
+import { formMergeValues, mergeDefinition } from "@/lib/forms/merge.ts";
 import { isPublicId, resumeDraft, startStamp } from "@/lib/forms/service.ts";
 import { respondentKeys, showsTextConsent } from "@/lib/forms/settings.ts";
 
@@ -23,9 +26,9 @@ const Shell = ({ firm, theme = DEFAULT_THEME, poweredBy = false, children }: { f
 );
 
 /** A firm's public form. No login: the link is public, and every action is limited and checked on the server. */
-export default async function PublicFormPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ resume?: string }> }) {
+export default async function PublicFormPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ resume?: string; i?: string }> }) {
   const { id } = await params;
-  const { resume } = await searchParams;
+  const { resume, i: inviteParam } = await searchParams;
   const ctx = isPublicId(id) ? await formContext(id).catch(() => null) : null;
   const firm = ctx?.firmName ?? "";
   const brand = ctx ? await loadBrand(ctx.tenantId).catch(() => null) : null;
@@ -37,6 +40,22 @@ export default async function PublicFormPage({ params, searchParams }: { params:
     if (own && !isPlatformHost(new URL(own).host)) redirect(`${own}${resume ? `?resume=${encodeURIComponent(resume)}` : ""}`);
   }
   if (pf.state !== "open") return <Shell firm={firm} theme={brandedTheme(pf.settings.theme, brand)} poweredBy={!!brand?.showPoweredBy}><h1>{pf.form.name}</h1><p style={{ whiteSpace: "pre-wrap" }}>{pf.settings.closed_message}</p></Shell>;
+  // A form sent to one client: their details are filled in, and what they send is tied to them.
+  let definition = publicDefinition(pf.version.definition);
+  let inviteToken: string | null = null;
+  const profile = await ctx.deps.profile().catch(() => null);
+  let client: { full_name: string; email: string | null; phone: string | null; address: string | null } | null = null;
+  if (inviteParam) {
+    const state = await checkInvite(ctx.deps, pf.form.id, inviteParam);
+    if (!state.ok) return <Shell firm={firm} theme={brandedTheme(pf.settings.theme, brand)} poweredBy={!!brand?.showPoweredBy}><h1>{pf.form.name}</h1><p>{INVITE_PROBLEMS[state.reason]}</p></Shell>;
+    inviteToken = inviteParam;
+    client = (await ctx.deps.clientFor?.(state.invite.client_id).catch(() => null)) ?? null;
+    if (!state.invite.opened_at) {
+      await markInviteOpened(ctx.deps, state.invite).catch(() => undefined);
+      await ctx.deps.told?.(formOpenedNotice(pf.form, client?.full_name ?? "A client", state.invite.client_id)).catch(() => undefined);
+    }
+  }
+  definition = mergeDefinition(definition, formMergeValues({ profile, client, now: new Date() }));
   const resumed = resume ? await resumeDraft(ctx.deps, pf, resume) : null;
   return (
     <ThemedPage theme={brandedTheme(pf.settings.theme, brand)} firm={firm} poweredBy={!!brand?.showPoweredBy}>
@@ -45,7 +64,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
         <FormRenderer
           mode="live"
           publicId={pf.form.public_id}
-          definition={publicDefinition(pf.version.definition)}
+          definition={definition}
           formName={pf.form.name}
           description={pf.form.description}
           firmName={firm || "Tax office"}
@@ -56,6 +75,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
           stamp={startStamp(ctx.deps, pf.form.id)}
           initialAnswers={resumed?.answers}
           initialToken={resumed?.token ?? null}
+          inviteToken={inviteToken}
         />
     </ThemedPage>
   );

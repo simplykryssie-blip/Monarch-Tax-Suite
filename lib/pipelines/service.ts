@@ -1,5 +1,5 @@
 import { ValidationError } from "../commerce/validation.ts";
-import type { Pipeline, PipelineKind, PipelinesRepo, Stage } from "./types.ts";
+import type { Pipeline, PipelineFolder, PipelineKind, PipelinesRepo, Stage } from "./types.ts";
 
 export const MIN_STAGES = 2;
 export const MAX_STAGES = 15;
@@ -19,6 +19,93 @@ export const DEFAULT_RETURN_STAGES: Stage[] = [
 
 const clean = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "stage";
+
+/** What a pipeline is for, in the office's own words. Optional. */
+export function checkTypeLabel(v: unknown): string | null {
+  const t = clean(v, 40);
+  return t || null;
+}
+
+export function checkColor(v: unknown): string {
+  return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : STAGE_COLORS[1];
+}
+
+export async function saveDetails(repo: PipelinesRepo, id: string, input: { type_label: unknown; color: unknown }): Promise<Pipeline> {
+  const p = await repo.get(id);
+  if (!p || p.archived_at) throw new ValidationError("That pipeline wasn't found.");
+  return repo.update(id, { type_label: checkTypeLabel(input.type_label), color: checkColor(input.color) });
+}
+
+/** Publishes or unpublishes a pipeline. The one that runs the tax-return board stays published. */
+export async function setPublished(repo: PipelinesRepo, id: string, published: boolean): Promise<Pipeline> {
+  const p = await repo.get(id);
+  if (!p || p.archived_at) throw new ValidationError("That pipeline wasn't found.");
+  if (!published && p.is_default) throw new ValidationError("This pipeline runs the tax-return board, so it stays published.");
+  return repo.update(id, { published });
+}
+
+/** A pipeline that is live: published and not archived. A row from before publishing existed counts as published. */
+export const isLive = (p: Pipeline) => !p.archived_at && p.published !== false;
+
+export const MAX_FOLDER_DEPTH = 4;
+const folderDepth = (folders: PipelineFolder[], id: string | null): number => {
+  let n = 0;
+  for (let cur = id; cur; n++) cur = folders.find((f) => f.id === cur)?.parent_id ?? null;
+  return n;
+};
+
+export async function createFolder(repo: PipelinesRepo, input: { name: unknown; parent_id?: unknown }, actorId: string): Promise<PipelineFolder> {
+  const name = clean(input.name, 80);
+  if (!name) throw new ValidationError("Give the folder a name.");
+  const parent_id = typeof input.parent_id === "string" && input.parent_id ? input.parent_id : null;
+  const folders = await repo.listFolders();
+  if (parent_id && !folders.some((f) => f.id === parent_id)) throw new ValidationError("That folder wasn't found.");
+  if (folderDepth(folders, parent_id) >= MAX_FOLDER_DEPTH) throw new ValidationError(`Folders can go ${MAX_FOLDER_DEPTH} levels deep.`);
+  if (folders.some((f) => f.parent_id === parent_id && f.name.toLowerCase() === name.toLowerCase())) throw new ValidationError("A folder with that name is already here.");
+  return repo.insertFolder({ name, parent_id, created_by: actorId });
+}
+
+export async function renameFolder(repo: PipelinesRepo, id: string, name: unknown): Promise<PipelineFolder> {
+  const n = clean(name, 80);
+  if (!n) throw new ValidationError("Give the folder a name.");
+  const folders = await repo.listFolders();
+  const f = folders.find((x) => x.id === id);
+  if (!f) throw new ValidationError("That folder wasn't found.");
+  if (folders.some((x) => x.id !== id && x.parent_id === f.parent_id && x.name.toLowerCase() === n.toLowerCase())) throw new ValidationError("A folder with that name is already here.");
+  return repo.updateFolder(id, { name: n });
+}
+
+/** Deletes a folder. What was inside moves up into the folder above it; no pipeline is deleted. */
+export async function deleteFolder(repo: PipelinesRepo, id: string): Promise<PipelineFolder> {
+  const folders = await repo.listFolders();
+  const f = folders.find((x) => x.id === id);
+  if (!f) throw new ValidationError("That folder wasn't found.");
+  for (const p of await repo.list()) if (p.folder_id === id) await repo.update(p.id, { folder_id: f.parent_id });
+  for (const child of folders.filter((x) => x.parent_id === id)) await repo.updateFolder(child.id, { parent_id: f.parent_id });
+  await repo.removeFolder(id);
+  return f;
+}
+
+/** Moves a folder inside another folder (or to the top level). A folder can't go inside itself or anything inside it. */
+export async function moveFolder(repo: PipelinesRepo, id: string, to: unknown): Promise<PipelineFolder> {
+  const folders = await repo.listFolders();
+  const f = folders.find((x) => x.id === id);
+  if (!f) throw new ValidationError("That folder wasn't found.");
+  const parent_id = typeof to === "string" && to ? to : null;
+  if (parent_id && !folders.some((x) => x.id === parent_id)) throw new ValidationError("That folder wasn't found.");
+  for (let cur = parent_id; cur; cur = folders.find((x) => x.id === cur)?.parent_id ?? null) if (cur === id) throw new ValidationError("A folder can't go inside itself.");
+  if (folderDepth(folders, parent_id) >= MAX_FOLDER_DEPTH) throw new ValidationError(`Folders can go ${MAX_FOLDER_DEPTH} levels deep.`);
+  if (folders.some((x) => x.id !== id && x.parent_id === parent_id && x.name.toLowerCase() === f.name.toLowerCase())) throw new ValidationError("A folder with that name is already there.");
+  return repo.updateFolder(id, { parent_id });
+}
+
+export async function movePipeline(repo: PipelinesRepo, id: string, folderId: unknown): Promise<Pipeline> {
+  const p = await repo.get(id);
+  if (!p) throw new ValidationError("That pipeline wasn't found.");
+  const folder_id = typeof folderId === "string" && folderId ? folderId : null;
+  if (folder_id && !(await repo.listFolders()).some((f) => f.id === folder_id)) throw new ValidationError("That folder wasn't found.");
+  return repo.update(id, { folder_id });
+}
 
 /** Stages as sent from the builder, checked: 2 to 15, named, a hex colour, unique ids, at least one that finishes the work. */
 export function checkStages(raw: unknown): Stage[] {
@@ -61,7 +148,7 @@ export const DUPLICATE_CREATE_WINDOW_MS = 60_000;
  * existing record). It is also safe to repeat: a double-clicked or re-sent create returns the pipeline the first one
  * made, and the standard-pipeline quick start never makes a second tax-return pipeline.
  */
-export async function createPipeline(repo: PipelinesRepo, input: { name: unknown; kind?: unknown; stages: unknown; quickStart?: boolean }, actorId: string, now: () => Date = () => new Date()): Promise<Pipeline> {
+export async function createPipeline(repo: PipelinesRepo, input: { name: unknown; kind?: unknown; stages: unknown; quickStart?: boolean; type_label?: unknown; color?: unknown; folder_id?: unknown }, actorId: string, now: () => Date = () => new Date()): Promise<Pipeline> {
   const kind: PipelineKind = input.kind === "returns" ? "returns" : "custom";
   const name = checkName(input.name);
   const stages = checkStages(input.stages);
@@ -75,7 +162,10 @@ export async function createPipeline(repo: PipelinesRepo, input: { name: unknown
   if (again) return again;
   const isDefault = kind === "returns" && !existing.some((p) => p.kind === "returns" && !p.archived_at);
   try {
-    return await repo.insert({ name, kind, stages, is_default: isDefault, created_by: actorId });
+    const folder_id = typeof input.folder_id === "string" && input.folder_id ? input.folder_id : null;
+    if (folder_id && !(await repo.listFolders()).some((f) => f.id === folder_id)) throw new ValidationError("That folder wasn't found.");
+    // A pipeline you build starts unpublished, so it isn't offered anywhere until you're happy with its stages.
+    return await repo.insert({ name, kind, stages, is_default: isDefault, created_by: actorId, type_label: checkTypeLabel(input.type_label), color: checkColor(input.color), published: kind === "returns", folder_id });
   } catch (e) {
     // Two requests racing past the check above: the database allows one, and the other gets that one back.
     if (/duplicate key|pipelines_active_name_key/i.test(e instanceof Error ? e.message : "")) {
@@ -124,15 +214,19 @@ export async function archivePipeline(repo: PipelinesRepo, id: string, archive: 
 }
 
 /**
- * Deletes a pipeline for good. Only an archived pipeline can be deleted, so it is never the one running the Returns board.
- * Returns on the board keep their stage; nothing else points at a pipeline.
+ * Deletes a pipeline for good. The one running the tax-return board can't be deleted. Returns keep their stage; a pipeline
+ * with other work in it can't be deleted until that work is moved or finished.
  */
 export async function deletePipeline(repo: PipelinesRepo, id: string): Promise<Pipeline> {
   const p = await repo.get(id);
   if (!p) throw new ValidationError("That pipeline wasn't found.");
-  if (!p.archived_at) throw new ValidationError("Archive the pipeline first. Only archived pipelines can be deleted.");
-  if (p.is_default) throw new ValidationError("This pipeline runs the Returns board, so it can't be deleted.");
-  await repo.remove(id);
+  if (p.is_default) throw new ValidationError("This pipeline runs the tax-return board, so it can't be deleted.");
+  try {
+    await repo.remove(id);
+  } catch (e) {
+    if (/client_work|foreign key/i.test(e instanceof Error ? e.message : "")) throw new ValidationError("There is still work in this pipeline. Move or finish it first, or archive the pipeline instead.");
+    throw e;
+  }
   return p;
 }
 

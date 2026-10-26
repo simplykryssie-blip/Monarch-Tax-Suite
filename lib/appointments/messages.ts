@@ -15,6 +15,36 @@ export function whenFor(a: Pick<Appointment, "starts_at" | "office_time_zone" | 
   return tz === a.office_time_zone ? main : `${main} (${fmt(a.starts_at, a.office_time_zone, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })} at the office)`;
 }
 
+// ---------------------------------------------------------------- confirmations an office can edit
+
+export const DEFAULT_CONFIRM_SUBJECT = "Confirmed: {{type}} with {{office}}";
+export const DEFAULT_CONFIRM_BODY = "Hi {{name}},\n\nYour {{type}} with {{office}} is booked for {{date_time}}.\n\n{{location_line}}\n\nNeed to change it? Cancel or pick another time here: {{manage_link}}\n\n{{office}}";
+export const DEFAULT_CONFIRM_SMS = "{{office}}: your {{type}} is booked for {{date_time}}. Change it: {{manage_link}} Reply STOP to opt out.";
+/** What can go between double braces in a confirmation. */
+export const CONFIRM_FIELDS: Record<string, string> = {
+  name: "The client's name", first_name: "Their first name", type: "The appointment type", office: "Your firm's name", date_time: "The day and time",
+  location: "Where it is", location_line: "\"Where: ...\", or nothing when there is no location", manage_link: "The link to cancel or change it",
+};
+
+/** Fills {{placeholders}} in a message. An unknown placeholder is left out; blank lines left behind are tidied. */
+export function fillMessage(template: string, values: Record<string, string>): string {
+  return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_, k: string) => values[k] ?? "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export type ConfirmationSet = { subject: string; text: string; sms: string };
+/** The confirmation email and text for a booking: the office's own wording where it has written some, else the built-in one. */
+export function confirmationFrom(a: Appointment, t: AppointmentType, firm: string, manageUrl: string, custom: { confirm_subject: string | null; confirm_body: string | null; confirm_sms: string | null } | null): ConfirmationSet {
+  const values: Record<string, string> = {
+    name: a.contact_name, first_name: a.contact_name.split(" ")[0] ?? a.contact_name, type: t.name, office: firm, date_time: whenFor(a),
+    location: t.location ?? "", location_line: t.location ? `Where: ${t.location}` : "", manage_link: manageUrl,
+  };
+  return {
+    subject: fillMessage(custom?.confirm_subject || DEFAULT_CONFIRM_SUBJECT, values),
+    text: fillMessage(custom?.confirm_body || DEFAULT_CONFIRM_BODY, values),
+    sms: fillMessage(custom?.confirm_sms || DEFAULT_CONFIRM_SMS, values),
+  };
+}
+
 export function confirmationEmail(a: Appointment, t: AppointmentType, firm: string, manageUrl: string): { subject: string; text: string } {
   return {
     subject: `Confirmed: ${t.name} with ${firm}`,

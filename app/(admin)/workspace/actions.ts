@@ -7,15 +7,19 @@ import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { pipelinesRepo } from "@/lib/pipelines/server";
-import { returnsStages } from "@/lib/pipelines/service.ts";
+import { isLive, returnsStages } from "@/lib/pipelines/service.ts";
 import { clientDocLink, deleteClientDoc, finishClientDoc, startClientDoc } from "@/lib/workspace/docs.ts";
-import { emitInvoicePaid, emitReturnStage, emitTagChanges } from "@/lib/automation/emit";
+import { emitInvoicePaid, emitReturnStage, emitTagChanges, emitWorkStage } from "@/lib/automation/emit";
 import { yesNo } from "@/lib/workspace/rules.ts";
-import { addBusiness, addClient, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveStandardFees, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
+import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveBillingSettings, editInvoice, archiveInvoice, setPaymentPlan, removePaymentPlan, addFeeProduct, saveFeeProduct, archiveFeeProduct, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
+import { documentDeps } from "@/lib/documents/server";
+import { moveFile } from "@/lib/documents/folders.ts";
+import { clientScope, driveBack } from "@/lib/workspace/doc-folders.ts";
+import { setWorkflowTaskDone } from "@/lib/workspace/workflow-tasks";
 import { sendClientMessage } from "@/lib/workspace/send.ts";
 import { loadBrand } from "@/lib/branding/server";
-import { canTakePayments } from "@/lib/connect/service.ts";
+import { cancelOpenPayment, canTakePayments } from "@/lib/connect/service.ts";
 import { connectDeps } from "@/lib/connect/server";
 import { invoiceNoticeEmail } from "@/lib/portal/invoices.ts";
 import { portalLink, portalMemberRepo, sendPortalEmail } from "@/lib/portal/server";
@@ -107,10 +111,9 @@ export async function addContactAction(form: FormData): Promise<{ error: string;
       if (ssn) await storeSsn(ssnDeps(), { clientId: c.id, ssn, actorId: admin.userId });
       to = clientPage(c.id);
     } else if (kind === "lead") {
-      if (!allows(tier, "leads")) throw new ValidationError("Leads aren't part of this plan.");
       if (!str(form, "first_name").trim()) throw new ValidationError("Enter the first name.");
       const lead = await createLead(leadsDeps(), { ...fields, full_name: name }, admin.userId);
-      to = `/leads/${lead.id}`;
+      to = allows(tier, "leads") ? `/leads/${lead.id}` : `/contacts/lead-${lead.id}`;
     } else if (kind === "customer") {
       if (!allows(tier, "store")) throw new ValidationError("Customers aren't part of this plan.");
       const email = str(form, "email").trim().toLowerCase();
@@ -169,6 +172,35 @@ export async function addReturnAction(form: FormData) {
   });
 }
 
+/** Adds a piece of work that is not a tax return to the chosen pipeline. */
+export async function addWorkAction(form: FormData) {
+  const pipelineId = str(form, "pipeline_id");
+  const back = `/workspace/work?pipeline=${encodeURIComponent(pipelineId)}`;
+  await act(back, async (adminId) => {
+    const pipeline = (await pipelinesRepo().list()).find((p) => p.id === pipelineId && isLive(p));
+    if (!pipeline) throw new ValidationError("Choose a pipeline.");
+    await addWork(workspaceRepo(), raw(form), pipeline, adminId);
+    return { notice: `Added to ${pipeline.name}.` };
+  });
+}
+
+/** Called by the board when work in another pipeline is dropped on a stage. */
+export async function moveWorkAction(workId: string, stageId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireAdmin();
+    const work = await workspaceRepo().getWork(workId);
+    const pipeline = work ? (await pipelinesRepo().list()).find((p) => p.id === work.pipeline_id) : null;
+    if (!pipeline) throw new ValidationError("That work wasn't found.");
+    await moveWork(workspaceRepo(), workId, stageId, pipeline.stages.map((s) => s.id));
+    if (work) await emitWorkStage(work.id, work.client_id, work.pipeline_id, stageId);
+    revalidatePath("/workspace", "layout");
+    return { ok: true };
+  } catch (e) {
+    unstable_rethrow(e);
+    return { ok: false, error: failure(e) };
+  }
+}
+
 /** Called by the board when a card is dropped on another stage. */
 export async function moveReturnAction(returnId: string, stageId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
@@ -188,16 +220,22 @@ export async function moveReturnAction(returnId: string, stageId: string): Promi
 
 export async function addTaskAction(form: FormData) {
   const id = str(form, "client_id");
-  await act(clientPage(id, "tasks"), async (adminId) => {
+  // From the Calendar's task list the person stays on the Calendar.
+  const back = str(form, "back").startsWith("/calendar") ? str(form, "back") : clientPage(id, "tasks");
+  await act(back, async (adminId) => {
     await addTask(workspaceRepo(), id, raw(form), adminId);
+    // From the Calendar, land on the month the task is due in so it can be seen straight away.
+    const due = str(form, "due_on");
+    if (back.startsWith("/calendar") && /^\d{4}-\d{2}-\d{2}$/.test(due)) return { to: `/calendar?view=month&date=${due}`, notice: "Task added to the calendar." };
     return { notice: "Task added." };
   });
 }
 
 export async function toggleTaskAction(form: FormData) {
-  const back = str(form, "back").startsWith("/workspace") ? str(form, "back") : "/workspace";
+  const back = /^\/(workspace|calendar)/.test(str(form, "back")) ? str(form, "back") : "/workspace";
   await act(back, async () => {
-    await setTaskDone(workspaceRepo(), str(form, "id"), str(form, "done") === "yes");
+    if (str(form, "source") === "workflow") await setWorkflowTaskDone(str(form, "id"), str(form, "done") === "yes");
+    else await setTaskDone(workspaceRepo(), str(form, "id"), str(form, "done") === "yes");
     return { notice: str(form, "done") === "yes" ? "Task done." : "Task reopened." };
   });
 }
@@ -342,19 +380,61 @@ export async function mergeLeadIntoClientAction(form: FormData) {
   });
 }
 
-/** Saves the standard invoice fees (Settings). */
-export async function saveStandardFeesAction(form: FormData) {
-  await act("/settings/invoice-fees", async (adminId) => { await saveStandardFees(workspaceRepo(), raw(form), adminId); return { notice: "Standard fees saved. New invoices start from these." }; });
+export async function setPaymentPlanAction(form: FormData) {
+  const back = /^\/workspace/.test(str(form, "back")) ? str(form, "back") : "/workspace/billing";
+  await act(back, async () => { const plan = await setPaymentPlan(workspaceRepo(), str(form, "id"), raw(form)); return { notice: `Payment plan set up: ${plan.length} payments.` }; });
+}
+
+export async function removePaymentPlanAction(form: FormData) {
+  const back = /^\/workspace/.test(str(form, "back")) ? str(form, "back") : "/workspace/billing";
+  await act(back, async () => { await removePaymentPlan(workspaceRepo(), str(form, "id")); return { notice: "Payment plan removed." }; });
+}
+
+export async function editInvoiceAction(form: FormData) {
+  const back = /^\/workspace/.test(str(form, "back")) ? str(form, "back") : "/workspace/billing";
+  await act(back, async () => {
+    const r = await editInvoice(workspaceRepo(), str(form, "id"), raw(form));
+    // A pay link made for the old total must not be payable any more.
+    if (r.totalChanged) { const deps = connectDeps(currentTenantId()); if (deps) await cancelOpenPayment(deps, r.invoice.id).catch(() => false); }
+    return { notice: `${r.invoice.number} saved.${r.planRemoved ? " Its payment plan was removed because the total changed. Set it up again." : ""}` };
+  });
+}
+
+export async function archiveInvoiceAction(form: FormData) {
+  const back = /^\/workspace/.test(str(form, "back")) ? str(form, "back") : "/workspace/billing";
+  await act(back, async () => {
+    const archive = str(form, "archive") === "yes";
+    const i = await archiveInvoice(workspaceRepo(), str(form, "id"), archive);
+    return { notice: archive ? `${i.number} archived. Find it under Archived on Billing.` : `${i.number} restored.` };
+  });
+}
+
+/** Billing settings (Settings → Billing): the footer printed on invoices and the sales tax percent. */
+export async function saveBillingSettingsAction(form: FormData) {
+  await act("/settings/billing", async (adminId) => { await saveBillingSettings(workspaceRepo(), raw(form), adminId); return { notice: "Saved. New invoices use these." }; });
+}
+
+export async function addFeeProductAction(form: FormData) {
+  await act("/settings/billing", async (adminId) => { const p = await addFeeProduct(workspaceRepo(), raw(form), adminId); return { notice: `${p.name} added.` }; });
+}
+
+export async function saveFeeProductAction(form: FormData) {
+  await act("/settings/billing", async () => { const p = await saveFeeProduct(workspaceRepo(), str(form, "id"), raw(form)); return { notice: `${p.name} saved.` }; });
+}
+
+export async function archiveFeeProductAction(form: FormData) {
+  await act("/settings/billing", async () => { await archiveFeeProduct(workspaceRepo(), str(form, "id")); return { notice: "Removed. Invoices already made keep what they were made with." }; });
 }
 
 // ---- documents (uploaded straight to private storage, then checked)
 
 export type Ticket = { ok: true; id: string; uploadUrl: string; contentType: string } | { ok: false; error: string };
 
-export async function startClientDocAction(input: { clientId: string; title: string; fileName: string; sizeBytes: number; returnId?: string }): Promise<Ticket> {
+export async function startClientDocAction(input: { clientId: string; title: string; fileName: string; sizeBytes: number; returnId?: string; folderId?: string }): Promise<Ticket> {
   try {
     const admin = await requireAdmin();
     const t = await startClientDoc(docDeps(), input, admin.userId);
+    if (input.folderId) await moveFile(clientScope(documentDeps().repo, workspaceRepo(), input.clientId), t.doc.id, input.folderId).catch(() => undefined);
     return { ok: true, id: t.doc.id, uploadUrl: t.uploadUrl, contentType: t.contentType };
   } catch (e) {
     unstable_rethrow(e);
@@ -381,14 +461,14 @@ export async function openClientDocAction(form: FormData) {
     url = await clientDocLink(docDeps(), str(form, "id"));
   } catch (e) {
     unstable_rethrow(e);
-    redirect(to(clientPage(str(form, "client_id"), "documents"), "error", failure(e)));
+    redirect(to(driveBack(str(form, "back"), clientPage(str(form, "client_id"), "documents")), "error", failure(e)));
   }
   redirect(url);
 }
 
 export async function deleteClientDocAction(form: FormData) {
   const client = str(form, "client_id");
-  await act(clientPage(client, "documents"), async () => {
+  await act(driveBack(str(form, "back"), clientPage(client, "documents")), async () => {
     await deleteClientDoc(docDeps(), str(form, "id"));
     return { notice: deletedNotice("Document") };
   });
@@ -406,7 +486,7 @@ export async function createInvoiceAction(form: FormData) {
 
 export async function invoiceStatusAction(form: FormData) {
   const back = str(form, "back").startsWith("/workspace") ? str(form, "back") : "/workspace/billing";
-  await act(back, async () => {
+  await act(back, async (adminId) => {
     const repo = workspaceRepo();
     if (str(form, "do") === "send") {
       const i = await sendInvoice(repo, str(form, "id"));
@@ -416,8 +496,8 @@ export async function invoiceStatusAction(form: FormData) {
       return { notice: `${i.number} sent to the client's portal${told ? " and they were emailed" : ""}.${online ? "" : " Online payment is off, so there's no pay button yet (Settings → Payments)."}` };
     }
     if (str(form, "do") === "void") { const i = await voidInvoice(repo, str(form, "id")); return { notice: `${i.number} voided.` }; }
-    const i = await recordPayment(repo, str(form, "id"), str(form, "amount"), str(form, "paid_on"));
-    await emitInvoicePaid(i.id);
+    const i = await recordPayment(repo, str(form, "id"), str(form, "amount"), str(form, "paid_on"), new Date(), { method: str(form, "method"), reference: str(form, "reference"), actorId: adminId });
+    await emitInvoicePaid(i.id, undefined, adminId);
     return { notice: i.status === "paid" ? `${i.number} is paid.` : `Payment recorded on ${i.number}.` };
   });
 }

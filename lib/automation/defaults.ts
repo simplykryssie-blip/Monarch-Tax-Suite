@@ -1,4 +1,4 @@
-import type { Action, AutomationRepo, Condition, WorkflowStatus } from "./types.ts";
+import type { Action, AutomationRepo, Condition, Step, WorkflowStatus } from "./types.ts";
 
 // The starting set. "Install defaults" is idempotent: it only creates what is missing (matched by key) and never
 // overwrites templates or workflows an administrator has edited.
@@ -11,6 +11,9 @@ type DefaultWorkflow = {
   trigger: string;
   conditions: Condition[];
   actions: (templateIdOf: (key: string) => string) => Action[];
+  /** A step tree (waits, branches) when the workflow needs one; `actions` is then only a summary. */
+  steps?: (templateIdOf: (key: string) => string) => Step[];
+  trigger_config?: Record<string, number>;
   status: WorkflowStatus;
   cooldown_hours?: number;
 };
@@ -202,6 +205,64 @@ If anything is missing, reply to this email or write to {{support_email}}.`,
   },
 ];
 
+/** What a tax office gets: messages about its own returns. The Verexa set below is for the Store and Service Bureau plans. */
+export const OFFICE_TEMPLATES: DefaultTemplate[] = [
+  {
+    key: "office_docs_reminder",
+    name: "Return: we still need your documents",
+    subject: "We still need a few documents for your tax return",
+    body: `# Hi {{customer_first_name}},
+
+Your tax return is coming up and we are still waiting on some documents. Please send your W-2s, 1099s, and anything else you have received, and reply to this email if you are not sure what is needed.
+
+Questions? Reply to this email or write to {{support_email}}.`,
+  },
+  {
+    key: "office_efiled",
+    name: "Return: e-filed",
+    subject: "Your tax return has been e-filed",
+    body: `# Good news, {{customer_first_name}}
+
+Your tax return has been e-filed with the IRS. We will let you know as soon as it is accepted.
+
+Questions? Reply to this email or write to {{support_email}}.`,
+  },
+  {
+    key: "office_accepted",
+    name: "Return: accepted",
+    subject: "Your tax return was accepted",
+    body: `# Accepted, {{customer_first_name}}
+
+The IRS has accepted your tax return. If you are owed a refund, it is on its way. Keep this email for your records.
+
+Questions? Reply to this email or write to {{support_email}}.`,
+  },
+  {
+    key: "office_review_request",
+    name: "Review request",
+    subject: "How did we do?",
+    body: `# Thank you, {{customer_first_name}}
+
+It was a pleasure preparing your return. If you have a minute, a short review helps other families find us. Reply to this email with any feedback, good or bad.
+
+Questions? Reply to this email or write to {{support_email}}.`,
+  },
+];
+
+export const OFFICE_WORKFLOWS: DefaultWorkflow[] = [
+  { key: "office_docs_reminder_14", name: "Documents reminder: two weeks before a return is due", description: "Emails the client two weeks before the due date of each open return, asking for any missing documents. Off by default.", trigger: "date.return_due", conditions: [], trigger_config: { offset_days: -14 }, actions: (id) => [{ type: "send_email", template_id: id("office_docs_reminder"), to: "customer", include_setup_link: false }], status: "paused" },
+  { key: "office_efiled", name: "Return e-filed: tell the client", description: "Emails the client when a return moves to the E-filed stage. Uses the standard stage ids; change the stage here if you renamed yours. Off by default.", trigger: "return.stage_changed", conditions: [{ field: "stage_id", op: "eq", value: "efiled" }], actions: (id) => [{ type: "send_email", template_id: id("office_efiled"), to: "customer", include_setup_link: false }], status: "paused" },
+  { key: "office_accepted", name: "Return accepted: tell the client", description: "Emails the client when a return moves to the Accepted stage. Off by default.", trigger: "return.stage_changed", conditions: [{ field: "stage_id", op: "eq", value: "accepted" }], actions: (id) => [{ type: "send_email", template_id: id("office_accepted"), to: "customer", include_setup_link: false }], status: "paused" },
+  {
+    key: "office_review_request", name: "Return complete: ask for a review", description: "Waits three days after a return is complete, then asks the client for a review. Off by default.", trigger: "return.stage_changed",
+    conditions: [{ field: "stage_id", op: "eq", value: "complete" }], actions: (id) => [{ type: "send_email", template_id: id("office_review_request"), to: "customer", include_setup_link: false }],
+    steps: (id) => [{ type: "wait", amount: 3, unit: "days", mode: "business" }, { type: "send_email", template_id: id("office_review_request"), to: "customer", include_setup_link: false }], status: "paused",
+  },
+];
+
+export type DefaultSet = "verexa" | "office";
+const setOf = (set: DefaultSet) => (set === "office" ? { templates: OFFICE_TEMPLATES, workflows: OFFICE_WORKFLOWS } : { templates: DEFAULT_TEMPLATES, workflows: DEFAULT_WORKFLOWS });
+
 const email = (templateKey: string, to: "customer" | "support" = "customer", link = false) => (id: (k: string) => string): Action[] => [
   { type: "send_email", template_id: id(templateKey), to, include_setup_link: link },
 ];
@@ -238,19 +299,21 @@ export type MissingDefaults = {
 };
 
 /** Standard templates and workflows not installed yet, matched by key. Edited or archived ones count as installed; a deleted one is listed again. */
-export async function missingDefaults(repo: AutomationRepo): Promise<MissingDefaults> {
+export async function missingDefaults(repo: AutomationRepo, set: DefaultSet = "verexa"): Promise<MissingDefaults> {
+  const { templates: tpls, workflows: wfs } = setOf(set);
   const templates: MissingDefaults["templates"] = [];
-  for (const t of DEFAULT_TEMPLATES) if (!(await repo.findTemplateByKey(t.key))) templates.push({ key: t.key, name: t.name });
+  for (const t of tpls) if (!(await repo.findTemplateByKey(t.key))) templates.push({ key: t.key, name: t.name });
   const workflows: MissingDefaults["workflows"] = [];
-  for (const w of DEFAULT_WORKFLOWS) if (!(await repo.findWorkflowByKey(w.key))) workflows.push({ key: w.key, name: w.name, status: w.status });
+  for (const w of wfs) if (!(await repo.findWorkflowByKey(w.key))) workflows.push({ key: w.key, name: w.name, status: w.status });
   return { templates, workflows };
 }
 
-export async function installDefaults(repo: AutomationRepo, actorId: string | null): Promise<{ templates: number; workflows: number }> {
+export async function installDefaults(repo: AutomationRepo, actorId: string | null, set: DefaultSet = "verexa"): Promise<{ templates: number; workflows: number }> {
+  const { templates: tpls, workflows: wfs } = setOf(set);
   let templates = 0;
   let workflows = 0;
   const ids = new Map<string, string>();
-  for (const t of DEFAULT_TEMPLATES) {
+  for (const t of tpls) {
     const existing = await repo.findTemplateByKey(t.key);
     if (existing) {
       ids.set(t.key, existing.id);
@@ -261,9 +324,9 @@ export async function installDefaults(repo: AutomationRepo, actorId: string | nu
     templates++;
   }
   const idOf = (k: string) => ids.get(k) ?? "";
-  for (const w of DEFAULT_WORKFLOWS) {
+  for (const w of wfs) {
     if (await repo.findWorkflowByKey(w.key)) continue;
-    await repo.insertWorkflow({ workflow_key: w.key, name: w.name, description: w.description, trigger_event: w.trigger, conditions: w.conditions, actions: w.actions(idOf), status: w.status, max_attempts: 4, cooldown_hours: w.cooldown_hours ?? 0, created_by: actorId, updated_by: actorId });
+    await repo.insertWorkflow({ workflow_key: w.key, name: w.name, description: w.description, trigger_event: w.trigger, conditions: w.conditions, actions: w.actions(idOf), steps: w.steps ? w.steps(idOf) : undefined, trigger_config: w.trigger_config ?? {}, status: w.status, max_attempts: 4, cooldown_hours: w.cooldown_hours ?? 0, created_by: actorId, updated_by: actorId });
     workflows++;
   }
   if (templates || workflows) await repo.addAudit({ actor_id: actorId, action: "defaults_installed", target_type: null, target_id: null, detail: { templates, workflows } });

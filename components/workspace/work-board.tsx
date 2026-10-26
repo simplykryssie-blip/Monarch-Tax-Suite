@@ -8,7 +8,7 @@ import type { BoardColumn } from "@/lib/workspace/rules.ts";
 const KIND = { original: "Original", extension: "Extension", amendment: "Amendment" } as const;
 
 /** The Returns board: a column per pipeline stage. Drag a card to another column to move it; click a card to open its client. */
-export function WorkBoard({ columns }: { columns: BoardColumn[] }) {
+export function WorkBoard({ columns, move = moveReturnAction }: { columns: BoardColumn[]; move?: (id: string, stageId: string) => Promise<{ ok: true } | { ok: false; error: string }> }) {
   const [cols, setCols] = useState(columns);
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export function WorkBoard({ columns }: { columns: BoardColumn[] }) {
     setCols(cols.map((c) => (c.stage.id === from.stage.id ? { ...c, cards: c.cards.filter((k) => k.id !== id) } : c.stage.id === stageId ? { ...c, cards: [...c.cards, { ...card, stageId, late: card.late && !c.stage.done }] } : c)));
     setProblem(null);
     start(async () => {
-      const r = await moveReturnAction(id, stageId);
+      const r = await move(id, stageId);
       if (!r.ok) { setCols(before); setProblem(r.error); }
     });
   }
@@ -54,7 +54,7 @@ export function WorkBoard({ columns }: { columns: BoardColumn[] }) {
               {c.cards.map((k) => (
                 <article key={k.id} className={"wb-card" + (drag === k.id ? " is-drag" : "")} draggable onDragStart={() => setDrag(k.id)} onDragEnd={() => { setDrag(null); setOver(null); }}>
                   <Link href={`/workspace/clients/${k.clientId}#return-${k.id}`}>{k.clientName}</Link>
-                  <span><span className={`wb-kind is-${k.kind}`}>{KIND[k.kind]}</span> {k.taxYear}</span>
+                  <span>{k.kind && <span className={`wb-kind is-${k.kind}`}>{KIND[k.kind]}</span>} {k.label}</span>
                   {k.dueOn && <small className={k.late ? "wb-late" : "monarch-muted"}>{k.late ? "Late · " : "Due "}{k.dueOn}</small>}
                 </article>
               ))}

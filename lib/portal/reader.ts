@@ -50,8 +50,18 @@ export class PortalReader {
     });
   }
 
+  /** The refund policy and terms the office prints at the bottom of its invoices. */
+  async invoiceFooter() {
+    const row = unwrap(await this.db.from("billing_settings").select("refund_policy, terms").maybeSingle()) as { refund_policy: string | null; terms: string | null } | null;
+    return { refund: row?.refund_policy ?? null, terms: row?.terms ?? null };
+  }
+  /** The payment plans on these invoices. */
+  async installments(invoiceIds: string[]) {
+    if (invoiceIds.length === 0) return [];
+    return unwrap(await this.db.from("invoice_installments").select("invoice_id, position, due_on, amount_cents").in("invoice_id", invoiceIds).order("position")) as { invoice_id: string; position: number; due_on: string; amount_cents: number }[];
+  }
   /** Invoices the office sent, and paid ones. Never drafts, voided invoices or internal notes. */
   async invoices() {
-    return unwrap(await this.db.from("invoices").select("id, number, tax_year, status, lines, total_cents, paid_cents, issued_on, due_on, paid_on").eq("client_id", this.clientId).in("status", [...PORTAL_INVOICE_STATUSES]).order("issued_on", { ascending: false }).limit(100)) as PortalInvoice[];
+    return unwrap(await this.db.from("invoices").select("id, number, tax_year, status, lines, total_cents, paid_cents, issued_on, due_on, paid_on, tax_percent, tax_cents").eq("client_id", this.clientId).in("status", [...PORTAL_INVOICE_STATUSES]).order("issued_on", { ascending: false }).limit(100)) as PortalInvoice[];
   }
 }

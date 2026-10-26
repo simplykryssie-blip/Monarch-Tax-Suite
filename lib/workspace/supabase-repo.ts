@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
+import type { Installment } from "./plan.ts";
+import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, BillingSettings, InvoiceReceipt, ReceiptInsert, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
 
 // Workspace rows for one tenant, on the tenant client: the database's tenant policies scope every query.
 const unwrap = <T>(r: { data: T | null; error: { message: string } | null }): T => {
@@ -36,6 +37,30 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   async saveInvoiceDefaults(lines: InvoiceLine[], actorId: string | null) {
     unwrap(await this.db.from("invoice_defaults").upsert({ lines, updated_by: actorId, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" }).select("tenant_id"));
   }
+  async listInstallments(invoiceIds: string[]) {
+    if (invoiceIds.length === 0) return [];
+    return unwrap(await this.db.from("invoice_installments").select("invoice_id, position, due_on, amount_cents").in("invoice_id", invoiceIds).order("position")) as (Installment & { invoice_id: string })[];
+  }
+  async replaceInstallments(invoiceId: string, plan: Installment[]) {
+    unwrap(await this.db.from("invoice_installments").delete().eq("invoice_id", invoiceId).select("id"));
+    if (plan.length) unwrap(await this.db.from("invoice_installments").insert(plan.map((p) => ({ invoice_id: invoiceId, position: p.position, due_on: p.due_on, amount_cents: p.amount_cents }))).select("id"));
+  }
+  async listReceipts(invoiceIds?: string[]) {
+    let q = this.db.from("invoice_receipts").select("*").order("received_on", { ascending: false }).limit(5000);
+    if (invoiceIds) q = q.in("invoice_id", invoiceIds);
+    return unwrap(await q) as InvoiceReceipt[];
+  }
+  async insertReceipt(input: ReceiptInsert) { return unwrap(await this.db.from("invoice_receipts").insert(input).select("*").single()) as InvoiceReceipt; }
+  async getBillingSettings() {
+    const row = unwrap(await this.db.from("billing_settings").select("refund_policy, terms, tax_percent").maybeSingle()) as { refund_policy: string | null; terms: string | null; tax_percent: number | string } | null;
+    return row ? { refund_policy: row.refund_policy, terms: row.terms, tax_percent: Number(row.tax_percent) } : null;
+  }
+  async saveBillingSettings(s: BillingSettings, actorId: string | null) {
+    unwrap(await this.db.from("billing_settings").upsert({ ...s, updated_by: actorId, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" }).select("tenant_id"));
+  }
+  async listFeeProducts() { return unwrap(await this.db.from("fee_products").select("*").is("archived_at", null).order("name")) as FeeProduct[]; }
+  async insertFeeProduct(input: FeeProductInput & { created_by: string | null }) { return unwrap(await this.db.from("fee_products").insert(input).select("*").single()) as FeeProduct; }
+  async updateFeeProduct(id: string, patch: Partial<Pick<FeeProduct, "name" | "lines" | "archived_at">>) { return unwrap(await this.db.from("fee_products").update(patch).eq("id", id).select("*").single()) as FeeProduct; }
   async addClientEvent(e: { clientId: string; action: string; actorId: string | null; detail: Record<string, unknown> }) {
     unwrap(await this.db.from("workspace_audit_events").insert({ actor_id: e.actorId, action: e.action, subject_type: "client", subject_id: e.clientId, detail: e.detail }).select("id"));
   }
@@ -59,6 +84,15 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
     if (f.organizationId) q = q.eq("organization_id", f.organizationId);
     return unwrap(await q) as ClientReturn[];
   }
+  async listWork(f: { clientId?: string; pipelineId?: string } = {}) {
+    let q = this.db.from("client_work").select("*").is("archived_at", null).order("created_at").limit(5000);
+    if (f.clientId) q = q.eq("client_id", f.clientId);
+    if (f.pipelineId) q = q.eq("pipeline_id", f.pipelineId);
+    return unwrap(await q) as ClientWork[];
+  }
+  async getWork(id: string) { return unwrap(await this.db.from("client_work").select("*").eq("id", id).maybeSingle()) as ClientWork | null; }
+  async insertWork(input: WorkInput & { created_by: string | null; assignee_id?: string | null }) { return unwrap(await this.db.from("client_work").insert(input).select("*").single()) as ClientWork; }
+  async updateWork(id: string, patch: Partial<Pick<ClientWork, "stage_id" | "title" | "due_on" | "notes" | "assignee_id" | "archived_at">>) { return unwrap(await this.db.from("client_work").update(patch).eq("id", id).select("*").single()) as ClientWork; }
   async getReturn(id: string) { return unwrap(await this.db.from("client_returns").select("*").eq("id", id).maybeSingle()) as ClientReturn | null; }
   async insertReturn(input: ReturnInput & { assignee_id?: string | null; organization_id?: string | null }) { return unwrap(await this.db.from("client_returns").insert(input).select("*").single()) as ClientReturn; }
   async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>) { return unwrap(await this.db.from("client_returns").update(patch).eq("id", id).select("*").single()) as ClientReturn; }
@@ -66,7 +100,7 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   async listDocs(clientId: string) { return unwrap(await this.db.from("client_docs").select("*").eq("client_id", clientId).eq("status", "stored").order("created_at", { ascending: false })) as ClientDoc[]; }
   async getDoc(id: string) { return unwrap(await this.db.from("client_docs").select("*").eq("id", id).maybeSingle()) as ClientDoc | null; }
   async insertDoc(input: Omit<ClientDoc, "id" | "tenant_id" | "created_at">) { return unwrap(await this.db.from("client_docs").insert(input).select("*").single()) as ClientDoc; }
-  async updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status">>) { return unwrap(await this.db.from("client_docs").update(patch).eq("id", id).select("*").single()) as ClientDoc; }
+  async updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status" | "folder_id">>) { return unwrap(await this.db.from("client_docs").update(patch).eq("id", id).select("*").single()) as ClientDoc; }
   async deleteDoc(id: string) { unwrap(await this.db.from("client_docs").delete().eq("id", id)); }
   async listStalePendingDocs(before: string) { return unwrap(await this.db.from("client_docs").select("*").eq("status", "pending").lt("created_at", before).limit(200)) as ClientDoc[]; }
 
@@ -91,7 +125,7 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   }
   async getInvoice(id: string) { return unwrap(await this.db.from("invoices").select("*").eq("id", id).maybeSingle()) as Invoice | null; }
   async insertInvoice(input: InvoiceInsert) { return unwrap(await this.db.from("invoices").insert(input).select("*").single()) as Invoice; }
-  async updateInvoice(id: string, patch: Partial<Pick<Invoice, "status" | "lines" | "total_cents" | "paid_cents" | "paid_on" | "due_on" | "notes">>) { return unwrap(await this.db.from("invoices").update(patch).eq("id", id).select("*").single()) as Invoice; }
+  async updateInvoice(id: string, patch: Partial<Pick<Invoice, "status" | "lines" | "total_cents" | "paid_cents" | "paid_on" | "due_on" | "notes" | "tax_year" | "tax_cents" | "payer" | "archived_at">>) { return unwrap(await this.db.from("invoices").update(patch).eq("id", id).select("*").single()) as Invoice; }
   async nextInvoiceNumber() {
     const rows = unwrap(await this.db.from("invoices").select("number").order("number", { ascending: false }).limit(1)) as { number: string }[];
     const n = rows[0] ? Number(rows[0].number.replace(/\D/g, "")) + 1 : 1;

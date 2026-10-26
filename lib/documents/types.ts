@@ -30,10 +30,16 @@ export type LibraryDocument = {
   status: DocumentStatus;
   current_version_id: string | null;
   signature_consent: string | null;
+  /** The folder it is kept in, or none. */
+  folder_id?: string | null;
+  /** For a PDF: its own box names matched to what goes in them (see fields.ts). */
+  field_map?: Record<string, string>;
   created_by: string | null;
   created_at: string;
   updated_at: string;
 } & ArchiveFields;
+
+export type DocumentFolder = { id: string; tenant_id: string; name: string; parent_id: string | null; /** The client it belongs to; none = an internal-documents folder. */ client_id: string | null; created_by: string | null; created_at: string };
 
 export type DocumentVersion = {
   id: string;
@@ -122,13 +128,21 @@ export interface DocumentsRepo {
   listDocuments(): Promise<LibraryDocument[]>;
   getDocument(id: string): Promise<LibraryDocument | null>;
   insertDocument(input: Pick<LibraryDocument, "name" | "description" | "file_type" | "created_by">): Promise<LibraryDocument>;
-  updateDocument(id: string, patch: Partial<Pick<LibraryDocument, "name" | "description" | "status" | "current_version_id" | "signature_consent">>): Promise<LibraryDocument>;
+  updateDocument(id: string, patch: Partial<Pick<LibraryDocument, "name" | "description" | "status" | "current_version_id" | "signature_consent" | "folder_id" | "field_map">>): Promise<LibraryDocument>;
   deleteDocument(id: string): Promise<void>;
+
+  /** The internal folders (no client), or one client's. */
+  listFolders(scope?: { clientId: string | null }): Promise<DocumentFolder[]>;
+  insertFolder(input: { name: string; parent_id: string | null; client_id: string | null; created_by: string | null }): Promise<DocumentFolder>;
+  updateFolder(id: string, patch: Partial<Pick<DocumentFolder, "name" | "parent_id">>): Promise<DocumentFolder>;
+  removeFolder(id: string): Promise<void>;
+  /** Deliveries made to one client, newest first. */
+  listDeliveriesForClient(clientId: string, limit: number): Promise<Delivery[]>;
 
   listVersions(documentId: string): Promise<DocumentVersion[]>;
   getVersion(id: string): Promise<DocumentVersion | null>;
   insertVersion(input: Pick<DocumentVersion, "document_id" | "version" | "storage_path" | "file_name" | "size_bytes" | "created_by">): Promise<DocumentVersion>;
-  updateVersion(id: string, patch: Partial<Pick<DocumentVersion, "status" | "sha256" | "merge_fields" | "has_signature_field" | "ready_at">>): Promise<DocumentVersion>;
+  updateVersion(id: string, patch: Partial<Pick<DocumentVersion, "status" | "sha256" | "merge_fields" | "has_signature_field" | "ready_at" | "storage_path" | "size_bytes">>): Promise<DocumentVersion>;
 
   insertDelivery(input: NewDelivery): Promise<Delivery>;
   getDelivery(id: string): Promise<Delivery | null>;

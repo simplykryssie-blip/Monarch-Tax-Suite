@@ -1,3 +1,5 @@
+import { checkInvite, INVITE_PROBLEMS } from "./invites.ts";
+import type { NewNotification } from "../notifications/types.ts";
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import type { CommerceRepo } from "../commerce/types.ts";
@@ -14,7 +16,7 @@ import { evaluate, type RawAnswers } from "./logic.ts";
 import { buildSubmissionPdf, type PdfAttachment, type PdfSection } from "./pdf.ts";
 import { checkSettings, DEFAULT_SETTINGS, readSettings, respondentKeys, settingsProblems, showsTextConsent, type FormSettings } from "./settings.ts";
 import { effectiveBrand, type Brand } from "../brands.ts";
-import type { FirmsRepo, FormRow, FormsRepo, FormStores, FormVersion, SealedAnswer, SignatureRecord, StoredAnswers, Submission, SubmissionStatus, UploadRow } from "./types.ts";
+import type { FirmsRepo, FormInvite, FormRow, FormsRepo, FormStores, FormVersion, SealedAnswer, SignatureRecord, StoredAnswers, Submission, SubmissionStatus, UploadRow } from "./types.ts";
 
 // The Form Builder for one tenant. Every storage path starts with the tenant id and is built here from rows the
 // tenant can see; signed links are only ever made for paths inside the tenant's own folder.
@@ -34,6 +36,12 @@ export type FormDeps = {
   brandCatalog?: () => Promise<{ brands: Brand[]; senderDomain: Record<string, string> }>;
   /** Adds a respondent to Leads (source: the form's name). Wired on the server; absent in tests. */
   addLead?: (input: { formName: string; name: string | null; email: string; phone?: string | null; textConsent?: boolean }) => Promise<unknown>;
+  /** Told when a form is submitted, for the bell. Wired on the server; absent in tests. */
+  told?: (n: NewNotification) => Promise<void>;
+  /** Saves a finished form's PDF in the client's files, when it came through a client's personal link. Wired on the server. */
+  saveToClient?: (submission: Submission, form: FormRow) => Promise<void>;
+  /** The details of one client, for a personal link. Wired on the server. */
+  clientFor?: (clientId: string) => Promise<{ full_name: string; email: string | null; phone: string | null; address: string | null } | null>;
   now?: () => Date;
 };
 
@@ -442,7 +450,7 @@ export async function resumeDraft(deps: FormDeps, pf: PublicForm, token: string)
 }
 
 export type SignatureInput = { consent: boolean; signedName: string; method: "typed" | "drawn"; typed?: string; png?: Uint8Array };
-export type SubmitInput = { token: string | null; answers: RawAnswers; signature: SignatureInput | null; honeypot: string; stamp: string; isTest?: boolean };
+export type SubmitInput = { token: string | null; answers: RawAnswers; signature: SignatureInput | null; honeypot: string; stamp: string; isTest?: boolean; /** The personal link this was opened from, when it was sent to a client. */ inviteToken?: string | null };
 
 /**
  * Submits a form. The answers are checked against the published version (hidden and skipped questions dropped),
@@ -454,6 +462,12 @@ export async function submitForm(deps: FormDeps, publicId: string, input: Submit
   const pf = await publicForm(deps, publicId);
   if (!pf) throw new ValidationError("This form link is not valid.");
   if (pf.state !== "open" && !input.isTest) throw new ValidationError(pf.settings.closed_message);
+  let invite: FormInvite | null = null;
+  if (input.inviteToken) {
+    const state = await checkInvite(deps, pf.form.id, input.inviteToken);
+    if (!state.ok) throw new ValidationError(INVITE_PROBLEMS[state.reason]);
+    invite = state.invite;
+  }
   const def = pf.version.definition;
   const profile = await deps.profile();
   const now = nowOf(deps);
@@ -561,6 +575,8 @@ export async function submitForm(deps: FormDeps, publicId: string, input: Submit
     receipt_token_hash: hashToken(receiptToken),
     receipt_expires_at: new Date(now.getTime() + RECEIPT_MINUTES * 60_000).toISOString(),
     spam_reason: spam,
+    // Only through a personal link: the column is not written otherwise.
+    ...(invite ? { client_id: invite.client_id } : {}),
   };
   let submission: Submission | null;
   const existing = draft ?? (signature?.method === "drawn" ? await deps.repo.getSubmission(id) : null);
@@ -570,6 +586,7 @@ export async function submitForm(deps: FormDeps, publicId: string, input: Submit
   } else {
     submission = await deps.repo.insertSubmission({ id, form_id: pf.form.id, started_at: iso(deps), ...patch });
   }
+  if (invite) await deps.repo.updateInvite(invite.id, { submission_id: submission.id });
   // Files uploaded to the draft but not part of the final answers are discarded.
   const leftovers = uploads.filter((u) => u.kind === "file" && !attached.some((a) => a.id === u.id));
   if (leftovers.length) {

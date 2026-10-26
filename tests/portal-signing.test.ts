@@ -7,7 +7,7 @@ import { MemoryDocumentStore, MemoryDocumentsRepo } from "./documents-memory.ts"
 import { finishVersionUpload, setConsentText, startVersionUpload, type DocumentDeps } from "../lib/documents/service.ts";
 import { ASK_FIELD, askLabel, isMergeField } from "../lib/documents/fields.ts";
 import { clientDocumentValues } from "../lib/documents/values.ts";
-import { askFieldsFor, sendForSignature, type SigningClient } from "../lib/portal/signing.ts";
+import { askFieldsFor, sendToClient, type SigningClient } from "../lib/portal/signing.ts";
 import { Keyring } from "../lib/ssn/keyring.ts";
 import { hasStoredSsn, ssnForDocument, storeSsn, type KeyRow, type SsnDeps, type SsnRepo } from "../lib/ssn/service.ts";
 
@@ -85,8 +85,8 @@ describe("sending a form for signature", () => {
   test("refuses until every ask field is filled, then fills the copy, ties it to the client, and uses the stored SSN", async () => {
     const { docs, store, ssn, ssnRepo, document } = await setup(F8821);
     await storeSsn(ssn, { clientId: CLIENT, ssn: "123-45-6789", actorId: "s1" });
-    await assert.rejects(sendForSignature({ docs, ssn, now: () => NOW }, { documentId: document.id, client, asks: { "ask.tax_matters": "Income tax" }, actorId: "s1" }), /Fill in: .*Tax form numbers.*Years or periods/);
-    const made = await sendForSignature({ docs, ssn, now: () => NOW }, { documentId: document.id, client, asks: { "ask.tax_matters": "Income tax", "ask.form_numbers": "1040", "ask.tax_years": "2023 through 2025" }, actorId: "s1" });
+    await assert.rejects(sendToClient({ docs, ssn, now: () => NOW }, { documentId: document.id, kind: "signature", client, asks: { "ask.tax_matters": "Income tax" }, actorId: "s1" }), /Fill in: .*Tax form numbers.*Years or periods/);
+    const made = await sendToClient({ docs, ssn, now: () => NOW }, { documentId: document.id, kind: "signature", client, asks: { "ask.tax_matters": "Income tax", "ask.form_numbers": "1040", "ask.tax_years": "2023 through 2025" }, actorId: "s1" });
     assert.equal(made.delivery.client_id, CLIENT);
     assert.equal(made.delivery.kind, "signature");
     assert.equal(made.delivery.recipient_email, "client@example.com");
@@ -104,7 +104,7 @@ describe("sending a form for signature", () => {
 
   test("a form that needs the SSN is refused when none is on file; the audit records no number", async () => {
     const { docs, ssn, ssnRepo, document } = await setup(["client_name", "client_ssn"]);
-    await assert.rejects(sendForSignature({ docs, ssn, now: () => NOW }, { documentId: document.id, client, asks: {}, actorId: "s1" }), /no Social Security number on file/);
+    await assert.rejects(sendToClient({ docs, ssn, now: () => NOW }, { documentId: document.id, kind: "signature", client, asks: {}, actorId: "s1" }), /no Social Security number on file/);
     assert.deepEqual(ssnRepo.audits, []);
     assert.equal(await hasStoredSsn(ssn, CLIENT), false);
   });
@@ -112,14 +112,23 @@ describe("sending a form for signature", () => {
   test("a form without an SSN field never touches the stored number", async () => {
     const { docs, ssn, ssnRepo, document } = await setup(["client_name", "firm_name"]);
     await storeSsn(ssn, { clientId: CLIENT, ssn: "123456789", actorId: "s1" });
-    await sendForSignature({ docs, ssn, now: () => NOW }, { documentId: document.id, client, asks: {}, actorId: "s1" });
+    await sendToClient({ docs, ssn, now: () => NOW }, { documentId: document.id, kind: "signature", client, asks: {}, actorId: "s1" });
     assert.deepEqual(ssnRepo.audits, ["ssn.stored"]);
+  });
+
+  test("a document can also be sent to read: no signature request, no reminders, still tied to the client", async () => {
+    const { docs, ssn, document } = await setup(["client_name", "firm_name"]);
+    const made = await sendToClient({ docs, ssn, now: () => NOW }, { documentId: document.id, kind: "send", client, asks: {}, actorId: "s1" });
+    assert.equal(made.delivery.kind, "send");
+    assert.equal(made.delivery.client_id, CLIENT);
+    assert.equal(made.signature, null);
+    assert.deepEqual((await docs.repo.listDeliveriesForClient(CLIENT, 10)).map((d) => d.id), [made.delivery.id]);
   });
 
   test("needs a client email and an active client", async () => {
     const { docs, ssn, document } = await setup(["client_name"]);
-    await assert.rejects(sendForSignature({ docs, ssn }, { documentId: document.id, client: { ...client, email: null }, asks: {}, actorId: null }), /Add the client's email/);
-    await assert.rejects(sendForSignature({ docs, ssn }, { documentId: document.id, client: { ...client, archived_at: "2027-01-01" }, asks: {}, actorId: null }), /archived/);
+    await assert.rejects(sendToClient({ docs, ssn }, { documentId: document.id, kind: "signature", client: { ...client, email: null }, asks: {}, actorId: null }), /Add the client's email/);
+    await assert.rejects(sendToClient({ docs, ssn }, { documentId: document.id, kind: "signature", client: { ...client, archived_at: "2027-01-01" }, asks: {}, actorId: null }), /archived/);
   });
 
   test("the full number never appears in what a use writes to the audit trail, and the decrypt is bound to the client", async () => {

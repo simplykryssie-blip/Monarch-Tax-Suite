@@ -1,55 +1,59 @@
 import Link from "next/link";
 import { Flash, PageTitle } from "@/components/admin/ui";
+import { Modal } from "@/components/ui/modal";
+import { AddWorkForm } from "@/components/workspace/add-work-form";
+import { PipelinePicker } from "@/components/workspace/pipeline-picker";
 import { WorkBoard } from "@/components/workspace/work-board";
-import { buildBoard } from "@/lib/workspace/rules.ts";
-import { RETURN_KINDS } from "@/lib/workspace/types.ts";
-import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
-import { addReturnAction } from "../actions";
+import { pipelinesRepo } from "@/lib/pipelines/server";
+import { isLive } from "@/lib/pipelines/service.ts";
+import { buildBoard, buildWorkBoard } from "@/lib/workspace/rules.ts";
+import { todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
+import { moveWorkAction } from "../actions";
 import { WorkspaceSetup } from "../setup";
 
-/** Returns: a board of every return for a tax year, a column per stage of your tax-return pipeline. */
-export default async function MyWork({ searchParams }: { searchParams: Promise<{ year?: string; notice?: string; error?: string }> }) {
+/** Work: a board for each pipeline the office runs. Tax returns is the default; any other pipeline shows its own work. */
+export default async function MyWork({ searchParams }: { searchParams: Promise<{ year?: string; pipeline?: string; notice?: string; error?: string }> }) {
   const sp = await searchParams;
   const result = await workspaceLoad(async () => {
     const repo = workspaceRepo();
-    const [stages, returns, clients] = await Promise.all([boardStages(), repo.listReturns(), repo.listClients({ includeArchived: true })]);
-    return { stages, returns, clients };
+    const pipelines = (await pipelinesRepo().list()).filter(isLive);
+    const chosen = pipelines.find((p) => p.id === sp.pipeline) ?? pipelines.find((p) => p.kind === "returns" && p.is_default) ?? pipelines.find((p) => p.kind === "returns") ?? pipelines[0] ?? null;
+    const [returns, work, clients] = await Promise.all([repo.listReturns(), chosen && chosen.kind !== "returns" ? repo.listWork({ pipelineId: chosen.id }) : Promise.resolve([]), repo.listClients({ includeArchived: true })]);
+    return { pipelines, chosen, returns, work, clients };
   });
   return (
     <>
-      <PageTitle title="Returns">Drag a return to the next stage as you work on it. Extensions and amendments are cards of their own. Click a card to open the client.</PageTitle>
+      <PageTitle title="Work">Drag a card to the next stage as you work on it. Click a card to open the client.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <WorkspaceSetup message={result.message} /> : (() => {
-        const { stages, returns, clients } = result.data;
+        const { pipelines, chosen, returns, work, clients } = result.data;
+        if (!chosen) return <p className="monarch-muted">No pipelines yet. <Link href="/pipelines">Create one</Link></p>;
+        const byId = new Map(clients.map((c) => [c.id, c]));
+        const active = clients.filter((c) => !c.archived_at);
+        const isReturns = chosen.kind === "returns";
         const years = [...new Set(returns.map((r) => r.tax_year))].sort((a, b) => b - a);
         const requested = Number(sp.year);
         const year = years.includes(requested) ? requested : years[0] ?? new Date().getUTCFullYear() - 1;
-        const columns = buildBoard(stages, returns, new Map(clients.map((c) => [c.id, c])), year, todayIso());
+        const columns = isReturns ? buildBoard(chosen.stages, returns, byId, year, todayIso()) : buildWorkBoard(chosen.stages, work, byId, todayIso());
         const total = columns.reduce((n, c) => n + c.cards.length, 0);
-        const active = clients.filter((c) => !c.archived_at);
+        const back = isReturns ? `/workspace/work?year=${year}` : `/workspace/work?pipeline=${chosen.id}`;
         return (
           <>
             <div className="monarch-page-actions">
-              <form method="get" className="monarch-inline-form">
-                <label>Tax year <select name="year" defaultValue={String(year)}>{(years.includes(year) ? years : [year, ...years]).map((y) => <option key={y} value={y}>{y}</option>)}</select></label>
-                <button className="monarch-secondary">Show</button>
-              </form>
-              <span className="monarch-muted">{total} {total === 1 ? "return" : "returns"} for {year} · <Link href="/automation/pipelines">Edit the stages</Link></span>
-            </div>
-            <WorkBoard key={`${year}-${total}`} columns={columns} />
-            <section className="monarch-panel" id="add-return" style={{ padding: 20 }}>
-              <h2>Add a return</h2>
-              {active.length === 0 ? <p className="monarch-muted">Add a client first. <Link href="/contacts">Add a client</Link></p> : (
-                <form action={addReturnAction} className="monarch-form">
-                  <input type="hidden" name="back" value={`/workspace/work?year=${year}`} />
-                  <label>Client *<select name="client_id" required defaultValue=""><option value="" disabled>Choose a client…</option>{active.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}</select></label>
-                  <label>Tax year *<input name="tax_year" required inputMode="numeric" maxLength={4} defaultValue={year} /></label>
-                  <label>Kind<select name="kind" defaultValue="original">{Object.entries(RETURN_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-                  <label>Due date<input name="due_on" type="date" /></label>
-                  <div className="is-wide"><button className="monarch-primary">Add return</button></div>
-                </form>
+              {pipelines.length > 1 && <PipelinePicker pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))} current={chosen.id} />}
+              {isReturns && (
+                <nav className="subtabs" aria-label="Tax year">
+                  {(years.includes(year) ? years : [year, ...years]).map((y) => <Link key={y} href={`/workspace/work?pipeline=${chosen.id}&year=${y}`} className={"subtab" + (y === year ? " is-on" : "")} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
+                </nav>
               )}
-            </section>
+              <span className="monarch-muted">{total} {total === 1 ? "card" : "cards"}{isReturns ? ` for ${year}` : ""}</span>
+              {active.length > 0 && (
+                <Modal label="Add" title="Add work" className="monarch-primary">
+                  <AddWorkForm clients={active.map((c) => ({ id: c.id, name: c.full_name }))} pipelines={pipelines.map((p) => ({ id: p.id, name: p.name, returns: p.kind === "returns" }))} pipelineId={chosen.id} year={year} back={back} />
+                </Modal>
+              )}
+            </div>
+            <WorkBoard key={`${chosen.id}-${year}-${total}`} columns={columns} move={isReturns ? undefined : moveWorkAction} />
           </>
         );
       })()}

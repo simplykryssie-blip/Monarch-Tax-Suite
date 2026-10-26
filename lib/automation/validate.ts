@@ -50,7 +50,7 @@ export type WorkflowFormInput = {
 /** The tenant's own records a workflow may refer to. */
 export type WorkflowCatalog = {
   /** `merge_fields`: the current version's merge fields, so form answers used by a document can be checked. */
-  documents: { id: string; name: string; file_type: "pdf" | "docx"; status: string; merge_fields?: string[] }[];
+  documents: { id: string; name: string; file_type: string; status: string; merge_fields?: string[] }[];
   senders: { id: string; from_name?: string; address?: string; domain_id?: string }[];
   attributes: { key: string; label: string; kind: "choice" | "text"; options: string[] }[];
   /** The tenant's published forms and their questions. */
@@ -169,6 +169,12 @@ function validateAction(a: RawAction, ctx: Ctx): Action {
     const value = text(a.value, 20);
     if (!Object.prototype.hasOwnProperty.call(LEAD_STATUSES, value)) throw new ValidationError(`Choose a lead status: ${Object.keys(LEAD_STATUSES).join(", ")}.`);
     return { type: "update_contact", field: "lead_status", value };
+  }
+  if (a.type === "move_stage") {
+    const pipeline_id = text(a.pipeline_id, 60);
+    const stage_id = text(a.stage_id, 80);
+    if (!pipeline_id || !stage_id) throw new ValidationError("Choose the pipeline and the stage to move to.");
+    return { type: "move_stage", pipeline_id, stage_id };
   }
   if (a.type === "send_text") {
     const body = typeof a.body === "string" ? a.body.replace(/\r\n/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").trim() : "";

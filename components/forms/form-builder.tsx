@@ -6,6 +6,7 @@ import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, 
 import { SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { publishFormAction, saveDraftAction } from "@/app/(admin)/forms/actions";
+import { FORM_MERGE_KEYS, FORM_MERGE_LABELS } from "@/lib/forms/merge.ts";
 import {
   CONDITION_OPS, DEFAULT_TYPES, DISPLAY_TYPES, FIELD_WIDTHS, FULL_ROW_TYPES, INTERNAL_TYPES, WIDTH_LABELS, FIELD_LABELS, FIELD_TYPES, FILE_KINDS, IDENTIFIER_FORMATS, LIMITS, MAX_FILES_PER_FIELD, OP_LABELS, checkDefinition, keyFromLabel, newField, newId,
   type Condition, type Field, type FieldType, type FormDefinition, type Page, type Section, type ShowRule, type SkipRule,
@@ -43,6 +44,18 @@ function prune(d: FormDefinition): FormDefinition {
   d.rules = d.rules.filter((r) => fieldIds.has(r.target) || sectionIds.has(r.target)).map((r) => ({ ...r, conditions: r.conditions.filter((c) => fieldIds.has(c.field)) })).filter((r) => r.conditions.length);
   for (const p of d.pages) p.skips = p.skips.filter((k) => k.goto === "end" || pageIds.has(k.goto)).map((k) => ({ ...k, conditions: k.conditions.filter((c) => fieldIds.has(c.field)) })).filter((k) => k.conditions.length);
   return d;
+}
+
+/** Adds a client or firm detail ({{client_name}} and so on) to some text: nobody has to type brackets. */
+function InsertDetail({ onInsert }: { onInsert: (token: string) => void }) {
+  return (
+    <label>Insert a detail
+      <select value="" onChange={(e) => { if (e.target.value) onInsert(`{{${e.target.value}}}`); }}>
+        <option value="">Choose a client or firm detail…</option>
+        {FORM_MERGE_KEYS.map((k) => <option key={k} value={k}>{FORM_MERGE_LABELS[k]}</option>)}
+      </select>
+    </label>
+  );
 }
 
 function PaletteItem({ type, onAdd }: { type: FieldType; onAdd: () => void }) {
@@ -126,6 +139,7 @@ function ConditionsEditor({ conditions, earlier, onChange }: { conditions: Condi
 }
 
 export function FormBuilder(props: Props) {
+  const [bumps, setBumps] = useState<Record<string, number>>({});
   const [def, setDef] = useState<FormDefinition>(props.initial);
   const [pageId, setPageId] = useState(props.initial.pages[0]?.id ?? "");
   const [sel, setSel] = useState<Sel>(null);
@@ -276,9 +290,15 @@ export function FormBuilder(props: Props) {
       <div className="mf-panel-body">
         <h3>{FIELD_LABELS[f.type]}{f.internal && <span className="mf-badge">STAFF ONLY</span>}</h3>
         {f.type === "paragraph" ? (
-          <RichEditor key={f.id} name={`paragraph_${f.id}`} initial={f.text ?? ""} variant="form" label="Text" rows={6} maxLength={3000} onChange={(md) => updateField(f.id, { text: md.slice(0, 3000) })} />
+          <>
+            <RichEditor key={`${f.id}-${bumps[f.id] ?? 0}`} name={`paragraph_${f.id}`} initial={f.text ?? ""} variant="form" label="Text" rows={6} maxLength={3000} onChange={(md) => updateField(f.id, { text: md.slice(0, 3000) })} />
+            <InsertDetail onInsert={(t) => { updateField(f.id, { text: `${f.text ?? ""} ${t}`.trim().slice(0, 3000) }); setBumps((b) => ({ ...b, [f.id]: (b[f.id] ?? 0) + 1 })); }} />
+          </>
         ) : (
-          <label>{f.type === "heading" ? "Heading" : "Question"}<input value={f.label} onChange={(e) => updateField(f.id, { label: e.target.value })} maxLength={300} /></label>
+          <>
+            <label>{f.type === "heading" ? "Heading" : "Question"}<input value={f.label} onChange={(e) => updateField(f.id, { label: e.target.value })} maxLength={300} /></label>
+            {f.type === "heading" && <InsertDetail onInsert={(t) => updateField(f.id, { label: `${f.label} ${t}`.trim().slice(0, 300) })} />}
+          </>
         )}
         {!display && (
           <>
@@ -306,6 +326,7 @@ export function FormBuilder(props: Props) {
                 {f.type === "long_text"
                   ? <label>Pre-filled value (optional)<textarea rows={3} value={f.defaultValue ?? ""} onChange={(e) => updateField(f.id, { defaultValue: e.target.value, locked: e.target.value ? f.locked : undefined })} maxLength={20000} /></label>
                   : <label>Pre-filled value (optional)<input value={f.defaultValue ?? ""} onChange={(e) => updateField(f.id, { defaultValue: e.target.value, locked: e.target.value ? f.locked : undefined })} maxLength={1000} /></label>}
+                <InsertDetail onInsert={(t) => updateField(f.id, { defaultValue: `${f.defaultValue ?? ""}${f.defaultValue ? " " : ""}${t}`.slice(0, 20000) })} />
                 {!f.internal && (
                   <label className="monarch-check"><input type="checkbox" checked={!!f.locked} disabled={!f.defaultValue} onChange={(e) => updateField(f.id, { locked: e.target.checked || undefined })} /> Pre-fill and lock: the value appears in the field and the person filling in the form can&apos;t change it</label>
                 )}

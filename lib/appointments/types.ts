@@ -4,6 +4,8 @@ export type AppointmentType = {
   id: string; tenant_id: string; slug: string; name: string; description: string | null; location: string | null;
   duration_minutes: number; buffer_before_minutes: number; buffer_after_minutes: number; step_minutes: number;
   min_notice_minutes: number; max_days_ahead: number; reminder_hours: number[]; assignee_id: string | null; active: boolean;
+  /** The form (from the Forms tab) clients are asked to fill in before the visit. */
+  intake_form_id: string | null;
   created_at: string; updated_at: string;
 };
 export type TypeInput = Omit<AppointmentType, "id" | "tenant_id" | "created_at" | "updated_at">;
@@ -29,7 +31,12 @@ export type RuleRow = Rule & { id: string; assignee_id: string | null };
 /** Thrown by the repository when the database refuses an overlapping booking. */
 export class OverlapError extends Error {}
 
+/** The confirmation messages an office has edited. A null field uses the built-in wording. */
+export type BookingMessages = { confirm_subject: string | null; confirm_body: string | null; confirm_sms: string | null };
+
 export interface AppointmentRepo {
+  getMessages(): Promise<BookingMessages | null>;
+  saveMessages(m: BookingMessages, actorId: string | null): Promise<void>;
   listTypes(): Promise<AppointmentType[]>;
   getType(id: string): Promise<AppointmentType | null>;
   getTypeBySlug(slug: string): Promise<AppointmentType | null>;

@@ -29,10 +29,12 @@ export async function formsLoad<T>(fn: () => Promise<T>): Promise<{ ok: true; da
   }
 }
 
-export function FormsSetupRequired({ message }: { message: string }) {
+// The message is kept for logs only; people are told to contact support.
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+export function FormsSetupRequired({ message: _message }: { message: string }) {
   return (
     <div className="monarch-notice">
-      <b>SETUP REQUIRED</b> The Form Builder needs its database tables. Apply <code>supabase/migrations/20261016090000_forms.sql</code>, then reload. <small>({message})</small>
+      <b>NOT SET UP YET</b> This part of your account isn&apos;t ready yet. Please contact support and we&apos;ll finish setting it up. Nothing else is affected. 
     </div>
   );
 }

@@ -33,7 +33,7 @@ export function vercelDomains(env: VercelEnv = process.env, fetcher: Fetch = fet
       const r = await call("POST", `/v10/projects/${project}/domains`, { name: host });
       if (!r.ok) {
         const code = r.json.error?.code ?? "";
-        if (r.status === 409 || /domain_already_in_use|domain_taken|domain_conflict/.test(code)) throw new ValidationError("That domain is already in use on another website host account. If it is yours, remove it there first.");
+        if (r.status === 409 || /domain_already_in_use|domain_taken|domain_conflict/.test(code)) throw new ValidationError("That domain is already attached at the website host (to another account or service), so it can't be connected here yet. If it is yours, remove it from there first, or ask the platform administrator.");
         if (r.status === 400) throw new ValidationError("The website host doesn't accept that domain. Check the spelling.");
         throw new Error(`vercel add domain ${r.status} ${code}`);
       }

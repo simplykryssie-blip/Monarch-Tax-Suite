@@ -46,7 +46,7 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
               <small className="monarch-muted">Shown at the bottom of emails as the address to write to.</small>
             </label>
             <label>Your sign-in address (optional)<input name="app_host" maxLength={253} defaultValue={b.appHost ?? ""} placeholder="app.yourfirm.com" />
-              <small className="monarch-muted">When your team signs in at this address, the page shows your brand. The address must also be added to the app&apos;s hosting (Vercel → Domains).</small>
+              <small className="monarch-muted">When your team signs in at this address, the page shows your brand. The address must also be connected to your account by support.</small>
             </label>
             <label>Logo (PNG, JPG or WebP, up to 4 MB)
               <input type="file" name="logo_file" accept="image/png,image/jpeg,image/webp" />

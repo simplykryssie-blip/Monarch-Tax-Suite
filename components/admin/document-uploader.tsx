@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { finishDocumentUploadAction, startDocumentUploadAction } from "@/app/(admin)/documents/actions";
 
 /**
- * Uploads a PDF or Word document straight to the tenant's private document storage with a one-time URL, then asks
+ * Uploads a file (PDF, Word, Excel or image) straight to the tenant's private document storage with a one-time URL, then asks
  * the server to check it by content and read its merge fields. With `documentId` it adds a new version.
  */
-export function DocumentUploader({ documentId, accept = ".pdf,.docx" }: { documentId?: string; accept?: string }) {
+export function DocumentUploader({ documentId, folderId, accept = ".pdf,.docx,.xlsx,.png,.jpg,.jpeg" }: { documentId?: string; /** A new document goes into this folder. */ folderId?: string; accept?: string }) {
   const input = useRef<HTMLInputElement>(null);
   const name = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -17,11 +17,11 @@ export function DocumentUploader({ documentId, accept = ".pdf,.docx" }: { docume
 
   async function upload() {
     const file = input.current?.files?.[0];
-    if (!file) return setMessage({ ok: false, text: "Choose a PDF or Word (.docx) file first." });
+    if (!file) return setMessage({ ok: false, text: "Choose a file first." });
     setBusy(true);
     setMessage(null);
     try {
-      const ticket = await startDocumentUploadAction({ documentId: documentId ?? null, name: name.current?.value ?? "", fileName: file.name, sizeBytes: file.size });
+      const ticket = await startDocumentUploadAction({ documentId: documentId ?? null, name: name.current?.value ?? "", fileName: file.name, sizeBytes: file.size, folderId: folderId ?? null });
       if (!ticket.ok) return setMessage({ ok: false, text: ticket.error });
       const res = await fetch(ticket.uploadUrl, { method: "PUT", headers: { "content-type": ticket.contentType, "x-upsert": "false" }, body: file });
       if (!res.ok) return setMessage({ ok: false, text: `The upload failed (storage answered ${res.status}). Try again.` });

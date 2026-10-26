@@ -5,19 +5,28 @@ import { partsIn, ymdString } from "../calendar/business.ts";
 import { tenantClient } from "../supabase/service";
 import { currentTenantId } from "../tenants.ts";
 import { automationDeps, safeEmit } from "./server";
+import { invoicePaidNotification } from "../workspace/invoice-notice.ts";
+import { notify } from "../notifications/server";
 import type { SubjectType } from "./types.ts";
 
 // Where the business raises events for workflows: an invoice is paid, a return moves, a tag changes. Each call is a
 // courtesy to the Automation Center and can never fail the action that raised it (safeEmit swallows problems).
 
-export async function emitInvoicePaid(invoiceId: string, tenantId: string = currentTenantId()): Promise<void> {
-  const { data } = await tenantClient(tenantId).from("invoices").select("id, status").eq("id", invoiceId).maybeSingle();
+export async function emitInvoicePaid(invoiceId: string, tenantId: string = currentTenantId(), actorId: string | null = null): Promise<void> {
+  const { data } = await tenantClient(tenantId).from("invoices").select("id, status, number, client_id, total_cents").eq("id", invoiceId).maybeSingle();
   if (data?.status !== "paid") return;
+  // The bell: a payment someone in the office recorded is not news to them, so they are left out of it.
+  await invoicePaidNotice(tenantId, { id: data.id, number: data.number, client_id: data.client_id, total_cents: data.total_cents }, actorId);
   await safeEmit({ type: "invoice.paid", key: `invoice.paid:${invoiceId}`, subject: { type: "invoice", id: invoiceId } }, tenantId);
 }
 
 export async function emitReturnStage(returnId: string, stageId: string): Promise<void> {
   await safeEmit({ type: "return.stage_changed", key: `return.stage_changed:${returnId}:${stageId}:${Math.floor(Date.now() / 60_000)}`, subject: { type: "return", id: returnId }, data: { stage_id: stageId } });
+}
+
+/** Work other than a tax return moved to a new stage. The workflow runs for the client the work belongs to. */
+export async function emitWorkStage(workId: string, clientId: string, pipelineId: string, stageId: string): Promise<void> {
+  await safeEmit({ type: "work.stage_changed", key: `work.stage_changed:${workId}:${stageId}:${Math.floor(Date.now() / 60_000)}`, subject: { type: "client", id: clientId }, data: { stage_id: stageId, pipeline_id: pipelineId, work_id: workId } });
 }
 
 /** Tags that were added or removed between two lists, one event each. Tags a workflow changes don't come through here. */
@@ -62,4 +71,9 @@ export async function runTriggerSweeps(tenantId: string): Promise<number> {
     }
   }
   return raised;
+}
+
+async function invoicePaidNotice(tenantId: string, invoice: { id: string; number: string; client_id: string; total_cents: number }, actorId: string | null): Promise<void> {
+  const { data: client } = await tenantClient(tenantId).from("clients").select("full_name, owner_id").eq("id", invoice.client_id).maybeSingle();
+  await notify(tenantId, { ...invoicePaidNotification(invoice, client?.full_name ?? "A client"), clientId: invoice.client_id, ownerId: client?.owner_id ?? null, actorId });
 }

@@ -4,6 +4,7 @@ import { vercelDomains } from "./vercel.ts";
 import type { Site, SiteDomain, SitePage, SitesDeps } from "./service.ts";
 import { SupabaseSitesRepo } from "./supabase-repo.ts";
 import { cleanRequestHost } from "./host.ts";
+import { MONARCH_TENANT_ID } from "../tenants.ts";
 
 // Server wiring for websites. The editor acts as the signed-in office (tenant client). The public renderer finds which
 // office a hostname belongs to with one logged platform lookup of site_domains, and from then on acts as that office.
@@ -16,10 +17,14 @@ async function hostnameTaken(host: string): Promise<boolean> {
 }
 
 export function sitesDeps(tenantId: string): SitesDeps {
-  return { repo: new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken), domains: vercelDomains() };
+  return { repo: new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken), domains: vercelDomains(), adoptOwn: tenantId === MONARCH_TENANT_ID };
 }
 
-export type PublicSite = { tenantId: string; site: Site; pages: SitePage[]; domain: Pick<SiteDomain, "hostname" | "kind" | "status"> };
+export type PublicSite = {
+  tenantId: string; site: Site; pages: SitePage[]; domain: Pick<SiteDomain, "hostname" | "kind" | "status">;
+  /** The office's own connected domain, once it is working. The free address then sends visitors here. */
+  primaryHost: string | null;
+};
 
 /** The site behind a hostname, with its published pages; null when no office uses that hostname. */
 export async function siteForHost(rawHost: string): Promise<PublicSite | null> {
@@ -30,10 +35,11 @@ export async function siteForHost(rawHost: string): Promise<PublicSite | null> {
   if (!data) return null;
   const tenantId = data.tenant_id as string;
   const repo = new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken);
-  const site = await repo.getSite();
-  if (!site || site.id !== data.site_id) return null;
+  const site = await repo.getSite(data.site_id as string);
+  if (!site) return null;
   const pages = await repo.listPages(site.id);
-  return { tenantId, site, pages, domain: { hostname: data.hostname as string, kind: data.kind as SiteDomain["kind"], status: data.status as SiteDomain["status"] } };
+  const own = (await repo.listDomains(site.id)).find((d) => d.kind === "custom" && d.status === "active");
+  return { tenantId, site, pages, primaryHost: own?.hostname ?? null, domain: { hostname: data.hostname as string, kind: data.kind as SiteDomain["kind"], status: data.status as SiteDomain["status"] } };
 }
 
 // A short memory of which hostnames have a site, so the proxy doesn't query on every request.

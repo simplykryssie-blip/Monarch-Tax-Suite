@@ -77,7 +77,7 @@ describe("where the keys come from", () => {
       assert.ok(!line.includes(TEST_KEY) && !line.includes(LIVE_KEY) && !/sk_|rk_|whsec_/.test(line), line);
     }
     assert.match(describeKey("Secret key", "settings", "x9Z1", "live"), /ends x9Z1.*live mode/);
-    assert.match(describeKey("Secret key", "environment", null, "test"), /remove it from Vercel/);
+    assert.match(describeKey("Secret key", "environment", null, "test"), /remove it from the server settings/);
     assert.match(describeKey("Secret key", null, null, null), /not set/);
   });
 });

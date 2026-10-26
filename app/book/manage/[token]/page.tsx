@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { SlotPicker } from "@/components/book/slot-picker";
+import { MonthPicker } from "@/components/book/month-picker";
 import { ThemedPage } from "@/components/forms/themed-page";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { bookingContext } from "@/lib/appointments/public";
@@ -25,22 +25,22 @@ export default async function ManagePage({ params, searchParams }: { params: Pro
   const { a, t } = found;
   const upcoming = a.status === "booked" && Date.parse(a.starts_at) > clock();
   const cal = upcoming ? await deps.calendar() : null;
-  const slots = upcoming && cal ? await listSlots(deps, t, new Intl.DateTimeFormat("en-CA", { timeZone: cal.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()), 14, a.id).catch(() => []) : [];
+  const slots = upcoming && cal ? await listSlots(deps, t, new Intl.DateTimeFormat("en-CA", { timeZone: cal.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()), Math.min(t.max_days_ahead, 90), a.id).catch(() => []) : [];
   return (
     <ThemedPage theme={theme} firm={firm} poweredBy={!!brand?.showPoweredBy}>
       {firm && <div className="monarch-eyebrow">{firm.toUpperCase()}</div>}
       <h1>{sp.booked ? "You're booked" : sp.cancelled ? "Appointment cancelled" : sp.moved ? "Appointment moved" : "Your appointment"}</h1>
       {sp.error && <p className="monarch-alert is-error" role="alert">{sp.error}</p>}
-      <p><strong>{t.name}</strong><br />{whenFor(a)}{t.location ? <><br />{t.location}</> : null}</p>
+      <div className="bk-summary"><b>{t.name}</b><span>{whenFor(a)}</span>{t.location ? <span><br />{t.location}</span> : null}</div>
       {a.status === "cancelled" && <p>This appointment has been cancelled.</p>}
-      {a.status === "booked" && <p><a className="monarch-secondary" href={`/book/manage/${token}/ics`}>Add to my calendar</a></p>}
+      {a.status === "booked" && <div className="bk-actions"><a className="monarch-secondary" href={`/book/manage/${token}/ics`}>Add to my calendar</a></div>}
       {sp.booked && <p className="monarch-muted">We emailed you a confirmation with this link.</p>}
       {upcoming && (
         <>
           <details style={{ marginTop: 16 }}>
             <summary>Pick another time</summary>
             <form action={rescheduleAction.bind(null, token)} className="monarch-form">
-              <div className="is-wide"><SlotPicker slots={slots.map((s) => s.start.toISOString())} officeTz={cal!.timeZone} /></div>
+              <div className="is-wide"><MonthPicker slots={slots.map((s) => s.start.toISOString())} officeTz={cal!.timeZone} /></div>
               <div className="is-wide"><SubmitOnce busy="Moving…">Move my appointment</SubmitOnce></div>
             </form>
           </details>

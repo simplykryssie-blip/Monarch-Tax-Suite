@@ -6,8 +6,11 @@ import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { appointmentDeps } from "@/lib/appointments/server";
+import { createLead } from "@/lib/leads/service.ts";
+import { leadsDeps } from "@/lib/leads/server";
+import { workspaceRepo } from "@/lib/workspace/server";
 import {
-  addDateOverride, bookByStaff, cancelByStaff, createType, editType, markOutcome, officeLocalToIso, rescheduleByStaff, saveWeekly,
+  addDateOverride, bookByStaff, cancelByStaff, createType, editType, markOutcome, officeLocalToIso, rescheduleByStaff, saveBookingMessages, saveWeekly,
 } from "@/lib/appointments/service.ts";
 
 // Every action re-checks administrator access and acts for the signed-in tenant only.
@@ -36,6 +39,37 @@ async function act(back: string, fn: (adminId: string) => Promise<string>, then?
 const office = () => appointmentDeps();
 const timeZone = async () => (await office().calendar()).timeZone;
 
+export type PersonHit = { kind: "client" | "lead"; id: string; name: string; email: string | null; phone: string | null };
+
+/** Names matching what is being typed, from clients and leads, for the New appointment form. */
+export async function searchPeopleAction(q: string): Promise<PersonHit[]> {
+  await requireAdmin();
+  const term = typeof q === "string" ? q.trim().slice(0, 80) : "";
+  if (term.length < 2) return [];
+  const [clients, leads] = await Promise.all([
+    workspaceRepo().listClients({ q: term, includeArchived: false }).catch(() => []),
+    leadsDeps().repo.listLeads({ q: term, limit: 8 }).catch(() => []),
+  ]);
+  return [
+    ...clients.slice(0, 8).map((c): PersonHit => ({ kind: "client", id: c.id, name: c.full_name, email: c.email, phone: c.phone })),
+    ...leads.slice(0, 8).map((l): PersonHit => ({ kind: "lead", id: l.id, name: l.full_name, email: l.email, phone: l.phone })),
+  ].slice(0, 8);
+}
+
+/** Adds a lead from the New appointment form and hands its details back so the form can fill itself in. */
+export async function addLeadFromCalendarAction(input: { name: string; email: string; phone: string }): Promise<{ ok: true; person: PersonHit } | { ok: false; error: string }> {
+  const admin = await requireAdmin();
+  try {
+    const lead = await createLead(leadsDeps(), { full_name: input.name, email: input.email, phone: input.phone, source: "calendar", status: "new" }, admin.userId);
+    return { ok: true, person: { kind: "lead", id: lead.id, name: lead.full_name, email: lead.email, phone: lead.phone } };
+  } catch (e) {
+    if (e instanceof ValidationError) return { ok: false, error: e.message };
+    if (e instanceof Error && /already a lead/.test(e.message)) return { ok: false, error: e.message };
+    console.error(`calendar add lead failed: ${sanitizeError(e, 200)}`);
+    return { ok: false, error: "That did not work. Nothing was added. Please try again." };
+  }
+}
+
 export async function bookAction(form: FormData) {
   await act("/calendar/new", async (adminId) => {
     const tz = await timeZone();
@@ -48,15 +82,15 @@ export async function bookAction(form: FormData) {
 }
 
 export async function cancelAction(form: FormData) {
-  await act("/calendar", async () => {
-    await cancelByStaff(office(), str(form, "id"), str(form, "reason"), form.get("notify") === "on");
+  await act("/calendar", async (adminId) => {
+    await cancelByStaff(office(), str(form, "id"), str(form, "reason"), form.get("notify") === "on", adminId);
     return "Appointment cancelled.";
   });
 }
 
 export async function moveAction(form: FormData) {
-  await act("/calendar", async () => {
-    await rescheduleByStaff(office(), str(form, "id"), officeLocalToIso(str(form, "starts_at"), await timeZone()));
+  await act("/calendar", async (adminId) => {
+    await rescheduleByStaff(office(), str(form, "id"), officeLocalToIso(str(form, "starts_at"), await timeZone()), adminId);
     return "Appointment moved.";
   });
 }
@@ -68,8 +102,16 @@ export async function outcomeAction(form: FormData) {
   });
 }
 
+export async function saveBookingMessagesAction(form: FormData) {
+  await act("/settings/calendar", async (adminId) => {
+    const reset = str(form, "reset") === "yes";
+    await saveBookingMessages(office(), reset ? {} : Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string")), adminId);
+    return reset ? "Back to the standard wording." : "Messages saved.";
+  });
+}
+
 export async function saveTypeAction(form: FormData) {
-  await act("/calendar/types", async (adminId) => {
+  await act("/settings/calendar", async (adminId) => {
     const raw: Record<string, unknown> = Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string"));
     raw.assignee_id = raw.assignee === "me" ? adminId : "";
     raw.active = form.get("active") === "on";
@@ -96,7 +138,7 @@ function weeklyFrom(form: FormData): Record<number, [string, string][]> {
 
 export async function saveWeeklyAction(form: FormData) {
   const who = str(form, "who") === "me" ? "me" : "office";
-  await act(`/calendar/availability?who=${who}`, async (adminId) => {
+  await act(`/settings/calendar?who=${who}`, async (adminId) => {
     await saveWeekly(office(), who === "me" ? adminId : null, weeklyFrom(form));
     return "Weekly hours saved.";
   });
@@ -104,7 +146,7 @@ export async function saveWeeklyAction(form: FormData) {
 
 export async function addOverrideAction(form: FormData) {
   const who = str(form, "who") === "me" ? "me" : "office";
-  await act(`/calendar/availability?who=${who}`, async (adminId) => {
+  await act(`/settings/calendar?who=${who}`, async (adminId) => {
     await addDateOverride(office(), who === "me" ? adminId : null, { date: str(form, "date"), closed: form.get("closed") === "on", from: str(form, "from"), to: str(form, "to") });
     return "Date saved.";
   });
@@ -112,7 +154,7 @@ export async function addOverrideAction(form: FormData) {
 
 export async function removeOverrideAction(form: FormData) {
   const who = str(form, "who") === "me" ? "me" : "office";
-  await act(`/calendar/availability?who=${who}`, async () => {
+  await act(`/settings/calendar?who=${who}`, async () => {
     await office().repo.removeRule(str(form, "id"));
     return "Date removed.";
   });

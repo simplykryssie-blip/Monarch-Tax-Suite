@@ -4,7 +4,7 @@ import { PortalPanel } from "@/components/portal/panel";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
-import { ClientDocUpload } from "@/components/workspace/client-doc-upload";
+import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { DetailsCard, type Details } from "@/components/contacts/details-card";
 import { MergeChoice } from "@/components/contacts/merge-choice";
 import { MessageComposer } from "@/components/contacts/message-composer";
@@ -12,17 +12,26 @@ import { NewInvoice } from "@/components/contacts/new-invoice";
 import { Modal } from "@/components/ui/modal";
 import { duplicatesOfClient } from "@/lib/contacts/duplicates.ts";
 import { loadContacts } from "@/lib/contacts/server";
+import { documentDeps } from "@/lib/documents/server";
 import { portalMemberRepo } from "@/lib/portal/server";
 import { describeEvent } from "@/lib/workspace/activity.ts";
 import { balance, dollars, invoiceView, splitName } from "@/lib/workspace/rules.ts";
-import { standardFees } from "@/lib/workspace/service.ts";
-import { ENTITY_TYPES, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
+import { ENTITY_TYPES, PAYERS, RELATIONSHIPS, RETURN_KINDS } from "@/lib/workspace/types.ts";
+import { InvoiceActions } from "@/components/contacts/invoice-actions";
+import { paymentsFor } from "@/lib/workspace/receipts";
+import { InvoiceLink, loadSheetContext } from "@/components/contacts/invoice-sheet";
 import { hasStoredSsn } from "@/lib/ssn/service.ts";
 import { ssnDeps } from "@/lib/ssn/server";
+import type { ClientTask } from "@/lib/workspace/types";
+import { workflowTasksFor } from "@/lib/workspace/workflow-tasks";
+import { pipelinesRepo } from "@/lib/pipelines/server";
 import { boardStages, todayIso, workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 import { TagInput } from "@/app/(admin)/leads/tag-input";
-import { invitePortalAction } from "@/app/portal-staff-actions";
-import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, deleteClientDocAction, invoiceStatusAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, openClientDocAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
+import { cancelFormInviteAction, invitePortalAction } from "@/app/portal-staff-actions";
+import { formDeps } from "@/lib/forms/server";
+import { inviteStatus } from "@/lib/forms/invites.ts";
+import { ClientDrive } from "../../../documents/client-drive";
+import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
 import { emailConfig, emailKeyProblems } from "@/lib/automation/email.ts";
@@ -36,7 +45,7 @@ const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other", po
 const FIVE = 5;
 
 /** One client: the Overview with everything about them at a glance, their documents, messages and billing. */
-export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; notice?: string; error?: string }> }) {
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; folder?: string; notice?: string; error?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
   if (!UUID.test(id)) notFound();
@@ -48,21 +57,40 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     const repo = workspaceRepo();
     const client = await repo.getClient(id);
     if (!client) return null;
-    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard] = await Promise.all([
+    const [returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, work, pipelines, workflowTasks] = await Promise.all([
       repo.listReturns({ clientId: id }), repo.listDocs(id), repo.listMessages(id), repo.listTasks({ clientId: id }), repo.listNotes(id), repo.listInvoices({ clientId: id }), boardStages(),
       repo.listClients({ includeArchived: false }), repo.listDependents(id).catch(() => null), repo.listBusinesses(id).catch(() => null),
-      portalMemberRepo(client.tenant_id).getForClient(id).catch(() => null), repo.getSpouse(id).catch(() => null), repo.listClientEvents(id, 200).catch(() => []), standardFees(repo),
+      portalMemberRepo(client.tenant_id).getForClient(id).catch(() => null), repo.getSpouse(id).catch(() => null), repo.listClientEvents(id, 200).catch(() => []), repo.listWork({ clientId: id }).catch(() => []), pipelinesRepo().list().catch(() => []),
+      workflowTasksFor(id),
     ]);
-    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard };
+    return { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, work, pipelines, workflowTasks };
   });
   if (result.ok && !result.data) notFound();
   if (!result.ok) return <><PageTitle title="Client" back={{ href: "/contacts", label: "Contacts" }} /><WorkspaceSetup message={result.message} /></>;
-  const { client, returns, docs, messages, tasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, standard } = result.data!;
+  const { client, returns, docs, messages, tasks: ownTasks, notes, invoices, stages, others, dependents, businesses, member, manualSpouse, events, work, pipelines, workflowTasks } = result.data!;
+  const tasks: (ClientTask & { source?: "workflow" })[] = [...ownTasks, ...workflowTasks];
   // The office's own texting account, and its prepaid credits when it has them (tenant #1 pays Twilio directly).
+  // The Documents tab: what was sent to this client and how it went, and which files they can see in the portal.
+  const docsDeps = tab === "documents" ? documentDeps() : null;
+  const sent = docsDeps ? await (async () => {
+    const [deliveries, library] = await Promise.all([docsDeps.repo.listDeliveriesForClient(id, 50).catch(() => []), docsDeps.repo.listDocuments().catch(() => [])]);
+    const names = new Map(library.map((d) => [d.id, d.name]));
+    const signatures = await Promise.all(deliveries.map((d) => (d.kind === "signature" ? docsDeps.repo.getSignatureByDelivery(d.id).catch(() => null) : null)));
+    return deliveries.map((d, i) => ({ d, name: names.get(d.document_id) ?? d.file_name, sig: signatures[i] }));
+  })() : [];
+  const sentForms = tab === "documents" ? await (async () => {
+    const fd = formDeps();
+    const [invites, list] = await Promise.all([fd.repo.listInvitesForClient(id, 50).catch(() => []), fd.repo.listForms().catch(() => [])]);
+    const names = new Map(list.map((f) => [f.id, f.name]));
+    return invites.map((i) => ({ i, name: names.get(i.form_id) ?? "Form", status: inviteStatus(i) }));
+  })() : [];
   const sms = tab === "messages" ? await tenantSms().catch(() => null) : null;
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
   const ssnOnFile = await hasStoredSsn(ssnDeps(), client.id).catch(() => false);
   const duplicates = tab === "overview" ? await loadContacts().then((d) => duplicatesOfClient(d.contacts, d.duplicates, client.id)).catch(() => []) : [];
+  const sheetCtx = tab === "billing" ? await loadSheetContext() : null!;
+  const invoicePlans = tab === "billing" ? await workspaceRepo().listInstallments(invoices.map((i) => i.id)).catch(() => []) : [];
+  const invoicePayments = tab === "billing" ? await paymentsFor(workspaceRepo(), invoices.filter((i) => i.paid_cents > 0).map((i) => i.id)).catch(() => []) : [];
   const stageName = (sid: string) => stages.find((s) => s.id === sid)?.name ?? "Intake";
   // "2025 return", "2025 extension", "2025 amendment".
   const returnLabel = (r: { kind: keyof typeof RETURN_KINDS; tax_year: number }) => `${r.tax_year} ${r.kind === "original" ? "return" : r.kind}`;
@@ -244,13 +272,28 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 )}
               </section>
 
+              {work.length > 0 && (
+                <section className="monarch-panel cl-card">
+                  <div className="cl-card-head"><h2>Other work</h2></div>
+                  <ul className="cl-list">{work.map((w) => {
+                    const pl = pipelines.find((x) => x.id === w.pipeline_id);
+                    return (
+                      <li key={w.id}><span><b>{pl?.name ?? "Work"}{w.title ? `: ${w.title}` : ""}</b><small className="monarch-subcell">{pl?.stages.find((s) => s.id === w.stage_id)?.name ?? pl?.stages[0]?.name ?? ""}</small></span>
+                        <span className={w.due_on && w.due_on < today ? "wb-late" : undefined}>{w.due_on ? `due ${w.due_on}` : ""}</span></li>
+                    );
+                  })}</ul>
+                </section>
+              )}
+
+              <AppointmentsCard email={client.email} />
+
               <section className="monarch-panel cl-card">
                 <div className="cl-card-head"><h2>Tasks</h2>{tasks.length > 0 && <Link className="monarch-link" href={`/workspace/clients/${id}?tab=tasks`}>See all ({tasks.length})</Link>}</div>
                 {quickAdd(addTaskAction, "title", "Add a task", true)}
                 {openTasks.length === 0 ? <p className="monarch-muted cl-empty">None open</p> : (
                   <ul className="cl-list">{openTasks.slice(0, FIVE).map((x) => (
                     <li key={x.id}><span><b>{x.title}</b>{x.due_on && <small className={`monarch-subcell${x.due_on < today ? " wb-late" : ""}`}>due {x.due_on}</small>}</span>
-                      <form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form></li>
+                      <form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} />{x.source && <input type="hidden" name="source" value={x.source} />}<input type="hidden" name="back" value={back} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form></li>
                   ))}</ul>
                 )}
               </section>
@@ -283,27 +326,36 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       {tab === "documents" && (
         <>
           <PortalPanel area="admin" mode="documents" part="actions" tab="documents" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`}
-            extraActions={<Modal label="Add a document" title="Add a document" className="monarch-primary"><ClientDocUpload clientId={client.id} returns={newestFirst.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></Modal>} />
-          <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Documents</h2></div></div>
-            <div className="monarch-table-wrap"><table>
-              <thead><tr><th>TITLE</th><th>RETURN</th><th>TYPE</th><th>ADDED</th><th></th></tr></thead>
-              <tbody>
-                {docs.length === 0 ? <EmptyRow colSpan={5}>No documents yet.</EmptyRow> : docs.map((d) => (
-                  <tr key={d.id}>
-                    <td><b>{d.title}</b></td>
-                    <td>{d.return_id ? (() => { const r = returns.find((x) => x.id === d.return_id); return r ? returnLabel(r) : "—"; })() : "Not tied to a return"}</td>
-                    <td>{d.file_type.toUpperCase()}</td>
-                    <td>{when(d.created_at)}</td>
-                    <td style={{ display: "flex", gap: 8 }}>
-                      <form action={openClientDocAction}><input type="hidden" name="id" value={d.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link">Download</button></form>
-                      <form action={deleteClientDocAction}><input type="hidden" name="id" value={d.id} /><input type="hidden" name="client_id" value={client.id} /><button className="monarch-link is-danger">Delete</button></form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table></div>
-          </section>
+            />
+          {sent.length + sentForms.length > 0 && (
+            <section className="monarch-panel">
+              <div className="monarch-panel-head"><div><h2>Sent to {client.full_name.split(" ")[0]}</h2></div></div>
+              <div className="monarch-table-wrap"><table>
+                <thead><tr><th>NAME</th><th>HOW</th><th>STATUS</th><th>SENT</th><th /></tr></thead>
+                <tbody>
+                  {[
+                    ...sent.map(({ d, name, sig }) => ({ at: d.created_at, row: (
+                      <tr key={`d-${d.id}`}>
+                        <td><Link href={`/documents/${d.document_id}?tab=sent`}><b>{name}</b></Link></td>
+                        <td>{d.kind === "signature" ? "Document to sign" : "Document to read"}</td>
+                        <td>{d.revoked_at ? "Cancelled" : sig?.status === "signed" ? `Signed ${when(sig.signed_at)}` : sig?.status === "declined" ? "Declined" : sig?.status === "viewed" || d.first_opened_at ? "Opened" : "Not opened yet"}</td>
+                        <td>{when(d.created_at)}</td>
+                        <td />
+                      </tr>) })),
+                    ...sentForms.map(({ i, name, status }) => ({ at: i.created_at, row: (
+                      <tr key={`f-${i.id}`}>
+                        <td><b>{name}</b></td>
+                        <td>Form</td>
+                        <td>{status === "completed" ? "Completed" : status === "opened" ? "Opened" : status === "sent" ? "Not opened yet" : status === "expired" ? "Link expired" : "Cancelled"}</td>
+                        <td>{when(i.created_at)}</td>
+                        <td>{(status === "sent" || status === "opened") && <form action={cancelFormInviteAction}><input type="hidden" name="area" value="admin" /><input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="invite_id" value={i.id} /><button className="monarch-link is-danger">Cancel</button></form>}</td>
+                      </tr>) })),
+                  ].sort((x, y) => y.at.localeCompare(x.at)).map((r) => r.row)}
+                </tbody>
+              </table></div>
+            </section>
+          )}
+          <ClientDrive clientId={client.id} folderId={sp.folder} base={`/workspace/clients/${client.id}?tab=documents`} />
           <PortalPanel area="admin" mode="documents" part="lists" tab="documents" tenantId={client.tenant_id} clientId={client.id} email={client.email} signDocId={sp.sign} backHref={`/workspace/clients/${id}`} />
         </>
       )}
@@ -360,30 +412,23 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
       {tab === "billing" && (
         <>
-          <div className="cl-head-actions"><NewInvoice standard={standard} back={back} year={new Date().getUTCFullYear() - 1} clientId={client.id} returns={returns.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></div>
+          <div className="cl-head-actions"><NewInvoice back={back} year={new Date().getUTCFullYear() - 1} clientId={client.id} returns={returns.map((r) => ({ id: r.id, label: returnLabel(r) }))} /></div>
           <section className="monarch-panel">
-            <div className="monarch-panel-head"><div><h2>Billing</h2><p>{owes ? `${dollars(owes)} owed.` : "Nothing owed."} Invoices default to the $223 breakdown.</p></div></div>
+            <div className="monarch-panel-head"><div><h2>Billing</h2><p>{owes ? `${dollars(owes)} owed.` : "Nothing owed."}</p></div></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>INVOICE</th><th>YEAR</th><th>BREAKDOWN</th><th>TOTAL</th><th>PAID</th><th>STATUS</th><th></th></tr></thead>
+              <thead><tr><th>INVOICE</th><th>YEAR</th><th>TOTAL</th><th>PAID</th><th>STATUS</th><th>PAYMENT TYPE</th><th></th></tr></thead>
               <tbody>
-                {invoices.length === 0 ? <EmptyRow colSpan={7}>No invoices yet.</EmptyRow> : invoices.map((i) => {
+                {invoices.filter((i) => !i.archived_at).length === 0 ? <EmptyRow colSpan={7}>No invoices yet.</EmptyRow> : invoices.filter((i) => !i.archived_at).map((i) => {
                   const view = invoiceView(i, today);
                   return (
                     <tr key={i.id}>
-                      <td><b>{i.number}</b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
+                      <td><b><InvoiceLink invoice={i} clientName={client.full_name} ctx={sheetCtx} payments={invoicePayments.filter((x) => x.invoice_id === i.id)} plan={invoicePlans.filter((x) => x.invoice_id === i.id)} /></b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
                       <td>{i.tax_year}</td>
-                      <td style={{ whiteSpace: "normal" }}>{i.lines.map((l) => <div key={l.label}>{l.label} {dollars(l.amount_cents)}</div>)}</td>
                       <td><b>{dollars(i.total_cents)}</b></td>
                       <td>{dollars(i.paid_cents)}</td>
                       <td><Badge value={view} /></td>
-                      <td>
-                        <form action={invoiceStatusAction} className="monarch-inline-form" style={{ flexWrap: "wrap" }}>
-                          <input type="hidden" name="id" value={i.id} /><input type="hidden" name="back" value={back} />
-                          {i.status !== "paid" && i.status !== "void" && <><input name="amount" placeholder="Amount received" aria-label="Amount received" size={10} defaultValue={(balance(i) / 100).toFixed(2)} /><button name="do" value="pay" className="monarch-link">Record payment</button></>}
-                          {i.status === "draft" && <button name="do" value="send" className="monarch-link">Send to client</button>}
-                          {i.status !== "void" && i.paid_cents === 0 && <button name="do" value="void" className="monarch-link is-danger">Void</button>}
-                        </form>
-                      </td>
+                      <td>{i.payer ? PAYERS[i.payer] : "—"}</td>
+                      <td><InvoiceActions invoice={i} plan={invoicePlans.filter((x) => x.invoice_id === i.id)} back={back} today={today} /></td>
                     </tr>
                   );
                 })}
@@ -431,7 +476,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                     <td style={x.done_at ? { textDecoration: "line-through" } : undefined}><b>{x.title}</b></td>
                     <td className={!x.done_at && x.due_on && x.due_on < today ? "wb-late" : undefined}>{x.due_on ?? "—"}</td>
                     <td>{x.return_id ? (() => { const r = returns.find((y) => y.id === x.return_id); return r ? returnLabel(r) : "—"; })() : "—"}</td>
-                    <td><form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} /><input type="hidden" name="back" value={back} /><input type="hidden" name="done" value={x.done_at ? "no" : "yes"} /><button className="monarch-link">{x.done_at ? "Reopen" : "Done"}</button></form></td>
+                    <td><form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} />{x.source && <input type="hidden" name="source" value={x.source} />}<input type="hidden" name="back" value={back} /><input type="hidden" name="done" value={x.done_at ? "no" : "yes"} /><button className="monarch-link">{x.done_at ? "Reopen" : "Done"}</button></form></td>
                   </tr>
                 ))}
               </tbody>

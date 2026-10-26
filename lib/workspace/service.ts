@@ -3,8 +3,10 @@ import { ValidationError } from "../commerce/validation.ts";
 import { parseMoney } from "../fees/engine.ts";
 import { parseTags, TAG_MAX } from "../leads/tags.ts";
 import { changedFields, type FieldChange } from "./activity.ts";
-import { balance, checkBusiness, checkClient, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
-import type { Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
+import { balance, checkBillingSettings, checkBusiness, checkClient, checkFeeProduct, checkWork, taxOn, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
+import { checkPlan, type Installment } from "./plan.ts";
+import { RECEIPT_METHODS, type InvoiceReceipt, type ReceiptMethod } from "./types.ts";
+import type { BillingSettings, ClientWork, FeeProduct, Payer, Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
 // My Workspace orchestration: each function checks its input with the rules, then uses the repository. Nothing here
 // reaches outside the tenant: the repository is built on the tenant-scoped database client.
@@ -90,6 +92,22 @@ export async function moveReturn(repo: WorkspaceRepo, id: string, stageId: strin
   return repo.updateReturn(r.id, { stage_id: stageId, ...(stageId === stageIds[stageIds.length - 1] && !r.filed_on ? { filed_on: now.toISOString().slice(0, 10) } : {}) });
 }
 
+/** Starts a piece of work (planning, bookkeeping, payroll...) for a client in one of the office's pipelines, in its first stage. */
+export async function addWork(repo: WorkspaceRepo, raw: Record<string, unknown>, pipeline: { id: string; stages: { id: string }[] }, actorId: string): Promise<ClientWork> {
+  const w = checkWork(raw);
+  const client = await repo.getClient(uuid(w.client_id, "That client"));
+  if (!client || client.archived_at) throw new ValidationError("That client wasn't found.");
+  if (!pipeline.stages.length) throw new ValidationError("That pipeline has no stages yet.");
+  return repo.insertWork({ ...w, client_id: client.id, pipeline_id: pipeline.id, stage_id: pipeline.stages[0].id, created_by: actorId });
+}
+
+export async function moveWork(repo: WorkspaceRepo, id: string, stageId: string, stageIds: string[]): Promise<ClientWork> {
+  const w = await repo.getWork(uuid(id, "That work"));
+  if (!w || w.archived_at) throw new ValidationError("That work wasn't found.");
+  if (!stageIds.includes(stageId)) throw new ValidationError("That stage isn't in the pipeline.");
+  return repo.updateWork(w.id, { stage_id: stageId });
+}
+
 export async function addTask(repo: WorkspaceRepo, clientId: string, raw: Record<string, unknown>, actorId: string) {
   const id = uuid(clientId, "That client");
   if (!(await repo.getClient(id))) throw new ValidationError("That client wasn't found.");
@@ -137,22 +155,63 @@ export async function createInvoice(repo: WorkspaceRepo, raw: Record<string, unk
     if (!r || r.client_id !== clientId) throw new ValidationError("That return isn't this client's.");
     returnId = r.id;
   }
-  // The standard fees come from Settings, never from the form; the form only chooses whether to include them and adds other charges.
+  // The standard fees come from Settings (the tax software and bank product picked), never from the form; the form only chooses
+  // whether to include them and adds other charges. With no software or bank product set up, the older standard fees apply.
   const hasLines = Object.keys(raw).some((k) => k.startsWith("line_label_"));
   const chooses = Object.hasOwn(raw, "include_standard");
   // A caller that sends no choice keeps the old rule: its own lines are the invoice, or the standard fees when it sends none.
-  const standard = (chooses ? raw.include_standard === "yes" : !hasLines) ? await standardFees(repo) : [];
+  const includeStandard = chooses ? raw.include_standard === "yes" : !hasLines;
+  const products = await feeProducts(repo);
+  const software = includeStandard ? pickProduct(products, "software", raw.software_id) : null;
+  const bank = includeStandard ? pickProduct(products, "bank", raw.bank_id) : null;
+  const standard = (!includeStandard ? [] : products.length === 0 ? await standardFees(repo) : [...(software?.lines ?? []), ...(bank?.lines ?? [])]).map((l) => ({ label: l.label, amount_cents: l.amount_cents, standard: true }));
   let extra: InvoiceLine[] = [];
   if (hasLines) {
     try { extra = checkLines(raw); } catch (e) { if (!(standard.length && e instanceof ValidationError && /at least one line/.test(e.message))) throw e; }
   }
   const lines = [...standard, ...extra];
   if (!lines.length) throw new ValidationError("An invoice needs at least one line: include the standard fees or add a charge.");
+  const settings = await billingSettings(repo);
+  const subtotal = invoiceTotal(lines);
+  const tax_cents = taxOn(subtotal, settings.tax_percent);
+  const payer: Payer = raw.payer === "bank_product" || raw.payer === "self" ? raw.payer : bank ? "bank_product" : "self";
   const status: InvoiceStatus = raw.status === "sent" ? "sent" : "draft";
   const issued = typeof raw.issued_on === "string" && isDay(raw.issued_on) ? raw.issued_on : now.toISOString().slice(0, 10);
   const due = typeof raw.due_on === "string" && raw.due_on ? (isDay(raw.due_on) ? raw.due_on : (() => { throw new ValidationError("The due date isn't a valid date."); })()) : null;
   const number = await repo.nextInvoiceNumber();
-  return repo.insertInvoice({ client_id: clientId, return_id: returnId, number, tax_year: taxYear, status, lines, total_cents: invoiceTotal(lines), issued_on: issued, due_on: due, notes: clean(raw.notes, 1000) || null, created_by: actorId });
+  const plan = checkPlan(raw, subtotal + tax_cents);
+  const invoice = await repo.insertInvoice({ client_id: clientId, return_id: returnId, number, tax_year: taxYear, status, lines, total_cents: subtotal + tax_cents, tax_percent: settings.tax_percent, tax_cents, payer, software_name: software?.name ?? null, bank_name: bank?.name ?? null, issued_on: issued, due_on: due, notes: clean(raw.notes, 1000) || null, created_by: actorId });
+  if (plan) await repo.replaceInstallments(invoice.id, plan);
+  return invoice;
+}
+
+/** The tax software or bank product named on the form, or the only one of its kind when there is just one. */
+function pickProduct(products: FeeProduct[], kind: "software" | "bank", id: unknown): FeeProduct | null {
+  const ofKind = products.filter((p) => p.kind === kind);
+  if (typeof id === "string" && id) {
+    const found = ofKind.find((p) => p.id === id);
+    if (!found) throw new ValidationError(`That ${kind === "software" ? "tax software" : "bank product"} wasn't found.`);
+    return found;
+  }
+  return ofKind.length === 1 ? ofKind[0] : null;
+}
+
+/** Sets up (or replaces) a payment plan on an invoice nothing has been paid on yet. */
+export async function setPaymentPlan(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>): Promise<Installment[]> {
+  const i = await repo.getInvoice(uuid(id, "That invoice"));
+  if (!i) throw new ValidationError("That invoice wasn't found.");
+  if (i.status === "void" || i.status === "paid") throw new ValidationError("This invoice can't have a payment plan.");
+  if (i.paid_cents > 0) throw new ValidationError("A payment has already been made on this invoice, so a payment plan can't be set up.");
+  const plan = checkPlan(raw, i.total_cents);
+  if (!plan) throw new ValidationError("Choose how many payments: 2 or more.");
+  await repo.replaceInstallments(i.id, plan);
+  return plan;
+}
+
+export async function removePaymentPlan(repo: WorkspaceRepo, id: string): Promise<void> {
+  const i = await repo.getInvoice(uuid(id, "That invoice"));
+  if (!i) throw new ValidationError("That invoice wasn't found.");
+  await repo.replaceInstallments(i.id, []);
 }
 
 export async function sendInvoice(repo: WorkspaceRepo, id: string): Promise<Invoice> {
@@ -160,6 +219,46 @@ export async function sendInvoice(repo: WorkspaceRepo, id: string): Promise<Invo
   if (!i) throw new ValidationError("That invoice wasn't found.");
   if (i.status !== "draft") throw new ValidationError("Only a draft invoice can be marked sent.");
   return repo.updateInvoice(i.id, { status: "sent" });
+}
+
+/**
+ * Changes an unpaid invoice (lines, tax year, due date, notes, who pays), or, once a payment is on it, only its due date, notes
+ * and who pays. Sales tax is figured again at the percent the invoice was made with. When the total changes, a payment plan no
+ * longer adds up, so it is removed, and the caller is told so.
+ */
+export async function editInvoice(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>): Promise<{ invoice: Invoice; totalChanged: boolean; planRemoved: boolean }> {
+  const i = await repo.getInvoice(uuid(id, "That invoice"));
+  if (!i) throw new ValidationError("That invoice wasn't found.");
+  if (i.status === "void" || i.status === "paid") throw new ValidationError("A paid or void invoice can't be edited.");
+  const due = typeof raw.due_on === "string" && raw.due_on ? (isDay(raw.due_on) ? raw.due_on : (() => { throw new ValidationError("The due date isn't a valid date."); })()) : null;
+  const patch: Parameters<WorkspaceRepo["updateInvoice"]>[1] = { due_on: due, notes: clean(raw.notes, 1000) || null };
+  if (raw.payer === "bank_product" || raw.payer === "self") patch.payer = raw.payer;
+  let totalChanged = false;
+  if (i.paid_cents === 0) {
+    // The standard fees stay exactly as they were made; only the other charges can change.
+    const kept = i.lines.filter((l) => l.standard);
+    let extra: InvoiceLine[] = [];
+    try { extra = checkLines(raw); } catch (e) { if (!(kept.length && e instanceof ValidationError && /at least one line/.test(e.message))) throw e; }
+    const lines = [...kept, ...extra];
+    const year = Number(clean(raw.tax_year, 4));
+    if (!Number.isInteger(year) || year < 2000 || year > new Date().getUTCFullYear() + 1) throw new ValidationError("Enter a tax year.");
+    const subtotal = invoiceTotal(lines);
+    const tax = taxOn(subtotal, i.tax_percent ?? 0);
+    patch.lines = lines; patch.tax_year = year; patch.tax_cents = tax; patch.total_cents = subtotal + tax;
+    totalChanged = subtotal + tax !== i.total_cents;
+  }
+  const hadPlan = (await repo.listInstallments([i.id])).length > 0;
+  const invoice = await repo.updateInvoice(i.id, patch);
+  if (totalChanged && hadPlan) await repo.replaceInstallments(i.id, []);
+  return { invoice, totalChanged, planRemoved: totalChanged && hadPlan };
+}
+
+/** Archives a voided invoice, or brings an archived one back. Only a voided invoice can be archived. */
+export async function archiveInvoice(repo: WorkspaceRepo, id: string, archive: boolean): Promise<Invoice> {
+  const i = await repo.getInvoice(uuid(id, "That invoice"));
+  if (!i) throw new ValidationError("That invoice wasn't found.");
+  if (archive && i.status !== "void") throw new ValidationError("Only a voided invoice can be archived. Void it first.");
+  return repo.updateInvoice(i.id, { archived_at: archive ? new Date().toISOString() : null });
 }
 
 export async function voidInvoice(repo: WorkspaceRepo, id: string): Promise<Invoice> {
@@ -170,17 +269,27 @@ export async function voidInvoice(repo: WorkspaceRepo, id: string): Promise<Invo
 }
 
 /** Records a payment by hand (cash, check, or anything not in a bank import). Pays the invoice off when it covers the balance. */
-export async function recordPayment(repo: WorkspaceRepo, id: string, rawAmount: unknown, rawDate: unknown, now = new Date()): Promise<Invoice> {
+export async function recordPayment(repo: WorkspaceRepo, id: string, rawAmount: unknown, rawDate: unknown, now = new Date(), how: { method?: unknown; reference?: unknown; actorId?: string | null } = {}): Promise<Invoice> {
   const i = await repo.getInvoice(uuid(id, "That invoice"));
   if (!i) throw new ValidationError("That invoice wasn't found.");
   if (i.status === "void") throw new ValidationError("This invoice is void.");
   const cents = parseMoney(typeof rawAmount === "string" ? rawAmount : "");
   if (cents === null || cents === 0) throw new ValidationError("Enter the amount received, like 223 or 223.00.");
-  return applyToInvoice(repo, i, cents, typeof rawDate === "string" && isDay(rawDate) ? rawDate : now.toISOString().slice(0, 10));
+  const method = typeof how.method === "string" && Object.hasOwn(RECEIPT_METHODS, how.method) ? (how.method as ReceiptMethod) : i.payer === "bank_product" ? "bank_product" : "other";
+  const reference = clean(how.reference, 80) || null;
+  return applyToInvoice(repo, i, cents, typeof rawDate === "string" && isDay(rawDate) ? rawDate : now.toISOString().slice(0, 10), { method, reference, source: "manual", actorId: how.actorId ?? null });
 }
 
-async function applyToInvoice(repo: WorkspaceRepo, i: Invoice, cents: number, paidOn: string): Promise<Invoice> {
+/** The payments recorded against these invoices (by hand or from a bank statement), newest first. */
+export async function receiptsFor(repo: WorkspaceRepo, invoiceIds?: string[]): Promise<InvoiceReceipt[]> {
+  return repo.listReceipts(invoiceIds).catch(() => []);
+}
+
+async function applyToInvoice(repo: WorkspaceRepo, i: Invoice, cents: number, paidOn: string, how: { method: ReceiptMethod; reference: string | null; source: "manual" | "bank_import"; actorId: string | null }): Promise<Invoice> {
   const paid = Math.min(i.total_cents, i.paid_cents + cents);
+  // The line saying how it was paid is kept for what was actually applied, so the lines always add up to what the invoice shows paid.
+  const applied = paid - i.paid_cents;
+  if (applied > 0) await repo.insertReceipt({ invoice_id: i.id, client_id: i.client_id, amount_cents: applied, method: how.method, reference: how.reference, received_on: paidOn, source: how.source, created_by: how.actorId });
   const done = paid >= i.total_cents;
   return repo.updateInvoice(i.id, { paid_cents: paid, status: done ? "paid" : i.status === "draft" ? "sent" : i.status, paid_on: done ? paidOn : i.paid_on });
 }
@@ -239,7 +348,7 @@ export async function applyImport(repo: WorkspaceRepo, importId: string, rowIds:
     const inv = await repo.getInvoice(row.invoice_id);
     if (!inv || inv.status === "void") throw new ValidationError(`Row ${row.row_no}: that invoice can't take a payment.`);
     if (row.amount_cents > balance(inv)) overpaid++;
-    await applyToInvoice(repo, inv, row.amount_cents, row.posted_on ?? now.toISOString().slice(0, 10));
+    await applyToInvoice(repo, inv, row.amount_cents, row.posted_on ?? now.toISOString().slice(0, 10), { method: "bank_transfer", reference: clean(row.description, 80) || null, source: "bank_import", actorId: null });
     await repo.updateImportRow(row.id, { status: "applied" });
     applied++;
   }
@@ -349,11 +458,39 @@ export async function standardFees(repo: WorkspaceRepo): Promise<InvoiceLine[]> 
   return (await repo.getInvoiceDefaults().catch(() => null)) ?? defaultInvoiceLines();
 }
 
-/** Saves the standard fee lines (Settings). They are what every new invoice starts from. */
-export async function saveStandardFees(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string): Promise<InvoiceLine[]> {
-  const lines = checkLines(raw, 12);
-  await repo.saveInvoiceDefaults(lines, actorId);
-  return lines;
+export async function billingSettings(repo: WorkspaceRepo): Promise<BillingSettings> {
+  return (await repo.getBillingSettings().catch(() => null)) ?? { refund_policy: null, terms: null, tax_percent: 0 };
+}
+
+export async function saveBillingSettings(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string): Promise<BillingSettings> {
+  const s = checkBillingSettings(raw);
+  await repo.saveBillingSettings(s, actorId);
+  return s;
+}
+
+/** The tax software and bank products set up in Settings (not archived). */
+export async function feeProducts(repo: WorkspaceRepo): Promise<FeeProduct[]> {
+  return repo.listFeeProducts().catch(() => []);
+}
+
+export async function addFeeProduct(repo: WorkspaceRepo, raw: Record<string, unknown>, actorId: string): Promise<FeeProduct> {
+  const p = checkFeeProduct(raw);
+  if ((await feeProducts(repo)).some((x) => x.kind === p.kind && x.name.toLowerCase() === p.name.toLowerCase())) throw new ValidationError(`You already have one called "${p.name}".`);
+  return repo.insertFeeProduct({ ...p, created_by: actorId });
+}
+
+export async function saveFeeProduct(repo: WorkspaceRepo, id: string, raw: Record<string, unknown>): Promise<FeeProduct> {
+  const current = (await feeProducts(repo)).find((x) => x.id === uuid(id, "That item"));
+  if (!current) throw new ValidationError("That wasn't found.");
+  const p = checkFeeProduct({ ...raw, kind: current.kind });
+  return repo.updateFeeProduct(current.id, { name: p.name, lines: p.lines });
+}
+
+/** Removes a product from the pick lists. Invoices already made keep the name and fees they were made with. */
+export async function archiveFeeProduct(repo: WorkspaceRepo, id: string): Promise<void> {
+  const current = (await feeProducts(repo)).find((x) => x.id === uuid(id, "That item"));
+  if (!current) throw new ValidationError("That wasn't found.");
+  await repo.updateFeeProduct(current.id, { archived_at: new Date().toISOString() });
 }
 
 /** Moves everything on `drop` onto `keep` and archives `drop`. Both must be clients of this workspace. */

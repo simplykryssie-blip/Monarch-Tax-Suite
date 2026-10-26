@@ -11,11 +11,16 @@ import { businessDeps } from "../calendar/server";
 import { loadCalendar } from "../calendar/service.ts";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { SupabaseDocumentsRepo } from "../documents/supabase-repo.ts";
+import { formDeps } from "../forms/server";
+import { readSettings } from "../forms/settings.ts";
+import { formLink } from "../forms/link";
 import { heldBack } from "../forms/after.ts";
 import { peopleDeps } from "../people/server";
 import { tenantSms } from "../sms/server";
 import { tenantClient } from "../supabase/service";
 import { currentTenantId } from "../tenants.ts";
+import { appointmentNotice } from "./activity.ts";
+import { notify as raiseNotice } from "../notifications/server";
 import type { AppointmentDeps } from "./service.ts";
 import { SupabaseAppointmentRepo } from "./supabase-repo.ts";
 import type { Notifier } from "./types.ts";
@@ -74,8 +79,19 @@ export function appointmentDeps(tenantId: string = currentTenantId()): Appointme
     people: peopleDeps(tenantId),
     notify,
     firmName: async () => (await docs.getProfile().catch(() => null))?.display_name ?? "Our office",
+    firmSignature: async () => {
+      const p = await docs.getProfile().catch(() => null);
+      return [p?.display_name, p?.address, [p?.phone, p?.email].filter(Boolean).join(" · ")].filter(Boolean).join("\n");
+    },
+    intakeLink: async (formId) => {
+      const fd = formDeps(tenantId);
+      const form = await fd.repo.getForm(formId);
+      if (!form || form.status !== "published") return null;
+      return formLink(fd, form.public_id, readSettings(form.settings));
+    },
     tokenFor: (id) => secrets().hashIdentifier("appointment-link", `${tenantId}:${id}`),
     manageUrl: async (token) => `${await origin()}/book/manage/${token}`,
+    activity: async (e) => raiseNotice(tenantId, appointmentNotice(e)),
     emit: (type, a) => safeEmit({ type, key: `${type}:${a.id}:${a.updated_at}`, subject: { type: "appointment", id: a.id }, data: { source: a.source } }),
   };
 }

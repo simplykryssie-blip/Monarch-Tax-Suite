@@ -3,7 +3,8 @@ import { isTimeZone, parseYmd, zonedToUtc, type BusinessCalendar } from "../cale
 import { ValidationError } from "../commerce/validation.ts";
 import { checkEmail, checkName, checkPhone } from "../leads/service.ts";
 import { matchPerson, type PeopleDeps } from "../people/match.ts";
-import { cancelledEmail, confirmationEmail, reminderEmail, reminderSms } from "./messages.ts";
+import type { AppointmentActivity } from "./activity.ts";
+import { cancelledEmail, confirmationFrom, reminderEmail, reminderSms } from "./messages.ts";
 import { availableSlots, slotIsOffered, type Rule, type Slot } from "./slots.ts";
 import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type NewReminder, type Notifier, type TypeInput } from "./types.ts";
 
@@ -17,11 +18,17 @@ export type AppointmentDeps = {
   people: PeopleDeps;
   notify: Notifier;
   firmName: () => Promise<string>;
+  /** The firm's name, address, phone and email, added to the bottom of every email. */
+  firmSignature?: () => Promise<string>;
   /** The secret link for one appointment: the same every time for the same id, impossible to guess. */
+  /** The public link to an intake form, or null when it has none (not published, no web address). */
+  intakeLink?: (formId: string) => Promise<string | null>;
   tokenFor: (appointmentId: string) => string;
   manageUrl: (token: string) => Promise<string>;
   /** Raised for the Automation Center. Never allowed to fail a booking. */
   emit?: (type: string, appointment: Appointment) => Promise<void>;
+  /** Told when an appointment is booked, moved or cancelled, for the bell. Never allowed to fail the change. */
+  activity?: (e: AppointmentActivity) => Promise<void>;
   now?: () => Date;
 };
 
@@ -37,6 +44,17 @@ const int = (v: unknown, label: string, min: number, max: number, dflt: number) 
   if (!Number.isInteger(n) || n < min || n > max) throw new ValidationError(`${label} must be a whole number from ${min} to ${max}.`);
   return n;
 };
+/** An email body with the firm's details added at the bottom. */
+const signed = async (d: AppointmentDeps, text: string): Promise<string> => {
+  const sig = await d.firmSignature?.().catch(() => "");
+  return sig ? `${text}\n\n--\n${sig}` : text;
+};
+/** A confirmation with the intake form link added when the appointment type asks for one. */
+const withIntake = async (d: AppointmentDeps, t: AppointmentType, text: string): Promise<string> => {
+  const link = t.intake_form_id ? await d.intakeLink?.(t.intake_form_id).catch(() => null) : null;
+  return link ? `${text}\n\nBefore your visit, please fill in this form: ${link}` : text;
+};
+const told = async (d: AppointmentDeps, e: AppointmentActivity) => { try { await d.activity?.(e); } catch { /* the bell is a courtesy */ } };
 const emitSafe = async (d: AppointmentDeps, type: string, a: Appointment) => { try { await d.emit?.(type, a); } catch { /* an automation problem never fails a booking */ } };
 
 // ---------------------------------------------------------------- appointment types
@@ -52,6 +70,8 @@ export function checkType(raw: Record<string, unknown>): TypeInput {
   if (hours.length > 3 || hours.some((h) => !Number.isInteger(h) || h < 1 || h > 336)) throw new ValidationError("Reminders: up to three, each a whole number of hours before the appointment (1 to 336), for example 24, 2.");
   const assignee = line(raw.assignee_id, 40);
   if (assignee && !UUID.test(assignee)) throw new ValidationError("Choose a staff member from the list.");
+  const intake = line(raw.intake_form_id, 40);
+  if (intake && !UUID.test(intake)) throw new ValidationError("Choose a form from the list.");
   return {
     slug, name, description: para(raw.description, 2000) || null, location: line(raw.location, 300) || null,
     duration_minutes: int(raw.duration_minutes, "Length", 5, 480, 30),
@@ -60,7 +80,7 @@ export function checkType(raw: Record<string, unknown>): TypeInput {
     step_minutes: int(raw.step_minutes, "Start times every", 5, 240, 30),
     min_notice_minutes: int(raw.min_notice_minutes, "Minimum notice", 0, 43200, 120),
     max_days_ahead: int(raw.max_days_ahead, "Book up to", 1, 365, 60),
-    reminder_hours: [...new Set(hours)], assignee_id: assignee || null, active: raw.active === undefined ? true : raw.active === true || raw.active === "on" || raw.active === "true",
+    reminder_hours: [...new Set(hours)], assignee_id: assignee || null, intake_form_id: intake || null, active: raw.active === undefined ? true : raw.active === true || raw.active === "on" || raw.active === "true",
   };
 }
 
@@ -186,12 +206,25 @@ async function insertBooked(d: AppointmentDeps, t: AppointmentType, input: {
   }
   await d.repo.insertReminders(remindersFor(saved, t, now));
   await emitSafe(d, "appointment.booked", saved);
+  await told(d, { kind: "booked", appointment: saved, type: t, by: input.source === "public" ? "client" : "staff", actorId: input.actorId });
   // The confirmation is a courtesy: if it can't be sent the booking still stands.
   try {
-    const c = confirmationEmail(saved, t, await d.firmName(), await d.manageUrl(token));
-    await d.notify.email(saved.contact_email, c.subject, c.text);
+    const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(token), await d.repo.getMessages().catch(() => null));
+    await d.notify.email(saved.contact_email, c.subject, await signed(d, await withIntake(d, t, c.text)));
+    // The text goes only to someone who agreed to texts and gave a number.
+    if (saved.sms_consent && saved.contact_phone) await d.notify.sms(saved.contact_phone, c.sms);
   } catch { /* kept */ }
   return { appointment: saved, token };
+}
+
+/** The confirmation messages Settings saves. A message left empty goes back to the built-in wording. */
+export async function saveBookingMessages(d: AppointmentDeps, raw: Record<string, unknown>, actorId: string | null): Promise<void> {
+  const pick = (v: unknown, max: number, label: string) => {
+    const s = para(v, max);
+    if (typeof v === "string" && v.trim().length > max) throw new ValidationError(`${label} can be up to ${max} characters.`);
+    return s || null;
+  };
+  await d.repo.saveMessages({ confirm_subject: pick(raw.confirm_subject, 200, "The subject"), confirm_body: pick(raw.confirm_body, 4000, "The email"), confirm_sms: pick(raw.confirm_sms, 320, "The text") }, actorId);
 }
 
 /** A booking from the public page. */
@@ -240,12 +273,13 @@ function assertOpen(d: AppointmentDeps, a: Appointment) {
   if (Date.parse(a.starts_at) <= nowOf(d).getTime()) throw new ValidationError("This appointment has already started, so it can't be changed online. Please call the office.");
 }
 
-async function cancelRow(d: AppointmentDeps, a: Appointment, t: AppointmentType, reason: string | null, notifyClient: boolean): Promise<Appointment> {
+async function cancelRow(d: AppointmentDeps, a: Appointment, t: AppointmentType, reason: string | null, notifyClient: boolean, by: "client" | "staff", actorId: string | null = null): Promise<Appointment> {
   const saved = await d.repo.updateAppointment(a.id, { status: "cancelled", cancelled_at: nowOf(d).toISOString(), cancel_reason: reason });
   await d.repo.cancelPendingReminders(a.id);
   await emitSafe(d, "appointment.cancelled", saved);
+  await told(d, { kind: "cancelled", appointment: saved, type: t, by, actorId });
   if (notifyClient) {
-    try { const m = cancelledEmail(saved, t, await d.firmName()); await d.notify.email(saved.contact_email, m.subject, m.text); } catch { /* kept */ }
+    try { const m = cancelledEmail(saved, t, await d.firmName()); await d.notify.email(saved.contact_email, m.subject, await signed(d, m.text)); } catch { /* kept */ }
   }
   return saved;
 }
@@ -253,17 +287,17 @@ async function cancelRow(d: AppointmentDeps, a: Appointment, t: AppointmentType,
 export async function cancelByToken(d: AppointmentDeps, token: unknown, reason: unknown): Promise<Appointment> {
   const { a, t } = await byToken(d, token);
   assertOpen(d, a);
-  return cancelRow(d, a, t, line(reason, 300) || null, false);
+  return cancelRow(d, a, t, line(reason, 300) || null, false, "client");
 }
-export async function cancelByStaff(d: AppointmentDeps, id: string, reason: unknown, notifyClient: boolean): Promise<Appointment> {
+export async function cancelByStaff(d: AppointmentDeps, id: string, reason: unknown, notifyClient: boolean, actorId: string | null = null): Promise<Appointment> {
   const a = UUID.test(id) ? await d.repo.getAppointment(id) : null;
   const t = a ? await d.repo.getType(a.type_id) : null;
   if (!a || !t) throw new ValidationError("That appointment wasn't found.");
   if (a.status !== "booked") throw new ValidationError("Only a booked appointment can be cancelled.");
-  return cancelRow(d, a, t, line(reason, 300) || null, notifyClient);
+  return cancelRow(d, a, t, line(reason, 300) || null, notifyClient, "staff", actorId);
 }
 
-async function move(d: AppointmentDeps, a: Appointment, t: AppointmentType, start: Date, slot: Slot | null): Promise<Appointment> {
+async function move(d: AppointmentDeps, a: Appointment, t: AppointmentType, start: Date, slot: Slot | null, by: "client" | "staff", actorId: string | null = null): Promise<Appointment> {
   const end = slot?.end ?? new Date(start.getTime() + t.duration_minutes * MIN);
   const bs = slot?.blockStart ?? new Date(start.getTime() - t.buffer_before_minutes * MIN);
   const be = slot?.blockEnd ?? new Date(end.getTime() + t.buffer_after_minutes * MIN);
@@ -277,9 +311,10 @@ async function move(d: AppointmentDeps, a: Appointment, t: AppointmentType, star
   await d.repo.cancelPendingReminders(a.id);
   await d.repo.insertReminders(remindersFor(saved, t, nowOf(d)));
   await emitSafe(d, "appointment.rescheduled", saved);
+  await told(d, { kind: "rescheduled", appointment: saved, type: t, by, actorId, from: a.starts_at });
   try {
-    const c = confirmationEmail(saved, t, await d.firmName(), await d.manageUrl(d.tokenFor(saved.id)));
-    await d.notify.email(saved.contact_email, c.subject.replace("Confirmed", "Rescheduled"), c.text);
+    const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(d.tokenFor(saved.id)), await d.repo.getMessages().catch(() => null));
+    await d.notify.email(saved.contact_email, /^Confirmed/.test(c.subject) ? c.subject.replace("Confirmed", "Rescheduled") : `Rescheduled: ${c.subject}`, await signed(d, await withIntake(d, t, c.text)));
   } catch { /* kept */ }
   return saved;
 }
@@ -288,14 +323,14 @@ export async function rescheduleByToken(d: AppointmentDeps, token: unknown, star
   const { a, t } = await byToken(d, token);
   assertOpen(d, a);
   const start = parseStart(startsAt);
-  return move(d, a, t, start, await offered(d, t, start, a.id));
+  return move(d, a, t, start, await offered(d, t, start, a.id), "client");
 }
-export async function rescheduleByStaff(d: AppointmentDeps, id: string, startsAt: unknown): Promise<Appointment> {
+export async function rescheduleByStaff(d: AppointmentDeps, id: string, startsAt: unknown, actorId: string | null = null): Promise<Appointment> {
   const a = UUID.test(id) ? await d.repo.getAppointment(id) : null;
   const t = a ? await d.repo.getType(a.type_id) : null;
   if (!a || !t) throw new ValidationError("That appointment wasn't found.");
   if (a.status !== "booked") throw new ValidationError("Only a booked appointment can be moved.");
-  return move(d, a, t, parseStart(startsAt), null);
+  return move(d, a, t, parseStart(startsAt), null, "staff", actorId);
 }
 
 /** After the appointment: attended or didn't show. */
@@ -336,7 +371,7 @@ export async function sendDueReminders(d: AppointmentDeps, limit = 50): Promise<
     let result;
     if (r.channel === "email") {
       const m = reminderEmail(a, t, firm, url);
-      result = await d.notify.email(a.contact_email, m.subject, m.text);
+      result = await d.notify.email(a.contact_email, m.subject, await signed(d, m.text));
     } else if (a.sms_consent && a.contact_phone) {
       result = await d.notify.sms(a.contact_phone, reminderSms(a, t, firm, url));
     } else {

@@ -6,7 +6,7 @@ import { MemoryDocumentStore, MemoryDocumentsRepo } from "./documents-memory.ts"
 import { makeDocx, makePdf } from "./documents-engine.test.ts";
 import {
   createDelivery, declineSignature, downloadFromLink, fileLink, finishVersionUpload, MissingValuesError, removeDocument, resolveLink,
-  revokeDelivery, setConsentText, signDocument, startVersionUpload, sweepSignatures, type DocumentDeps,
+  revokeDelivery, saveFieldMap, setConsentText, signDocument, startVersionUpload, sweepSignatures, type DocumentDeps,
 } from "../lib/documents/service.ts";
 import { sha256Hex } from "../lib/documents/files.ts";
 
@@ -170,5 +170,24 @@ describe("tenant folders", () => {
     const sent = await createDelivery(b.deps, { ...base, documentId: doc.document.id, kind: "send", executionId: null, actionIndex: null, values });
     // Tenant A's repository holds none of tenant B's rows, so B's link means nothing to A.
     assert.deepEqual(await resolveLink(deps, sent.token), { ok: false, reason: "not_found" });
+  });
+});
+
+describe("matching the boxes", () => {
+  test("the matches are saved on the document, checked against the PDF, and its merge fields follow", async () => {
+    const { deps, store, repo } = setup();
+    const { document, version } = await upload(deps, store, "8879.pdf", await makePdf(["f1_01[0]", "f1_02[0]", "Sig"]));
+    assert.deepEqual(version.merge_fields, [], "an official form's own box names are accepted");
+    const saved = await saveFieldMap(deps, document.id, { "f1_01[0]": "client_name", "f1_02[0]": "", Sig: "signature" }, "admin");
+    assert.deepEqual(saved.field_map, { "f1_01[0]": "client_name", Sig: "signature" }, "a box left blank isn't saved");
+    const after = (await repo.getVersion(version.id))!;
+    assert.deepEqual(after.merge_fields, ["client_name"]);
+    assert.equal(after.has_signature_field, true);
+    assert.ok(repo.events.some((e) => e.type === "boxes_matched"));
+    await assert.rejects(saveFieldMap(deps, document.id, { "not-a-box": "client_name" }, "admin"), /isn't in this PDF/);
+    await assert.rejects(saveFieldMap(deps, document.id, { "f1_01[0]": "form.anything" }, "admin"), /Choose from the list/);
+    await assert.rejects(saveFieldMap(deps, document.id, { "f1_01[0]": "not_a_field" }, "admin"), /Choose from the list/);
+    const word = await upload(deps, store, "letter.docx", makeDocx("<w:p><w:r><w:t>Hi</w:t></w:r></w:p>"));
+    await assert.rejects(saveFieldMap(deps, word.document.id, {}, "admin"), /Only a PDF/);
   });
 });

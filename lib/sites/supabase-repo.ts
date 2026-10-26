@@ -11,8 +11,14 @@ export class SupabaseSitesRepo implements SitesRepo {
     this.db = db;
     this.taken = hostnameTaken;
   }
-  async getSite() {
-    return unwrap(await this.db.from("sites").select("*").maybeSingle()) as Site | null;
+  async listSites() {
+    return unwrap(await this.db.from("sites").select("*").order("created_at").limit(50)) as Site[];
+  }
+  async getSite(id: string) {
+    return unwrap(await this.db.from("sites").select("*").eq("id", id).maybeSingle()) as Site | null;
+  }
+  async removeSite(id: string) {
+    unwrap(await this.db.from("sites").delete().eq("id", id));
   }
   async insertSite(input: Parameters<SitesRepo["insertSite"]>[0]) {
     return unwrap(await this.db.from("sites").insert(input).select("*").single()) as Site;

@@ -30,10 +30,12 @@ export async function leadsLoad<T>(fn: () => Promise<T>): Promise<{ ok: true; da
   }
 }
 
-export function LeadsSetupRequired({ message }: { message: string }) {
+// The message is kept for logs only; people are told to contact support.
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+export function LeadsSetupRequired({ message: _message }: { message: string }) {
   return (
     <div className="monarch-notice">
-      <b>DATABASE SETUP REQUIRED</b> Leads needs its tables. Apply <code>supabase/migrations/20261021090000_leads.sql</code> to this Supabase project, then reload. Nothing else is affected. <small>({message})</small>
+      <b>NOT SET UP YET</b> This part of your account isn&apos;t ready yet. Please contact support and we&apos;ll finish setting it up. Nothing else is affected. 
     </div>
   );
 }

@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { automationDeps } from "@/lib/automation/server";
-import { senderFor } from "@/lib/automation/engine.ts";
 import { documentDeps } from "@/lib/documents/server";
-import { deliveryPathFor } from "@/lib/documents/service.ts";
-import { documentEmail } from "@/lib/documents/emails.ts";
-import { sendForSignature } from "@/lib/portal/signing.ts";
+import { formDeps } from "@/lib/forms/server";
+import { formLink } from "@/lib/forms/link";
+import { revokeInvite } from "@/lib/forms/invites.ts";
+import { readSettings } from "@/lib/forms/settings.ts";
+import { sendFormToClient } from "@/lib/portal/send-form.ts";
+import { sendDocumentToClient } from "@/lib/portal/send-document.ts";
 import { ssnDeps } from "@/lib/ssn/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { loadBrand } from "@/lib/branding/server";
@@ -135,22 +137,34 @@ export async function openStaffDocAction(form: FormData) {
   redirect(url ?? to(back, "error", message));
 }
 
-/** Admin workspace only: the document library lives there. Sends a library document to the client for signature and emails the link. */
-export async function sendSignatureAction(form: FormData) {
+/** Admin workspace only: sends a published form to the client as a personal link. */
+export async function sendFormAction(form: FormData) {
   await run(form, async (s) => {
-    if (str(form, "area") !== "admin") throw new ValidationError("Sending documents to sign is available from the main workspace.");
+    if (str(form, "area") !== "admin") throw new ValidationError("Sending forms is available from the main workspace.");
+    const deps = formDeps(s.tenantId);
+    return sendFormToClient(automationDeps(s.tenantId), deps, {
+      formId: str(form, "form_id"), client: s.client, message: str(form, "message"), actorId: s.userId,
+      linkFor: (f) => formLink(deps, f.public_id, readSettings(f.settings)),
+    });
+  });
+}
+
+/** Cancels a form that was sent but not yet completed. */
+export async function cancelFormInviteAction(form: FormData) {
+  await run(form, async (s) => {
+    await revokeInvite(formDeps(s.tenantId), str(form, "invite_id"), s.client.id);
+    return "The form was cancelled. Its link no longer works.";
+  });
+}
+
+/** Admin workspace only: the document library lives there. Sends a library document to the client, to read or to sign, and emails the link. */
+export async function sendDocumentAction(form: FormData) {
+  await run(form, async (s) => {
+    if (str(form, "area") !== "admin") throw new ValidationError("Sending documents is available from the main workspace.");
     const asks = Object.fromEntries([...form.entries()].filter(([k, v]) => k.startsWith("ask.") && typeof v === "string"));
-    const auto = automationDeps(s.tenantId);
-    const made = await sendForSignature({ docs: documentDeps(s.tenantId), ssn: ssnDeps(s.tenantId) }, { documentId: str(form, "document_id"), client: s.client, asks, actorId: s.userId });
-    const to = s.client.email!;
-    if (auto.config.env !== "production" && !auto.config.testRecipients.map((r) => r.toLowerCase()).includes(to.toLowerCase())) {
-      throw new ValidationError(`The request was saved for the portal, but this is a ${auto.config.env} environment: emails go only to the addresses in AUTOMATION_TEST_RECIPIENTS.`);
-    }
-    const origin = (await auto.config.origin()).replace(/\/$/, "");
-    const mail = documentEmail({ kind: "signature", firmName: made.firmName, documentName: made.document.name, clientFirstName: made.firstName || null, message: str(form, "message").slice(0, 1000), url: `${origin}${deliveryPathFor("signature", made.token)}`, expiresAt: new Date(made.delivery.expires_at) });
-    const result = await auto.email.send({ ...(await senderFor(auto, null)), to, subject: mail.subject, html: mail.html, text: mail.text, idempotencyKey: `portal-sign:${made.delivery.id}` });
-    if (!result.ok) throw new ValidationError(`The request is in the client's portal, but the email was not sent: ${result.message}`);
-    return `"${made.document.name}" was sent to ${to} and is waiting in their portal.`;
+    return sendDocumentToClient(automationDeps(s.tenantId), { docs: documentDeps(s.tenantId), ssn: ssnDeps(s.tenantId) }, {
+      documentId: str(form, "document_id"), kind: str(form, "kind") === "signature" ? "signature" : "send", client: s.client, asks, message: str(form, "message"), actorId: s.userId,
+    });
   });
 }
 

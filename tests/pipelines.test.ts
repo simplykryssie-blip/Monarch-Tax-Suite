@@ -1,7 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { archivePipeline, checkStages, createPipeline, deletePipeline, DEFAULT_RETURN_STAGES, makeDefault, returnsStages, savePipeline } from "../lib/pipelines/service.ts";
-import type { Pipeline, PipelineInput, PipelinesRepo } from "../lib/pipelines/types.ts";
+import { workflowsUsing } from "../lib/pipelines/usage.ts";
+import { archivePipeline, checkStages, createFolder, createPipeline, deleteFolder, deletePipeline, moveFolder, DEFAULT_RETURN_STAGES, isLive, makeDefault, movePipeline, returnsStages, savePipeline, setPublished } from "../lib/pipelines/service.ts";
+import type { Pipeline, PipelineFolder, PipelineInput, PipelinePatch, PipelinesRepo } from "../lib/pipelines/types.ts";
 import { checkSms, smsSegments } from "../lib/automation/sms.ts";
 import { historyRows } from "../lib/automation/history.ts";
 import type { AutomationEvent, Execution } from "../lib/automation/types.ts";
@@ -15,11 +16,16 @@ class MemoryPipelines implements PipelinesRepo {
     this.rows.push(p);
     return structuredClone(p);
   }
-  async update(id: string, patch: Partial<Pick<Pipeline, "name" | "stages" | "is_default" | "archived_at">>) {
+  async update(id: string, patch: PipelinePatch) {
     const p = this.rows.find((x) => x.id === id)!;
     Object.assign(p, structuredClone(patch));
     return structuredClone(p);
   }
+  folders: PipelineFolder[] = [];
+  async listFolders() { return structuredClone(this.folders); }
+  async insertFolder(input: { name: string; parent_id: string | null; created_by: string | null }) { const f: PipelineFolder = { id: `f${this.folders.length + 1}`, tenant_id: "t", name: input.name, parent_id: input.parent_id, created_at: "2026-10-15T00:00:00Z" }; this.folders.push(f); return structuredClone(f); }
+  async updateFolder(id: string, patch: Partial<Pick<PipelineFolder, "name" | "parent_id">>) { const f = this.folders.find((x) => x.id === id)!; Object.assign(f, patch); return structuredClone(f); }
+  async removeFolder(id: string) { this.folders = this.folders.filter((f) => f.id !== id); }
   async remove(id: string) { this.rows = this.rows.filter((p) => p.id !== id); }
 }
 
@@ -169,7 +175,6 @@ describe("creating a pipeline twice", () => {
     await savePipeline(repo, p.id, { name: "Monthly bookkeeping", stages: [{ name: "To do" }, { name: "Doing" }, { name: "Done", done: true }] });
     assert.equal((await repo.get(p.id))?.stages.length, 3);
 
-    await assert.rejects(deletePipeline(repo, p.id), /Archive the pipeline first/);
     await archivePipeline(repo, p.id, true);
     await assert.rejects(savePipeline(repo, p.id, { name: "X pipeline", stages: [{ name: "A" }, { name: "B", done: true }] }), /wasn't found/);
     await archivePipeline(repo, p.id, false);
@@ -186,7 +191,87 @@ describe("creating a pipeline twice", () => {
     await assert.rejects(deletePipeline(repo, p.id), /wasn't found/);
     // The default returns pipeline can be neither archived nor deleted.
     await assert.rejects(archivePipeline(repo, returns.id, true), /runs the Returns board/);
-    await assert.rejects(deletePipeline(repo, returns.id), /Archive the pipeline first/);
+    await assert.rejects(deletePipeline(repo, returns.id), /can.t be deleted/);
   });
 });
 
+
+describe("pipeline folders, type and publishing", () => {
+  const stages = [{ name: "To do" }, { name: "Done", done: true }];
+  test("a new pipeline starts unpublished with the type written as typed; publishing makes it live", async () => {
+    const repo = new MemoryPipelines();
+    const p = await createPipeline(repo, { name: "Monthly books", stages, type_label: "  Bookkeeping ", color: "#059669" }, "u1");
+    assert.equal(p.type_label, "Bookkeeping");
+    assert.equal(p.color, "#059669");
+    assert.equal(p.published, false);
+    assert.equal(isLive(p), false);
+    assert.equal(isLive(await setPublished(repo, p.id, true)), true);
+    const plain = await createPipeline(repo, { name: "Payroll", stages, color: "javascript:x" }, "u1");
+    assert.equal(plain.type_label, null);
+    assert.equal(plain.color, "#2563eb");
+  });
+
+  test("the tax-return pipeline starts published and cannot be unpublished while it runs the board", async () => {
+    const repo = new MemoryPipelines();
+    const r = await createPipeline(repo, { name: "Tax returns", kind: "returns", quickStart: true, stages: DEFAULT_RETURN_STAGES }, "u1");
+    assert.equal(r.published, true);
+    await assert.rejects(setPublished(repo, r.id, false), /stays published/);
+  });
+
+  test("folders nest to four levels, names are unique per level, and deleting one moves its contents up", async () => {
+    const repo = new MemoryPipelines();
+    const a = await createFolder(repo, { name: "Clients" }, "u1");
+    const b = await createFolder(repo, { name: "Bookkeeping", parent_id: a.id }, "u1");
+    await assert.rejects(createFolder(repo, { name: "clients" }, "u1"), /already here/);
+    await createFolder(repo, { name: "clients", parent_id: b.id }, "u1");
+    const c = await createFolder(repo, { name: "Deep", parent_id: b.id }, "u1");
+    const d = await createFolder(repo, { name: "Deeper", parent_id: c.id }, "u1");
+    await assert.rejects(createFolder(repo, { name: "Too deep", parent_id: d.id }, "u1"), /4 levels/);
+    const p = await createPipeline(repo, { name: "Monthly", stages, folder_id: b.id }, "u1");
+    assert.equal(p.folder_id, b.id);
+    await deleteFolder(repo, b.id);
+    assert.equal((await repo.get(p.id))!.folder_id, a.id);
+    assert.equal((await repo.listFolders()).find((f) => f.id === c.id)!.parent_id, a.id);
+    await assert.rejects(movePipeline(repo, p.id, "nope"), /wasn't found/);
+    assert.equal((await movePipeline(repo, p.id, "")).folder_id, null);
+  });
+
+  test("renaming a pipeline or a stage keeps every id, so work, returns and workflows follow it", async () => {
+    const repo = new MemoryPipelines();
+    const p = await createPipeline(repo, { name: "Bookkeeping", stages: [{ name: "To do" }, { name: "Done", done: true }] }, "u");
+    const ids = p.stages.map((s) => s.id);
+    const renamed = await savePipeline(repo, p.id, { name: "Monthly books", stages: p.stages.map((s, i) => ({ ...s, name: i === 0 ? "Waiting on records" : s.name })) });
+    assert.equal(renamed.id, p.id);
+    assert.deepEqual(renamed.stages.map((s) => s.id), ids);
+    assert.equal(renamed.stages[0].name, "Waiting on records");
+  });
+
+  test("a pipeline with work in it can't be deleted; a folder can be dragged into another but never into itself", async () => {
+    const repo = new MemoryPipelines();
+    const p = await createPipeline(repo, { name: "Payroll", stages: [{ name: "To do" }, { name: "Done", done: true }] }, "u");
+    repo.remove = async () => { throw new Error('update or delete on table "pipelines" violates foreign key constraint "client_work_pipeline_id_same_tenant" on table "client_work"'); };
+    await assert.rejects(deletePipeline(repo, p.id), /still work in this pipeline/);
+    const a = await createFolder(repo, { name: "A" }, "u");
+    const b = await createFolder(repo, { name: "B", parent_id: a.id }, "u");
+    await assert.rejects(moveFolder(repo, a.id, b.id), /inside itself/);
+    await assert.rejects(moveFolder(repo, a.id, a.id), /inside itself/);
+    assert.equal((await moveFolder(repo, b.id, "")).parent_id, null);
+  });
+});
+
+describe("which workflows use a pipeline", () => {
+  const wf = (over: Record<string, unknown>) => ({ id: "w", name: "W", trigger_event: "work.stage_changed", conditions: [], actions: [], steps: [], archived_at: null, ...over }) as never;
+  const books = { id: "p-books", kind: "custom" as const, stages: [{ id: "s1", name: "To do", color: "#000", done: false }, { id: "s2", name: "Done", color: "#000", done: true }] };
+  const returns = { id: "p-ret", kind: "returns" as const, stages: [{ id: "efiled", name: "E-filed", color: "#000", done: false }, { id: "complete", name: "Complete", color: "#000", done: true }] };
+  test("a move step, a pipeline condition, or a stage condition on the matching trigger counts; an archived workflow does not", () => {
+    const flows = [
+      wf({ id: "a", name: "Moves", steps: [{ type: "branch", conditions: [], then: [{ type: "move_stage", pipeline_id: "p-books", stage_id: "s2" }], else: [] }] }),
+      wf({ id: "b", name: "Watches", conditions: [{ field: "pipeline_id", op: "eq", value: "p-books" }] }),
+      wf({ id: "c", name: "Efiled mail", trigger_event: "return.stage_changed", conditions: [{ field: "stage_id", op: "eq", value: "efiled" }] }),
+      wf({ id: "d", name: "Old", archived_at: "2026-01-01", steps: [{ type: "move_stage", pipeline_id: "p-books", stage_id: "s1" }] }),
+      wf({ id: "e", name: "Unrelated", conditions: [{ field: "stage_id", op: "eq", value: "zzz" }] }),
+    ];
+    assert.deepEqual(workflowsUsing(books, flows).map((w) => w.name).sort(), ["Moves", "Watches"]);
+    assert.deepEqual(workflowsUsing(returns, flows).map((w) => w.name), ["Efiled mail"]);
+  });
+});

@@ -1,3 +1,4 @@
+import { nextPaymentCents } from "../workspace/plan.ts";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 
@@ -23,6 +24,8 @@ export interface ConnectRepo {
   saveConnection(input: { stripe_account_id: string; livemode: boolean; connected_by: string | null; charges_enabled: boolean; payouts_enabled: boolean; details_submitted: boolean }): Promise<Connection>;
   updateConnection(patch: Partial<Pick<Connection, "charges_enabled" | "payouts_enabled" | "details_submitted" | "status" | "disconnected_at">>): Promise<Connection>;
   getInvoice(id: string): Promise<PayableInvoice | null>;
+  /** The payment plan on an invoice, if it has one. */
+  installmentsFor(invoiceId: string): Promise<{ position: number; due_on: string; amount_cents: number }[]>;
   openPaymentFor(invoiceId: string): Promise<InvoicePayment | null>;
   getPayment(id: string): Promise<InvoicePayment | null>;
   getPaymentBySession(sessionId: string): Promise<InvoicePayment | null>;
@@ -134,8 +137,10 @@ export async function startInvoiceCheckout(
   if (!invoice || invoice.client_id !== input.clientId) fail("That invoice wasn't found.");
   const inv = invoice!;
   if (inv.status !== "sent") fail(inv.status === "paid" ? "That invoice is already paid." : "That invoice can't be paid online.");
-  const owed = inv.total_cents - inv.paid_cents;
-  if (owed <= 0) fail("That invoice is already paid.");
+  const balance = inv.total_cents - inv.paid_cents;
+  if (balance <= 0) fail("That invoice is already paid.");
+  // With a payment plan, an online payment is the next installment, not the whole balance.
+  const owed = Math.min(balance, nextPaymentCents(await deps.repo.installmentsFor(inv.id), inv.paid_cents) ?? balance);
   if (owed < MIN_CHARGE_CENTS) fail("The balance is too small to pay online. Please pay your tax office another way.");
   const account = conn!.stripe_account_id;
   const previous = await deps.repo.openPaymentFor(inv.id);
@@ -155,6 +160,16 @@ export async function startInvoiceCheckout(
     await deps.repo.closePayment(payment.id, "failed");
     throw e;
   }
+}
+
+/** Cancels a pay link that is still open on an invoice, e.g. because the invoice was just changed. Returns whether one was open. */
+export async function cancelOpenPayment(deps: ConnectDeps, invoiceId: string): Promise<boolean> {
+  const open = await deps.repo.openPaymentFor(invoiceId);
+  if (!open) return false;
+  const conn = await deps.repo.getConnection();
+  if (open.stripe_session_id && conn) await deps.stripe.expireCheckout(conn.stripe_account_id, open.stripe_session_id).catch(() => undefined);
+  await deps.repo.closePayment(open.id, "expired");
+  return true;
 }
 
 // ------------------------------------------------------------------ events

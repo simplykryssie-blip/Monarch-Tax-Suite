@@ -1,13 +1,26 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unwrap } from "../commerce/supabase-repo.ts";
-import type { FirmsRepo, FormEvent, FormRow, FormsRepo, FormVersion, Submission, SubmissionPatch, SubmissionQuery, SubmissionStatus, UploadRow } from "./types.ts";
+import type { FirmsRepo, FormEvent, FormInvite, NewFormInvite, FormRow, FormsRepo, FormVersion, Submission, SubmissionPatch, SubmissionQuery, SubmissionStatus, UploadRow } from "./types.ts";
 
 export const UPLOAD_BUCKET = "tenant-form-uploads";
 
 /** Form tables, on a tenant-scoped client: row-level security limits every call to that tenant's rows. */
 export class SupabaseFormsRepo implements FormsRepo {
   constructor(private db: SupabaseClient) {}
+
+  async insertInvite(input: NewFormInvite) {
+    return unwrap(await this.db.from("form_invites").insert(input).select("*").single()) as FormInvite;
+  }
+  async getInviteByHash(hash: string) {
+    return unwrap(await this.db.from("form_invites").select("*").eq("token_hash", hash).maybeSingle()) as FormInvite | null;
+  }
+  async updateInvite(id: string, patch: Partial<Pick<FormInvite, "opened_at" | "submission_id" | "revoked_at">>) {
+    return unwrap(await this.db.from("form_invites").update(patch).eq("id", id).select("*").single()) as FormInvite;
+  }
+  async listInvitesForClient(clientId: string, limit: number) {
+    return unwrap(await this.db.from("form_invites").select("*").eq("client_id", clientId).order("created_at", { ascending: false }).limit(limit)) as FormInvite[];
+  }
 
   async listForms() {
     return unwrap(await this.db.from("forms").select("*").order("updated_at", { ascending: false })) as FormRow[];

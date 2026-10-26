@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { commerceRepo } from "@/lib/admin";
 import { requireSection } from "@/lib/tier-server";
 import { RunHistoryButton } from "@/components/admin/run-history";
@@ -6,8 +5,6 @@ import { when } from "@/components/admin/ui";
 import { automationDeps } from "@/lib/automation/server";
 import { historyRows } from "@/lib/automation/history.ts";
 import { retryExecutionAction } from "./actions";
-
-const TABS = [["/automation/workflows", "Workflows"], ["/automation/pipelines", "Pipelines"], ["/automation/tasks", "Tasks"], ["/automation/templates", "Templates"], ["/automation/images", "Images"]] as const;
 
 const RESULT = { completed: ["Completed", "run-ok"], error: ["Error", "run-err"], skipped: ["Skipped", "run-skip"], waiting: ["Waiting", "monarch-muted"] } as const;
 
@@ -41,9 +38,7 @@ export default async function AutomationLayout({ children }: { children: React.R
   return (
     <>
       <div className="monarch-page-actions" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-        <nav aria-label="Automation" style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-          {TABS.map(([href, text]) => <Link key={href} href={href} className="monarch-link">{text}</Link>)}
-        </nav>
+        <span />
         <RunHistoryButton failed={failed}>
           {!rows ? <p className="monarch-muted">The Automation tables are not installed yet.</p> : rows.length === 0 ? <p className="monarch-muted">Nothing has run yet. Runs appear here as soon as a workflow is triggered or tested.</p> : (
             <div className="monarch-table-wrap"><table>

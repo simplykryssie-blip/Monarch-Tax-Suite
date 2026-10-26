@@ -31,5 +31,6 @@ export async function GET(request: Request) {
     }
   }
   if (!path) return new Response("Not found", { status: 404 });
-  return Response.redirect(await fileLink(deps, path, name), 302);
+  // view=1 opens it in the browser tab (PDFs and images); otherwise the browser saves it.
+  return Response.redirect(await fileLink(deps, path, params.get("view") === "1" ? null : name), 302);
 }
