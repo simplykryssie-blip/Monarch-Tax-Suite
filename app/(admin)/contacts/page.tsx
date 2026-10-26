@@ -22,15 +22,16 @@ function Chips({ c }: { c: Contact }) {
   );
 }
 
-export default async function ContactsPage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string; view?: string }> }) {
+export default async function ContactsPage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string; tag?: string; view?: string }> }) {
   await requireAdmin();
   const sp = await searchParams;
   const kind = ((KINDS as readonly string[]).includes(sp.kind ?? "") ? (sp.kind === "archived" ? "inactive" : sp.kind ?? "") : "") as ContactFilter["kind"];
   const kinds = contactKinds(await currentTier());
   const data = await loadContacts();
   const counts = countContacts(data.contacts);
-  const rows = filterContacts(data.contacts, { q: sp.q, kind });
+  const rows = filterContacts(data.contacts, { q: sp.q, kind, tag: sp.tag });
   const byKey = new Map(data.contacts.map((c) => [c.key, c]));
+  const allTags = [...new Set(data.contacts.flatMap((c) => c.tags))].sort();
   const tabs: [string, string, number][] = [["", "All", counts.all], ["lead", "Leads", counts.lead], ["client", "Clients", counts.client], ["customer", "Customers", counts.customer], ["inactive", "Archived", counts.inactive]];
 
   return (
@@ -62,6 +63,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             <label htmlFor="q" style={{ position: "absolute", left: -9999 }}>Search contacts</label>
             <input id="q" name="q" type="search" defaultValue={sp.q ?? ""} placeholder="Search by name, email, phone or tag" />
             <AutoSelect name="kind" label="Show" defaultValue={kind ?? ""} options={tabs.map(([k, name, n]) => ({ value: k, label: `${name} (${n})` }))} />
+            <AutoSelect name="tag" label="Tag" defaultValue={sp.tag ?? ""} options={[{ value: "", label: "Any tag" }, ...allTags.map((t) => ({ value: t, label: t }))]} />
             <button type="submit" className="monarch-primary">Search</button>
           </form>
           <section className="monarch-panel">
