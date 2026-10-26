@@ -1,7 +1,8 @@
 import "server-only";
 import { platformClient, tenantClient } from "../supabase/service";
 import { vercelDomains } from "./vercel.ts";
-import type { Site, SiteDomain, SitePage, SitesDeps } from "./service.ts";
+import { CUSTOM_DOMAINS_BY_TIER, type Site, type SiteDomain, type SitePage, type SitesDeps } from "./service.ts";
+import { isTier } from "../tier.ts";
 import { SupabaseSitesRepo } from "./supabase-repo.ts";
 import { cleanRequestHost } from "./host.ts";
 import { MONARCH_TENANT_ID } from "../tenants.ts";
@@ -16,9 +17,14 @@ async function hostnameTaken(host: string): Promise<boolean> {
   return Boolean(data);
 }
 
-export function sitesDeps(tenantId: string): SitesDeps {
-  return { repo: new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken), domains: vercelDomains(), adoptOwn: tenantId === MONARCH_TENANT_ID };
+/** How many domains this account's plan allows. An account with no tier is treated as a Service Bureau, like everywhere else. */
+async function domainLimit(tenantId: string): Promise<number> {
+  const { data } = await tenantClient(tenantId).from("tenants").select("tier").limit(1).maybeSingle();
+  const tier = (data as { tier: string | null } | null)?.tier;
+  return isTier(tier) ? CUSTOM_DOMAINS_BY_TIER[tier] : CUSTOM_DOMAINS_BY_TIER.bureau;
 }
+
+export const sitesDeps = (tenantId: string): SitesDeps => ({ repo: new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken), domains: vercelDomains(), adoptOwn: tenantId === MONARCH_TENANT_ID, maxCustomDomains: () => domainLimit(tenantId) });
 
 export type PublicSite = {
   tenantId: string; site: Site; pages: SitePage[]; domain: Pick<SiteDomain, "hostname" | "kind" | "status">;

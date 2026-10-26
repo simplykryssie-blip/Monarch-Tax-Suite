@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, test } from "node:test";
 import { googleFontsHref, settingsOf, cleanPageSeo, pageTitleFor, pageIsIndexed, DEFAULT_SETTINGS } from "../lib/sites/settings.ts";
-import { addCustomDomain, addPage, createSite, deleteSite, saveSiteSettings, hasUnpublishedChanges, movePage, publishSite, refreshDomain, removeDomain, removePage, savePage, setSubdomain, type DomainsPort, type Site, type SiteDomain, type SitePage, type SitesDeps, type SitesRepo } from "../lib/sites/service.ts";
+import { CUSTOM_DOMAINS_BY_TIER, addCustomDomain, addPage, createSite, deleteSite, saveSiteSettings, hasUnpublishedChanges, movePage, publishSite, refreshDomain, removeDomain, removePage, savePage, setSubdomain, type DomainsPort, type Site, type SiteDomain, type SitePage, type SitesDeps, type SitesRepo } from "../lib/sites/service.ts";
 import { vercelDomains, vercelProblems } from "../lib/sites/vercel.ts";
 
 // One shared "platform" so two offices can collide on addresses like they would in the database.
@@ -226,12 +226,21 @@ describe("domains", () => {
     await assert.rejects(addCustomDomain(b.deps, sb, b.repo.domains, "alpha.com", null), /already connected/);
     assert.deepEqual(fakeB.calls, [], "the hosting project was not asked to add or remove anything");
   });
-  test("the platform's own domain, three-domain limit, and unconfigured hosting", async () => {
+  test("the platform's own domain, the account-wide domain limit, and unconfigured hosting", async () => {
     const { repo, deps } = setup();
     const site = await createSite(deps, { name: "Smith Tax", userId: null });
     await assert.rejects(addCustomDomain(deps, site, repo.domains, "x.monarchtaxsuite.com", null), /made for you/);
-    for (const h of ["one.com", "two.com", "three.com"]) await addCustomDomain(deps, site, repo.domains, h, null);
-    await assert.rejects(addCustomDomain(deps, site, repo.domains, "four.com", null), /at most 3/);
+    await addCustomDomain(deps, site, repo.domains, "one.com", null);
+    await assert.rejects(addCustomDomain(deps, site, repo.domains, "two.com", null), /includes 1 connected domain/);
+    // The limit counts every website of the account, not each one on its own.
+    const other = await createSite(deps, { name: "Second", userId: null });
+    await assert.rejects(addCustomDomain(deps, other, repo.domains.filter((d) => d.site_id === other.id), "three.com", null), /includes 1 connected domain/);
+    // A Service Bureau's two.
+    const two = { ...deps, maxCustomDomains: async () => 2 };
+    await addCustomDomain(two, other, repo.domains.filter((d) => d.site_id === other.id), "three.com", null);
+    const third = await createSite(two, { name: "Third", userId: null });
+    await assert.rejects(addCustomDomain(two, third, [], "four.com", null), /includes 2 connected domains/);
+    assert.deepEqual(CUSTOM_DOMAINS_BY_TIER, { ptin: 1, ero: 1, bureau: 2 });
     const none = setup(new Platform(), randomUUID(), null);
     const s2 = await createSite(none.deps, { name: "No Host", userId: null });
     await assert.rejects(addCustomDomain(none.deps, s2, none.repo.domains, "x.com", null), /aren't turned on/);

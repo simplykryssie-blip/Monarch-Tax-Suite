@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FONT_CHOICES, SEO_LIMITS, SOCIALS, type FontChoice, type SiteSettings } from "@/lib/sites/settings.ts";
 import { SettingRow } from "./setting-row";
 import type { PickImage } from "./page-form";
+import type { SettingsSection } from "@/lib/sites/settings-sections.ts";
 
 // One website's settings on a single page, in plain parts: colors, logo and font; business details; header and footer; and how it
 // shows in search and when shared. The whole thing is sent as a single field and checked again on the server.
@@ -12,7 +13,7 @@ import type { PickImage } from "./page-form";
 const SOCIAL_LABEL: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn", youtube: "YouTube", x: "X", tiktok: "TikTok" };
 type Firm = { primary: string; accent: string; brandingHref: string };
 
-export function SettingsForm({ action, area, siteId, initial, images, siteName, firm }: { action: (f: FormData) => void | Promise<void>; area: string; siteId: string; initial: SiteSettings; images: PickImage[]; siteName: string; firm: Firm }) {
+export function SettingsForm({ action, area, siteId, section, initial, images, siteName, firm }: { section: SettingsSection; action: (f: FormData) => void | Promise<void>; area: string; siteId: string; initial: SiteSettings; images: PickImage[]; siteName: string; firm: Firm }) {
   const [s, setS] = useState<SiteSettings>(initial);
   const patch = <K extends keyof SiteSettings>(k: K, v: Partial<SiteSettings[K]>) => setS((cur) => ({ ...cur, [k]: { ...(cur[k] as object), ...(v as object) } }));
   const own = s.brand.primary !== null || s.brand.accent !== null;
@@ -26,9 +27,10 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
     <form action={action} className="sx-form">
       <input type="hidden" name="area" value={area} />
       <input type="hidden" name="site_id" value={siteId} />
+      <input type="hidden" name="section" value={section} />
       <input type="hidden" name="settings" value={JSON.stringify(s)} />
 
-      <SettingRow title="Colors" desc="Used for buttons, links and banners across this website.">
+{section === "brand" && <SettingRow title="Colors" desc="Used for buttons, links and banners across this website.">
         <div className="sx-card-panel">
           <label className="sx-check"><input type="radio" name="colors" checked={!own} onChange={() => patch("brand", { primary: null, accent: null })} /> <span>Use my firm&apos;s colors <i className="sx-swatch" style={{ background: firm.primary }} /><i className="sx-swatch" style={{ background: firm.accent }} /></span></label>
           <label className="sx-check"><input type="radio" name="colors" checked={own} onChange={() => patch("brand", { primary: primary, accent: accent })} /> <span>Choose colors for this website</span></label>
@@ -40,9 +42,9 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
           )}
           {firm.brandingHref && <p className="sx-hint">Your firm&apos;s colors are set under <Link href={firm.brandingHref}>Settings → Branding</Link>.</p>}
         </div>
-      </SettingRow>
+      </SettingRow>}
 
-      <SettingRow title="Page background" desc="The color behind every page of this website. Sections you color yourself still show on top.">
+{section === "brand" && <SettingRow title="Page background" desc="The color behind every page of this website. Sections you color yourself still show on top.">
         <div className="sx-card-panel">
           <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg === null && s.brand.pageBgImageId === null} onChange={() => patch("brand", { pageBg: null, pageBgImageId: null })} /> <span>White</span></label>
           <label className="sx-check"><input type="radio" name="pagebg" checked={s.brand.pageBg !== null && s.brand.pageBgImageId === null} onChange={() => patch("brand", { pageBg: s.brand.pageBg ?? "#f6f4ee", pageBgImageId: null })} /> <span>Choose a color</span></label>
@@ -56,9 +58,9 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
           )}
           {s.brand.pageBg !== null && s.brand.pageBgImageId === null && <label>Color<span className="sx-color"><input type="color" value={s.brand.pageBg} onChange={(e) => patch("brand", { pageBg: e.target.value })} /><code>{s.brand.pageBg}</code></span></label>}
         </div>
-      </SettingRow>
+      </SettingRow>}
 
-      <SettingRow title="Logo and font" desc="The logo goes at the top-left of every page.">
+{section === "brand" && <SettingRow title="Logo and font" desc="The logo goes at the top-left of every page.">
         <div className="sx-card-panel">
           <label>Logo{imageSelect(s.brand.logoImageId, (v) => patch("brand", { logoImageId: v }), "Use my firm's logo")}</label>
           <label>Font
@@ -69,9 +71,9 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
           <p className="sx-sample" style={{ fontFamily: FONT_CHOICES[font].stack }}>The quick brown fox jumps over the lazy dog.</p>
           {images.length === 0 && <p className="sx-hint">To choose a logo, upload a picture from any page in the editor first.</p>}
         </div>
-      </SettingRow>
+      </SettingRow>}
 
-      <SettingRow title="Business details" desc="Shown in the footer of every page. Leave a box empty to use the details from your firm profile.">
+{section === "business" && <SettingRow title="Business details" desc="Shown in the footer of every page. Leave a box empty to use the details from your firm profile.">
         <div className="sx-card-panel">
           <div className="sx-grid">
             <label>Phone<input value={s.contact.phone} maxLength={40} onChange={(e) => patch("contact", { phone: e.target.value })} /></label>
@@ -86,9 +88,9 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
             </div>
           </details>
         </div>
-      </SettingRow>
+      </SettingRow>}
 
-      <SettingRow title="Header and footer" desc="The bar at the top of every page, and the area at the bottom.">
+{section === "header" && <SettingRow title="Header and footer" desc="The bar at the top of every page, and the area at the bottom.">
         <div className="sx-card-panel">
           <label className="sx-check"><input type="checkbox" checked={s.header.show} onChange={(e) => patch("header", { show: e.target.checked })} /> <span>Show the header (your name, logo and menu)</span></label>
           {s.header.show && (
@@ -100,9 +102,9 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
           <label className="sx-check"><input type="checkbox" checked={s.footer.show} onChange={(e) => patch("footer", { show: e.target.checked })} /> <span>Show the footer</span></label>
           {s.footer.show && <label>Footer note <small>(optional)</small><textarea rows={2} maxLength={SEO_LIMITS.footerText} value={s.footer.text} onChange={(e) => patch("footer", { text: e.target.value })} /></label>}
         </div>
-      </SettingRow>
+      </SettingRow>}
 
-      <SettingRow title="Search and sharing" desc="How this website looks on Google and when someone shares a link. Each page can set its own too.">
+{section === "seo" && <SettingRow title="Search and sharing" desc="How this website looks on Google and when someone shares a link. Each page can set its own too.">
         <div className="sx-card-panel">
           <label>Title <small>{s.seo.title.length}/{SEO_LIMITS.title}</small><input value={s.seo.title} maxLength={SEO_LIMITS.title} placeholder={siteName} onChange={(e) => patch("seo", { title: e.target.value })} /></label>
           <label>Description <small>{s.seo.description.length}/{SEO_LIMITS.description}</small><textarea rows={3} value={s.seo.description} maxLength={SEO_LIMITS.description} placeholder="One or two sentences about what you do." onChange={(e) => patch("seo", { description: e.target.value })} /></label>
@@ -113,11 +115,11 @@ export function SettingsForm({ action, area, siteId, initial, images, siteName, 
           </div>
           <label className="sx-check"><input type="checkbox" checked={s.seo.noindex} onChange={(e) => patch("seo", { noindex: e.target.checked })} /> <span>Hide this whole website from search engines</span></label>
         </div>
-      </SettingRow>
+      </SettingRow>}
 
       <div className="sx-savebar">
         <span className="monarch-muted">Changes go live the next time you publish.</span>
-        <button className="monarch-primary">Save settings</button>
+        <button className="monarch-primary">Save</button>
       </div>
     </form>
   );

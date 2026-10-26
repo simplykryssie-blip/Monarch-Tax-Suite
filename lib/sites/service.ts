@@ -50,7 +50,7 @@ export interface DomainsPort {
  * hand (their firm's domain, for example) can then be connected to a website without being added again. Other offices never get
  * this: it would let them put a site on a domain the platform owner controls.
  */
-export type SitesDeps = { repo: SitesRepo; domains: DomainsPort | null; platform?: string; now?: () => Date; newId?: () => string; adoptOwn?: boolean };
+export type SitesDeps = { repo: SitesRepo; domains: DomainsPort | null; platform?: string; now?: () => Date; newId?: () => string; adoptOwn?: boolean; /** Custom domains the whole account may connect, across all its websites. */ maxCustomDomains?: number | (() => Promise<number>) };
 
 /** Addresses the platform itself answers on; never connectable to a website. */
 const PLATFORM_HOSTS = ["verexahq.com", "monarchtaxsuite.com"];
@@ -61,7 +61,9 @@ const fail = (m: string): never => { throw new ValidationError(m); };
 const isDuplicate = (e: unknown) => /duplicate key|unique constraint|already exists/i.test(e instanceof Error ? e.message : "");
 
 export const MAX_PAGES = 20;
-export const MAX_CUSTOM_DOMAINS = 3;
+/** Custom domains an account may connect in total: a PTIN or ERO account one, a Service Bureau two. */
+export const CUSTOM_DOMAINS_BY_TIER = { ptin: 1, ero: 1, bureau: 2 } as const;
+export const DEFAULT_CUSTOM_DOMAINS = 1;
 const PAGE_SLUG = /^[a-z0-9]([a-z0-9-]{0,58}[a-z0-9])?$/;
 const cleanText = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
 
@@ -206,11 +208,15 @@ export async function setSubdomain(deps: SitesDeps, site: Site, domains: SiteDom
 export async function addCustomDomain(deps: SitesDeps, site: Site, domains: SiteDomain[], raw: unknown, userId: string | null): Promise<SiteDomain> {
   const host = cleanCustomHost(raw, platformOf(deps));
   if (!deps.domains) fail("Custom domains aren't turned on for this deployment yet. Ask the platform administrator to add the website hosting settings.");
-  if (domains.filter((d) => d.kind === "custom").length >= MAX_CUSTOM_DOMAINS) fail(`A site can have at most ${MAX_CUSTOM_DOMAINS} custom domains.`);
   if (domains.some((d) => d.hostname === host)) fail("That domain is already connected to your site.");
   // Checked before the hosting side is touched: removing a domain another office uses would take their site down.
   if (await deps.repo.hostnameTaken(host)) fail("That domain is already connected to a website.");
   if (isPlatformHost(host, platformOf(deps))) fail("That address belongs to the platform itself. Use your own domain.");
+  const cap = deps.maxCustomDomains;
+  const limit = typeof cap === "function" ? await cap() : cap ?? DEFAULT_CUSTOM_DOMAINS;
+  let used = 0;
+  for (const s of await deps.repo.listSites()) used += (s.id === site.id ? domains : await deps.repo.listDomains(s.id)).filter((d) => d.kind === "custom").length;
+  if (used >= limit) fail(limit === 1 ? "Your plan includes 1 connected domain, and it's already in use. Remove it first to connect a different one." : `Your plan includes ${limit} connected domains, and they're all in use. Remove one first to connect another.`);
   let added: Awaited<ReturnType<DomainsPort["add"]>>;
   try {
     // The owner's own workspace may connect a domain that is already attached at the hosting side.

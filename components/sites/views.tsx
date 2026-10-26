@@ -15,7 +15,8 @@ import { loadBrand } from "@/lib/branding/server";
 import { isEmptyPage, sectionsOf } from "@/lib/sites/blocks.ts";
 import { cleanPageSeo, settingsOf } from "@/lib/sites/settings.ts";
 import { MAX_SITES } from "@/lib/sites/service.ts";
-import { hasUnpublishedChanges, MAX_CUSTOM_DOMAINS, MAX_PAGES } from "@/lib/sites/service.ts";
+import { DEFAULT_CUSTOM_DOMAINS, hasUnpublishedChanges, MAX_PAGES } from "@/lib/sites/service.ts";
+import { SETTINGS_SECTIONS, settingsSectionOf } from "@/lib/sites/settings-sections.ts";
 import { vercelProblems } from "@/lib/sites/vercel.ts";
 import { tenantClient } from "@/lib/supabase/service";
 import { addDomainAction, addPageAction, createSiteAction, deleteSiteAction, renameSiteAction, saveSiteSettingsAction, movePageAction, publishAction, refreshDomainAction, removeDomainAction, removePageAction, savePageAction, setSubdomainAction, unpublishAction } from "@/app/sites-actions";
@@ -131,22 +132,40 @@ export async function SitesList({ ctx, sp }: { ctx: SitesContext; sp: Search }) 
 }
 
 /** One website's settings, on one page: name and address, then colors, business details, header and footer, and search. */
-export async function SiteSettingsView({ ctx, sp }: { ctx: SiteContext; sp: Search }) {
-  const [pick, brand] = await Promise.all([pickers(ctx), loadBrand(ctx.tenantId)]);
+export async function SiteSettingsView({ ctx, sp }: { ctx: SiteContext; sp: Search & { section?: string } }) {
+  const section = settingsSectionOf(sp.section);
+  const formPart = section !== "general" && section !== "domains";
+  const [pick, brand] = formPart ? await Promise.all([pickers(ctx), loadBrand(ctx.tenantId)]) : [null, null];
+  const current = SETTINGS_SECTIONS.find((x) => x.key === section)!;
   return (
     <div className="sx">
       <SiteHeader ctx={ctx} here="settings" />
       <Flash notice={sp.notice} error={sp.error} />
-      <SettingRow title="Website name" desc="Shown at the top of every page and in the list of your websites.">
-        <div className="sx-card-panel">
-          <form action={renameSiteAction} className="sx-inline"><Hidden ctx={ctx} /><input name="name" required maxLength={80} defaultValue={ctx.site.name} aria-label="Website name" /><button className="monarch-secondary">Rename</button></form>
+      <div className="sx-settings">
+        <nav className="sx-sidenav" aria-label="Settings">
+          {SETTINGS_SECTIONS.map((x) => <Link key={x.key} href={`${ctx.siteBase}/settings?section=${x.key}`} className={x.key === section ? "is-on" : undefined} aria-current={x.key === section ? "page" : undefined}><b>{x.label}</b><span>{x.hint}</span></Link>)}
+        </nav>
+        <div className="sx-settings-body">
+          <h2 className="sx-settings-title">{current.label}</h2>
+          {section === "general" && (
+            <>
+              <SettingRow title="Website name" desc="Shown at the top of every page and in the list of your websites.">
+                <div className="sx-card-panel">
+                  <form action={renameSiteAction} className="sx-inline"><Hidden ctx={ctx} /><input type="hidden" name="section" value="general" /><input name="name" required maxLength={80} defaultValue={ctx.site.name} aria-label="Website name" /><button className="monarch-secondary">Rename</button></form>
+                </div>
+              </SettingRow>
+              <FreeAddress ctx={ctx} />
+            </>
+          )}
+          {section === "domains" && <OwnDomain ctx={ctx} />}
+          {pick && brand && (
+            <SettingsForm
+              key={section} section={section} action={saveSiteSettingsAction} area={ctx.area} siteId={ctx.site.id} initial={settingsOf(ctx.site.settings ?? {})} images={pick.images} siteName={ctx.site.name}
+              firm={{ primary: /^#[0-9a-f]{6}$/i.test(brand.primary) ? brand.primary : "#2563eb", accent: /^#[0-9a-f]{6}$/i.test(brand.accent) ? brand.accent : "#171714", brandingHref: ctx.area === "admin" ? "/settings/branding" : "" }}
+            />
+          )}
         </div>
-      </SettingRow>
-      <Addresses ctx={ctx} />
-      <SettingsForm
-        action={saveSiteSettingsAction} area={ctx.area} siteId={ctx.site.id} initial={settingsOf(ctx.site.settings ?? {})} images={pick.images} siteName={ctx.site.name}
-        firm={{ primary: /^#[0-9a-f]{6}$/i.test(brand.primary) ? brand.primary : "#2563eb", accent: /^#[0-9a-f]{6}$/i.test(brand.accent) ? brand.accent : "#171714", brandingHref: ctx.area === "admin" ? "/settings/branding" : "" }}
-      />
+      </div>
     </div>
   );
 }
@@ -233,33 +252,43 @@ export async function PageEditorView({ ctx, id, sp }: { ctx: SiteContext; id: st
 }
 
 
-async function Addresses({ ctx }: { ctx: SiteContext }) {
+async function FreeAddress({ ctx }: { ctx: SiteContext }) {
   const domains = await ctx.deps.repo.listDomains(ctx.site.id);
   const sub = domains.find((d) => d.kind === "subdomain");
-  const custom = domains.filter((d) => d.kind === "custom");
+  const live = domains.find((d) => d.kind === "custom" && d.status === "active");
   const platform = platformDomain();
-  const problems = vercelProblems(process.env);
-  const live = custom.find((d) => d.status === "active");
   return (
-    <>
-      <SettingRow title="Address" desc="Where visitors find this website.">
+    <SettingRow title="Free address" desc="The address every website gets automatically.">
       <section className="sx-card-panel">
-        <h3>Free address</h3>
-        <p>{live ? <>Visitors who use this address are sent to <b>{live.hostname}</b>.</> : <>Every website gets one on {platform} automatically. You can change the first part; the old one stops working right away.</>}</p>
+        <p>{live ? <>Visitors who use this address are sent to <b>{live.hostname}</b>.</> : <>Every website gets one on {platform}. You can change the first part; the old one stops working right away.</>}</p>
         <form action={setSubdomainAction} className="sx-inline">
-          <Hidden ctx={ctx} />
+          <Hidden ctx={ctx} /><input type="hidden" name="section" value="general" />
           <input name="label" required defaultValue={ctx.site.slug} maxLength={40} aria-label="Address" /> <span>.{platform}</span>
           <button className="monarch-secondary">Change</button>
         </form>
         {sub && <p className="monarch-muted">Currently <b>{sub.hostname}</b>.</p>}
       </section>
+    </SettingRow>
+  );
+}
+
+async function OwnDomain({ ctx }: { ctx: SiteContext }) {
+  const domains = await ctx.deps.repo.listDomains(ctx.site.id);
+  const custom = domains.filter((d) => d.kind === "custom");
+  const problems = vercelProblems(process.env);
+  const cap = ctx.deps.maxCustomDomains;
+  const limit = typeof cap === "function" ? await cap() : cap ?? DEFAULT_CUSTOM_DOMAINS;
+  let used = 0;
+  for (const s of await ctx.deps.repo.listSites()) used += (s.id === ctx.site.id ? domains : await ctx.deps.repo.listDomains(s.id)).filter((d) => d.kind === "custom").length;
+  const sec = <input type="hidden" name="section" value="domains" />;
+  return (
+    <SettingRow title="Your own domain" desc={`Connect a domain you own, such as www.yourfirm.com. Your plan includes ${limit} connected ${limit === 1 ? "domain" : "domains"} (${used} in use).`}>
       <section className="sx-card-panel">
-        <h3>Your own domain</h3>
-        <p>Connect a domain you own, such as <b>www.yourfirm.com</b>. You&apos;ll add one or two records at the company where you bought it. Your free address keeps working.</p>
+        <p>You&apos;ll add one or two records at the company where you bought the domain. Your free address keeps working.</p>
         {problems.length > 0 && <p className="monarch-notice" role="note"><b>NOT TURNED ON</b> Connecting your own domain isn&apos;t set up on this deployment yet: {problems.join(" ")}</p>}
-        {custom.length < MAX_CUSTOM_DOMAINS && (
-          <form action={addDomainAction} className="sx-inline"><Hidden ctx={ctx} /><input name="host" required maxLength={253} placeholder="www.yourfirm.com" aria-label="Your domain" /><button className="monarch-primary" disabled={problems.length > 0}>Connect domain</button></form>
-        )}
+        {used < limit
+          ? <form action={addDomainAction} className="sx-inline"><Hidden ctx={ctx} />{sec}<input name="host" required maxLength={253} placeholder="www.yourfirm.com" aria-label="Your domain" /><button className="monarch-primary" disabled={problems.length > 0}>Connect domain</button></form>
+          : custom.length === 0 && <p className="monarch-muted">Your {limit === 1 ? "domain is" : "domains are"} already used on another website. Remove {limit === 1 ? "it" : "one"} there to connect one here.</p>}
         {custom.map((d) => (
           <div key={d.id} className="sx-domain">
             <div className="sx-meta"><b>{d.hostname}</b><span>{STATUS[d.status]}</span></div>
@@ -274,13 +303,12 @@ async function Addresses({ ctx }: { ctx: SiteContext }) {
               </>
             )}
             <div className="sx-inline">
-              <form action={refreshDomainAction}><Hidden ctx={ctx} /><input type="hidden" name="domain_id" value={d.id} /><button className="monarch-secondary">Check now</button></form>
-              <form action={removeDomainAction}><Hidden ctx={ctx} /><input type="hidden" name="domain_id" value={d.id} /><button className="monarch-secondary">Remove</button></form>
+              <form action={refreshDomainAction}><Hidden ctx={ctx} />{sec}<input type="hidden" name="domain_id" value={d.id} /><button className="monarch-secondary">Check now</button></form>
+              <form action={removeDomainAction}><Hidden ctx={ctx} />{sec}<input type="hidden" name="domain_id" value={d.id} /><button className="monarch-secondary">Remove</button></form>
             </div>
           </div>
         ))}
       </section>
-      </SettingRow>
-    </>
+    </SettingRow>
   );
 }

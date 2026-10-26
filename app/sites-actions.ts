@@ -25,7 +25,8 @@ async function run(form: FormData, page: string, fn: (ctx: SiteContext) => Promi
   const area = str(form, "area");
   if (!isSitesArea(area)) redirect("/");
   const ctx = await requireSite(area, str(form, "site_id"));
-  const home = `${ctx.siteBase}${page}`;
+  const sec = str(form, "section");
+  const home = `${ctx.siteBase}${page}${page === "/settings" && /^[a-z]{3,10}$/.test(sec) ? `?section=${sec}` : ""}`;
   let target: string;
   try {
     const r = await fn(ctx);
