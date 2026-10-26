@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { Blocks, SiteFrame } from "@/components/sites/render";
 import { buildView, loadPublicSite, requestSiteHost } from "@/lib/sites/public";
 import { cleanPageSeo, pageDescriptionFor, pageIsIndexed, pageTitleFor, settingsOf } from "@/lib/sites/settings.ts";
@@ -17,6 +17,8 @@ async function resolve({ params }: Params) {
   if (!host || (path?.length ?? 0) > 1) return null;
   const ps = await loadPublicSite(host);
   if (!ps || ps.site.status !== "published") return { ps, page: null as null };
+  // Once the office's own domain works, the free address sends visitors there.
+  if (ps.primaryHost && ps.domain.kind === "subdomain" && ps.primaryHost !== host) permanentRedirect(`https://${ps.primaryHost}${path?.length ? `/${path.join("/")}` : "/"}`);
   const slug = path?.[0]?.toLowerCase() ?? "";
   const page = ps.pages.find((p) => p.slug === slug && p.published !== null) ?? null;
   return { ps, page };
@@ -45,7 +47,7 @@ export async function generateMetadata(input: Params): Promise<Metadata> {
   return {
     title,
     description,
-    alternates: { canonical: `https://${r.ps.domain.hostname}${r.page.is_home ? "/" : `/${r.page.slug}`}` },
+    alternates: { canonical: `https://${r.ps.primaryHost ?? r.ps.domain.hostname}${r.page.is_home ? "/" : `/${r.page.slug}`}` },
     robots: { index: indexed, follow: indexed },
     openGraph: { title, description, type: "website", ...(share ? { images: [share] } : {}) },
     ...(icon ? { icons: { icon } } : {}),

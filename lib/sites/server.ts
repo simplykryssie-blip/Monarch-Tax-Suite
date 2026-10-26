@@ -19,7 +19,11 @@ export function sitesDeps(tenantId: string): SitesDeps {
   return { repo: new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken), domains: vercelDomains() };
 }
 
-export type PublicSite = { tenantId: string; site: Site; pages: SitePage[]; domain: Pick<SiteDomain, "hostname" | "kind" | "status"> };
+export type PublicSite = {
+  tenantId: string; site: Site; pages: SitePage[]; domain: Pick<SiteDomain, "hostname" | "kind" | "status">;
+  /** The office's own connected domain, once it is working. The free address then sends visitors here. */
+  primaryHost: string | null;
+};
 
 /** The site behind a hostname, with its published pages; null when no office uses that hostname. */
 export async function siteForHost(rawHost: string): Promise<PublicSite | null> {
@@ -33,7 +37,8 @@ export async function siteForHost(rawHost: string): Promise<PublicSite | null> {
   const site = await repo.getSite(data.site_id as string);
   if (!site) return null;
   const pages = await repo.listPages(site.id);
-  return { tenantId, site, pages, domain: { hostname: data.hostname as string, kind: data.kind as SiteDomain["kind"], status: data.status as SiteDomain["status"] } };
+  const own = (await repo.listDomains(site.id)).find((d) => d.kind === "custom" && d.status === "active");
+  return { tenantId, site, pages, primaryHost: own?.hostname ?? null, domain: { hostname: data.hostname as string, kind: data.kind as SiteDomain["kind"], status: data.status as SiteDomain["status"] } };
 }
 
 // A short memory of which hostnames have a site, so the proxy doesn't query on every request.

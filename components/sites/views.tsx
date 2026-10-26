@@ -10,6 +10,8 @@ import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
 import { viewFor } from "@/lib/sites/public";
 import type { SiteContext, SitesContext } from "@/lib/sites/context";
 import { SettingsForm } from "@/components/sites/settings-form";
+import { SettingRow } from "@/components/sites/setting-row";
+import { loadBrand } from "@/lib/branding/server";
 import { sectionsOf } from "@/lib/sites/blocks.ts";
 import { cleanPageSeo, settingsOf } from "@/lib/sites/settings.ts";
 import { MAX_SITES } from "@/lib/sites/service.ts";
@@ -117,23 +119,23 @@ export async function SitesList({ ctx, sp }: { ctx: SitesContext; sp: Search }) 
   );
 }
 
-/** One website's settings: its name and addresses, look, header and footer, contact, and search details, in one place. */
+/** One website's settings, on one page: name and address, then colours, business details, header and footer, and search. */
 export async function SiteSettingsView({ ctx, sp }: { ctx: SiteContext; sp: Search }) {
-  const pick = await pickers(ctx);
-  const general = (
-    <>
-      <section className="sx-card-panel">
-        <h2>Website name</h2>
-        <form action={renameSiteAction} className="sx-inline"><Hidden ctx={ctx} /><input name="name" required maxLength={80} defaultValue={ctx.site.name} aria-label="Website name" /><button className="monarch-secondary">Rename</button></form>
-      </section>
-      <Addresses ctx={ctx} />
-    </>
-  );
+  const [pick, brand] = await Promise.all([pickers(ctx), loadBrand(ctx.tenantId)]);
   return (
     <div className="sx">
       <SiteHeader ctx={ctx} here="settings" />
       <Flash notice={sp.notice} error={sp.error} />
-      <SettingsForm action={saveSiteSettingsAction} area={ctx.area} siteId={ctx.site.id} initial={settingsOf(ctx.site.settings ?? {})} images={pick.images} siteName={ctx.site.name} general={general} />
+      <SettingRow title="Website name" desc="Shown at the top of every page and in the list of your websites.">
+        <div className="sx-card-panel">
+          <form action={renameSiteAction} className="sx-inline"><Hidden ctx={ctx} /><input name="name" required maxLength={80} defaultValue={ctx.site.name} aria-label="Website name" /><button className="monarch-secondary">Rename</button></form>
+        </div>
+      </SettingRow>
+      <Addresses ctx={ctx} />
+      <SettingsForm
+        action={saveSiteSettingsAction} area={ctx.area} siteId={ctx.site.id} initial={settingsOf(ctx.site.settings ?? {})} images={pick.images} siteName={ctx.site.name}
+        firm={{ primary: /^#[0-9a-f]{6}$/i.test(brand.primary) ? brand.primary : "#2563eb", accent: /^#[0-9a-f]{6}$/i.test(brand.accent) ? brand.accent : "#171714", brandingHref: ctx.area === "admin" ? "/settings/branding" : "" }}
+      />
     </div>
   );
 }
@@ -226,11 +228,13 @@ async function Addresses({ ctx }: { ctx: SiteContext }) {
   const custom = domains.filter((d) => d.kind === "custom");
   const platform = platformDomain();
   const problems = vercelProblems(process.env);
+  const live = custom.find((d) => d.status === "active");
   return (
     <>
+      <SettingRow title="Address" desc="Where visitors find this website.">
       <section className="sx-card-panel">
-        <h2>Your free address</h2>
-        <p>Every website gets an address on {platform} automatically. You can change the first part; the old address stops working right away.</p>
+        <h3>Free address</h3>
+        <p>{live ? <>Visitors who use this address are sent to <b>{live.hostname}</b>.</> : <>Every website gets one on {platform} automatically. You can change the first part; the old one stops working right away.</>}</p>
         <form action={setSubdomainAction} className="sx-inline">
           <Hidden ctx={ctx} />
           <input name="label" required defaultValue={ctx.site.slug} maxLength={40} aria-label="Address" /> <span>.{platform}</span>
@@ -239,7 +243,7 @@ async function Addresses({ ctx }: { ctx: SiteContext }) {
         {sub && <p className="monarch-muted">Currently <b>{sub.hostname}</b>.</p>}
       </section>
       <section className="sx-card-panel">
-        <h2>Your own domain</h2>
+        <h3>Your own domain</h3>
         <p>Connect a domain you own, such as <b>www.yourfirm.com</b>. You&apos;ll add one or two records at the company where you bought it. Your free address keeps working.</p>
         {problems.length > 0 && <p className="monarch-notice" role="note"><b>NOT TURNED ON</b> Connecting your own domain isn&apos;t set up on this deployment yet: {problems.join(" ")}</p>}
         {custom.length < MAX_CUSTOM_DOMAINS && (
@@ -265,6 +269,7 @@ async function Addresses({ ctx }: { ctx: SiteContext }) {
           </div>
         ))}
       </section>
+      </SettingRow>
     </>
   );
 }
