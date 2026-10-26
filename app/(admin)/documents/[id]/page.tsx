@@ -13,7 +13,7 @@ import { SubmitOnce } from "@/components/admin/submit-once";
 import { ASK_FIELD, askLabel } from "@/lib/documents/fields.ts";
 import { BOX_CHOICES } from "@/lib/documents/fields.ts";
 import { pdfBoxes, type PdfBox } from "@/lib/documents/merge.ts";
-import { moveDocumentAction, saveFieldMapAction, revokeDeliveryAction, saveConsentAction, saveDocumentDetailsAction, sendToClientAction } from "../actions";
+import { moveDocumentAction, saveBoxValuesAction, saveFieldMapAction, revokeDeliveryAction, saveConsentAction, saveDocumentDetailsAction, sendToClientAction } from "../actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const kb = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
@@ -32,12 +32,12 @@ export default async function DocumentPage({ params, searchParams }: { params: P
   const current = versions.find((v) => v.id === doc.current_version_id) ?? null;
   const sigByDelivery = new Map(signatures.map((s) => [s.delivery_id, s]));
   const canSign = doc.file_type === "pdf";
-  const tabs = [["file", "File"], ["send", "Send"], ["sent", `Sent copies${deliveries.length ? ` (${deliveries.length})` : ""}`], ["settings", "Settings"]] as const;
+  const tabs = [["file", "File"], ["edit", "Edit"], ["send", "Send"], ["sent", `Sent copies${deliveries.length ? ` (${deliveries.length})` : ""}`], ["settings", "Settings"]] as const;
   const tab = tabs.some(([k]) => k === askedTab) ? askedTab! : "file";
   const asks = (current?.merge_fields ?? []).filter((f) => ASK_FIELD.test(f));
   const paths = folderPaths(folders);
   // The boxes of a fillable PDF, for matching them to what goes in them.
-  const boxes: PdfBox[] = tab === "file" && canSign && current ? await deps.store.download(current.storage_path).then((b) => (b ? pdfBoxes(b) : [])).catch(() => []) : [];
+  const boxes: PdfBox[] = (tab === "file" || tab === "edit") && canSign && current ? await deps.store.download(current.storage_path).then((b) => (b ? pdfBoxes(b) : [])).catch(() => []) : [];
 
   return (
     <>
@@ -131,34 +131,41 @@ export default async function DocumentPage({ params, searchParams }: { params: P
             ) : <p className="monarch-muted">No file has been accepted yet. Upload one below.</p>}
             {doc.status === "active" && <><h3>Upload a new version</h3><DocumentUploader documentId={doc.id} accept={`.${doc.file_type}${doc.file_type === "jpg" ? ",.jpeg" : ""}`} /><p className="monarch-muted">Copies already sent keep the version they used.</p></>}
           </section>
-          {canSign && boxes.length > 0 && (
+          {canSign && boxes.length > 0 && current && (
             <section className="monarch-panel" style={{ padding: 20 }}>
-              <h2>Match the boxes</h2>
-              <p className="monarch-muted">An official form names its boxes with codes. Say what goes in each one, and it&apos;s filled in for every client you send it to. Boxes left as &ldquo;Leave blank&rdquo; stay empty.</p>
-              <form action={saveFieldMapAction}>
-                <input type="hidden" name="id" value={doc.id} />
-                <div className="monarch-table-wrap"><table>
-                  <thead><tr><th>BOX IN THE PDF</th><th>WHAT GOES IN IT</th></tr></thead>
-                  <tbody>
-                    {boxes.map((b) => (
-                      <tr key={b.name}>
-                        <td><code>{b.name}</code>{b.kind === "other" && <small className="monarch-subcell">not a text box: only a signature can go here</small>}</td>
-                        <td>
-                          <select name={`box:${b.name}`} defaultValue={doc.field_map?.[b.name] ?? ""} aria-label={`What goes in ${b.name}`}>
-                            <option value="">Leave blank</option>
-                            {BOX_CHOICES.map((g) => (
-                              <optgroup key={g.group} label={g.group}>
-                                {g.choices.filter((c) => b.kind === "text" || c.value === "signature").map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                              </optgroup>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table></div>
-                <p><button className="monarch-primary">Save matches</button></p>
-              </form>
+              <details open={Object.keys(doc.field_map ?? {}).length > 0}>
+                <summary><b>Fill this form in automatically (optional)</b></summary>
+                <p className="monarch-muted">Skip this if the document doesn&apos;t need to be filled in: it&apos;s sent exactly as it is. If it does, say what goes in each box and it&apos;s filled in for every client you send it to. Boxes left as &ldquo;Leave blank&rdquo; stay empty.</p>
+                <p><a className="monarch-secondary" href={`/documents/${doc.id}/boxes`} target="_blank" rel="noreferrer">Show where the boxes are on the form</a> <span className="monarch-muted">Each box is outlined and numbered with the # below.</span></p>
+                <form action={saveFieldMapAction}>
+                  <input type="hidden" name="id" value={doc.id} />
+                  <div className="monarch-table-wrap"><table>
+                    <thead><tr><th>#</th><th>WHAT THE BOX IS</th><th>WHAT GOES IN IT</th></tr></thead>
+                    <tbody>
+                      {boxes.map((b) => (
+                        <tr key={b.name}>
+                          <td><b>{b.index}</b></td>
+                          <td>
+                            {b.hint ? <span>{b.hint}</span> : <span className="monarch-muted">{b.page ? `A box on page ${b.page}` : "A box"}: see where it is</span>}
+                            <small className="monarch-subcell">{b.page ? <a href={`/documents/${doc.id}/boxes#page=${b.page}`} target="_blank" rel="noreferrer">Page {b.page}</a> : null}{b.page ? " · " : ""}<code>{b.name.split(".").slice(-1)[0]}</code>{b.kind === "other" && " · not a text box: only a signature can go here"}</small>
+                          </td>
+                          <td>
+                            <select name={`box:${b.name}`} defaultValue={doc.field_map?.[b.name] ?? ""} aria-label={`What goes in box ${b.index}`}>
+                              <option value="">Leave blank</option>
+                              {BOX_CHOICES.map((g) => (
+                                <optgroup key={g.group} label={g.group}>
+                                  {g.choices.filter((c) => b.kind === "text" || c.value === "signature").map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                </optgroup>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table></div>
+                  <p><button className="monarch-primary">Save matches</button></p>
+                </form>
+              </details>
             </section>
           )}
           <section className="monarch-panel">
@@ -178,10 +185,10 @@ export default async function DocumentPage({ params, searchParams }: { params: P
         </>
       )}
 
-      {tab === "settings" && (
+      {tab === "edit" && (
         <>
           <section className="monarch-panel" style={{ padding: 20 }}>
-            <h2>Details</h2>
+            <h2>Name and details</h2>
             <form action={saveDocumentDetailsAction} className="monarch-form">
               <input type="hidden" name="id" value={doc.id} />
               <label>Name<input name="name" required maxLength={120} defaultValue={doc.name} /></label>
@@ -190,7 +197,7 @@ export default async function DocumentPage({ params, searchParams }: { params: P
             </form>
             {paths.length > 0 && (
               <form action={moveDocumentAction} className="monarch-form" style={{ marginTop: 14 }}>
-                <input type="hidden" name="id" value={doc.id} /><input type="hidden" name="back" value={`/documents/${doc.id}?tab=settings`} />
+                <input type="hidden" name="id" value={doc.id} /><input type="hidden" name="back" value={`/documents/${doc.id}?tab=edit`} />
                 <label>Folder
                   <select name="to" defaultValue={doc.folder_id ?? ""}>
                     <option value="">No folder</option>
@@ -201,6 +208,48 @@ export default async function DocumentPage({ params, searchParams }: { params: P
               </form>
             )}
           </section>
+          <section className="monarch-panel" style={{ padding: 20 }}>
+            <h2>Change what&apos;s in the file</h2>
+            {!current || doc.status !== "active" ? <p className="monarch-muted">Add the file first (or restore the document if it&apos;s archived).</p> : canSign ? (
+              boxes.some((b) => b.kind === "text") ? (
+                <>
+                  <p className="monarch-muted">Type into the form&apos;s boxes and save: it becomes a new version and stays fillable. Copies already sent keep the version they used. To change anything else on the page, edit the file in your PDF program and upload it below.</p>
+                  <p><a className="monarch-secondary" href={`/documents/${doc.id}/boxes`} target="_blank" rel="noreferrer">Show where the boxes are on the form</a></p>
+                  <form action={saveBoxValuesAction}>
+                    <input type="hidden" name="id" value={doc.id} />
+                    <div className="monarch-table-wrap"><table>
+                      <thead><tr><th>#</th><th>WHAT THE BOX IS</th><th>TYPED IN IT</th></tr></thead>
+                      <tbody>
+                        {boxes.filter((b) => b.kind === "text").map((b) => (
+                          <tr key={b.name}>
+                            <td><b>{b.index}</b></td>
+                            <td>{b.hint || <span className="monarch-muted">{b.page ? `A box on page ${b.page}` : "A box"}</span>}{b.page ? <small className="monarch-subcell">Page {b.page}</small> : null}</td>
+                            <td><input name={`val:${b.name}`} defaultValue={b.value} maxLength={500} aria-label={`Box ${b.index}`} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table></div>
+                    <p><button className="monarch-primary">Save as a new version</button></p>
+                  </form>
+                </>
+              ) : <p className="monarch-muted">This PDF has no boxes to type into. To change it, edit the file in your PDF program and upload the new version below.</p>
+            ) : (
+              <p className="monarch-muted">{doc.file_type === "docx" ? "Download the file, change it in Word, and upload it below as a new version." : doc.file_type === "xlsx" ? "Download the file, change it in Excel, and upload it below as a new version." : "Download the picture, change it, and upload it below as a new version."}</p>
+            )}
+            {current && <p><a className="monarch-secondary" href={`/documents/file?type=version&id=${current.id}`}>Download the current file</a></p>}
+          </section>
+          {doc.status === "active" && (
+            <section className="monarch-panel" style={{ padding: 20 }}>
+              <h2>Replace the file</h2>
+              <DocumentUploader documentId={doc.id} accept={`.${doc.file_type}${doc.file_type === "jpg" ? ",.jpeg" : ""}`} />
+              <p className="monarch-muted">The new file becomes the current version. Copies already sent keep the version they used.</p>
+            </section>
+          )}
+        </>
+      )}
+
+      {tab === "settings" && (
+        <>
           {canSign && (
             <section className="monarch-panel" style={{ padding: 20 }}>
               <h2>Signing consent</h2>

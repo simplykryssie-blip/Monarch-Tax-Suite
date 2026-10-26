@@ -4,7 +4,7 @@ import { documentOpenedNotice } from "./activity.ts";
 import type { NewNotification } from "../notifications/types.ts";
 import { checkDocumentFile, cleanDocumentName, stripPdfActiveContent, CONTENT_TYPES, DOCUMENT_URL_SECONDS, MAX_DOCUMENT_BYTES, sha256Hex, type DocumentFileType } from "./files.ts";
 import { isBoxChoice, type FieldMap } from "./fields.ts";
-import { fillTemplate, missingValues, pdfBoxes, scanTemplate } from "./merge.ts";
+import { fillTemplate, missingValues, pdfBoxes, scanTemplate, typeIntoBoxes } from "./merge.ts";
 import { applySignature, isSignaturePng, type SignatureMark } from "./signing.ts";
 import { formatDate } from "./values.ts";
 import type { Delivery, DeliveryKind, DocumentStore, DocumentsRepo, DocumentVersion, LibraryDocument, SignatureRequest } from "./types.ts";
@@ -86,6 +86,46 @@ export async function startVersionUpload(
   const version = await deps.repo.insertVersion({ document_id: document.id, version: next, storage_path: versionPath(deps, document.id), file_name: fileName, size_bytes: input.sizeBytes, created_by: input.adminId });
   const { url } = await deps.store.createUploadUrl(ownPath(deps, version.storage_path));
   return { document, version, uploadUrl: url, contentType: CONTENT_TYPES[fileType] };
+}
+
+/** Makes a new current version from bytes made here (an edit), checked like any upload. Copies already sent keep the version they used. */
+export async function addVersionFromBytes(deps: DocumentDeps, documentId: string, bytes: Uint8Array, actorId: string | null): Promise<{ document: LibraryDocument; version: DocumentVersion }> {
+  const document = await deps.repo.getDocument(documentId);
+  if (!document) throw new ValidationError("Document not found.");
+  if (document.status === "archived") throw new ValidationError("This document is archived. Restore it before changing it.");
+  const versions = await deps.repo.listVersions(documentId);
+  const current = versions.find((v) => v.id === document.current_version_id);
+  if (!current) throw new ValidationError("Add the file first.");
+  const next = versions.reduce((n, v) => Math.max(n, v.version), 0) + 1;
+  const path = versionPath(deps, documentId);
+  const version = await deps.repo.insertVersion({ document_id: documentId, version: next, storage_path: path, file_name: current.file_name, size_bytes: bytes.byteLength, created_by: actorId });
+  await deps.store.upload(ownPath(deps, path), bytes, CONTENT_TYPES[document.file_type]);
+  return finishVersionUpload(deps, version.id, actorId);
+}
+
+/** Types into the text boxes of the current PDF and saves the result as a new version (the form stays fillable). */
+export async function editBoxValues(deps: DocumentDeps, documentId: string, raw: Record<string, unknown>, actorId: string | null) {
+  const document = await deps.repo.getDocument(documentId);
+  if (!document) throw new ValidationError("Document not found.");
+  if (document.file_type !== "pdf") throw new ValidationError("Only a PDF has boxes to type into.");
+  const version = document.current_version_id ? await deps.repo.getVersion(document.current_version_id) : null;
+  if (!version || version.status !== "ready") throw new ValidationError("Add the file first.");
+  const bytes = await deps.store.download(ownPath(deps, version.storage_path));
+  if (!bytes) throw new ValidationError("The document file is missing from storage.");
+  const boxes = await pdfBoxes(bytes);
+  const known = new Map(boxes.filter((b) => b.kind === "text").map((b) => [b.name, b.value]));
+  const values: Record<string, string> = {};
+  for (const [name, v] of Object.entries(raw)) {
+    if (typeof v !== "string") continue;
+    if (!known.has(name)) throw new ValidationError("A box in your list isn't in this PDF. Reload the page and try again.");
+    const next = v.replace(/\r\n/g, "\n").slice(0, 500);
+    if (next !== known.get(name)) values[name] = next;
+  }
+  if (!Object.keys(values).length) throw new ValidationError("Nothing was changed.");
+  const edited = await typeIntoBoxes(bytes, values);
+  const saved = await addVersionFromBytes(deps, documentId, edited, actorId);
+  await deps.repo.addEvent({ document_id: documentId, delivery_id: null, signature_request_id: null, type: "edited", actor_id: actorId, detail: { boxes: Object.keys(values).length, version: saved.version.version } });
+  return saved;
 }
 
 /**

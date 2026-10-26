@@ -7,7 +7,7 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { automationDeps } from "@/lib/automation/server";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { documentDeps } from "@/lib/documents/server";
-import { finishVersionUpload, revokeDelivery, saveFieldMap, setConsentText, startVersionUpload } from "@/lib/documents/service.ts";
+import { finishVersionUpload, revokeDelivery, saveFieldMap, editBoxValues, setConsentText, startVersionUpload } from "@/lib/documents/service.ts";
 import { createFolder, deleteFolder, internalScope, moveFile, moveFolder, renameFolder } from "@/lib/documents/folders.ts";
 import { sendDocumentToClient } from "@/lib/portal/send-document.ts";
 import { ssnDeps } from "@/lib/ssn/server";
@@ -70,12 +70,23 @@ export async function finishDocumentUploadAction(versionId: string): Promise<Doc
 
 export async function saveDocumentDetailsAction(form: FormData) {
   const id = str(form, "id");
-  await act(`/documents/${id}?tab=settings`, async () => {
+  await act(`/documents/${id}?tab=edit`, async () => {
     if (!UUID.test(id)) throw new ValidationError("Document not found.");
     const name = str(form, "name").replace(/\s+/g, " ").trim().slice(0, 120);
     if (name.length < 2) throw new ValidationError("Give the document a name.");
     await documentDeps().repo.updateDocument(id, { name, description: str(form, "description").trim().slice(0, 1000) || null });
     return { notice: "Saved." };
+  });
+}
+
+export async function saveBoxValuesAction(form: FormData) {
+  const id = str(form, "id");
+  await act(`/documents/${id}?tab=edit`, async (adminId) => {
+    if (!UUID.test(id)) throw new ValidationError("Document not found.");
+    const raw: Record<string, unknown> = {};
+    for (const [key, value] of form.entries()) if (key.startsWith("val:") && typeof value === "string") raw[key.slice(4)] = value;
+    const saved = await editBoxValues(documentDeps(), id, raw, adminId);
+    return { notice: `Saved as version ${saved.version.version}. Copies already sent keep the version they used.` };
   });
 }
 
@@ -136,7 +147,7 @@ export async function deleteFolderAction(form: FormData) {
 
 export async function moveDocumentAction(form: FormData) {
   const back = str(form, "back");
-  await act(/^\/documents\/[0-9a-f-]{36}\?tab=settings$/i.test(back) ? back : here(form), async () => {
+  await act(/^\/documents\/[0-9a-f-]{36}\?tab=(settings|edit)$/i.test(back) ? back : here(form), async () => {
     await moveFile(internal(), str(form, "id"), str(form, "to"));
     return { notice: "Moved." };
   });
