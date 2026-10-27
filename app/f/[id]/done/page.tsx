@@ -22,7 +22,7 @@ export default async function FormDonePage({ params, searchParams }: { params: P
   const sub = ctx && subId && /^[0-9a-f-]{36}$/.test(subId) ? await ctx.deps.repo.getSubmission(subId).catch(() => null) : null;
   const valid = receiptValid(sub, token, ctx?.pf?.form.id);
   return (
-    <ThemedPage theme={brandedTheme(ctx?.pf?.settings.theme ?? DEFAULT_THEME, brand)} firm={firm} maxWidth={720} poweredBy={!!brand?.showPoweredBy}>
+    <ThemedPage theme={brandedTheme(ctx?.pf?.settings.theme ?? DEFAULT_THEME, brand)} firm={firm} maxWidth={720}>
         {firm && <div className="monarch-eyebrow">{firm.toUpperCase()}</div>}
         <h1>{valid ? "Submitted" : "Thank you"}</h1>
         {valid ? (

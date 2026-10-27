@@ -18,8 +18,8 @@ import { respondentKeys, showsTextConsent } from "@/lib/forms/settings.ts";
 
 export const metadata: Metadata = { title: "Form", robots: { index: false, follow: false } };
 
-const Shell = ({ firm, theme = DEFAULT_THEME, poweredBy = false, children }: { firm?: string; theme?: FormTheme; poweredBy?: boolean; children: React.ReactNode }) => (
-  <ThemedPage theme={theme} firm={firm} poweredBy={poweredBy}>
+const Shell = ({ firm, theme = DEFAULT_THEME, children }: { firm?: string; theme?: FormTheme; children: React.ReactNode }) => (
+  <ThemedPage theme={theme} firm={firm}>
     {firm && <div className="monarch-eyebrow">{firm.toUpperCase()}</div>}
     {children}
   </ThemedPage>
@@ -39,7 +39,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
     const own = await formLink(ctx.deps, id, pf.settings).catch(() => null);
     if (own && !isPlatformHost(new URL(own).host)) redirect(`${own}${resume ? `?resume=${encodeURIComponent(resume)}` : ""}`);
   }
-  if (pf.state !== "open") return <Shell firm={firm} theme={brandedTheme(pf.settings.theme, brand)} poweredBy={!!brand?.showPoweredBy}><h1>{pf.form.name}</h1><p style={{ whiteSpace: "pre-wrap" }}>{pf.settings.closed_message}</p></Shell>;
+  if (pf.state !== "open") return <Shell firm={firm} theme={brandedTheme(pf.settings.theme, brand)}><h1>{pf.form.name}</h1><p style={{ whiteSpace: "pre-wrap" }}>{pf.settings.closed_message}</p></Shell>;
   // A form sent to one client: their details are filled in, and what they send is tied to them.
   let definition = publicDefinition(pf.version.definition);
   let inviteToken: string | null = null;
@@ -47,7 +47,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
   let client: { full_name: string; email: string | null; phone: string | null; address: string | null } | null = null;
   if (inviteParam) {
     const state = await checkInvite(ctx.deps, pf.form.id, inviteParam);
-    if (!state.ok) return <Shell firm={firm} theme={brandedTheme(pf.settings.theme, brand)} poweredBy={!!brand?.showPoweredBy}><h1>{pf.form.name}</h1><p>{INVITE_PROBLEMS[state.reason]}</p></Shell>;
+    if (!state.ok) return <Shell firm={firm} theme={brandedTheme(pf.settings.theme, brand)}><h1>{pf.form.name}</h1><p>{INVITE_PROBLEMS[state.reason]}</p></Shell>;
     inviteToken = inviteParam;
     client = (await ctx.deps.clientFor?.(state.invite.client_id).catch(() => null)) ?? null;
     if (!state.invite.opened_at) {
@@ -58,7 +58,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
   definition = mergeDefinition(definition, formMergeValues({ profile, client, now: new Date() }));
   const resumed = resume ? await resumeDraft(ctx.deps, pf, resume) : null;
   return (
-    <ThemedPage theme={brandedTheme(pf.settings.theme, brand)} firm={firm} poweredBy={!!brand?.showPoweredBy}>
+    <ThemedPage theme={brandedTheme(pf.settings.theme, brand)} firm={firm}>
         {resume && !resumed && <p className="monarch-alert is-error">That saved-form link has expired or was already used. You can start the form again below.</p>}
         {resumed && <p className="monarch-notice"><b>WELCOME BACK</b> Your saved answers and files are filled in. Check them, then continue.</p>}
         <FormRenderer

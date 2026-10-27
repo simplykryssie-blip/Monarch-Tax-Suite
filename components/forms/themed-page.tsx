@@ -4,7 +4,7 @@ import { isThemed, sanitizeCss, themeVars, THEME_SCOPE, type FormTheme } from "@
  * The page a respondent sees: the form's card on its page, in the office's colors, font and header, with the
  * office's own (cleaned and scoped) CSS. An unthemed form looks exactly as it always did.
  */
-export function ThemedPage({ theme, firm, maxWidth = 820, wrapper = "main", poweredBy = false, children }: { theme: FormTheme; firm?: string; maxWidth?: number; wrapper?: "main" | "div"; poweredBy?: boolean; children: React.ReactNode }) {
+export function ThemedPage({ theme, firm, maxWidth = 820, wrapper = "main", children }: { theme: FormTheme; firm?: string; maxWidth?: number; wrapper?: "main" | "div"; children: React.ReactNode }) {
   const themed = isThemed(theme);
   const css = theme.custom_css ? sanitizeCss(theme.custom_css) : "";
   const banner = theme.logo_url || theme.header_image_url || theme.header;
@@ -22,7 +22,7 @@ export function ThemedPage({ theme, firm, maxWidth = 820, wrapper = "main", powe
           </div>
         )}
         {children}
-        {poweredBy && <p className="mf-powered">Powered by Verexa HQ</p>}
+        <p className="mf-powered">Powered by Verexa HQ</p>
       </div>
     </Wrapper>
   );

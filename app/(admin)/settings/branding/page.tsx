@@ -28,7 +28,7 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
                 <div style={{ background: b.primary, color: "#fff", padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
                   {b.logoUrl ? <img src={b.logoUrl} alt="" style={{ maxHeight: 34, maxWidth: 160, objectFit: "contain" }} /> : <b>{b.name}</b>}
                 </div>
-                <div style={{ padding: 14, fontSize: 13 }}><b>Emails and forms</b><br /><span className="monarch-muted">{b.name}{b.supportEmail ? ` · ${b.supportEmail}` : ""}{b.showPoweredBy ? ` · Powered by ${PLATFORM.name}` : ""}</span></div>
+                <div style={{ padding: 14, fontSize: 13 }}><b>Emails and forms</b><br /><span className="monarch-muted">{b.name}{b.supportEmail ? ` · ${b.supportEmail}` : ""}{` · Powered by ${PLATFORM.name}`}</span></div>
               </div>
               <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #e7e5de", background: b.sidebar, color: "#fff", padding: 14 }}>
                 {b.whiteLabelAdmin ? (b.logoUrl ? <img src={b.logoUrl} alt="" style={{ maxHeight: 44, maxWidth: 180, objectFit: "contain" }} /> : <b>{b.name}</b>) : <b>{PLATFORM.name}</b>}
@@ -66,7 +66,7 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
 
             <h2 className="is-wide">Who sees what</h2>
             <label className="monarch-check is-wide"><input type="checkbox" name="white_label_admin" defaultChecked={b.whiteLabelAdmin} /> <span><b>White-label my admin and sign-in page.</b> My team sees my logo, name and colors instead of {PLATFORM.name}.</span></label>
-            <label className="monarch-check is-wide"><input type="checkbox" name="show_powered_by" defaultChecked={b.showPoweredBy} /> <span><b>Show &ldquo;Powered by {PLATFORM.name}&rdquo;</b> at the bottom of emails and forms my clients see. Leave this off for a fully white-label look.</span></label>
+            <p className="monarch-muted is-wide">Every form and email your clients see ends with &ldquo;Powered by {PLATFORM.name}&rdquo;. It is part of every plan and can&apos;t be turned off.</p>
             <div className="is-wide"><SubmitOnce className="monarch-primary" busy="Saving…">Save branding</SubmitOnce></div>
           </form>
         </>

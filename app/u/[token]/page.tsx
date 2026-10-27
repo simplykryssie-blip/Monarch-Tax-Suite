@@ -22,7 +22,7 @@ export default async function UnsubscribePage({ params, searchParams }: { params
   }
   const finished = done === "1" || found.unsubscribed_at !== null;
   return (
-    <ThemedPage theme={theme} firm={firm} poweredBy={!!brand?.showPoweredBy}>
+    <ThemedPage theme={theme} firm={firm}>
       <h1>{finished ? "You're unsubscribed" : "Unsubscribe"}</h1>
       {finished ? (
         <p>{masked(found.address)} will no longer get marketing emails from {firm || "this office"}. This only affects {firm || "this office"}; other businesses you hear from are not changed.</p>

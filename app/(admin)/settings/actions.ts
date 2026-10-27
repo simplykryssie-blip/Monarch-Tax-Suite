@@ -137,7 +137,7 @@ export async function saveBrandingAction(form: FormData) {
       input = checkBrand({
         name: str(form, "name"), tagline: str(form, "tagline"), support_email: str(form, "support_email"), app_host: str(form, "app_host"),
         primary_color: str(form, "primary_color"), accent_color: str(form, "accent_color"), sidebar_color: str(form, "sidebar_color"),
-        white_label_admin: form.get("white_label_admin") === "on", show_powered_by: form.get("show_powered_by") === "on",
+        white_label_admin: form.get("white_label_admin") === "on", show_powered_by: true,
         logo_url: await image("logo"), mark_url: await image("mark"),
       });
     } catch (e) {
