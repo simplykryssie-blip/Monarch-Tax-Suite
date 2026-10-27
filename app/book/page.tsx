@@ -15,7 +15,7 @@ export default async function BookIndex() {
   const theme = brandedTheme(DEFAULT_THEME, brand);
   const open = types.filter((t) => t.active);
   return (
-    <ThemedPage theme={theme} firm={firm} poweredBy={!!brand?.showPoweredBy}>
+    <ThemedPage theme={theme} firm={firm}>
       {firm && <div className="monarch-eyebrow">{firm.toUpperCase()}</div>}
       <h1>Book an appointment</h1>
       {open.length === 0 ? <p>Booking isn&apos;t open right now. Please contact the office.</p> : (

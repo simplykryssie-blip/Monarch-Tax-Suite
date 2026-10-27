@@ -29,7 +29,7 @@ export default async function FormPreviewPage({ params, searchParams }: { params
         <a className={phone ? "monarch-secondary" : "monarch-primary"} href={`/forms/${id}/preview`}>Computer width</a>
         <a className={phone ? "monarch-primary" : "monarch-secondary"} href={`/forms/${id}/preview?width=phone`}>Phone width</a>
       </p>
-      <ThemedPage theme={brandedTheme(readSettings(form.settings).theme, brand)} poweredBy={brand.showPoweredBy} firm={profile?.display_name ?? "Your firm"} maxWidth={phone ? 390 : 820} wrapper="div">
+      <ThemedPage theme={brandedTheme(readSettings(form.settings).theme, brand)} firm={profile?.display_name ?? "Your firm"} maxWidth={phone ? 390 : 820} wrapper="div">
         <FormRenderer mode="preview" publicId={form.public_id} definition={publicDefinition(def)} formName={form.name} description={form.description} firmName={profile?.display_name ?? "Your firm"}
           consentText={form.signature_consent} allowSaveLater={false} respondentEmailKey={null} stamp="" />
       </ThemedPage>

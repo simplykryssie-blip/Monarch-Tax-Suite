@@ -1,3 +1,4 @@
+import { withPoweredBy } from "../lib/automation/email.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BrandError, adminBrandVars, brandOf, brandedTheme, checkBrand, emailBrandOf, imageRef } from "../lib/branding/brand.ts";
@@ -30,7 +31,7 @@ test("a tenant without a brand falls back to its firm name, with the platform's 
   assert.equal(b.name, "Acme Tax");
   assert.equal(b.custom, false);
   assert.equal(b.whiteLabelAdmin, false);
-  assert.equal(b.showPoweredBy, false);
+  assert.equal(b.showPoweredBy, true, "Powered by Verexa HQ is mandatory");
   assert.equal(brandOf(null, null).name, "Your account");
 });
 
@@ -38,14 +39,15 @@ test("customer emails carry the tenant's name, logo and colour, and the default 
   const def = renderTemplate("Hello", "Body text", {}, { supportEmail: "support@verexahq.com" });
   assert.match(def.html, /VEREXA HQ/);
   assert.match(def.html, /background:#111111/);
-  assert.doesNotMatch(def.html, /Powered by/);
+  assert.match(def.html, /Powered by Verexa HQ/);
   const brand = emailBrandOf(brandOf({ name: "Acme Tax", sidebar_color: "#0b1220", logo_url: "https://cdn.acme.test/logo.png", support_email: "help@acme.test", show_powered_by: false }));
   const mine = renderTemplate("Hello", "Body text", {}, { ...brand, supportEmail: brand.supportEmail! });
   assert.match(mine.html, /<img src="https:\/\/cdn\.acme\.test\/logo\.png" alt="Acme Tax"/);
   assert.match(mine.html, /background:#0b1220/);
   assert.match(mine.html, /help@acme\.test/);
-  assert.doesNotMatch(mine.html, /Monarch|Verexa/);
-  assert.doesNotMatch(mine.text, /Monarch|Verexa/);
+  assert.doesNotMatch(mine.html, /Monarch/);
+  assert.doesNotMatch(mine.text, /Monarch/);
+  assert.equal(mine.html.match(/Powered by Verexa HQ/g)?.length, 1, "even a brand that says it is off carries it, once");
   const noLogo = renderTemplate("Hi", "Body", {}, { ...emailBrandOf(brandOf({ name: "Acme Tax", show_powered_by: true })), supportEmail: "help@acme.test" });
   assert.match(noLogo.html, />ACME TAX</);
   assert.match(noLogo.html, /Powered by Verexa HQ/);
@@ -71,4 +73,15 @@ test("a white-labelled admin is recoloured with the tenant's colours", () => {
   const vars = adminBrandVars(brandOf({ name: "Acme", primary_color: "#112233", sidebar_color: "#0b1220" }));
   assert.equal(vars["--gold"], "#112233");
   assert.equal(vars["--brand-sidebar"], "#0b1220");
+});
+
+test("every email leaves with 'Powered by Verexa HQ', once, whatever built it", () => {
+  const plain = withPoweredBy({ to: "a@b.co", subject: "S", html: "<p>Hi</p>", text: "Hi", idempotencyKey: "k" });
+  assert.match(plain.html, /Powered by Verexa HQ/);
+  assert.match(plain.text, /\n\nPowered by Verexa HQ$/);
+  const doc = withPoweredBy({ to: "a@b.co", subject: "S", html: "<html><body><p>Hi</p></body></html>", text: "Hi", idempotencyKey: "k" });
+  assert.match(doc.html, /Powered by Verexa HQ<\/p><\/body><\/html>$/);
+  const again = withPoweredBy(doc);
+  assert.equal(again.html, doc.html);
+  assert.equal(again.text, doc.text);
 });

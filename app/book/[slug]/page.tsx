@@ -20,7 +20,7 @@ export default async function BookPage({ params }: { params: Promise<{ slug: str
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: cal.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const slots = await listSlots(deps, type, today, Math.min(type.max_days_ahead, 90)).catch(() => []);
   return (
-    <ThemedPage theme={theme} firm={firm} poweredBy={!!brand?.showPoweredBy}>
+    <ThemedPage theme={theme} firm={firm}>
       {firm && <div className="monarch-eyebrow">{firm.toUpperCase()}</div>}
       <h1>{type.name}</h1>
       <p className="monarch-muted">{type.duration_minutes} minutes{type.location ? ` · ${type.location}` : ""}</p>

@@ -27,7 +27,7 @@ export default async function ManagePage({ params, searchParams }: { params: Pro
   const cal = upcoming ? await deps.calendar() : null;
   const slots = upcoming && cal ? await listSlots(deps, t, new Intl.DateTimeFormat("en-CA", { timeZone: cal.timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()), Math.min(t.max_days_ahead, 90), a.id).catch(() => []) : [];
   return (
-    <ThemedPage theme={theme} firm={firm} poweredBy={!!brand?.showPoweredBy}>
+    <ThemedPage theme={theme} firm={firm}>
       {firm && <div className="monarch-eyebrow">{firm.toUpperCase()}</div>}
       <h1>{sp.booked ? "You're booked" : sp.cancelled ? "Appointment cancelled" : sp.moved ? "Appointment moved" : "Your appointment"}</h1>
       {sp.error && <p className="monarch-alert is-error" role="alert">{sp.error}</p>}
