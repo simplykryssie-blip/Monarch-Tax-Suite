@@ -133,7 +133,7 @@ export async function startSetupCheckout(d: SetupDeps, payments: Payments, urls:
   const session = await payments.createCheckout({
     item: plan.setupItem, unitCents: plan.setupCents, quantity: 1, email: urls.email,
     metadata: { purpose: "sms_setup", tenant_id: d.tenantId, sms_checkout_id: checkout.id },
-    successUrl: `${urls.origin}/settings/sms?checkout={CHECKOUT_SESSION_ID}`, cancelUrl: `${urls.origin}/settings/sms`,
+    successUrl: `${urls.origin}/settings/email?checkout={CHECKOUT_SESSION_ID}`, cancelUrl: `${urls.origin}/settings/email`,
   });
   await d.repo.updateCheckout(checkout.id, { stripe_session_id: session.id });
   return session.url;
@@ -151,7 +151,7 @@ export async function startCreditsCheckout(d: SetupDeps, payments: Payments, pac
   const session = await payments.createCheckout({
     item: pack.item, unitCents: pack.cents / pack.packs, quantity: pack.packs, email: urls.email,
     metadata: { purpose: "sms_credits", tenant_id: d.tenantId, sms_checkout_id: checkout.id },
-    successUrl: `${urls.origin}/settings/sms?checkout={CHECKOUT_SESSION_ID}`, cancelUrl: `${urls.origin}/settings/sms`,
+    successUrl: `${urls.origin}/settings/email?checkout={CHECKOUT_SESSION_ID}`, cancelUrl: `${urls.origin}/settings/email`,
   });
   await d.repo.updateCheckout(checkout.id, { stripe_session_id: session.id });
   return session.url;

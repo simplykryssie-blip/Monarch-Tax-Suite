@@ -1,5 +1,6 @@
 import { commerceRepo } from "@/lib/admin";
 import { requireSection } from "@/lib/tier-server";
+import { AutomationTabs } from "@/components/admin/automation-tabs";
 import { RunHistoryButton } from "@/components/admin/run-history";
 import { when } from "@/components/admin/ui";
 import { automationDeps } from "@/lib/automation/server";
@@ -40,9 +41,9 @@ export default async function AutomationLayout({ children }: { children: React.R
       <div className="monarch-page-actions" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
         <span />
         <RunHistoryButton failed={failed}>
-          {!rows ? <p className="monarch-muted">The Automation tables are not installed yet.</p> : rows.length === 0 ? <p className="monarch-muted">Nothing has run yet. Runs appear here as soon as a workflow is triggered or tested.</p> : (
+          {!rows ? <p className="monarch-muted">The Automation tables are not installed yet.</p> : rows.length === 0 ? <p className="monarch-muted">Nothing has run yet. Runs appear here as soon as an automatic message is triggered or tested.</p> : (
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>WHEN</th><th>WHO</th><th>WORKFLOW</th><th>STEP</th><th>RESULT</th><th></th></tr></thead>
+              <thead><tr><th>WHEN</th><th>WHO</th><th>AUTOMATIC MESSAGE</th><th>STEP</th><th>RESULT</th><th></th></tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.key}>
@@ -60,6 +61,7 @@ export default async function AutomationLayout({ children }: { children: React.R
           <p className="monarch-muted">Latest 60 runs. No customer message contents are kept. Tests never reach a client.</p>
         </RunHistoryButton>
       </div>
+      <AutomationTabs />
       {children}
     </>
   );
