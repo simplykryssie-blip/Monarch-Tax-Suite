@@ -33,14 +33,16 @@ describe("the platform administrator must use two-step sign-in", () => {
     assert.equal(twoStepScreen({ level: "aal2", hasFactor: true }, false), "done");
     assert.equal(twoStepScreen({ level: "aal2", hasFactor: true }, true), "open");
   });
-  test("the platform-admin guard enforces it after the administrator check, and the Monarch workspace guard does not", () => {
+  test("the platform-admin guard requires it after the administrator check; the workspace guard asks for a code only from people who turned it on", () => {
     const guard = block("lib/admin.ts", "export const requirePlatformAdmin");
     const admin = guard.indexOf("isAdminUser(session.userId)");
     const gate = guard.indexOf("adminTwoStepGate(");
     assert.ok(admin >= 0 && gate > admin, "the two-step check follows the administrator check");
     assert.match(guard, /!== "ok"\) redirect\(ADMIN_TWO_STEP_PATH\)/);
     assert.match(guard, /status === "verified"/);
-    assert.doesNotMatch(block("lib/admin.ts", "export const requireAdmin"), /adminTwoStepGate|mfa/);
+    const workspace = block("lib/admin.ts", "export const requireAdmin");
+    assert.doesNotMatch(workspace, /adminTwoStepGate/, "no one is forced to set it up");
+    assert.match(workspace, /workspaceNeedsCode\(aal\)\) redirect\("\/two-step"\)/);
   });
 });
 
