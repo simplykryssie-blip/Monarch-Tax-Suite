@@ -95,7 +95,9 @@ export async function checkDocumentFile(bytes: Uint8Array, type: DocumentFileTyp
   if (zip.file(/^word\/embeddings\//i).length || zip.file(/activeX/i).length) throw new ValidationError("This Word file contains embedded objects or controls, which are not accepted. Remove them and upload it again.");
 }
 
-const ACTIVE = /\/(JavaScript|JS|Launch|EmbeddedFile)\b/;
+const ACTIVE = /\/(JavaScript|JS|Launch|EmbeddedFile|XFA)\b/;
+/** PDFs saved with compressed object streams hide their objects from a plain byte scan, so they are opened and checked structurally. */
+const PACKED = /\/ObjStm\b/;
 
 /** True when the PDF's raw bytes mention scripts, launch actions or embedded files. */
 export const pdfHasActiveContent = (bytes: Uint8Array) => ACTIVE.test(latin1(bytes));
@@ -106,7 +108,8 @@ export const pdfHasActiveContent = (bytes: Uint8Array) => ACTIVE.test(latin1(byt
  * original bytes when nothing active is found. The result is checked again by `checkDocumentFile`.
  */
 export async function stripPdfActiveContent(bytes: Uint8Array): Promise<{ bytes: Uint8Array; stripped: boolean }> {
-  if (!startsWith(bytes, PDF_MAGIC) || /\/Encrypt\b/.test(latin1(bytes)) || !pdfHasActiveContent(bytes)) return { bytes, stripped: false };
+  const text = startsWith(bytes, PDF_MAGIC) ? latin1(bytes) : "";
+  if (!text || /\/Encrypt\b/.test(text) || (!ACTIVE.test(text) && !PACKED.test(text))) return { bytes, stripped: false };
   let doc: PDFDocument;
   try {
     doc = await PDFDocument.load(bytes, { updateMetadata: false });
@@ -115,10 +118,12 @@ export async function stripPdfActiveContent(bytes: Uint8Array): Promise<{ bytes:
   }
   const ctx = doc.context;
   const name = (n: string) => PDFName.of(n);
+  let found = ACTIVE.test(text);
   const dictOf = (o: unknown): PDFDict | undefined => (o instanceof PDFDict ? o : o instanceof PDFStream ? o.dict : undefined);
-  const drop = (d: PDFDict, ...keys: string[]) => { for (const k of keys) { const v = d.get(name(k)); if (v instanceof PDFRef) ctx.delete(v); d.delete(name(k)); } };
+  const drop = (d: PDFDict, ...keys: string[]) => { for (const k of keys) { if (!d.has(name(k))) continue; found = true; const v = d.get(name(k)); if (v instanceof PDFRef) ctx.delete(v); d.delete(name(k)); } };
   const catalog = doc.catalog;
-  drop(catalog, "OpenAction", "AA", "AF", "Collection");
+  // "Perms" holds the Reader-extension (usage rights) signature, which any change to a form would invalidate.
+  drop(catalog, "OpenAction", "AA", "AF", "Collection", "Perms");
   const names = ctx.lookupMaybe(catalog.get(name("Names")), PDFDict);
   if (names) drop(names, "JavaScript", "EmbeddedFiles");
   const form = ctx.lookupMaybe(catalog.get(name("AcroForm")), PDFDict);
@@ -128,7 +133,7 @@ export async function stripPdfActiveContent(bytes: Uint8Array): Promise<{ bytes:
     if (!d) continue;
     const s = d.get(name("S"));
     const type = d.get(name("Type"));
-    if ((s instanceof PDFName && (s.asString() === "/JavaScript" || s.asString() === "/Launch")) || d.has(name("JS")) || (type instanceof PDFName && type.asString() === "/EmbeddedFile")) { ctx.delete(ref); continue; }
+    if ((s instanceof PDFName && (s.asString() === "/JavaScript" || s.asString() === "/Launch")) || d.has(name("JS")) || (type instanceof PDFName && type.asString() === "/EmbeddedFile")) { ctx.delete(ref); found = true; continue; }
     drop(d, "AA", "EF", "RF");
     const a = ctx.lookupMaybe(d.get(name("A")), PDFDict);
     const as = a?.get(name("S"));
@@ -141,8 +146,9 @@ export async function stripPdfActiveContent(bytes: Uint8Array): Promise<{ bytes:
     for (let i = annots.size() - 1; i >= 0; i--) {
       const an = ctx.lookupMaybe(annots.get(i), PDFDict);
       const st = an?.get(name("Subtype"));
-      if (!an || (st instanceof PDFName && st.asString() === "/FileAttachment")) annots.remove(i);
+      if (!an || (st instanceof PDFName && st.asString() === "/FileAttachment")) { annots.remove(i); found = true; }
     }
   }
+  if (!found) return { bytes, stripped: false };
   return { bytes: await doc.save({ useObjectStreams: false }), stripped: true };
 }
