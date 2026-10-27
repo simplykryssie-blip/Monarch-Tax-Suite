@@ -52,8 +52,14 @@ export default async function SmsSettingsPage({ searchParams }: { searchParams: 
         <Flash notice={sp.notice} error={sp.error} />
         <section className="monarch-panel" style={{ padding: 20 }}>
           <h2>{route.ok ? "Connected" : "Not connected yet"}</h2>
-          {route.ok ? <p>Texts go out from {p.messagingServiceSid ? "your Twilio messaging service" : p.from}. Staff can text a client from the client&apos;s Messages tab.</p> : <p className="monarch-muted">{platformSendProblems(p).join(" ")}</p>}
-          <p className="monarch-muted">Set in the server settings by your platform administrator: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN (or TWILIO_API_KEY with TWILIO_API_SECRET), and TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID. This account is also the parent of every other office&apos;s texting account.</p>
+          {route.ok
+            ? <p>Texts go out from {p.messagingServiceSid ? "your Twilio messaging service" : p.from}. Staff can text a client from the client&apos;s Messages tab.</p>
+            : <p className="monarch-muted">Text messaging isn&apos;t turned on for this account yet. It is set up by the platform administrator, and nothing is needed from you here.</p>}
+          <details className="monarch-muted">
+            <summary>For the platform administrator</summary>
+            {!route.ok && <p>{platformSendProblems(p).join(" ")}</p>}
+            <p>Set in the server settings: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN (or TWILIO_API_KEY with TWILIO_API_SECRET), and TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID. This account is also the parent of every other office&apos;s texting account.</p>
+          </details>
         </section>
       </>
     );

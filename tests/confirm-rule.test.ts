@@ -23,3 +23,9 @@ test("the dialog sentence names the action", () => {
   assert.equal(confirmText("Delete campaign", "permanent"), "Are you sure you want to delete campaign? This cannot be undone.");
   assert.equal(confirmText("Archive…", "normal"), "Are you sure you want to archive?");
 });
+
+test("archiving can be restored, so it never says it cannot be undone", () => {
+  assert.equal(confirmKind("Remove (archive)", false), "normal");
+  assert.equal(confirmText("Remove (archive)", "normal"), "Are you sure you want to remove (archive)?");
+  assert.equal(confirmKind("Delete", false), "permanent");
+});
