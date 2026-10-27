@@ -10,9 +10,31 @@ export type EmbedDecision =
   | { ok: true; allowedHosts: string[] }
   | { ok: false; reason: "not_found" | "inactive" | "no_domains" | "domain_not_authorized"; allowedHosts: string[] };
 
-/** Public, non-secret embed identifier (safe to place in page HTML). */
+/** Letters and digits that look alike in many fonts (1, l, I and 0, O). New embed ids never contain them. */
+const LOOK_ALIKE = ["1lI", "0O"];
+const ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+/** Public, non-secret embed identifier (safe to place in page HTML). Typed or copied from a screenshot, it can't be misread. */
 export function generateEmbedId(): string {
-  return `emb_${randomBytes(16).toString("base64url")}`;
+  let id = "";
+  while (id.length < 22) for (const b of randomBytes(32)) if (b < 236 && id.length < 22) id += ID_ALPHABET[b % ID_ALPHABET.length];
+  return `emb_${id}`;
+}
+
+/**
+ * Other spellings of an id with the look-alike characters swapped (an "l" typed as a "1", an "O" as a "0"). Older ids contain
+ * them and a customer can copy one wrong. The id is public and random, so accepting a near spelling reveals nothing; it is
+ * only used when the exact spelling is not found. Empty when there is nothing to swap or too many ways to swap it.
+ */
+export function embedIdVariants(id: string, cap = 64): string[] {
+  let out: string[][] = [[...id]];
+  for (let i = 0; i < id.length; i++) {
+    const cls = LOOK_ALIKE.find((k) => k.includes(id[i]));
+    if (!cls) continue;
+    out = out.flatMap((chars) => [...cls].map((c) => { const next = chars.slice(); next[i] = c; return next; }));
+    if (out.length > cap) return [];
+  }
+  return out.map((c) => c.join("")).filter((v) => v !== id);
 }
 
 export const EMBED_ID_PATTERN = /^emb_[A-Za-z0-9_-]{16,64}$/;
