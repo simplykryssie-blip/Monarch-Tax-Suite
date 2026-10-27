@@ -29,7 +29,7 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
   const clients = wf ? (await commerceRepo().listCustomers().catch(() => [])).slice().sort((a, b) => (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email)).slice(0, 500) : [];
   return (
     <>
-      <PageTitle title={wf ? wf.name : "New workflow"} back={{ href: "/automation/workflows", label: "Workflows" }}>
+      <PageTitle title={wf ? wf.name : "New automatic message"} back={{ href: "/automation/workflows", label: "Automatic messages" }}>
         {wf ? <>Status: <Badge value={wf.status} /> · Last updated {when(wf.updated_at)}</> : "Choose what starts it, then add the steps. It is created paused."}
       </PageTitle>
       <Flash notice={notice} error={error} />
@@ -76,7 +76,7 @@ export default async function WorkflowEditor({ params, searchParams }: { params:
         />
         <label>Attempts before giving up (1–8)<input name="max_attempts" type="number" min={1} max={8} defaultValue={wf?.max_attempts ?? 4} /></label>
         <label>Don&apos;t repeat for the same license within (hours)<input name="cooldown_hours" type="number" min={0} max={720} defaultValue={wf?.cooldown_hours ?? 0} /></label>
-        <div className="is-wide"><button className="monarch-primary">{wf ? "Save changes" : "Create workflow"}</button></div>
+        <div className="is-wide"><button className="monarch-primary">{wf ? "Save changes" : "Create automatic message"}</button></div>
       </form>
       {wf && (
         <>

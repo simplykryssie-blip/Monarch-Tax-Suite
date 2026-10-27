@@ -1156,3 +1156,5 @@ label.sx-check input{width:18px;height:18px;flex:none;margin:0}
 .ed-rail-switch{width:100%;margin-bottom:10px}
 .ed-pagebox{margin-top:16px;border-top:1px solid #e3dfd2;padding-top:10px}.ed-pagebox>summary{cursor:pointer;font-weight:700;padding:4px 0}
 @media (max-width:1100px){.ed-body,.ed-body.no-preview{grid-template-columns:minmax(0,1fr)}}
+
+.monarch-section-head{margin:28px 0 8px}.monarch-section-head h2{margin:0 0 4px;font-size:22px}.monarch-section-head p{margin:0}

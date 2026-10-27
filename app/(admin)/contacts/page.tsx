@@ -39,6 +39,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       <PageTitle title="Contacts">Leads, clients and store customers in one list. A person found in more than one place is one contact.</PageTitle>
       <div className="cl-head-actions">
         <AddContact kinds={kinds} />
+        <Link className="monarch-secondary" href="/contacts/import">Import</Link>
         {data.duplicates.length > 0 && (
           <Modal label={`Possible duplicates (${data.duplicates.length})`} title="Possible duplicates" className="monarch-secondary">
             <ul className="cl-list dup-list">

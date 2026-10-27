@@ -19,27 +19,27 @@ export default async function WorkflowsPage({ searchParams }: { searchParams: Pr
   const missing = result?.ok ? await missingDefaults(deps.repo, allows(await currentTier(), "store") ? "verexa" : "office").catch(() => null) : null;
   return (
     <>
-      <PageTitle title="Automation">Workflows say: when this happens, do these steps. The messages they send are below.</PageTitle>
+      <PageTitle title="Automatic messages">Each one says: when this happens, send this message or do these steps. The wording of every email and text is below.</PageTitle>
       <Flash notice={notice} error={error} />
       {missing && (missing.templates.length > 0 || missing.workflows.length > 0) && (
         <section className="monarch-panel" style={{ padding: 20 }}>
-          <h2>{result?.ok && result.data.length === 0 ? "Start with the standard set" : "New standard templates and workflows are available"}</h2>
+          <h2>{result?.ok && result.data.length === 0 ? "Start with the standard set" : "New standard automatic messages and templates are available"}</h2>
           <p className="monarch-muted">These are added as listed. Nothing you already have is changed. An <b>active</b> workflow starts sending as soon as its event happens; pause any you want to review first.</p>
           <ul>
-            {missing.workflows.map((w) => <li key={w.key}>Workflow: {w.name} · <b>{w.status}</b></li>)}
+            {missing.workflows.map((w) => <li key={w.key}>Automatic message: {w.name} · <b>{w.status}</b></li>)}
             {missing.templates.map((t) => <li key={t.key}>Template: {t.name}</li>)}
           </ul>
-          <form action={installDefaultsAction}><button className="monarch-primary">Add {missing.workflows.length} workflow{missing.workflows.length === 1 ? "" : "s"} and {missing.templates.length} template{missing.templates.length === 1 ? "" : "s"}</button></form>
+          <form action={installDefaultsAction}><button className="monarch-primary">Add {missing.workflows.length} automatic message{missing.workflows.length === 1 ? "" : "s"} and {missing.templates.length} template{missing.templates.length === 1 ? "" : "s"}</button></form>
         </section>
       )}
-      <div className="monarch-page-actions"><span>{result?.ok ? `${rows.length} ${view === "archived" ? "archived " : ""}workflows` : ""}</span><Link className="monarch-primary" href="/automation/workflows/new">New workflow</Link></div>
+      <div className="monarch-page-actions"><span>{result?.ok ? `${rows.length} ${view === "archived" ? "archived " : ""}automatic messages` : ""}</span><Link className="monarch-primary" href="/automation/workflows/new">New automatic message</Link></div>
       <section className="monarch-panel">
         {result?.ok && <div style={{ padding: "0 20px" }}><ArchiveTabs base="/automation/workflows" view={view} counts={viewCounts(result.data)} /></div>}
         <div className="monarch-table-wrap">
           <table>
             <thead><tr><th>NAME</th><th>STARTS WHEN</th><th>STEPS</th><th>STATUS</th><th>{view === "archived" ? "ARCHIVED" : "UPDATED"}</th><th></th></tr></thead>
             <tbody>
-              {!result || !result.ok ? <EmptyRow colSpan={6}>The Automation Center database tables are not installed yet.</EmptyRow> : rows.length === 0 ? <EmptyRow colSpan={6}>{view === "archived" ? "No archived workflows." : "No workflows yet. Add the standard set above, or create your own."}</EmptyRow> : rows.map((w) => (
+              {!result || !result.ok ? <EmptyRow colSpan={6}>The Automation Center database tables are not installed yet.</EmptyRow> : rows.length === 0 ? <EmptyRow colSpan={6}>{view === "archived" ? "No archived automatic messages." : "No automatic messages yet. Add the standard set above, or create your own."}</EmptyRow> : rows.map((w) => (
                 <tr key={w.id}>
                   <td><Link href={`/automation/workflows/${w.id}`}><b>{w.name}</b></Link></td>
                   <td>{EVENTS[w.trigger_event]?.label ?? w.trigger_event}</td>
