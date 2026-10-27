@@ -85,3 +85,11 @@ test("every email leaves with 'Powered by Verexa HQ', once, whatever built it", 
   assert.equal(again.html, doc.html);
   assert.equal(again.text, doc.text);
 });
+
+test("a workspace member is asked for a code only when two-step sign-in is on and not yet entered this sign-in", async () => {
+  const { workspaceNeedsCode } = await import("../lib/admin-two-step.ts");
+  assert.equal(workspaceNeedsCode({ currentLevel: "aal1", nextLevel: "aal1" }), false, "no authenticator: never asked, never locked out");
+  assert.equal(workspaceNeedsCode({ currentLevel: "aal1", nextLevel: "aal2" }), true);
+  assert.equal(workspaceNeedsCode({ currentLevel: "aal2", nextLevel: "aal2" }), false);
+  assert.equal(workspaceNeedsCode(null), false);
+});

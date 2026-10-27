@@ -7,7 +7,7 @@ import { createClient } from "./supabase/server";
 import { platformClient, tenantClient } from "./supabase/service";
 import { currentTenantId, MONARCH_TENANT_ID } from "./tenants.ts";
 import { adminSeparationOn, isAdminHost, roleOpensWorkspace } from "./admin-host.ts";
-import { ADMIN_TWO_STEP_PATH, adminTwoStepGate } from "./admin-two-step.ts";
+import { ADMIN_TWO_STEP_PATH, adminTwoStepGate, workspaceNeedsCode } from "./admin-two-step.ts";
 import { decideAdmin } from "./commerce/authz.ts";
 import { SupabaseCommerceRepo, SupabaseImageStore } from "./commerce/supabase-repo.ts";
 import { SupabaseFileStore, SupabaseProductFilesRepo } from "./commerce/supabase-files.ts";
@@ -106,6 +106,9 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
       : "This account is not a platform administrator.";
     redirect("/login?error=" + encodeURIComponent(message));
   }
+  // Two-step sign-in, once the person has turned it on in Settings → Security: a code is asked for at each sign-in.
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (workspaceNeedsCode(aal)) redirect("/two-step");
   return { userId: decision.userId, email: user?.email ?? "" };
 });
 
