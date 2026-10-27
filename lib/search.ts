@@ -3,7 +3,7 @@ import type { Customer, Installation, License, Order, Product } from "./commerce
 // Global admin search over records the app already holds. Pure so it can be tested; the server action feeds it
 // freshly loaded records after checking the caller is an administrator.
 
-export type SearchHit = { id: string; group: "Contacts" | "Customers" | "Orders" | "Licenses" | "Products" | "Installations" | "Pages"; title: string; detail: string; href: string };
+export type SearchHit = { id: string; group: "Contacts" | "Invoices" | "Customers" | "Orders" | "Licenses" | "Products" | "Installations" | "Pages"; title: string; detail: string; href: string };
 export type SearchData = { customers: Customer[]; orders: Order[]; licenses: License[]; products: Product[]; installations: Installation[] };
 
 export const PAGES: SearchHit[] = [

@@ -11,6 +11,8 @@ export type ConfirmKind = "permanent" | "normal";
 export function confirmKind(label: string, styledDanger: boolean): ConfirmKind | null {
   const text = label.replace(/\s+/g, " ").trim();
   if (!text) return styledDanger ? "normal" : null;
+  // Archiving keeps the record and can be restored, even when the button says "Remove (archive)".
+  if (/\barchive\b/i.test(text)) return "normal";
   if (PERMANENT.test(text)) return "permanent";
   if (ASKS.test(text) || styledDanger) return "normal";
   return null;

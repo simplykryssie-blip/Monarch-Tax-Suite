@@ -45,6 +45,16 @@ const CHANNELS = { email: "Email", sms: "Text", call: "Call", other: "Other", po
 const FIVE = 5;
 
 /** One client: the Overview with everything about them at a glance, their documents, messages and billing. */
+/** Why a portal message can't be sent yet, in the same words the button at the top of the page uses. */
+function portalProblem(member: { status: string; invite_expires_at: string | null } | null | undefined): string | null {
+  if (member?.status === "active") return null;
+  if (!member) return "This client doesn't have portal access yet. Use Send invite at the top of this page.";
+  if (member.status === "invited") return member.invite_expires_at && new Date(member.invite_expires_at).getTime() < Date.now()
+    ? "The portal invite has expired. Use Resend invite at the top of this page."
+    : "The portal invite was sent but hasn't been accepted yet. They can sign in once they accept it.";
+  return "This client's portal access is paused.";
+}
+
 export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; folder?: string; notice?: string; error?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -384,8 +394,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               <MessageComposer
                 clientId={client.id}
                 email={{ to: client.email, problem: !client.email ? "Add an email address on the Overview tab to email this client." : emailProblem ? `Email sending isn't set up yet: ${emailProblem}` : null }}
-                sms={{ to: mobile, problem: !mobile ? "Add a mobile number on the Overview tab to text this client." : smsProblem ? `Text messaging isn't connected yet: ${smsProblem}` : null }}
-                portal={{ to: member?.email ?? null, problem: !member || member.status !== "active" ? "This client doesn't have portal access yet. Use Send invite at the top of this page." : null }}
+                sms={{ to: mobile, problem: !mobile ? "Add a mobile number on the Overview tab to text this client." : smsProblem ? "Text messaging isn't turned on for this account yet. Your platform administrator sets it up." : null }}
+                portal={{ to: member?.email ?? null, problem: portalProblem(member) }}
                 credits={credits}
               />
             )}
