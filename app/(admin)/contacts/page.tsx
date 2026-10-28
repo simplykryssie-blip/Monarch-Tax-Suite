@@ -13,6 +13,8 @@ import { recordCounts } from "@/lib/contacts/record-counts.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { undoDismissAction } from "./merge-actions";
+import { SelectAll } from "@/components/contacts/select-all";
+import { bulkContactsAction } from "./bulk-actions";
 import { contactKinds } from "@/lib/contacts/kinds.ts";
 import { currentTier } from "@/lib/tier-server";
 
@@ -41,6 +43,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   // How much each side holds, for the first pairs only (each count is a few lookups).
   const pairCounts = new Map<string, Awaited<ReturnType<typeof recordCounts>>>();
   await Promise.all(data.duplicates.slice(0, 20).flatMap((d) => [d.a, d.b]).map(async (k) => { const c = byKey.get(k); if (c && !pairCounts.has(k)) pairCounts.set(k, await recordCounts(workspaceRepo(), c)); }));
+  const backHref = `/contacts${[sp.q ? `q=${encodeURIComponent(sp.q)}` : "", sp.kind ? `kind=${encodeURIComponent(sp.kind)}` : "", sp.tag ? `tag=${encodeURIComponent(sp.tag)}` : ""].filter(Boolean).length ? `?${[sp.q ? `q=${encodeURIComponent(sp.q)}` : "", sp.kind ? `kind=${encodeURIComponent(sp.kind)}` : "", sp.tag ? `tag=${encodeURIComponent(sp.tag)}` : ""].filter(Boolean).join("&")}` : ""}`;
   const rows = filterContacts(data.contacts, { q: sp.q, kind, tag: sp.tag });
   const allTags = [...new Set(data.contacts.flatMap((c) => c.tags))].sort();
   const tabs: [string, string, number][] = [["", "All", counts.all], ["lead", "Leads", counts.lead], ["client", "Clients", counts.client], ["customer", "Customers", counts.customer], ["inactive", "Archived", counts.inactive]];
@@ -100,30 +103,52 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             <AutoSelect name="tag" label="Tag" defaultValue={sp.tag ?? ""} options={[{ value: "", label: "Any tag" }, ...allTags.map((t) => ({ value: t, label: t }))]} />
             <button type="submit" className="monarch-primary">Search</button>
           </form>
-          <section className="monarch-panel">
-            <div className="monarch-panel-head"><h2>{rows.length} {rows.length === 1 ? "contact" : "contacts"}</h2></div>
-            <div className="monarch-table-wrap">
-              <table>
-                <thead><tr><th>NAME</th><th>IS A</th><th>PHONE</th><th>ASSIGNED</th><th>TAGS</th><th>LAST ACTIVITY</th></tr></thead>
-                <tbody>
-                  {rows.length === 0 ? (
-                    <EmptyRow colSpan={6}>No contacts match.</EmptyRow>
-                  ) : (
-                    rows.map((c) => (
-                      <tr key={c.key}>
-                        <td><Link href={c.refs.clientId ? `/workspace/clients/${c.refs.clientId}` : `/contacts/${c.key}`}><b>{c.name}</b></Link><small className="monarch-subcell">{c.email ?? "no email"}</small></td>
-                        <td><Chips c={c} /></td>
-                        <td>{c.phone ? formatPhone(c.phone) : "—"}</td>
-                        <td>{staffLabel(staff, c.assignedTo) ?? "—"}</td>
-                        <td>{c.tags.join(", ") || "—"}</td>
-                        <td>{when(c.lastActivity)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <form action={bulkContactsAction}>
+            <input type="hidden" name="back" value={backHref} />
+            <section className="monarch-panel">
+              <div className="monarch-panel-head"><h2>{rows.length} {rows.length === 1 ? "contact" : "contacts"}</h2></div>
+              {rows.length > 0 && (
+                <div className="ct-bulk" role="group" aria-label="Do something with the ticked contacts">
+                  {/* Pressing Enter in the tag box must not run the first real button (Reassign). */}
+                  <button name="op" value="none" hidden tabIndex={-1} aria-hidden="true" />
+                  <span className="monarch-muted">With the ticked contacts:</span>
+                  <select name="assignee" aria-label="Assign to" defaultValue="">
+                    <option value="">No one</option>
+                    {staff.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  </select>
+                  <button name="op" value="assign" className="monarch-secondary">Reassign</button>
+                  <button name="op" value="convert" className="monarch-secondary" title="Makes client records from the ticked leads">Convert leads to clients</button>
+                  <input name="tag" placeholder="tag" maxLength={40} aria-label="Tag" list="ct-tags" />
+                  <datalist id="ct-tags">{allTags.map((t) => <option key={t} value={t} />)}</datalist>
+                  <button name="op" value="tag_add" className="monarch-secondary">Add tag</button>
+                  <button name="op" value="tag_remove" className="monarch-secondary">Remove tag</button>
+                </div>
+              )}
+              <div className="monarch-table-wrap">
+                <table>
+                  <thead><tr><th><SelectAll /></th><th>NAME</th><th>STATUS</th><th>PHONE</th><th>ASSIGNED</th><th>TAGS</th><th>LAST ACTIVITY</th><th /></tr></thead>
+                  <tbody>
+                    {rows.length === 0 ? (
+                      <EmptyRow colSpan={8}>No contacts match.</EmptyRow>
+                    ) : (
+                      rows.map((c) => (
+                        <tr key={c.key}>
+                          <td><input type="checkbox" name="key" value={c.key} aria-label={`Select ${c.name}`} /></td>
+                          <td><Link href={c.refs.clientId ? `/workspace/clients/${c.refs.clientId}` : `/contacts/${c.key}`}><b>{c.name}</b></Link><small className="monarch-subcell">{c.email ?? "no email"}</small></td>
+                          <td><Chips c={c} /></td>
+                          <td>{c.phone ? formatPhone(c.phone) : "—"}</td>
+                          <td>{staffLabel(staff, c.assignedTo) ?? "—"}</td>
+                          <td>{c.tags.join(", ") || "—"}</td>
+                          <td>{when(c.lastActivity)}</td>
+                          <td>{c.refs.leadId && !c.refs.clientId && c.kinds.includes("lead") && c.active ? <button name="one" value={c.key} className="monarch-secondary efin-small" title="Make a client record from this lead">Convert</button> : null}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </form>
       </>
     </>
   );
