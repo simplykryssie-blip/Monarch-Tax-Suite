@@ -7,7 +7,7 @@ import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { emitTagChanges } from "@/lib/automation/emit";
 import { leadsDeps } from "@/lib/leads/server";
-import { LeadInputError, saveLeadNotesAndTags, UUID } from "@/lib/leads/service.ts";
+import { LeadInputError, saveLeadNotesAndTags, setLeadStatus, UUID } from "@/lib/leads/service.ts";
 
 const str = (form: FormData, k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : "");
 const backTo = (raw: string) => (/^\/(?!\/)[A-Za-z0-9\-._~/?#=&%]*$/.test(raw) ? raw : "/contacts");
@@ -31,6 +31,29 @@ export async function saveLeadNotesAction(form: FormData) {
     if (e instanceof ValidationError || e instanceof LeadInputError) target = to(back, "error", e.message);
     else {
       console.error(`lead notes failed: ${sanitizeError(e, 200)}`);
+      target = to(back, "error", "That did not work. Nothing was changed. Please try again.");
+    }
+  }
+  revalidatePath("/contacts", "layout");
+  revalidatePath("/leads", "layout");
+  redirect(target);
+}
+
+/** Sets a lead's status from a contact's page. */
+export async function setLeadStatusAction(form: FormData) {
+  const admin = await requireAdmin();
+  const id = str(form, "id");
+  const back = backTo(str(form, "back"));
+  let target: string;
+  try {
+    if (!UUID.test(id)) throw new ValidationError("That lead wasn't found.");
+    await setLeadStatus(leadsDeps(), id, form.get("status"), admin.userId);
+    target = to(back, "notice", "Status saved.");
+  } catch (e) {
+    unstable_rethrow(e);
+    if (e instanceof ValidationError || e instanceof LeadInputError) target = to(back, "error", e.message);
+    else {
+      console.error(`lead status failed: ${sanitizeError(e, 200)}`);
       target = to(back, "error", "That did not work. Nothing was changed. Please try again.");
     }
   }

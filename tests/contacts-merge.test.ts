@@ -207,3 +207,41 @@ describe("bulk actions on contacts", () => {
     assert.deepEqual(changeTags(["a"], "tag_remove", "z"), ["a"]);
   });
 });
+
+import { describeLeadEvent } from "../lib/leads/history.ts";
+import { setLeadStatus } from "../lib/leads/service.ts";
+
+describe("a lead's status and history", () => {
+  const seed = async (status = "new") => {
+    const repo = new MemoryLeads();
+    const lead = await repo.insertLead({ tags: [], notes: null, phone: null, firm_name: null, status, source: "manual", last_contacted_at: null, audit_id: null, audit_score: null, wisp_plan_id: null, customer_id: null, order_id: null, organization_id: null, converted_at: null, full_name: "Ana Ruiz", email: "ana@example.com" } as never);
+    return { repo, lead };
+  };
+  test("status can be set to New, Contacted, Interested or Lost, and the change is written to the history", async () => {
+    const { repo, lead } = await seed();
+    const after = await setLeadStatus({ repo } as never, lead.id, "lost", "actor");
+    assert.equal(after.status, "lost");
+    const ev = repo.events.find((e) => e.action === "status_changed")!;
+    assert.equal(describeLeadEvent(ev), "Status changed from New to Lost");
+    await setLeadStatus({ repo } as never, lead.id, "lost", "actor");
+    assert.equal(repo.events.filter((e) => e.action === "status_changed").length, 1, "no change, no entry");
+  });
+  test("converted can't be picked by hand, and anything else is refused", async () => {
+    const { repo, lead } = await seed();
+    await assert.rejects(() => setLeadStatus({ repo } as never, lead.id, "converted", "a"), /Convert to client/);
+    await assert.rejects(() => setLeadStatus({ repo } as never, lead.id, "bogus", "a"), ValidationError);
+  });
+  test("history lines read in plain words", () => {
+    assert.equal(describeLeadEvent({ action: "contacted", detail: {} }), "Marked contacted");
+    assert.equal(describeLeadEvent({ action: "assigned", detail: { to: "Luna" } }), "Assigned to Luna");
+    assert.equal(describeLeadEvent({ action: "edited", detail: { fields: ["notes", "tags"] } }), "Edited notes, tags");
+    assert.equal(describeLeadEvent({ action: "converted_to_client", detail: {} }), "Converted to a client");
+    assert.equal(describeLeadEvent({ action: "something_new", detail: {} }), "Something new");
+  });
+  test("bulk status applies to leads that are not converted and skips the rest", () => {
+    const mk = (key: string, refs: Partial<Contact["refs"]>) => ({ ...contact(refs), key, name: key });
+    const plan = planBulk([mk("lead-1", { leadId: "l1" }), mk("lead-2", { leadId: "l2" }), mk("client-1", { clientId: "c1" })], ["lead-1", "lead-2", "client-1"], "set_status", (id) => (id === "l2" ? "converted" : "new"));
+    assert.deepEqual(plan.targets.map((c) => c.key), ["lead-1"]);
+    assert.equal(plan.skipped.length, 2);
+  });
+});

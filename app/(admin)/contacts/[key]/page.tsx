@@ -6,13 +6,15 @@ import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { AssignTo } from "@/components/contacts/assign-to";
 import { listStaff } from "@/lib/staff/server";
 import { staffLabel } from "@/lib/staff/assign.ts";
+import { describeLeadEvent } from "@/lib/leads/history.ts";
+import { SETTABLE_STATUSES } from "@/lib/leads/service.ts";
 import { LEAD_STATUSES, sourceName } from "@/lib/leads/types.ts";
 import { recordCounts } from "@/lib/contacts/record-counts.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { TagInput } from "../../leads/tag-input";
 import { leadsDeps } from "@/lib/leads/server";
 import { convertLeadAction } from "../convert-actions";
-import { saveLeadNotesAction } from "../lead-notes-actions";
+import { saveLeadNotesAction, setLeadStatusAction } from "../lead-notes-actions";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { DUPLICATE_REASON, parseContactKey, type Contact } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
@@ -40,6 +42,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
   const related = data.duplicates.filter((d) => d.a === key || d.b === key);
   const counts = new Map(await Promise.all([contact, ...related.map((d) => byKey.get(d.a === key ? d.b : d.a)).filter((c): c is Contact => !!c)].map(async (c) => [c.key, await recordCounts(workspaceRepo(), c)] as const)));
   const leadFull = lead ? await leadsDeps().repo.getLead(lead.id).catch(() => null) : null;
+  const leadEvents = leadFull ? await leadsDeps().repo.listEvents(leadFull.id).catch(() => []) : [];
   const tagOptions = leadFull ? (await leadsDeps().repo.tagCounts().catch(() => [])).map((t) => t.tag) : [];
   const staff = lead ? await listStaff().catch(() => []) : [];
 
@@ -55,7 +58,18 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
 
       {leadFull && (
         <section className="cl-strip" aria-label="At a glance">
-          <div><small>Status</small><b>{LEAD_STATUSES[leadFull.status]}</b></div>
+          <div>
+            <small>Status</small>
+            {leadFull.status === "converted" ? <b>{LEAD_STATUSES.converted}</b> : (
+              <form action={setLeadStatusAction} className="cl-assign">
+                <input type="hidden" name="id" value={leadFull.id} /><input type="hidden" name="back" value={`/contacts/${key}`} />
+                <select name="status" defaultValue={leadFull.status} aria-label="Status">
+                  {SETTABLE_STATUSES.map((st) => <option key={st} value={st}>{LEAD_STATUSES[st]}</option>)}
+                </select>
+                <button className="monarch-secondary efin-small">Save</button>
+              </form>
+            )}
+          </div>
           <div><small>Source</small><b>{sourceName(leadFull.source)}</b></div>
           <div><small>Lead since</small><b>{when(leadFull.created_at)}</b></div>
           <div><small>Last contacted</small><b>{leadFull.last_contacted_at ? when(leadFull.last_contacted_at) : "Not yet"}</b></div>
@@ -96,6 +110,19 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
           <div className="is-wide"><b>Tags</b><TagInput initial={leadFull.tags} suggestions={tagOptions} /></div>
           <div className="is-wide"><button className="monarch-primary">Save notes and tags</button></div>
         </form>
+      )}
+
+      {leadFull && (
+        <section className="monarch-panel" style={{ marginBottom: 14 }}>
+          <div className="monarch-panel-head"><h2>History</h2></div>
+          {leadEvents.length === 0 ? <p className="monarch-muted" style={{ padding: "0 20px 14px" }}>Nothing recorded yet.</p> : (
+            <ul className="cl-list" style={{ padding: "0 20px 10px" }}>
+              {leadEvents.slice(0, 30).map((e) => (
+                <li key={e.id}><span>{describeLeadEvent(e)}<small className="monarch-subcell">{when(e.created_at)}{e.actor_id ? ` · ${staffLabel(staff, e.actor_id) ?? "a teammate"}` : ""}</small></span></li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       {customers.length > 0 && (

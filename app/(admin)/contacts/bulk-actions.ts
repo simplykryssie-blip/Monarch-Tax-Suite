@@ -11,14 +11,15 @@ import { parseContactKey } from "@/lib/contacts/combine.ts";
 import { convertLeadToClient } from "@/lib/contacts/convert.ts";
 import { loadContacts } from "@/lib/contacts/server";
 import { leadsDeps } from "@/lib/leads/server";
-import { assignLead } from "@/lib/leads/service.ts";
+import { assignLead, setLeadStatus } from "@/lib/leads/service.ts";
+import { LEAD_STATUSES, type LeadStatus } from "@/lib/leads/types.ts";
 import { parseTags, TAG_LENGTH, TAG_MAX } from "@/lib/leads/tags.ts";
 import { checkAssignee } from "@/lib/staff/assign.ts";
 import { listStaff } from "@/lib/staff/server";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { assignClient, saveClientTags } from "@/lib/workspace/service.ts";
 
-const OPS = new Set<string>(["assign", "convert", "tag_add", "tag_remove"]);
+const OPS = new Set<string>(["assign", "convert", "tag_add", "tag_remove", "set_status"]);
 const backTo = (raw: string) => (/^\/(?!\/)[A-Za-z0-9\-._~/?#=&%]*$/.test(raw) ? raw : "/contacts");
 const to = (back: string, key: "notice" | "error", message: string) => `${back}${back.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(message)}`;
 const strOf = (form: FormData, k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : "");
@@ -54,6 +55,10 @@ export async function bulkContactsAction(form: FormData) {
         done++;
       }
       message = who ? `Assigned ${plural(done, "contact", "contacts")} to ${who.label}.` : `${plural(done, "contact", "contacts")} now assigned to no one.`;
+    } else if (op === "set_status") {
+      const wanted = strOf(form, "status");
+      for (const c of targets) { await setLeadStatus(leads, c.refs.leadId!, wanted, admin.userId); done++; }
+      message = `Set ${plural(done, "lead", "leads")} to ${LEAD_STATUSES[wanted as LeadStatus]}.`;
     } else if (op === "convert") {
       let last: { id: string } | null = null;
       for (const c of targets) {
