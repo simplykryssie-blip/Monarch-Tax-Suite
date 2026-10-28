@@ -117,6 +117,14 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const spouse = client.spouse_id ? others.find((o) => o.id === client.spouse_id) ?? null : null;
   const names = client.first_name ? { first: client.first_name, last: client.last_name ?? "" } : (() => { const s = splitName(client.full_name); return { first: s.first, last: s.last ?? "" }; })();
   const lastMessage = messages[0] ?? null;
+  // The soonest thing that is due: an open task, an unfiled return, or an unpaid invoice.
+  const dueItems = [
+    ...openTasks.filter((x) => x.due_on).map((x) => ({ on: x.due_on!, what: x.title })),
+    ...returns.filter((r) => r.due_on && !r.filed_on && !r.archived_at).map((r) => ({ on: r.due_on!, what: `${returnLabel(r)} due` })),
+    ...invoices.filter((i) => i.status === "sent" && i.due_on && balance(i) > 0).map((i) => ({ on: i.due_on!, what: "Invoice due" })),
+  ].sort((a, b) => a.on.localeCompare(b.on));
+  const nextDue = dueItems[0] ?? null;
+  const todayStr = new Date().toISOString().slice(0, 10);
   const staff = await listStaff().catch(() => []);
   const portalLabel = !member ? "Not invited" : member.status === "active" ? "Active" : member.status === "invited" ? (inviteExpired(member) ? "Invite expired" : "Invited") : "Off";
   const hiddenTab = (HIDDEN as readonly string[]).includes(tab);
@@ -160,11 +168,20 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <section className="cl-strip" aria-label="At a glance">
             <div><small>Returns</small><b>{newestFirst.length ? `${returnLabel(newestFirst[0])} · ${stageName(newestFirst[0].stage_id)}` : "None"}</b></div>
             <div><small>Owes</small><b>{owes ? dollars(owes) : "Nothing"}</b></div>
+            <div><small>Next due</small><b style={nextDue && nextDue.on < todayStr ? { color: "#b42318" } : undefined}>{nextDue ? `${nextDue.on}${nextDue.on < todayStr ? " (overdue)" : ""}` : "Nothing due"}</b>{nextDue && <small className="monarch-subcell">{nextDue.what}</small>}</div>
             <div><small>Open tasks</small><b>{openTasks.length}</b></div>
             <div><small>Documents</small><b>{docs.length}</b></div>
             <div><small>Last message</small><b>{lastMessage ? `${CHANNELS[lastMessage.channel]} · ${when(lastMessage.occurred_at)}` : "None"}</b></div>
             <div><small>Portal</small><b>{portalLabel}</b></div>
           </section>
+          <nav className="cl-actions" aria-label="Quick actions">
+            <Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=messages`}>Send message</Link>
+            <Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=documents`}>Upload document</Link>
+            <Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=billing`}>Create invoice</Link>
+            <Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=notes`}>Add note</Link>
+            <Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=tasks`}>Add task</Link>
+            <Link className="monarch-secondary" href="/forms">Send a form</Link>
+          </nav>
           <AssignTo kind="client" id={id} current={client.owner_id ?? null} staff={staff} back={back} />
           <div className="grid2 cl-cols">
             <div className="cl-col">
