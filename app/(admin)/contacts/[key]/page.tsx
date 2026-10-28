@@ -9,6 +9,7 @@ import { recordCounts } from "@/lib/contacts/record-counts.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { TagInput } from "../../leads/tag-input";
 import { leadsDeps } from "@/lib/leads/server";
+import { convertLeadAction } from "../convert-actions";
 import { saveLeadNotesAction } from "../lead-notes-actions";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { DUPLICATE_REASON, parseContactKey, type Contact } from "@/lib/contacts/combine.ts";
@@ -50,6 +51,12 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
         {contact.tags.map((t) => <span key={t} className="monarch-badge">{t}</span>)}
       </div>
 
+      {leadFull && !contact.refs.clientId && (
+        <form action={convertLeadAction} style={{ marginBottom: 14 }}>
+          <input type="hidden" name="id" value={leadFull.id} /><input type="hidden" name="back" value={`/contacts/${key}`} />
+          <button className="monarch-primary">Convert to client</button> <small className="monarch-muted">Makes a client record with this lead&apos;s details, tags and notes.</small>
+        </form>
+      )}
       {lead && <AssignTo kind="lead" id={lead.id} current={lead.assigned_to ?? null} staff={staff} back={`/contacts/${key}`} />}
       <div style={{ marginBottom: 14 }}><AppointmentsCard email={contact.email} /></div>
 

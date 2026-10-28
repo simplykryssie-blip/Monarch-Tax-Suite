@@ -141,3 +141,41 @@ describe("pairs marked not a duplicate", () => {
     assert.equal(withoutDismissed(pairs, []).length, 2);
   });
 });
+
+import { convertLeadToClient } from "../lib/contacts/convert.ts";
+
+describe("converting a lead into a client", () => {
+  const seed = async (over: Record<string, unknown> = {}) => {
+    const leads = new MemoryLeads();
+    const lead = await leads.insertLead({ tags: ["referral"], notes: "Wants bookkeeping", phone: "3375550100", firm_name: "Guillory LLC", status: "interested", source: "manual", last_contacted_at: null, audit_id: null, audit_score: null, wisp_plan_id: null, customer_id: null, order_id: null, organization_id: null, converted_at: null, full_name: "Tanika Guillory", email: "tanika@example.com", assigned_to: "22222222-2222-4222-8222-222222222222", ...over } as never);
+    return { leads, lead, repo: new MemoryWorkspace() };
+  };
+  test("makes the client with the lead's details, writes the rest as a note, and marks the lead converted", async () => {
+    const { leads, lead, repo } = await seed();
+    const { client, alreadyClient } = await convertLeadToClient(repo, { repo: leads } as never, lead.id, { id: "u1" });
+    assert.equal(alreadyClient, false);
+    assert.equal(client.full_name, "Tanika Guillory");
+    assert.equal(client.email, "tanika@example.com");
+    const saved = (await repo.getClient(client.id))!;
+    assert.deepEqual(saved.tags, ["referral"]);
+    assert.equal(saved.owner_id, "22222222-2222-4222-8222-222222222222");
+    const notes = await repo.listNotes(client.id);
+    assert.match(notes[0].body, /Firm: Guillory LLC[\s\S]*Wants bookkeeping/);
+    const after = (await leads.getLead(lead.id))!;
+    assert.equal(after.status, "converted");
+    assert.ok(after.converted_at);
+    assert.ok(leads.events.some((e) => e.action === "converted_to_client"));
+  });
+  test("a person who is already a client is not made twice", async () => {
+    const { leads, lead, repo } = await seed();
+    const first = await convertLeadToClient(repo, { repo: leads } as never, lead.id, { id: "u1" });
+    const again = await convertLeadToClient(repo, { repo: leads } as never, lead.id, { id: "u1" });
+    assert.equal(again.alreadyClient, true);
+    assert.equal(again.client.id, first.client.id);
+    assert.equal((await repo.listClients({ includeArchived: true })).length, 1);
+  });
+  test("a missing lead is refused", async () => {
+    const { leads, repo } = await seed();
+    await assert.rejects(() => convertLeadToClient(repo, { repo: leads } as never, "00000000-0000-4000-8000-000000000000", { id: "u1" }), ValidationError);
+  });
+});

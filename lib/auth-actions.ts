@@ -18,7 +18,11 @@ export async function signIn(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    redirect(`/login?error=${encodeURIComponent(error.message)}&next=${encodeURIComponent(next)}`);
+    // A client at the portal gets one helpful answer for every failure, so it never says whether an email has an account.
+    const message = next.startsWith("/portal")
+      ? "That email and password don't match a client portal. If you were invited, open the invitation email from your tax office to set your password, or ask them to resend it."
+      : error.message;
+    redirect(`/login?error=${encodeURIComponent(message)}&next=${encodeURIComponent(next)}`);
   }
 
   redirect(next);
