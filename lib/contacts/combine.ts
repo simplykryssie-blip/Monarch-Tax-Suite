@@ -45,11 +45,23 @@ export const normalizePhone = (v: string | null | undefined): string | null => {
   return d.length === 10 ? d : null;
 };
 
+const nameParts = (v: string | null | undefined): string[] => (v ?? "").toLowerCase().replace(/[^\p{L}\s'-]/gu, " ").split(/\s+/).filter(Boolean);
+
 /** Lower-cased first and last name only when there are at least two words (a single word is too common to compare). */
 export const nameKey = (v: string | null | undefined): string | null => {
-  const parts = (v ?? "").toLowerCase().replace(/[^\p{L}\s'-]/gu, " ").split(/\s+/).filter(Boolean);
+  const parts = nameParts(v);
   return parts.length >= 2 ? `${parts[0]} ${parts[parts.length - 1]}` : null;
 };
+
+/** Whether two names are likely the same person: the same first and last name, and any middle names that both have start with the same letter ("Ana Ruiz" and "Ana Maria Ruiz" match; "Merge Entry Person" and "Merge Pair Person" do not). */
+export function sameName(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = nameParts(a), y = nameParts(b);
+  if (x.length < 2 || y.length < 2) return false;
+  if (x[0] !== y[0] || x[x.length - 1] !== y[y.length - 1]) return false;
+  const mx = x.slice(1, -1), my = y.slice(1, -1);
+  if (!mx.length || !my.length) return true;
+  return mx.every((m, i) => (my[i] ? m[0] === my[i][0] : true));
+}
 
 const newest = (...dates: (string | null | undefined)[]) => dates.filter((d): d is string => Boolean(d)).sort().pop() ?? null;
 const leadCurrent = (s: string) => s !== "converted" && s !== "lost";
@@ -157,7 +169,7 @@ export function possibleDuplicates(all: Contact[]): PossibleDuplicate[] {
   };
   for (const list of index((c) => c.email)) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) add(list[i], list[j], "shared_email");
   for (const list of index((c) => normalizePhone(c.phone))) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) add(list[i], list[j], "same_phone");
-  for (const list of index((c) => nameKey(c.name))) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) add(list[i], list[j], "same_name");
+  for (const list of index((c) => nameKey(c.name))) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) if (sameName(list[i].name, list[j].name)) add(list[i], list[j], "same_name");
   return out;
 }
 

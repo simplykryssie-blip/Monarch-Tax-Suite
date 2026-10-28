@@ -1,23 +1,26 @@
 import { Modal } from "@/components/ui/modal";
 import { MergeChoice } from "@/components/contacts/merge-choice";
 import { mergeContactsAction } from "@/app/(admin)/contacts/merge-actions";
-import { nameKey, normalizeEmail, normalizePhone, type Contact } from "@/lib/contacts/combine.ts";
+import { normalizeEmail, normalizePhone, sameName, type Contact } from "@/lib/contacts/combine.ts";
 import { mergePlan } from "@/lib/contacts/merge-plan.ts";
 import type { RecordCounts } from "@/lib/contacts/record-counts.ts";
 
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No activity yet");
+
+/** A name that tells the two records apart in the "keep which" choice. */
+const labelOf = (c: Contact) => `${c.name} (${c.email ?? "no email"}${c.phone ? `, ${c.phone}` : ""})`;
 
 type Row = { label: string; a: string; b: string; same: boolean };
 
 function rowsOf(a: Contact, b: Contact): Row[] {
   const eq = (x: string | null, y: string | null) => x !== null && x === y;
   return [
-    { label: "Name", a: a.name, b: b.name, same: eq(nameKey(a.name), nameKey(b.name)) },
+    { label: "Name", a: a.name, b: b.name, same: sameName(a.name, b.name) },
     { label: "Email", a: a.email ?? "none", b: b.email ?? "none", same: eq(normalizeEmail(a.email), normalizeEmail(b.email)) },
     { label: "Phone", a: a.phone ?? "none", b: b.phone ?? "none", same: eq(normalizePhone(a.phone), normalizePhone(b.phone)) },
-    { label: "Is a", a: a.chips.map((c) => c.label).join(", ") || "—", b: b.chips.map((c) => c.label).join(", ") || "—", same: false },
-    { label: "Tags", a: a.tags.join(", ") || "none", b: b.tags.join(", ") || "none", same: false },
-    { label: "Last activity", a: day(a.lastActivity), b: day(b.lastActivity), same: false },
+    { label: "Is a", a: a.chips.map((c) => c.label).join(", ") || "—", b: b.chips.map((c) => c.label).join(", ") || "—", same: a.chips.map((c) => c.label).join(", ") !== "" && a.chips.map((c) => c.label).join(", ") === b.chips.map((c) => c.label).join(", ") },
+    { label: "Tags", a: a.tags.join(", ") || "none", b: b.tags.join(", ") || "none", same: a.tags.length > 0 && a.tags.join(",") === b.tags.join(",") },
+    { label: "Last activity", a: day(a.lastActivity), b: day(b.lastActivity), same: a.lastActivity !== null && day(a.lastActivity) === day(b.lastActivity) },
   ];
 }
 
@@ -59,7 +62,7 @@ export function DuplicateCompare({ a, b, reason, back = "/contacts", openA, open
                 </>
               ) : (
                 <>
-                  <MergeChoice thisId={plan.a} thisName={a.name} otherId={plan.b} otherName={b.name} />
+                  <MergeChoice thisId={plan.a} thisName={labelOf(a)} otherId={plan.b} otherName={labelOf(b)} />
                   <p className="is-wide monarch-muted">{plan.kind === "clients" ? "The other record's details, returns, invoices and notes move onto the one you keep, and it is archived." : "The other lead's details are added to the notes of the one you keep, and it is marked Lost."}</p>
                 </>
               )}
