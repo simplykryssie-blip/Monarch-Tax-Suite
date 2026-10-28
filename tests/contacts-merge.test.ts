@@ -245,3 +245,16 @@ describe("a lead's status and history", () => {
     assert.equal(plan.skipped.length, 2);
   });
 });
+
+import { contactForKey } from "../lib/contacts/combine.ts";
+
+describe("opening a contact by an older key", () => {
+  test("a lead that became part of a client's contact is still found by its own key", () => {
+    const L = "22222222-2222-4222-8222-222222222222", C = "11111111-1111-4111-8111-111111111111";
+    const combined = { ...contact({ clientId: C, leadId: L }), key: `client-${C}` };
+    assert.equal(contactForKey([combined], `client-${C}`)?.key, `client-${C}`);
+    assert.equal(contactForKey([combined], `lead-${L}`)?.key, `client-${C}`);
+    assert.equal(contactForKey([combined], "lead-33333333-3333-4333-8333-333333333333"), null);
+    assert.equal(contactForKey([combined], "nonsense"), null);
+  });
+});
