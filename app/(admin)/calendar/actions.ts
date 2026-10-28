@@ -10,7 +10,7 @@ import { createLead } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
 import { workspaceRepo } from "@/lib/workspace/server";
 import {
-  addDateOverride, bookByStaff, cancelByStaff, createType, editType, markOutcome, officeLocalToIso, rescheduleByStaff, saveBookingMessages, saveWeekly,
+  addDateOverride, bookByStaff, cancelByStaff, createType, editType, markOutcome, officeLocalToIso, rescheduleByStaff, resendConfirmation, saveBookingMessages, saveWeekly, type ConfirmationOutcome,
 } from "@/lib/appointments/service.ts";
 
 // Every action re-checks administrator access and acts for the signed-in tenant only.
@@ -23,7 +23,8 @@ async function act(back: string, fn: (adminId: string) => Promise<string>, then?
   let target: string;
   try {
     const message = await fn(admin.userId);
-    target = withParam(then ?? back, "notice", message);
+    // A message starting with "!" is a warning: shown in red, but the page still moves on (the work was saved).
+    target = message.startsWith("!") ? withParam(then ?? back, "error", message.slice(1)) : withParam(then ?? back, "notice", message);
   } catch (e) {
     if (e instanceof ValidationError) target = withParam(back, "error", e.message);
     else {
@@ -70,15 +71,34 @@ export async function addLeadFromCalendarAction(input: { name: string; email: st
   }
 }
 
+/** Plain words for how the confirmation went, so a failure is never silent. */
+function confirmationNotice(c: ConfirmationOutcome, who: string): string {
+  const parts: string[] = [];
+  parts.push(c.email.ok ? `a confirmation email was sent to ${who}` : `the confirmation email to ${who} could NOT be sent (${c.email.message ?? "unknown reason"}) — use Resend confirmation or let them know yourself`);
+  if (c.sms) parts.push(c.sms.ok ? "a text was sent" : `the text could NOT be sent (${c.sms.message ?? "unknown reason"})`);
+  const text = parts.join("; ");
+  return text.charAt(0).toUpperCase() + text.slice(1) + ".";
+}
+
 export async function bookAction(form: FormData) {
   await act("/calendar/new", async (adminId) => {
     const tz = await timeZone();
-    await bookByStaff(office(), adminId, {
+    const booked = await bookByStaff(office(), adminId, {
       type_id: str(form, "type_id"), starts_at: officeLocalToIso(str(form, "starts_at"), tz), name: str(form, "name"), email: str(form, "email"),
       phone: str(form, "phone"), notes: str(form, "notes"), sms_consent: form.get("sms_consent") === "on", client_id: str(form, "client_id"),
     });
-    return "Appointment booked.";
+    const c = booked.confirmation;
+    const sent = c.email.ok && (c.sms === null || c.sms.ok);
+    // A failed confirmation goes out as an error so it is shown in red, but the booking itself stands.
+    return `${sent ? "" : "!"}Appointment booked. ${confirmationNotice(c, booked.appointment.contact_email)}${sent ? "" : " The appointment is saved."}`;
   }, "/calendar");
+}
+
+export async function resendConfirmationAction(form: FormData) {
+  await act("/calendar", async () => {
+    const a = await resendConfirmation(office(), str(form, "id"));
+    return `${a.email.ok && (a.sms === null || a.sms.ok) ? "" : "!"}${confirmationNotice(a, "the client")}`;
+  });
 }
 
 export async function cancelAction(form: FormData) {

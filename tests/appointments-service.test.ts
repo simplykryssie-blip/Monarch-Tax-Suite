@@ -8,7 +8,7 @@ import { ValidationError } from "../lib/commerce/validation.ts";
 import { appointmentIcs, reminderSms, whenFor } from "../lib/appointments/messages.ts";
 import {
   addDateOverride, bookByStaff, bookPublic, saveBookingMessages, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
-  rescheduleByStaff, rescheduleByToken, saveWeekly, sendDueReminders, slugOf, type AppointmentDeps,
+  rescheduleByStaff, rescheduleByToken, resendConfirmation, saveWeekly, sendDueReminders, slugOf, type AppointmentDeps,
 } from "../lib/appointments/service.ts";
 import type { Busy } from "../lib/appointments/slots.ts";
 import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type BookingMessages, type NewAppointment, type NewReminder, type Notifier, type ReminderRow, type RuleRow, type TypeInput } from "../lib/appointments/types.ts";
@@ -276,6 +276,41 @@ test("a failed confirmation email never fails the booking", async () => {
   const t = await createType(deps, TYPE);
   await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
   assert.equal(repo.appts.length, 1);
+});
+
+test("the booking says whether the confirmation went out, and a failure is reported with its reason", async () => {
+  const { deps } = make();
+  const t = await createType(deps, TYPE);
+  const ok = await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
+  assert.deepEqual(ok.confirmation, { email: { ok: true }, sms: { ok: true } });
+  deps.notify.email = async () => ({ ok: false, message: "domain not verified" });
+  deps.notify.sms = async () => { throw new Error("no sms number"); };
+  const bad = await bookByStaff(deps, "staff-1", { type_id: t.id, starts_at: "2026-10-12T15:00:00.000Z", name: "Bo Lee", email: "bo@example.com", phone: "(337) 555-0111", sms_consent: "on" });
+  assert.equal(bad.confirmation.email.ok, false);
+  assert.equal(bad.confirmation.email.message, "domain not verified");
+  assert.equal(bad.confirmation.sms?.ok, false);
+});
+
+test("a person without text consent has no text attempt in the confirmation result", async () => {
+  const { deps } = make();
+  const t = await createType(deps, TYPE);
+  const b = await bookPublic(deps, t.slug, { name: "Cy Dee", email: "cy@example.com", starts_at: MON_10AM, time_zone: "America/Chicago" });
+  assert.equal(b.confirmation.sms, null);
+});
+
+test("Resend confirmation sends again for an upcoming booking and refuses cancelled or past ones", async () => {
+  const { deps, sent, clock } = make();
+  const t = await createType(deps, TYPE);
+  const b = await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM });
+  const before = sent.length;
+  const r = await resendConfirmation(deps, b.appointment.id);
+  assert.equal(r.email.ok, true);
+  assert.ok(sent.length > before);
+  await cancelByStaff(deps, b.appointment.id, "", false);
+  await assert.rejects(() => resendConfirmation(deps, b.appointment.id), ValidationError);
+  const b2 = await bookByStaff(deps, "staff-1", { type_id: t.id, starts_at: "2026-10-12T17:00:00.000Z", name: "Di Ez", email: "di@example.com" });
+  clock.t = new Date("2026-10-13T00:00:00.000Z");
+  await assert.rejects(() => resendConfirmation(deps, b2.appointment.id), ValidationError);
 });
 
 test("an automation problem never fails a booking", async () => {
