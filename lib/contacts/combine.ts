@@ -212,3 +212,12 @@ export function parseContactKey(key: unknown): { kind: ContactKind; id: string }
   const m = typeof key === "string" ? KEY.exec(key) : null;
   return m ? { kind: m[1].toLowerCase() as ContactKind, id: m[2].toLowerCase() } : null;
 }
+
+/** The contact a page address points at. A lead (or customer) who has been combined under a client's key is found by its own id, so an older link still works. */
+export function contactForKey(contacts: Contact[], key: string): Contact | null {
+  const direct = contacts.find((c) => c.key === key);
+  if (direct) return direct;
+  const parsed = parseContactKey(key);
+  if (!parsed) return null;
+  return contacts.find((c) => (parsed.kind === "lead" ? c.refs.leadId === parsed.id : parsed.kind === "customer" ? c.refs.customerIds.includes(parsed.id) : c.refs.clientId === parsed.id)) ?? null;
+}

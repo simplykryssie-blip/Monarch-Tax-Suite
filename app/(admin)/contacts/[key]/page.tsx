@@ -16,7 +16,7 @@ import { leadsDeps } from "@/lib/leads/server";
 import { convertLeadAction } from "../convert-actions";
 import { saveLeadNotesAction, setLeadStatusAction } from "../lead-notes-actions";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
-import { DUPLICATE_REASON, parseContactKey, type Contact } from "@/lib/contacts/combine.ts";
+import { contactForKey, DUPLICATE_REASON, parseContactKey, type Contact } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
 import { allows } from "@/lib/tier.ts";
 import { currentTier } from "@/lib/tier-server";
@@ -28,11 +28,15 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
   const { key } = await params;
   if (!parseContactKey(key)) notFound();
   const data = await loadContacts();
-  const contact = data.contacts.find((c) => c.key === key);
+  // A lead who became a client (or shares an email with one) is one contact under the client's key: an older link to the lead's key lands there.
+  const parsed = parseContactKey(key)!;
+  const contact = contactForKey(data.contacts, key);
   if (!contact) notFound();
-  if (contact.refs.clientId) redirect(`/workspace/clients/${contact.refs.clientId}`);
+  if (contact.key !== key && !contact.refs.clientId) redirect(`/contacts/${contact.key}`);
+  // A client's key opens the client's page. A lead's own key still opens the lead, even after it became a client, so its history can be read.
+  if (contact.refs.clientId && parsed.kind !== "lead") redirect(`/workspace/clients/${contact.refs.clientId}`);
 
-  const lead = data.leads.find((l) => l.id === contact.refs.leadId) ?? null;
+  const lead = data.leads.find((l) => l.id === (parsed.kind === "lead" ? parsed.id : contact.refs.leadId)) ?? null;
   const client = data.clients.find((c) => c.id === contact.refs.clientId) ?? null;
   const customers = data.customers.filter((c) => contact.refs.customerIds.includes(c.id));
   const orders = data.orders.filter((o) => contact.refs.customerIds.includes(o.customer_id));
@@ -76,6 +80,9 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
           <div><small>Assigned to</small><b>{staffLabel(staff, leadFull.assigned_to ?? null) ?? "No one"}</b></div>
           <div><small>Tags</small><b>{leadFull.tags.length ? leadFull.tags.join(", ") : "None"}</b></div>
         </section>
+      )}
+      {leadFull && contact.refs.clientId && (
+        <p style={{ marginBottom: 14 }}>This lead became a client. <Link className="monarch-link" href={`/workspace/clients/${contact.refs.clientId}`}><b>Open the client record</b></Link></p>
       )}
       {leadFull && !contact.refs.clientId && (
         <form action={convertLeadAction} style={{ marginBottom: 14 }}>
