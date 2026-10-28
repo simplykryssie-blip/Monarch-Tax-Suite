@@ -17,6 +17,9 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   "/d/", "/sign/",
   // Self-serve signup: public, with an email check, a bot check and rate limits; the payment page is Stripe's.
   "/signup",
+  // Monarch Tax Lab: activating a license key and joining a class by invite create the account, so they are public.
+  // Every other /lab page requires sign-in and an active training license (lib/lab/server.ts).
+  "/lab/activate", "/lab/join/",
   // Campaign emails and texts: the per-recipient link token is the credential (open pixel, click redirect, unsubscribe), and the
   // provider callbacks (Resend, Twilio) authenticate themselves.
   "/t/", "/u/", "/api/campaigns/", "/api/sms/",

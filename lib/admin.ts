@@ -100,6 +100,9 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
       // A client of an office signs in to the same place and works in the client portal.
       const { data: portal } = await platformClient("portal_member").from("portal_members").select("id").eq("user_id", user.id).eq("status", "active").limit(1).maybeSingle();
       if (portal) redirect("/portal");
+      // A Monarch Tax Lab instructor or student practices in the lab.
+      const { data: lab } = await tenantClient(MONARCH_TENANT_ID).from("lab_members").select("id").eq("user_id", user.id).eq("status", "active").limit(1).maybeSingle();
+      if (lab) redirect("/lab");
     }
     const message = setupMissing
       ? "Administrator access is not set up yet. Apply the commerce database migration."
