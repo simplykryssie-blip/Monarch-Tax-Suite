@@ -52,15 +52,13 @@ export function Workspace(p: Props) {
   const [work, setWork] = useState<WorkSummary | null>(p.work);
   const [note, setNote] = useState("");
   const first = useRef(true);
-  const latest = useRef({ ret, intake });
-  latest.current = { ret, intake };
 
   // Autosave a moment after the last change.
   useEffect(() => {
     if (first.current) { first.current = false; return; }
     setSave({ state: "saving" });
     const t = setTimeout(async () => {
-      const r = await saveDraftAction(p.scenarioId, latest.current.ret, latest.current.intake);
+      const r = await saveDraftAction(p.scenarioId, ret, intake);
       setSave("error" in r ? { state: "error", msg: r.error } : { state: "saved" });
     }, 1200);
     return () => clearTimeout(t);
