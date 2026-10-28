@@ -1,7 +1,7 @@
 import type { Contact, PossibleDuplicate } from "./combine.ts";
 import { DUPLICATE_REASON } from "./combine.ts";
 
-export type DuplicateOf = { other: Contact; reason: string };
+export type DuplicateOf = { mine: Contact; other: Contact; reason: string };
 
 /** The other contacts that may be the same person as the one with this client record, and why. */
 export function duplicatesOfClient(contacts: Contact[], pairs: PossibleDuplicate[], clientId: string): DuplicateOf[] {
@@ -12,7 +12,7 @@ export function duplicatesOfClient(contacts: Contact[], pairs: PossibleDuplicate
   for (const d of pairs) {
     if (d.a !== mine.key && d.b !== mine.key) continue;
     const other = byKey.get(d.a === mine.key ? d.b : d.a);
-    if (other) out.push({ other, reason: DUPLICATE_REASON[d.reason] });
+    if (other) out.push({ mine, other, reason: DUPLICATE_REASON[d.reason] });
   }
   return out;
 }

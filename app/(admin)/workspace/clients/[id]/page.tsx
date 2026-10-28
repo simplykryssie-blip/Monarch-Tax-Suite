@@ -8,7 +8,7 @@ import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { DetailsCard, type Details } from "@/components/contacts/details-card";
-import { MergeChoice } from "@/components/contacts/merge-choice";
+import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { MessageComposer } from "@/components/contacts/message-composer";
 import { NewInvoice } from "@/components/contacts/new-invoice";
 import { Modal } from "@/components/ui/modal";
@@ -33,7 +33,7 @@ import { cancelFormInviteAction, invitePortalAction } from "@/app/portal-staff-a
 import { formDeps } from "@/lib/forms/server";
 import { inviteStatus } from "@/lib/forms/invites.ts";
 import { ClientDrive } from "../../../documents/client-drive";
-import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
+import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, linkSpouseAction, logMessageAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
 import { emailConfig, emailKeyProblems } from "@/lib/automation/email.ts";
@@ -146,25 +146,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       )}
       <Flash notice={sp.notice} error={sp.error} />
       {duplicates.map((d) => (
-        <div key={d.other.key} className="cl-dupe" role="note">
-          <span><b>Possible duplicate:</b> <Link href={d.other.refs.clientId ? `/workspace/clients/${d.other.refs.clientId}` : `/contacts/${d.other.key}`} target="_blank" rel="noreferrer">{d.other.name}</Link> · {d.reason}</span>
-          {(d.other.refs.clientId || d.other.refs.leadId) && (
-            <Modal label="Merge" title={`Merge ${d.other.name}`} className="monarch-secondary">
-              {d.other.refs.clientId ? (
-                <form action={mergeClientsAction} className="monarch-form">
-                  <MergeChoice thisId={client.id} thisName={client.full_name} otherId={d.other.refs.clientId} otherName={d.other.name} />
-                  <div className="is-wide ac-actions"><button className="monarch-primary">Merge</button></div>
-                </form>
-              ) : (
-                <form action={mergeLeadIntoClientAction} className="monarch-form">
-                  <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="lead_id" value={d.other.refs.leadId ?? ""} />
-                  <p className="is-wide">Keep {client.full_name} and fold the lead {d.other.name} into this client. The lead&apos;s details become a note here and the lead is marked converted.</p>
-                  <div className="is-wide ac-actions"><button className="monarch-primary">Merge</button></div>
-                </form>
-              )}
-            </Modal>
-          )}
-        </div>
+        <DuplicateCompare key={d.other.key} a={d.mine} b={d.other} reason={`Possible duplicate: ${d.reason}`} back={`/workspace/clients/${client.id}`} openA={`/workspace/clients/${client.id}`} openB={d.other.refs.clientId ? `/workspace/clients/${d.other.refs.clientId}` : `/contacts/${d.other.key}`} />
       ))}
       <nav className="cl-tabs" aria-label="Client">
         {TABS.map(([k, label]) => <Link key={k} href={`/workspace/clients/${id}?tab=${k}`} className={k === tab ? "is-on" : undefined} aria-current={k === tab ? "page" : undefined}>{label}</Link>)}

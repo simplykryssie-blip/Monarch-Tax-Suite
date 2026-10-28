@@ -529,3 +529,12 @@ a.hm-row:hover{background:#fcfbf8}
 .ni-line input[inputmode="decimal"] { width: 130px; flex: none; }
 .ni-charges, .ni-standard { width: 100%; box-sizing: border-box; min-width: 0; }
 .ni-standard ul { width: 100%; }
+.dup-card { border: 1px solid var(--monarch-line, #e5e7eb); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; background: #fff; }
+.dup-why { margin: 0 0 8px; font-weight: 600; }
+.dup-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.dup-table th, .dup-table td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--monarch-line, #e5e7eb); vertical-align: top; overflow-wrap: anywhere; }
+.dup-table thead th { border-top: 0; }
+.dup-table tbody th { width: 110px; font-weight: 500; color: #77746b; }
+.dup-table tr.is-match td { background: #e8f6ec; }
+.dup-same { color: #1a7f3c; font-weight: 600; }
+.dup-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }

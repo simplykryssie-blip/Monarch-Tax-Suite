@@ -5,7 +5,8 @@ import { Badge, money, PageTitle, when } from "@/components/admin/ui";
 import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { AssignTo } from "@/components/contacts/assign-to";
 import { listStaff } from "@/lib/staff/server";
-import { DUPLICATE_REASON, parseContactKey } from "@/lib/contacts/combine.ts";
+import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
+import { DUPLICATE_REASON, parseContactKey, type Contact } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
 import { allows } from "@/lib/tier.ts";
 import { currentTier } from "@/lib/tier-server";
@@ -78,15 +79,13 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
       {related.length > 0 && (
         <section className="monarch-panel">
           <div className="monarch-panel-head"><h2>Might also be the same person</h2></div>
-          <div className="monarch-table-wrap">
-            <table>
-              <tbody>
-                {related.map((d) => {
-                  const other = byKey.get(d.a === key ? d.b : d.a);
-                  return other ? <tr key={other.key}><td><Link href={`/contacts/${other.key}`}><b>{other.name}</b></Link><small className="monarch-subcell">{other.email ?? "no email"}</small></td><td>{DUPLICATE_REASON[d.reason]}</td></tr> : null;
-                })}
-              </tbody>
-            </table>
+          <div style={{ padding: "0 20px 8px" }}>
+            {related.map((d) => {
+              const other = byKey.get(d.a === key ? d.b : d.a);
+              if (!other) return null;
+              const open = (c: Contact) => (c.refs.clientId ? `/workspace/clients/${c.refs.clientId}` : `/contacts/${c.key}`);
+              return <DuplicateCompare key={other.key} a={contact} b={other} reason={DUPLICATE_REASON[d.reason]} back={`/contacts/${key}`} openA={open(contact)} openB={open(other)} />;
+            })}
           </div>
         </section>
       )}
