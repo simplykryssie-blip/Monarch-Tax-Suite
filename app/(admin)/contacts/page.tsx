@@ -8,9 +8,7 @@ import { staffLabel } from "@/lib/staff/assign.ts";
 import { listStaff } from "@/lib/staff/server";
 import { AutoSelect } from "@/components/contacts/auto-select";
 import { Modal } from "@/components/ui/modal";
-import { MergeChoice } from "@/components/contacts/merge-choice";
-import { mergePlan } from "@/lib/contacts/merge-plan.ts";
-import { mergeContactsAction } from "./merge-actions";
+import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { contactKinds } from "@/lib/contacts/kinds.ts";
 import { currentTier } from "@/lib/tier-server";
 
@@ -54,32 +52,10 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                 const a = byKey.get(d.a);
                 const b = byKey.get(d.b);
                 if (!a || !b) return null;
-                const plan = mergePlan(a, b);
                 const open = (c: Contact) => (c.refs.clientId ? `/workspace/clients/${c.refs.clientId}` : `/contacts/${c.key}`);
                 return (
                   <li key={`${d.a}|${d.b}`}>
-                    <span><a href={open(a)} target="_blank" rel="noreferrer"><b>{a.name}</b></a> and <a href={open(b)} target="_blank" rel="noreferrer"><b>{b.name}</b></a><small className="monarch-subcell">{DUPLICATE_REASON[d.reason]}</small></span>
-                    {plan ? (
-                      <Modal label="Merge" title={`Merge ${a.name} and ${b.name}`} className="monarch-secondary">
-                        <form action={mergeContactsAction} className="monarch-form">
-                          <input type="hidden" name="kind" value={plan.kind} />
-                          {plan.kind === "lead_into_client" ? (
-                            <>
-                              <input type="hidden" name="keep" value={plan.clientId} /><input type="hidden" name="drop" value={plan.leadId} />
-                              <p className="is-wide">Keep the client and fold the lead into it. The lead&apos;s details become a note on the client and the lead is marked converted.</p>
-                            </>
-                          ) : (
-                            <>
-                              <MergeChoice thisId={plan.a} thisName={a.name} otherId={plan.b} otherName={b.name} />
-                              <p className="is-wide monarch-muted">{plan.kind === "clients" ? "The other record's details, returns, invoices and notes move onto the one you keep, and it is archived." : "The other lead's details are added to the notes of the one you keep, and it is marked Lost."}</p>
-                            </>
-                          )}
-                          <div className="is-wide ac-actions"><button className="monarch-primary">Merge</button></div>
-                        </form>
-                      </Modal>
-                    ) : (
-                      <small className="monarch-muted">Store customers can&apos;t be merged here. Open each one to compare.</small>
-                    )}
+                    <DuplicateCompare a={a} b={b} reason={DUPLICATE_REASON[d.reason]} openA={open(a)} openB={open(b)} />
                   </li>
                 );
               })}
