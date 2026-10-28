@@ -7,6 +7,9 @@ import { AssignTo } from "@/components/contacts/assign-to";
 import { listStaff } from "@/lib/staff/server";
 import { recordCounts } from "@/lib/contacts/record-counts.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
+import { TagInput } from "../../leads/tag-input";
+import { leadsDeps } from "@/lib/leads/server";
+import { saveLeadNotesAction } from "../lead-notes-actions";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { DUPLICATE_REASON, parseContactKey, type Contact } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
@@ -33,6 +36,8 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
   const byKey = new Map(data.contacts.map((c) => [c.key, c]));
   const related = data.duplicates.filter((d) => d.a === key || d.b === key);
   const counts = new Map(await Promise.all([contact, ...related.map((d) => byKey.get(d.a === key ? d.b : d.a)).filter((c): c is Contact => !!c)].map(async (c) => [c.key, await recordCounts(workspaceRepo(), c)] as const)));
+  const leadFull = lead ? await leadsDeps().repo.getLead(lead.id).catch(() => null) : null;
+  const tagOptions = leadFull ? (await leadsDeps().repo.tagCounts().catch(() => [])).map((t) => t.tag) : [];
   const staff = lead ? await listStaff().catch(() => []) : [];
 
   return (
@@ -62,6 +67,17 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
           </table>
         </div>
       </section>
+
+      {leadFull && (
+        <form action={saveLeadNotesAction} className="monarch-panel monarch-form" style={{ padding: 20, marginBottom: 14 }}>
+          <h2 className="is-wide">Notes and tags</h2>
+          <input type="hidden" name="id" value={leadFull.id} />
+          <input type="hidden" name="back" value={`/contacts/${key}`} />
+          <label className="is-wide">Notes<textarea name="notes" rows={6} maxLength={10000} defaultValue={leadFull.notes ?? ""} placeholder="Anything worth remembering about this person." /></label>
+          <div className="is-wide"><b>Tags</b><TagInput initial={leadFull.tags} suggestions={tagOptions} /></div>
+          <div className="is-wide"><button className="monarch-primary">Save notes and tags</button></div>
+        </form>
+      )}
 
       {customers.length > 0 && (
         <section className="monarch-panel" style={{ marginBottom: 14 }}>

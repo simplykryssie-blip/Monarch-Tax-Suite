@@ -112,3 +112,20 @@ describe("what counts as the same name", () => {
     assert.equal(sameName("Ana", "Ana Ruiz"), false);
   });
 });
+
+import { saveLeadNotesAndTags } from "../lib/leads/service.ts";
+
+describe("saving a lead's notes and tags from its contact page", () => {
+  test("only notes and tags change, the change is recorded, and a bad tag is refused", async () => {
+    const repo = new MemoryLeads();
+    const lead = await repo.insertLead({ tags: [], notes: null, phone: null, firm_name: null, status: "contacted", source: "manual", last_contacted_at: null, audit_id: null, audit_score: null, wisp_plan_id: null, customer_id: null, order_id: null, organization_id: null, converted_at: null, full_name: "Ana Ruiz", email: "ana@example.com" } as never);
+    const after = await saveLeadNotesAndTags({ repo } as never, lead.id, { notes: "  Call after Friday  ", tags: "vip, referral" }, "actor");
+    assert.equal(after.notes, "Call after Friday");
+    assert.deepEqual([...after.tags].sort(), ["referral", "vip"]);
+    assert.equal(after.status, "contacted");
+    assert.equal(repo.events.filter((e) => e.action === "edited").length, 1);
+    const cleared = await saveLeadNotesAndTags({ repo } as never, lead.id, { notes: "", tags: "" }, "actor");
+    assert.equal(cleared.notes, null);
+    await assert.rejects(() => saveLeadNotesAndTags({ repo } as never, lead.id, { notes: "x", tags: "a".repeat(80) }, "actor"));
+  });
+});
