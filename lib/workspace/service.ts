@@ -50,6 +50,16 @@ export async function saveClientWithChanges(repo: WorkspaceRepo, id: string, raw
   return { client, changes };
 }
 
+/** Assigns a client to a teammate (their "owner"), or to no one. The person must already be on the team (checked by the caller). */
+export async function assignClient(repo: WorkspaceRepo, id: string, assignee: { id: string; label: string } | null, actor?: Actor): Promise<Client> {
+  const before = await repo.getClient(uuid(id, "That client"));
+  if (!before) throw new ValidationError("That client wasn't found.");
+  if ((before.owner_id ?? null) === (assignee?.id ?? null)) return before;
+  const client = await repo.updateClient(id, { owner_id: assignee?.id ?? null });
+  await record(repo, id, actor ?? null, "client.assigned", { name: assignee?.label ?? "No one" });
+  return client;
+}
+
 /** Replaces a contact's tags. Returns the tags as saved and what was added or removed, for automations and the activity record. */
 export async function saveClientTags(repo: WorkspaceRepo, id: string, raw: unknown, actor?: Actor): Promise<{ before: string[]; after: string[] }> {
   const before = await repo.getClient(uuid(id, "That client"));

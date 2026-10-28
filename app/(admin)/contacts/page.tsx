@@ -4,6 +4,8 @@ import { EmptyRow, PageTitle, when } from "@/components/admin/ui";
 import { countContacts, DUPLICATE_REASON, filterContacts, type Contact, type ContactFilter } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
 import { AddContact } from "@/components/contacts/add-contact";
+import { staffLabel } from "@/lib/staff/assign.ts";
+import { listStaff } from "@/lib/staff/server";
 import { AutoSelect } from "@/components/contacts/auto-select";
 import { Modal } from "@/components/ui/modal";
 import { contactKinds } from "@/lib/contacts/kinds.ts";
@@ -28,6 +30,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const kind = ((KINDS as readonly string[]).includes(sp.kind ?? "") ? (sp.kind === "archived" ? "inactive" : sp.kind ?? "") : "") as ContactFilter["kind"];
   const kinds = contactKinds(await currentTier());
   const data = await loadContacts();
+  const staff = await listStaff().catch(() => []);
   const counts = countContacts(data.contacts);
   const rows = filterContacts(data.contacts, { q: sp.q, kind, tag: sp.tag });
   const byKey = new Map(data.contacts.map((c) => [c.key, c]));
@@ -71,16 +74,17 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             <div className="monarch-panel-head"><h2>{rows.length} {rows.length === 1 ? "contact" : "contacts"}</h2></div>
             <div className="monarch-table-wrap">
               <table>
-                <thead><tr><th>NAME</th><th>IS A</th><th>PHONE</th><th>TAGS</th><th>LAST ACTIVITY</th></tr></thead>
+                <thead><tr><th>NAME</th><th>IS A</th><th>PHONE</th><th>ASSIGNED</th><th>TAGS</th><th>LAST ACTIVITY</th></tr></thead>
                 <tbody>
                   {rows.length === 0 ? (
-                    <EmptyRow colSpan={5}>No contacts match.</EmptyRow>
+                    <EmptyRow colSpan={6}>No contacts match.</EmptyRow>
                   ) : (
                     rows.map((c) => (
                       <tr key={c.key}>
                         <td><Link href={c.refs.clientId ? `/workspace/clients/${c.refs.clientId}` : `/contacts/${c.key}`}><b>{c.name}</b></Link><small className="monarch-subcell">{c.email ?? "no email"}</small></td>
                         <td><Chips c={c} /></td>
                         <td>{c.phone ?? "—"}</td>
+                        <td>{staffLabel(staff, c.assignedTo) ?? "—"}</td>
                         <td>{c.tags.join(", ") || "—"}</td>
                         <td>{when(c.lastActivity)}</td>
                       </tr>

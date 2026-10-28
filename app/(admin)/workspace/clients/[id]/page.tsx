@@ -1,3 +1,5 @@
+import { AssignTo } from "@/components/contacts/assign-to";
+import { listStaff } from "@/lib/staff/server";
 import { FormattedInput } from "@/components/forms/formatted-input";
 import { StateSelect } from "@/components/forms/state-select";
 import { PortalPanel } from "@/components/portal/panel";
@@ -113,6 +115,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const spouse = client.spouse_id ? others.find((o) => o.id === client.spouse_id) ?? null : null;
   const names = client.first_name ? { first: client.first_name, last: client.last_name ?? "" } : (() => { const s = splitName(client.full_name); return { first: s.first, last: s.last ?? "" }; })();
   const lastMessage = messages[0] ?? null;
+  const staff = await listStaff().catch(() => []);
   const portalLabel = !member ? "Not invited" : member.status === "active" ? "Active" : member.status === "invited" ? (inviteExpired(member) ? "Invite expired" : "Invited") : "Off";
   const hiddenTab = (HIDDEN as readonly string[]).includes(tab);
   const activity = events.map((e) => ({ id: e.id, text: describeEvent(e), by: typeof e.detail.by === "string" ? e.detail.by : e.actor_id ? "a teammate" : "the system", at: e.created_at })).filter((e): e is { id: string; text: string; by: string; at: string } => e.text !== null);
@@ -178,6 +181,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             <div><small>Last message</small><b>{lastMessage ? `${CHANNELS[lastMessage.channel]} · ${when(lastMessage.occurred_at)}` : "None"}</b></div>
             <div><small>Portal</small><b>{portalLabel}</b></div>
           </section>
+          <AssignTo kind="client" id={id} current={client.owner_id ?? null} staff={staff} back={back} />
           <div className="grid2 cl-cols">
             <div className="cl-col">
               <DetailsCard d={details} />
