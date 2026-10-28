@@ -5,6 +5,8 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
+import { parseContactKey } from "@/lib/contacts/combine.ts";
+import { addDismissal, removeDismissal } from "@/lib/contacts/dismissals-server";
 import { leadsDeps } from "@/lib/leads/server";
 import { mergeLeads } from "@/lib/leads/service.ts";
 import { copySsn, hasStoredSsn } from "@/lib/ssn/service.ts";
@@ -60,3 +62,31 @@ export async function mergeContactsAction(form: FormData) {
   revalidatePath("/workspace", "layout");
   redirect(target);
 }
+
+async function markPair(form: FormData, dismiss: boolean) {
+  const admin = await requireAdmin();
+  const back = backTo(str(form, "back"));
+  let target: string;
+  try {
+    const a = str(form, "a"), b = str(form, "b");
+    if (!parseContactKey(a) || !parseContactKey(b) || a === b) throw new ValidationError("Choose two different contacts.");
+    if (dismiss) await addDismissal(a, b, admin.userId);
+    else await removeDismissal(a, b);
+    target = to(back, "notice", dismiss ? "Marked as not a duplicate. It won't be offered again." : "Put back on the possible duplicates list.");
+  } catch (e) {
+    unstable_rethrow(e);
+    if (e instanceof ValidationError) target = to(back, "error", e.message);
+    else {
+      console.error(`duplicate mark failed: ${sanitizeError(e, 200)}`);
+      target = to(back, "error", "That did not work. Nothing was changed. Please try again.");
+    }
+  }
+  revalidatePath("/contacts", "layout");
+  revalidatePath("/workspace", "layout");
+  redirect(target);
+}
+
+/** Records that two contacts are different people, so they stop appearing as a possible duplicate. */
+export async function dismissDuplicateAction(form: FormData) { await markPair(form, true); }
+/** Puts a pair marked "not a duplicate" back on the list. */
+export async function undoDismissAction(form: FormData) { await markPair(form, false); }

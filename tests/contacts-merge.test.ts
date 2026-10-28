@@ -129,3 +129,15 @@ describe("saving a lead's notes and tags from its contact page", () => {
     await assert.rejects(() => saveLeadNotesAndTags({ repo } as never, lead.id, { notes: "x", tags: "a".repeat(80) }, "actor"));
   });
 });
+
+import { pairOf, withoutDismissed } from "../lib/contacts/dismissals.ts";
+
+describe("pairs marked not a duplicate", () => {
+  test("the pair is the same whichever way round, and is left out of the list", () => {
+    assert.deepEqual(pairOf("lead-b", "client-a"), ["client-a", "lead-b"]);
+    const pairs = [{ a: "client-a", b: "lead-b", reason: "same_name" as const }, { a: "client-a", b: "lead-c", reason: "shared_email" as const }];
+    assert.deepEqual(withoutDismissed(pairs, [{ key_a: "client-a", key_b: "lead-b" }]).map((p) => p.b), ["lead-c"]);
+    assert.deepEqual(withoutDismissed(pairs, [{ key_a: "lead-b", key_b: "client-a" }]).map((p) => p.b), ["lead-c"]);
+    assert.equal(withoutDismissed(pairs, []).length, 2);
+  });
+});
