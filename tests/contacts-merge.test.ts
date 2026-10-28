@@ -99,3 +99,16 @@ describe("a merged record is no longer offered as a duplicate", () => {
     assert.equal(possibleDuplicates(merged).length, 0);
   });
 });
+
+import { sameName } from "../lib/contacts/combine.ts";
+
+describe("what counts as the same name", () => {
+  test("first and last must match, and middle names that both have must start the same", () => {
+    assert.equal(sameName("Ana Ruiz", "ana  RUIZ"), true);
+    assert.equal(sameName("Ana Ruiz", "Ana Maria Ruiz"), true);
+    assert.equal(sameName("Ana Maria Ruiz", "Ana M. Ruiz"), true);
+    assert.equal(sameName("Merge Entry Person", "Merge Pair Person"), false);
+    assert.equal(sameName("Ana Ruiz", "Ana Cruz"), false);
+    assert.equal(sameName("Ana", "Ana Ruiz"), false);
+  });
+});
