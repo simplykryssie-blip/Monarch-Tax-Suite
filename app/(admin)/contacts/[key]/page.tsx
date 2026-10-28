@@ -5,6 +5,8 @@ import { Badge, money, PageTitle, when } from "@/components/admin/ui";
 import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { AssignTo } from "@/components/contacts/assign-to";
 import { listStaff } from "@/lib/staff/server";
+import { staffLabel } from "@/lib/staff/assign.ts";
+import { LEAD_STATUSES, sourceName } from "@/lib/leads/types.ts";
 import { recordCounts } from "@/lib/contacts/record-counts.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { TagInput } from "../../leads/tag-input";
@@ -51,6 +53,16 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
         {contact.tags.map((t) => <span key={t} className="monarch-badge">{t}</span>)}
       </div>
 
+      {leadFull && (
+        <section className="cl-strip" aria-label="At a glance">
+          <div><small>Status</small><b>{LEAD_STATUSES[leadFull.status]}</b></div>
+          <div><small>Source</small><b>{sourceName(leadFull.source)}</b></div>
+          <div><small>Lead since</small><b>{when(leadFull.created_at)}</b></div>
+          <div><small>Last contacted</small><b>{leadFull.last_contacted_at ? when(leadFull.last_contacted_at) : "Not yet"}</b></div>
+          <div><small>Assigned to</small><b>{staffLabel(staff, leadFull.assigned_to ?? null) ?? "No one"}</b></div>
+          <div><small>Tags</small><b>{leadFull.tags.length ? leadFull.tags.join(", ") : "None"}</b></div>
+        </section>
+      )}
       {leadFull && !contact.refs.clientId && (
         <form action={convertLeadAction} style={{ marginBottom: 14 }}>
           <input type="hidden" name="id" value={leadFull.id} /><input type="hidden" name="back" value={`/contacts/${key}`} />

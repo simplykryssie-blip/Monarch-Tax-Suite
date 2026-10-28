@@ -540,3 +540,4 @@ a.hm-row:hover{background:#fcfbf8}
 .dup-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 .ct-bulk { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--monarch-line, #e5e7eb); }
 .ct-bulk input[name="tag"] { min-width: 120px; }
+.cl-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
