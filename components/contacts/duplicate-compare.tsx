@@ -3,6 +3,7 @@ import { MergeChoice } from "@/components/contacts/merge-choice";
 import { mergeContactsAction } from "@/app/(admin)/contacts/merge-actions";
 import { nameKey, normalizeEmail, normalizePhone, type Contact } from "@/lib/contacts/combine.ts";
 import { mergePlan } from "@/lib/contacts/merge-plan.ts";
+import type { RecordCounts } from "@/lib/contacts/record-counts.ts";
 
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "No activity yet");
 
@@ -21,8 +22,11 @@ function rowsOf(a: Contact, b: Contact): Row[] {
 }
 
 /** Two possible duplicates side by side: what matches is marked, what differs is plain, so a person can tell if it is the same person. */
-export function DuplicateCompare({ a, b, reason, back = "/contacts", openA, openB }: { a: Contact; b: Contact; reason: string; back?: string; openA: string; openB: string }) {
+export function DuplicateCompare({ a, b, reason, back = "/contacts", openA, openB, countsA = [], countsB = [] }: { a: Contact; b: Contact; reason: string; back?: string; openA: string; openB: string; countsA?: RecordCounts; countsB?: RecordCounts }) {
   const plan = mergePlan(a, b);
+  const countRows: Row[] = countsA.length || countsB.length
+    ? (countsA.length ? countsA : countsB).map((x, i) => ({ label: x.label, a: String(countsA[i]?.n ?? "—"), b: String(countsB[i]?.n ?? "—"), same: false }))
+    : [];
   return (
     <div className="dup-card">
       <p className="dup-why">{reason}</p>
@@ -31,7 +35,7 @@ export function DuplicateCompare({ a, b, reason, back = "/contacts", openA, open
           <tr><th /><th><a href={openA} target="_blank" rel="noreferrer">{a.name}</a></th><th><a href={openB} target="_blank" rel="noreferrer">{b.name}</a></th></tr>
         </thead>
         <tbody>
-          {rowsOf(a, b).map((r) => (
+          {[...rowsOf(a, b), ...countRows].map((r) => (
             <tr key={r.label} className={r.same ? "is-match" : undefined}>
               <th scope="row">{r.label}</th>
               <td>{r.a}</td>
@@ -41,6 +45,8 @@ export function DuplicateCompare({ a, b, reason, back = "/contacts", openA, open
         </tbody>
       </table>
       <div className="dup-actions">
+        <a className="monarch-secondary" href={openA} target="_blank" rel="noreferrer">Open {a.name}&apos;s full record ↗</a>
+        <a className="monarch-secondary" href={openB} target="_blank" rel="noreferrer">Open {b.name}&apos;s full record ↗</a>
         {plan ? (
           <Modal label="Merge these two" title={`Merge ${a.name} and ${b.name}`} className="monarch-primary">
             <form action={mergeContactsAction} className="monarch-form">

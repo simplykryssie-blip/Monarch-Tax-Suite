@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { DetailsCard, type Details } from "@/components/contacts/details-card";
+import { recordCounts } from "@/lib/contacts/record-counts.ts";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { MessageComposer } from "@/components/contacts/message-composer";
 import { NewInvoice } from "@/components/contacts/new-invoice";
@@ -102,6 +103,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
   const ssnOnFile = await hasStoredSsn(ssnDeps(), client.id).catch(() => false);
   const duplicates = tab === "overview" ? await loadContacts().then((d) => duplicatesOfClient(d.contacts, d.duplicates, client.id)).catch(() => []) : [];
+  const dupCounts = new Map(await Promise.all(duplicates.flatMap((d) => [d.mine, d.other]).map(async (c) => [c.key, await recordCounts(workspaceRepo(), c)] as const)));
   const sheetCtx = tab === "billing" ? await loadSheetContext() : null!;
   const invoicePlans = tab === "billing" ? await workspaceRepo().listInstallments(invoices.map((i) => i.id)).catch(() => []) : [];
   const invoicePayments = tab === "billing" ? await paymentsFor(workspaceRepo(), invoices.filter((i) => i.paid_cents > 0).map((i) => i.id)).catch(() => []) : [];
@@ -146,7 +148,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       )}
       <Flash notice={sp.notice} error={sp.error} />
       {duplicates.map((d) => (
-        <DuplicateCompare key={d.other.key} a={d.mine} b={d.other} reason={`Possible duplicate: ${d.reason}`} back={`/workspace/clients/${client.id}`} openA={`/workspace/clients/${client.id}`} openB={d.other.refs.clientId ? `/workspace/clients/${d.other.refs.clientId}` : `/contacts/${d.other.key}`} />
+        <DuplicateCompare key={d.other.key} a={d.mine} b={d.other} reason={`Possible duplicate: ${d.reason}`} back={`/workspace/clients/${client.id}`} openA={`/workspace/clients/${client.id}`} openB={d.other.refs.clientId ? `/workspace/clients/${d.other.refs.clientId}` : `/contacts/${d.other.key}`} countsA={dupCounts.get(d.mine.key)} countsB={dupCounts.get(d.other.key)} />
       ))}
       <nav className="cl-tabs" aria-label="Client">
         {TABS.map(([k, label]) => <Link key={k} href={`/workspace/clients/${id}?tab=${k}`} className={k === tab ? "is-on" : undefined} aria-current={k === tab ? "page" : undefined}>{label}</Link>)}

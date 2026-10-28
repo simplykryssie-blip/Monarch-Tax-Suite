@@ -44,3 +44,19 @@ describe("merging two leads", () => {
     await assert.rejects(() => mergeLeads({ repo } as never, keep.id, "00000000-0000-4000-8000-000000000000", "a"), ValidationError);
   });
 });
+
+import { recordCounts } from "../lib/contacts/record-counts.ts";
+import { MemoryWorkspace } from "./workspace-memory.ts";
+
+describe("comparing how much two client records hold", () => {
+  test("counts what a client has, and nothing for a contact that is not a client", async () => {
+    const repo = new MemoryWorkspace();
+    const c = await repo.insertClient({ full_name: "Ana Ruiz", email: "a@example.com", phone: null, created_by: null } as never);
+    await repo.insertNote({ client_id: c.id, body: "one", created_by: null });
+    await repo.insertNote({ client_id: c.id, body: "two", created_by: null });
+    const got = await recordCounts(repo, contact({ clientId: c.id }));
+    assert.equal(got.find((x) => x.label === "Notes")?.n, 2);
+    assert.equal(got.find((x) => x.label === "Returns")?.n, 0);
+    assert.deepEqual(await recordCounts(repo, contact({ leadId: "l1" })), []);
+  });
+});
