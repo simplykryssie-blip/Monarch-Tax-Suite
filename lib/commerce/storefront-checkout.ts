@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isStorefrontVisible } from "./catalog.ts";
+import { isLabProduct } from "../lab/product.ts";
 import { lookupMessage, priceIssues, type StripeCatalogPort } from "./stripe-verify.ts";
 import { publishBlockers, ValidationError } from "./validation.ts";
 import { INSTALLATION_TYPES, type CommerceRepo, type InstallationType, type StorefrontCheckout } from "./types.ts";
@@ -52,7 +53,7 @@ export async function startStorefrontCheckout(repo: CommerceRepo, catalog: Strip
   if (product.metadata?.delivery === "wisp_generator" && !input.extraMetadata?.wisp_plan_id) throw new ValidationError("Build your WISP first: the purchase is made from the last step of the WISP builder.");
 
   let installationType: InstallationType | null = null;
-  if (product.access_type === "license") {
+  if (product.access_type === "license" && !isLabProduct(product.metadata)) {
     const requested = input.installationType && (INSTALLATION_TYPES as readonly string[]).includes(input.installationType) ? (input.installationType as InstallationType) : null;
     installationType = requested && product.installation_options.includes(requested) ? requested : product.installation_options.length === 1 ? product.installation_options[0] : null;
     if (!installationType) throw new ValidationError("Choose how you would like the calculator installed.");

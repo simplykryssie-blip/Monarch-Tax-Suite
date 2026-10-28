@@ -1,3 +1,4 @@
+import { isLabProduct, labProductBlockers } from "../lab/product.ts";
 import {
   ACCESS_TYPES,
   INSTALLATION_STATUSES,
@@ -192,7 +193,7 @@ export function cleanNote(value: unknown, max = 4000): string | null {
   return note || null;
 }
 
-type SellableFields = Pick<NewProduct, "price_cents" | "stripe_product_id" | "access_type" | "installation_options">;
+type SellableFields = Pick<NewProduct, "price_cents" | "stripe_product_id" | "access_type" | "installation_options"> & { metadata?: Record<string, string> | null };
 type PublishFields = SellableFields &
   Pick<NewProduct, "name" | "description" | "product_type" | "stripe_price_id"> &
   Partial<Pick<Product, "category" | "payment_type" | "metadata" | "stripe_price_cents">>;
@@ -202,7 +203,8 @@ export function sellableBlockers(product: SellableFields): string[] {
   const blockers: string[] = [];
   if (product.price_cents === null) blockers.push("Set a verified price.");
   if (!product.stripe_product_id) blockers.push("Link the Stripe product so purchases can be fulfilled.");
-  if (product.access_type === "license" && product.installation_options.length === 0) blockers.push("Choose at least one installation option.");
+  // Monarch Tax Lab licenses are used on Monarch's own site (/lab), so they have nothing to install.
+  if (product.access_type === "license" && product.installation_options.length === 0 && !isLabProduct(product.metadata)) blockers.push("Choose at least one installation option.");
   return blockers;
 }
 
@@ -221,6 +223,7 @@ export function publishBlockers(product: PublishFields, imageCount: number): str
   if (product.price_cents !== null && (!product.stripe_price_id || product.stripe_price_cents !== product.price_cents)) {
     blockers.push("Create or verify the Stripe price so Stripe confirms it charges the catalog price.");
   }
+  blockers.push(...labProductBlockers(product.metadata));
   if (product.payment_type === "recurring") blockers.push("Recurring billing is not available at checkout yet; sell this as a one-time payment.");
   if (product.product_type === "course" || product.access_type === "course_access" || product.category === "course") {
     blockers.push("Courses cannot be sold until course delivery is ready (decision E1).");
