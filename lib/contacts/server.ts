@@ -4,6 +4,8 @@ import { leadsDeps } from "../leads/server";
 import { allows } from "../tier.ts";
 import { currentTier } from "../tier-server";
 import { workspaceRepo } from "../workspace/server";
+import { listDismissals } from "./dismissals-server";
+import { withoutDismissed } from "./dismissals.ts";
 import { combineContacts, possibleDuplicates, sortContacts, type ClientRec, type Contact, type CustomerRec, type LeadRec, type PossibleDuplicate } from "./combine.ts";
 
 // Reads the three lists for the signed-in workspace and groups them (see combine.ts). It only reads: no record is created,
@@ -14,6 +16,8 @@ export type OrderLine = { id: string; order_number: number; customer_id: string;
 export type ContactsData = {
   contacts: Contact[];
   duplicates: PossibleDuplicate[];
+  /** Pairs marked "not a duplicate" (so they can be put back). Empty until that is set up. */
+  dismissed: PossibleDuplicate[];
   /** Which sources were read, and a plain note for any that could not be. */
   included: { leads: boolean; clients: boolean; customers: boolean };
   notes: string[];
@@ -48,9 +52,13 @@ export async function loadContacts(): Promise<ContactsData> {
   const clients: ClientRec[] = (clientRows ?? []).map((c) => ({ id: c.id, full_name: c.full_name, email: c.email, phone: c.phone, archived_at: c.archived_at, tags: c.tags ?? [], updated_at: c.updated_at, owner_id: c.owner_id ?? null }));
   const customers = (customerRows ?? []).map((c) => ({ id: c.id, full_name: c.full_name, email: c.email, status: c.archived_at ? "inactive" : c.status, updated_at: c.updated_at, archived: Boolean(c.archived_at) }));
   const contacts = sortContacts(combineContacts({ leads, clients, customers }));
+  // Not a note when this can't be read: the list then simply shows every possible pair.
+  const dismissals = await listDismissals().catch(() => []);
+  const all = possibleDuplicates(contacts);
   return {
     contacts,
-    duplicates: possibleDuplicates(contacts),
+    duplicates: withoutDismissed(all, dismissals),
+    dismissed: all.filter((p) => !withoutDismissed([p], dismissals).length),
     included: { leads: leadRows !== null, clients: clientRows !== null, customers: customerRows !== null },
     notes,
     orders: (orderRows ?? []).map((o) => ({ id: o.id, order_number: o.order_number, customer_id: o.customer_id, amount_cents: o.amount_cents, amount_refunded_cents: o.amount_refunded_cents, currency: o.currency, payment_status: o.payment_status, created_at: o.created_at })),

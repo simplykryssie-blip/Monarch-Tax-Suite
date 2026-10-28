@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/modal";
 import { recordCounts } from "@/lib/contacts/record-counts.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
+import { undoDismissAction } from "./merge-actions";
 import { contactKinds } from "@/lib/contacts/kinds.ts";
 import { currentTier } from "@/lib/tier-server";
 
@@ -51,8 +52,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       <div className="cl-head-actions">
         <AddContact kinds={kinds} />
         <Link className="monarch-secondary" href="/contacts/import">Import</Link>
-        {data.duplicates.length > 0 && (
-          <Modal label={`Possible duplicates (${data.duplicates.length})`} title="Possible duplicates" className="monarch-secondary">
+        {(data.duplicates.length > 0 || data.dismissed.length > 0) && (
+          <Modal label={data.duplicates.length ? `Possible duplicates (${data.duplicates.length})` : "Possible duplicates"} title="Possible duplicates" className="monarch-secondary">
             <ul className="cl-list dup-list">
               {data.duplicates.map((d) => {
                 const a = byKey.get(d.a);
@@ -66,6 +67,27 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                 );
               })}
             </ul>
+            {data.duplicates.length === 0 && <p className="monarch-muted">No possible duplicates right now.</p>}
+            {data.dismissed.length > 0 && (
+              <details className="dup-undo">
+                <summary>Marked as not a duplicate ({data.dismissed.length})</summary>
+                <ul className="cl-list">
+                  {data.dismissed.map((d) => {
+                    const a = byKey.get(d.a), b = byKey.get(d.b);
+                    if (!a || !b) return null;
+                    return (
+                      <li key={`${d.a}|${d.b}`}>
+                        <form action={undoDismissAction} className="monarch-inline-form">
+                          <input type="hidden" name="a" value={d.a} /><input type="hidden" name="b" value={d.b} />
+                          <span>{a.name} and {b.name}</span>
+                          <button className="monarch-secondary">Put back</button>
+                        </form>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
+            )}
           </Modal>
         )}
       </div>

@@ -1,6 +1,6 @@
 import { Modal } from "@/components/ui/modal";
 import { MergeChoice } from "@/components/contacts/merge-choice";
-import { mergeContactsAction } from "@/app/(admin)/contacts/merge-actions";
+import { dismissDuplicateAction, mergeContactsAction } from "@/app/(admin)/contacts/merge-actions";
 import { normalizeEmail, normalizePhone, sameName, type Contact } from "@/lib/contacts/combine.ts";
 import { mergePlan } from "@/lib/contacts/merge-plan.ts";
 import type { RecordCounts } from "@/lib/contacts/record-counts.ts";
@@ -50,6 +50,10 @@ export function DuplicateCompare({ a, b, reason, back = "/contacts", openA, open
       <div className="dup-actions">
         <a className="monarch-secondary" href={openA} target="_blank" rel="noreferrer">Open {a.name}&apos;s full record ↗</a>
         <a className="monarch-secondary" href={openB} target="_blank" rel="noreferrer">Open {b.name}&apos;s full record ↗</a>
+        <form action={dismissDuplicateAction}>
+          <input type="hidden" name="a" value={a.key} /><input type="hidden" name="b" value={b.key} /><input type="hidden" name="back" value={back} />
+          <button className="monarch-secondary" title="Keep both. This pair won't be offered again.">Not a duplicate</button>
+        </form>
         {plan ? (
           <Modal label="Merge these two" title={`Merge ${a.name} and ${b.name}`} className="monarch-primary">
             <form action={mergeContactsAction} className="monarch-form">
