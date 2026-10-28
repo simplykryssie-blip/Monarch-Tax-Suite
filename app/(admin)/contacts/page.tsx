@@ -8,6 +8,8 @@ import { staffLabel } from "@/lib/staff/assign.ts";
 import { listStaff } from "@/lib/staff/server";
 import { AutoSelect } from "@/components/contacts/auto-select";
 import { Modal } from "@/components/ui/modal";
+import { recordCounts } from "@/lib/contacts/record-counts.ts";
+import { workspaceRepo } from "@/lib/workspace/server";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { contactKinds } from "@/lib/contacts/kinds.ts";
 import { currentTier } from "@/lib/tier-server";
@@ -33,6 +35,9 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const data = await loadContacts();
   const staff = await listStaff().catch(() => []);
   const counts = countContacts(data.contacts);
+  // How much each side holds, for the first pairs only (each count is a few lookups).
+  const pairCounts = new Map<string, Awaited<ReturnType<typeof recordCounts>>>();
+  await Promise.all(data.duplicates.slice(0, 20).flatMap((d) => [d.a, d.b]).map(async (k) => { const c = byKey.get(k); if (c && !pairCounts.has(k)) pairCounts.set(k, await recordCounts(workspaceRepo(), c)); }));
   const rows = filterContacts(data.contacts, { q: sp.q, kind, tag: sp.tag });
   const byKey = new Map(data.contacts.map((c) => [c.key, c]));
   const allTags = [...new Set(data.contacts.flatMap((c) => c.tags))].sort();
@@ -55,7 +60,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                 const open = (c: Contact) => (c.refs.clientId ? `/workspace/clients/${c.refs.clientId}` : `/contacts/${c.key}`);
                 return (
                   <li key={`${d.a}|${d.b}`}>
-                    <DuplicateCompare a={a} b={b} reason={DUPLICATE_REASON[d.reason]} openA={open(a)} openB={open(b)} />
+                    <DuplicateCompare a={a} b={b} reason={DUPLICATE_REASON[d.reason]} openA={open(a)} openB={open(b)} countsA={pairCounts.get(d.a)} countsB={pairCounts.get(d.b)} />
                   </li>
                 );
               })}
