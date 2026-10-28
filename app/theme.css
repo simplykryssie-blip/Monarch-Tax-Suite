@@ -1158,3 +1158,4 @@ label.sx-check input{width:18px;height:18px;flex:none;margin:0}
 @media (max-width:1100px){.ed-body,.ed-body.no-preview{grid-template-columns:minmax(0,1fr)}}
 
 .monarch-section-head{margin:28px 0 8px}.monarch-section-head h2{margin:0 0 4px;font-size:22px}.monarch-section-head p{margin:0}
+.cl-assign{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 14px}.cl-assign select{min-width:200px}

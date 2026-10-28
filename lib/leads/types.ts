@@ -55,6 +55,8 @@ export type Lead = {
   order_id: string | null;
   organization_id: string | null;
   converted_at: string | null;
+  /** The teammate this lead is assigned to (a workspace member), or none. */
+  assigned_to?: string | null;
   created_at: string;
   updated_at: string;
 };

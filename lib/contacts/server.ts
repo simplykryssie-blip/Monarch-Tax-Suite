@@ -44,8 +44,8 @@ export async function loadContacts(): Promise<ContactsData> {
     wantCustomers ? attempt("Customers", notes, () => commerceRepo().listCustomers()) : Promise.resolve(null),
     wantCustomers ? attempt("Orders", notes, () => commerceRepo().listOrders()) : Promise.resolve(null),
   ]);
-  const leads: LeadRec[] = (leadRows ?? []).map((l) => ({ id: l.id, full_name: l.full_name, email: l.email, phone: l.phone, status: l.status, source: l.source, tags: l.tags ?? [], last_contacted_at: l.last_contacted_at, updated_at: l.updated_at }));
-  const clients: ClientRec[] = (clientRows ?? []).map((c) => ({ id: c.id, full_name: c.full_name, email: c.email, phone: c.phone, archived_at: c.archived_at, tags: c.tags ?? [], updated_at: c.updated_at }));
+  const leads: LeadRec[] = (leadRows ?? []).map((l) => ({ id: l.id, full_name: l.full_name, email: l.email, phone: l.phone, status: l.status, source: l.source, tags: l.tags ?? [], last_contacted_at: l.last_contacted_at, updated_at: l.updated_at, assigned_to: l.assigned_to ?? null }));
+  const clients: ClientRec[] = (clientRows ?? []).map((c) => ({ id: c.id, full_name: c.full_name, email: c.email, phone: c.phone, archived_at: c.archived_at, tags: c.tags ?? [], updated_at: c.updated_at, owner_id: c.owner_id ?? null }));
   const customers = (customerRows ?? []).map((c) => ({ id: c.id, full_name: c.full_name, email: c.email, status: c.archived_at ? "inactive" : c.status, updated_at: c.updated_at, archived: Boolean(c.archived_at) }));
   const contacts = sortContacts(combineContacts({ leads, clients, customers }));
   return {

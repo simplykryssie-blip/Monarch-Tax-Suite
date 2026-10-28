@@ -366,3 +366,13 @@ export function exportCsv(leads: Lead[]): string {
   }
   return `${lines.join("\r\n")}\r\n`;
 }
+
+/** Assigns a lead to a teammate, or to no one. The person must already be on the team (checked by the caller). */
+export async function assignLead(deps: LeadsDeps, id: string, assignee: { id: string; label: string } | null, actorId: string): Promise<Lead> {
+  const lead = await deps.repo.getLead(id);
+  if (!lead) throw new ValidationError("That lead wasn't found.");
+  if ((lead.assigned_to ?? null) === (assignee?.id ?? null)) return lead;
+  const updated = await deps.repo.updateLead(id, { assigned_to: assignee?.id ?? null });
+  await deps.repo.addEvent({ lead_id: id, action: "assigned", detail: { to: assignee?.label ?? "No one" }, actor_id: actorId });
+  return updated;
+}

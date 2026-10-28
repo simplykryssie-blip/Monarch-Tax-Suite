@@ -73,7 +73,7 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   async listBusinesses(clientId: string) { return unwrap(await this.db.from("client_businesses").select("*").eq("client_id", clientId).order("created_at")) as Business[]; }
   async insertBusiness(input: BusinessInput) { return unwrap(await this.db.from("client_businesses").insert(input).select("*").single()) as Business; }
   async deleteBusiness(id: string) { unwrap(await this.db.from("client_businesses").delete().eq("id", id).select("id")); }
-  async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[] }) { return unwrap(await this.db.from("clients").update(patch).eq("id", id).select("*").single()) as Client; }
+  async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[]; owner_id?: string | null }) { return unwrap(await this.db.from("clients").update(patch).eq("id", id).select("*").single()) as Client; }
 
   async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) {
     let q = this.db.from("client_returns").select("*").order("created_at").limit(5000);

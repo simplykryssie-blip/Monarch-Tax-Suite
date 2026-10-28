@@ -8,8 +8,8 @@
 
 export type ContactKind = "lead" | "client" | "customer";
 
-export type LeadRec = { id: string; full_name: string; email: string; phone: string | null; status: string; source: string; tags: string[]; last_contacted_at: string | null; updated_at: string };
-export type ClientRec = { id: string; full_name: string; email: string | null; phone: string | null; archived_at: string | null; tags?: string[] | null; updated_at: string };
+export type LeadRec = { id: string; full_name: string; email: string; phone: string | null; status: string; source: string; tags: string[]; last_contacted_at: string | null; updated_at: string; assigned_to?: string | null };
+export type ClientRec = { id: string; full_name: string; email: string | null; phone: string | null; archived_at: string | null; tags?: string[] | null; updated_at: string; owner_id?: string | null };
 export type CustomerRec = { id: string; full_name: string | null; email: string; status: string; updated_at: string };
 
 export type Chip = { kind: ContactKind; label: string; active: boolean };
@@ -27,6 +27,8 @@ export type Contact = {
   tags: string[];
   refs: { leadId: string | null; clientId: string | null; customerIds: string[] };
   lastActivity: string | null;
+  /** The teammate responsible: the client's owner, else the lead's assignee. */
+  assignedTo: string | null;
 };
 
 const ORDER: ContactKind[] = ["client", "lead", "customer"];
@@ -79,6 +81,7 @@ function build(g: Group): Contact {
     active: chips.some((c) => c.active),
     tags,
     refs: { leadId: lead?.id ?? null, clientId: client?.id ?? null, customerIds: g.customers.map((c) => c.id) },
+    assignedTo: client?.owner_id ?? lead?.assigned_to ?? null,
     lastActivity: newest(client?.updated_at, lead?.last_contacted_at, lead?.updated_at, ...g.customers.map((c) => c.updated_at)),
   };
 }

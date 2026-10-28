@@ -93,3 +93,11 @@ test("a workspace member is asked for a code only when two-step sign-in is on an
   assert.equal(workspaceNeedsCode({ currentLevel: "aal2", nextLevel: "aal2" }), false);
   assert.equal(workspaceNeedsCode(null), false);
 });
+
+test("turning two-step sign-in on or off is a named, recorded event with a plain label", async () => {
+  const { SECURITY_ACTIONS, isSecurityAction } = await import("../lib/security-audit-actions.ts");
+  assert.equal(SECURITY_ACTIONS.security_two_step_enabled, "Two-step sign-in turned on");
+  assert.equal(SECURITY_ACTIONS.security_two_step_removed, "Two-step sign-in turned off");
+  assert.equal(isSecurityAction("security_two_step_enabled"), true);
+  assert.equal(isSecurityAction("workspace_created"), false);
+});

@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { Badge, money, PageTitle, when } from "@/components/admin/ui";
 import { AppointmentsCard } from "@/components/contacts/appointments-card";
+import { AssignTo } from "@/components/contacts/assign-to";
+import { listStaff } from "@/lib/staff/server";
 import { DUPLICATE_REASON, parseContactKey } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
 import { allows } from "@/lib/tier.ts";
@@ -27,6 +29,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
   const value = paid.reduce((sum, o) => sum + o.amount_cents - o.amount_refunded_cents, 0);
   const byKey = new Map(data.contacts.map((c) => [c.key, c]));
   const related = data.duplicates.filter((d) => d.a === key || d.b === key);
+  const staff = lead ? await listStaff().catch(() => []) : [];
 
   return (
     <>
@@ -38,6 +41,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
         {contact.tags.map((t) => <span key={t} className="monarch-badge">{t}</span>)}
       </div>
 
+      {lead && <AssignTo kind="lead" id={lead.id} current={lead.assigned_to ?? null} staff={staff} back={`/contacts/${key}`} />}
       <div style={{ marginBottom: 14 }}><AppointmentsCard email={contact.email} /></div>
 
       <section className="monarch-panel" style={{ marginBottom: 14 }}>
