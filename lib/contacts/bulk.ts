@@ -1,6 +1,6 @@
 import type { Contact } from "./combine.ts";
 
-export type BulkOp = "assign" | "convert" | "tag_add" | "tag_remove";
+export type BulkOp = "assign" | "convert" | "tag_add" | "tag_remove" | "set_status";
 export const BULK_MAX = 200;
 
 export type BulkPlan = { targets: Contact[]; skipped: { name: string; reason: string }[] };
@@ -18,6 +18,10 @@ export function planBulk(contacts: Contact[], keys: string[], op: BulkOp, leadSt
       if (c.refs.clientId) skipped.push({ name: c.name, reason: "already a client" });
       else if (!c.refs.leadId) skipped.push({ name: c.name, reason: "not a lead" });
       else if (leadStatus(c.refs.leadId) === "converted") skipped.push({ name: c.name, reason: "already converted" });
+      else targets.push(c);
+    } else if (op === "set_status") {
+      if (!c.refs.leadId) skipped.push({ name: c.name, reason: "not a lead" });
+      else if (leadStatus(c.refs.leadId) === "converted") skipped.push({ name: c.name, reason: "already converted to a client" });
       else targets.push(c);
     } else if (!hasRecord) skipped.push({ name: c.name, reason: "a store customer (nothing to change here)" });
     else targets.push(c);

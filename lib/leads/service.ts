@@ -406,3 +406,18 @@ export async function saveLeadNotesAndTags(deps: LeadsDeps, id: string, raw: { n
   if (changed.length) await deps.repo.addEvent({ lead_id: id, action: "edited", detail: { fields: changed }, actor_id: actorId });
   return after;
 }
+
+/** The statuses a person can set by hand. Converted is made by Convert to client, so the label never says a client exists when none does. */
+export const SETTABLE_STATUSES: LeadStatus[] = ["new", "contacted", "interested", "lost"];
+
+/** Sets a lead's status and records it. */
+export async function setLeadStatus(deps: LeadsDeps, id: string, raw: unknown, actorId: string): Promise<Lead> {
+  const next = typeof raw === "string" ? (raw as LeadStatus) : null;
+  if (!next || !SETTABLE_STATUSES.includes(next)) throw new ValidationError("Choose a status: New, Contacted, Interested or Lost. Use Convert to client to make a client.");
+  const lead = await deps.repo.getLead(id);
+  if (!lead) throw new ValidationError("That lead wasn't found.");
+  if (lead.status === next) return lead;
+  const after = await deps.repo.updateLead(id, { status: next, ...(lead.status === "converted" ? { converted_at: null } : {}) });
+  await deps.repo.addEvent({ lead_id: id, action: "status_changed", detail: { from: lead.status, to: next }, actor_id: actorId });
+  return after;
+}

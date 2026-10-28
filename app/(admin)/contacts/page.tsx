@@ -15,6 +15,8 @@ import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { undoDismissAction } from "./merge-actions";
 import { SelectAll } from "@/components/contacts/select-all";
 import { bulkContactsAction } from "./bulk-actions";
+import { SETTABLE_STATUSES } from "@/lib/leads/service.ts";
+import { LEAD_STATUSES } from "@/lib/leads/types.ts";
 import { contactKinds } from "@/lib/contacts/kinds.ts";
 import { currentTier } from "@/lib/tier-server";
 
@@ -118,6 +120,10 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   </select>
                   <button name="op" value="assign" className="monarch-secondary">Reassign</button>
                   <button name="op" value="convert" className="monarch-secondary" title="Makes client records from the ticked leads">Convert leads to clients</button>
+                  <select name="status" aria-label="Lead status" defaultValue="contacted">
+                    {SETTABLE_STATUSES.map((st) => <option key={st} value={st}>{LEAD_STATUSES[st]}</option>)}
+                  </select>
+                  <button name="op" value="set_status" className="monarch-secondary" title="Changes the status of the ticked leads">Set lead status</button>
                   <input name="tag" placeholder="tag" maxLength={40} aria-label="Tag" list="ct-tags" />
                   <datalist id="ct-tags">{allTags.map((t) => <option key={t} value={t} />)}</datalist>
                   <button name="op" value="tag_add" className="monarch-secondary">Add tag</button>
