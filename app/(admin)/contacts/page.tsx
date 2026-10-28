@@ -132,10 +132,10 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               )}
               <div className="monarch-table-wrap">
                 <table>
-                  <thead><tr><th><SelectAll /></th><th>NAME</th><th>STATUS</th><th>PHONE</th><th>ASSIGNED</th><th>TAGS</th><th>LAST ACTIVITY</th><th /></tr></thead>
+                  <thead><tr><th><SelectAll /></th><th>NAME</th><th>STATUS</th><th>PHONE</th><th>ASSIGNED</th><th>TAGS</th><th>LAST ACTIVITY</th></tr></thead>
                   <tbody>
                     {rows.length === 0 ? (
-                      <EmptyRow colSpan={8}>No contacts match.</EmptyRow>
+                      <EmptyRow colSpan={7}>No contacts match.</EmptyRow>
                     ) : (
                       rows.map((c) => (
                         <tr key={c.key}>
@@ -146,7 +146,6 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                           <td>{staffLabel(staff, c.assignedTo) ?? "—"}</td>
                           <td>{c.tags.join(", ") || "—"}</td>
                           <td>{when(c.lastActivity)}</td>
-                          <td>{c.refs.leadId && !c.refs.clientId && c.kinds.includes("lead") && c.active ? <button name="one" value={c.key} className="monarch-secondary efin-small" title="Make a client record from this lead">Convert</button> : null}</td>
                         </tr>
                       ))
                     )}
