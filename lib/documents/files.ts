@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import PizZip from "pizzip";
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream } from "pdf-lib";
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFStream, type PDFObject } from "pdf-lib";
 import { ValidationError } from "../commerce/validation.ts";
 
 // Uploaded documents are checked by what they contain, not by their name. PDF, Word (.docx), Excel (.xlsx) and images
@@ -55,11 +55,16 @@ export async function checkDocumentFile(bytes: Uint8Array, type: DocumentFileTyp
     if (!startsWith(bytes, PDF_MAGIC)) throw new ValidationError("This file is not a PDF, even though its name ends in .pdf.");
     const raw = latin1(bytes);
     if (/\/Encrypt\b/.test(raw)) throw new ValidationError("This PDF is password-protected or encrypted. Save an unprotected copy and upload that.");
-    if (/\/(JavaScript|JS|Launch|EmbeddedFile)\b/.test(raw)) throw new ValidationError("This PDF contains scripts or embedded files, which are not accepted. Print it to a new PDF and upload that.");
+    let doc: PDFDocument;
     try {
-      await PDFDocument.load(bytes, { updateMetadata: false });
+      doc = await PDFDocument.load(bytes, { updateMetadata: false });
     } catch {
       throw new ValidationError("This PDF could not be read. It may be damaged; export it again and upload the new copy.");
+    }
+    const hit = walkPdf(doc, false);
+    if (hit) {
+      console.error(`pdf refused: active content at ${hit}`);
+      throw new ValidationError("This PDF contains scripts or embedded files, which are not accepted. Print it to a new PDF and upload that.");
     }
     return;
   }
@@ -95,12 +100,61 @@ export async function checkDocumentFile(bytes: Uint8Array, type: DocumentFileTyp
   if (zip.file(/^word\/embeddings\//i).length || zip.file(/activeX/i).length) throw new ValidationError("This Word file contains embedded objects or controls, which are not accepted. Remove them and upload it again.");
 }
 
+/** Names that suggest scripts, attachments or XFA somewhere in a PDF's raw bytes. Only a hint that a closer look is worth it. */
 const ACTIVE = /\/(JavaScript|JS|Launch|EmbeddedFile|XFA)\b/;
 /** PDFs saved with compressed object streams hide their objects from a plain byte scan, so they are opened and checked structurally. */
 const PACKED = /\/ObjStm\b/;
 
-/** True when the PDF's raw bytes mention scripts, launch actions or embedded files. */
+/** True when the PDF's raw bytes hint at scripts, launch actions, embedded files or XFA (it may be a false alarm; see `walkPdf`). */
 export const pdfHasActiveContent = (bytes: Uint8Array) => ACTIVE.test(latin1(bytes));
+
+// Keys that only ever hold scripts, attachments, form scripts or the Reader-extension signature, wherever they appear.
+const ACTIVE_KEYS = ["JS", "JavaScript", "XFA", "Perms", "AA", "EF", "RF", "EmbeddedFiles", "OpenAction", "AF", "Collection"].map((k) => PDFName.of(k));
+const ACTION_KINDS = new Set(["/JavaScript", "/Launch"]);
+const nameOf = (d: PDFDict, key: string) => { const v = d.get(PDFName.of(key)); return v instanceof PDFName ? v.asString() : null; };
+/** A dictionary that is itself a script, a launch action or an attached file, so whatever holds it must let it go. */
+const isActiveDict = (d: PDFDict) => ACTION_KINDS.has(nameOf(d, "S") ?? "") || nameOf(d, "Type") === "/EmbeddedFile" || nameOf(d, "Subtype") === "/FileAttachment";
+
+/**
+ * Looks through every object of a PDF (and the dictionaries and lists written inside them) for scripts, launch actions,
+ * attached files and the keys that hold them. With `mutate` it removes what it finds; without, it only reports where the
+ * first one is. Returns "" when there is nothing (mutate) or the first location (read only).
+ */
+function walkPdf(doc: PDFDocument, mutate: boolean): string {
+  const ctx = doc.context;
+  let first = "";
+  const note = (where: string) => { if (!first) first = where; };
+  // True when `node` is itself active and the one holding it should let go of it.
+  const visit = (node: PDFObject | undefined, where: string, depth: number): boolean => {
+    if (!node || depth > 40) return false;
+    const dict = node instanceof PDFStream ? node.dict : node instanceof PDFDict ? node : null;
+    if (dict) {
+      if (isActiveDict(dict)) { note(where); return true; }
+      for (const key of ACTIVE_KEYS) {
+        if (!dict.has(key)) continue;
+        note(`${where}/${key.asString().slice(1)}`);
+        if (mutate) dict.delete(key);
+      }
+      for (const [key, value] of dict.entries()) {
+        if (value instanceof PDFRef) continue;
+        if (visit(value, `${where}/${key.asString().slice(1)}`, depth + 1)) { note(where); if (mutate) dict.delete(key); }
+      }
+      return false;
+    }
+    if (node instanceof PDFArray) {
+      for (let i = node.size() - 1; i >= 0; i--) {
+        const item = node.get(i);
+        if (item instanceof PDFRef) continue;
+        if (visit(item, `${where}[${i}]`, depth + 1)) { note(where); if (mutate) node.remove(i); }
+      }
+    }
+    return false;
+  };
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (visit(obj, `obj ${ref.objectNumber}`, 0)) { note(`obj ${ref.objectNumber}`); if (mutate) ctx.delete(ref); }
+  }
+  return first;
+}
 
 /**
  * Removes scripts, launch actions, embedded files and XFA forms from a PDF but keeps its pages and fillable boxes (AcroForm
@@ -116,39 +170,11 @@ export async function stripPdfActiveContent(bytes: Uint8Array): Promise<{ bytes:
   } catch {
     throw new ValidationError("This PDF could not be read. It may be damaged; export it again and upload the new copy.");
   }
-  const ctx = doc.context;
-  const name = (n: string) => PDFName.of(n);
-  let found = ACTIVE.test(text);
-  const dictOf = (o: unknown): PDFDict | undefined => (o instanceof PDFDict ? o : o instanceof PDFStream ? o.dict : undefined);
-  const drop = (d: PDFDict, ...keys: string[]) => { for (const k of keys) { if (!d.has(name(k))) continue; found = true; const v = d.get(name(k)); if (v instanceof PDFRef) ctx.delete(v); d.delete(name(k)); } };
-  const catalog = doc.catalog;
-  // "Perms" holds the Reader-extension (usage rights) signature, which any change to a form would invalidate.
-  drop(catalog, "OpenAction", "AA", "AF", "Collection", "Perms");
-  const names = ctx.lookupMaybe(catalog.get(name("Names")), PDFDict);
-  if (names) drop(names, "JavaScript", "EmbeddedFiles");
-  const form = ctx.lookupMaybe(catalog.get(name("AcroForm")), PDFDict);
-  if (form) drop(form, "XFA");
-  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
-    const d = dictOf(obj);
-    if (!d) continue;
-    const s = d.get(name("S"));
-    const type = d.get(name("Type"));
-    if ((s instanceof PDFName && (s.asString() === "/JavaScript" || s.asString() === "/Launch")) || d.has(name("JS")) || (type instanceof PDFName && type.asString() === "/EmbeddedFile")) { ctx.delete(ref); found = true; continue; }
-    drop(d, "AA", "EF", "RF");
-    const a = ctx.lookupMaybe(d.get(name("A")), PDFDict);
-    const as = a?.get(name("S"));
-    if (a && as instanceof PDFName && (as.asString() === "/JavaScript" || as.asString() === "/Launch")) drop(d, "A");
+  if (walkPdf(doc, true) === "") return { bytes, stripped: false };
+  try {
+    return { bytes: await doc.save({ useObjectStreams: false }), stripped: true };
+  } catch {
+    // A file whose page tree is itself a script (a deliberately broken file) can't be saved once the script is gone.
+    throw new ValidationError("This PDF could not be cleaned of its scripts. Export it again from the program that made it and upload the new copy.");
   }
-  // Attached-file annotations are removed from their pages.
-  for (const page of doc.getPages()) {
-    const annots = page.node.lookupMaybe(name("Annots"), PDFArray);
-    if (!annots) continue;
-    for (let i = annots.size() - 1; i >= 0; i--) {
-      const an = ctx.lookupMaybe(annots.get(i), PDFDict);
-      const st = an?.get(name("Subtype"));
-      if (!an || (st instanceof PDFName && st.asString() === "/FileAttachment")) { annots.remove(i); found = true; }
-    }
-  }
-  if (!found) return { bytes, stripped: false };
-  return { bytes: await doc.save({ useObjectStreams: false }), stripped: true };
 }

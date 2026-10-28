@@ -151,7 +151,7 @@ export interface WorkspaceRepo {
   listDocs(clientId: string): Promise<ClientDoc[]>;
   getDoc(id: string): Promise<ClientDoc | null>;
   insertDoc(input: Omit<ClientDoc, "id" | "tenant_id" | "created_at">): Promise<ClientDoc>;
-  updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status" | "folder_id">>): Promise<ClientDoc>;
+  updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status" | "folder_id" | "file_path" | "size_bytes">>): Promise<ClientDoc>;
   deleteDoc(id: string): Promise<void>;
   /** Uploads started before `before` that were never finished. */
   listStalePendingDocs(before: string): Promise<ClientDoc[]>;

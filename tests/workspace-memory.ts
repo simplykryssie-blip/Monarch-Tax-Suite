@@ -72,7 +72,7 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async listDocs(clientId: string) { return this.c(this.docs.filter((d) => d.client_id === clientId && d.status === "stored")); }
   async getDoc(id: string) { return this.c(this.docs.find((d) => d.id === id) ?? null); }
   async insertDoc(input: Omit<ClientDoc, "id" | "tenant_id" | "created_at">) { const d: ClientDoc = { ...this.c(input), id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.docs.push(d); return this.c(d); }
-  async updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status" | "folder_id">>) { const d = this.docs.find((x) => x.id === id)!; Object.assign(d, patch); return this.c(d); }
+  async updateDoc(id: string, patch: Partial<Pick<ClientDoc, "status" | "folder_id" | "file_path" | "size_bytes">>) { const d = this.docs.find((x) => x.id === id)!; Object.assign(d, patch); return this.c(d); }
   async deleteDoc(id: string) { this.docs = this.docs.filter((d) => d.id !== id); }
   async listStalePendingDocs(before: string) { return this.c(this.docs.filter((d) => d.status === "pending" && d.created_at < before)); }
 

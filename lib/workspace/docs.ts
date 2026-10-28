@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { checkDocumentFile, cleanDocumentName, CONTENT_TYPES, MAX_DOCUMENT_BYTES, type DocumentFileType } from "../documents/files.ts";
+import { checkDocumentFile, cleanDocumentName, CONTENT_TYPES, MAX_DOCUMENT_BYTES, stripPdfActiveContent, type DocumentFileType } from "../documents/files.ts";
 import type { DocumentStore } from "../documents/types.ts";
 import { ValidationError } from "../commerce/validation.ts";
 import type { ClientDoc, WorkspaceRepo } from "./types.ts";
@@ -39,14 +39,29 @@ export async function finishClientDoc(d: DocDeps, id: string): Promise<ClientDoc
   if (!doc.file_path.startsWith(`${d.tenantId}/clients/`)) throw new ValidationError("Refused: that file is not in this account's folder.");
   const bytes = await d.store.download(doc.file_path);
   if (!bytes) throw new ValidationError("The upload didn't arrive. Try again.");
+  let path = doc.file_path;
+  let size = doc.size_bytes;
   try {
-    await checkDocumentFile(bytes, doc.file_type as DocumentFileType);
+    let checked = bytes;
+    if (doc.file_type === "pdf") {
+      // Official forms (such as the IRS 8879) carry scripts: they are stripped, the fillable boxes stay, and the clean copy is kept.
+      const clean = await stripPdfActiveContent(bytes);
+      if (clean.stripped) {
+        const cleanPath = `${doc.file_path.replace(/\.pdf$/i, "")}-clean.pdf`;
+        await d.store.upload(cleanPath, clean.bytes, CONTENT_TYPES.pdf);
+        await d.store.remove([doc.file_path]).catch(() => undefined);
+        path = cleanPath;
+        size = clean.bytes.byteLength;
+        checked = clean.bytes;
+      }
+    }
+    await checkDocumentFile(checked, doc.file_type as DocumentFileType);
   } catch (e) {
-    await d.store.remove([doc.file_path]).catch(() => undefined);
+    await d.store.remove([path, doc.file_path]).catch(() => undefined);
     await d.repo.deleteDoc(doc.id);
     throw e;
   }
-  return d.repo.updateDoc(doc.id, { status: "stored" });
+  return d.repo.updateDoc(doc.id, { status: "stored", ...(path !== doc.file_path ? { file_path: path, size_bytes: size } : {}) });
 }
 
 export async function clientDocLink(d: DocDeps, id: string): Promise<string> {
