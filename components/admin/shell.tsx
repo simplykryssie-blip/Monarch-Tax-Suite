@@ -186,7 +186,7 @@ export function AdminShell({ email, brand, today, alerts = [], bell = { items: [
 
           <Popover
             trigger={(open, toggle) => (
-              <button type="button" className="mt-iconbtn" onClick={toggle} aria-label={total ? `${total} items need attention` : "Notifications"} aria-expanded={open}>
+              <button type="button" className="mt-iconbtn" onClick={toggle} aria-label={total ? `Notifications (${total})` : "Notifications"} aria-expanded={open}>
                 <Icon name="bell" size={19} />
                 {total > 0 && <i className="mt-dot" />}
               </button>
@@ -196,7 +196,7 @@ export function AdminShell({ email, brand, today, alerts = [], bell = { items: [
               <div className="mt-pop" role="menu">
                 {bell.items.length > 0 && (
                   <>
-                    <div className="mt-pop-title mt-pop-head"><span>Recent activity</span>{bell.unread > 0 && <button type="button" className="mt-pop-link" onClick={readAll}>Mark all read</button>}</div>
+                    <div className="mt-pop-title mt-pop-head"><span>Notifications</span>{bell.unread > 0 && <button type="button" className="mt-pop-link" onClick={readAll}>Mark all read</button>}</div>
                     {bell.items.slice(0, 12).map((n) => (
                       <button key={n.id} type="button" className={"mt-pop-item" + (n.unread ? " is-unread" : "")} role="menuitem" onClick={() => openItem(n, close)}>
                         <span><b>{n.title}</b>{n.detail && <small>{n.detail}</small>}<small>{ago(n.at)}</small></span>
