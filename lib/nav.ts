@@ -80,7 +80,7 @@ export const NAV: Entry[] = [
       { label: "Branding", icon: "office", href: "/settings/branding" },
       { label: "Security", icon: "shield", href: "/settings/security" },
       { label: "Email and text", icon: "bell", href: "/settings/email" },
-      { label: "Calendar", icon: "calendar", href: "/settings/calendar" },
+      { label: "Booking and hours", icon: "calendar", href: "/settings/calendar" },
       { label: "Tags", icon: "checklist", href: "/settings/tags" },
       { label: "Payments", icon: "card", href: "/settings/payments" },
       { label: "Invoice settings", icon: "card", href: "/settings/billing" },

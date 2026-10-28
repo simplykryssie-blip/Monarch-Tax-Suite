@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
+import { staffLabel } from "@/lib/staff/assign.ts";
+import { listStaff } from "@/lib/staff/server";
 import { archiveStore } from "@/lib/archive-server";
 import { ACTION_LABELS, ENTITY } from "@/lib/archive.ts";
 import { recentSecurityEvents } from "@/lib/security-audit";
@@ -31,7 +33,9 @@ export default async function ActivityLogPage({ searchParams }: { searchParams: 
     ]);
     return { archive, numbers, security, names: new Map(clients.map((c) => [c.id, c.full_name])) };
   });
-  const who = (actor: string | null, auto?: boolean) => (actor ? (actor === admin.userId ? "You" : "A teammate") : auto ? "Automatic" : "—");
+  // Names come from the team list, so a firm with more than one person can tell who did what.
+  const team = await listStaff().catch(() => []);
+  const who = (actor: string | null, auto?: boolean) => (actor ? (actor === admin.userId ? `You (${staffLabel(team, actor) ?? "this account"})` : (team.some((m) => m.id === actor) ? staffLabel(team, actor)! : "A former teammate")) : auto ? "Automatic" : "—");
   const lines: Line[] = !result.ok ? [] : [
     ...result.data.archive.filter((h) => !only || h.record_id === only).map((h): Line => ({
       key: `a:${h.id}`, at: h.created_at, what: ACTION_LABELS[h.action], kind: ENTITY[h.entity].noun, by: who(h.actor_id, h.action === "auto_restored"), why: h.reason ?? "—",
