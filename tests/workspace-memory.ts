@@ -10,7 +10,7 @@ export class MemoryWorkspace implements WorkspaceRepo {
   private c = <T>(v: T): T => structuredClone(v);
   private at = () => "2026-10-15T12:00:00.000Z";
 
-  async listClients(f: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string } = {}) { return this.c(this.clients.filter((x) => (f.includeArchived || !x.archived_at) && (!f.ownerId || x.owner_id === f.ownerId) && (!f.organizationId || x.organization_id === f.organizationId) && (!f.q || x.full_name.toLowerCase().includes(f.q.toLowerCase())))); }
+  async listClients(f: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string } = {}) { return this.c(this.clients.filter((x) => (f.includeArchived || !x.archived_at) && (!f.ownerId || x.owner_id === f.ownerId) && (!f.organizationId || x.organization_id === f.organizationId) && (!f.q || [x.full_name, x.email, x.phone].some((v) => (v ?? "").toLowerCase().includes(f.q!.toLowerCase()))))); }
   async getClient(id: string) { return this.c(this.clients.find((x) => x.id === id) ?? null); }
   async insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null }) { const x: Client = { owner_id: null, organization_id: null, ...this.c(input), id: randomUUID(), tenant_id: "t", archived_at: null, created_at: this.at(), updated_at: this.at() }; this.clients.push(x); return this.c(x); }
   dependents: Dependent[] = []; businesses: Business[] = []; spouses: Spouse[] = []; events: (ClientEvent & { client_id: string })[] = []; fees: InvoiceLine[] | null = null;

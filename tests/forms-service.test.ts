@@ -437,6 +437,7 @@ describe("found on Preview (owner's test)", () => {
     assert.equal(configuredOrigin({ NEXT_PUBLIC_APP_URL: app, VERCEL_ENV: "production" }), app);
     assert.equal(configuredOrigin({ NEXT_PUBLIC_APP_URL: app, VERCEL_ENV: "preview", VERCEL_BRANCH_URL: "monarch-git-forms.vercel.app", VERCEL_URL: "monarch-abc.vercel.app" }), "https://monarch-git-forms.vercel.app");
     assert.equal(configuredOrigin({ NEXT_PUBLIC_APP_URL: app, VERCEL_ENV: "preview", VERCEL_URL: "monarch-abc.vercel.app" }), "https://monarch-abc.vercel.app");
+    assert.equal(configuredOrigin({ NEXT_PUBLIC_APP_URL: app, VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "claude/preview-env", VERCEL_BRANCH_URL: "monarch-git-claude-preview-env.vercel.app" }), "https://preview.verexahq.com");
     assert.equal(configuredOrigin({ NEXT_PUBLIC_APP_URL: `${app}/` }), app);
     assert.equal(configuredOrigin({}), null);
   });
