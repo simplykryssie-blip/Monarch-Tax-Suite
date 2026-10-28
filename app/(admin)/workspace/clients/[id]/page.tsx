@@ -327,6 +327,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
               <form action={archiveClientAction} className="monarch-inline-form cl-archive">
                 <input type="hidden" name="id" value={client.id} />
+                <input type="hidden" name="confirm" value="yes" />
                 {client.archived_at && <input type="hidden" name="restore" value="yes" />}
                 <button className="monarch-secondary">{client.archived_at ? "Restore client" : "Archive client"}</button>
               </form>
