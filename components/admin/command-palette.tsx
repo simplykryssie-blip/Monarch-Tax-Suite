@@ -6,7 +6,7 @@ import { searchAction } from "@/app/(admin)/search-actions";
 import type { SearchHit } from "@/lib/search.ts";
 import { Icon } from "./icons";
 
-/** ⌘K / Ctrl+K quick find across customers, orders, licenses, products, installations and pages. */
+/** ⌘K / Ctrl+K quick find across clients, leads, invoices and pages (and the store, on plans that have one). */
 export function CommandPalette() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -70,7 +70,7 @@ export function CommandPalette() {
     <>
       <button type="button" className="mt-search" onClick={show} aria-label="Search (Command K)">
         <Icon name="search" size={16} />
-        <span>Search customers, orders, licenses…</span>
+        <span>Search clients, invoices, pages…</span>
         <kbd>⌘K</kbd>
       </button>
       {open && (
@@ -82,7 +82,7 @@ export function CommandPalette() {
                 ref={input}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search customers, orders, licenses, products, pages…"
+                placeholder="Search clients, invoices, pages…"
                 aria-label="Search"
                 onKeyDown={(e) => {
                   if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(a + 1, hits.length - 1)); }
@@ -93,7 +93,7 @@ export function CommandPalette() {
               <kbd>esc</kbd>
             </div>
             <div className="mt-pal-list" aria-busy={pending}>
-              {hits.length === 0 && <p className="mt-pal-empty">{q ? "No matches. Try a name, email, order number or key prefix." : "Start typing to search."}</p>}
+              {hits.length === 0 && <p className="mt-pal-empty">{q ? "No matches. Try a name, email, phone or invoice number." : "Start typing to search."}</p>}
               {Object.entries(groups).map(([group, items]) => (
                 <div key={group}>
                   <div className="mt-pal-group">{group}</div>

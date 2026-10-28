@@ -42,3 +42,10 @@ export function factorToCheck(factors: { all?: FactorRow[]; totp?: FactorRow[] }
   const pending = submittedId ? (factors?.all ?? []).find((f) => f.id === submittedId && f.factor_type === "totp" && f.status !== "verified") : undefined;
   return pending?.id ?? null;
 }
+
+/**
+ * A workspace member who has set up two-step sign-in is asked for a code once per sign-in. `nextLevel` is "aal2" exactly when
+ * the account has a verified authenticator. Anyone without one is never asked, so nobody is locked out by this.
+ */
+export const workspaceNeedsCode = (aal: { currentLevel?: string | null; nextLevel?: string | null } | null | undefined): boolean =>
+  aal?.nextLevel === "aal2" && aal.currentLevel !== "aal2";

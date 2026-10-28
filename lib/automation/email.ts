@@ -72,6 +72,17 @@ export function withDefaultSender(inner: EmailSender, resolve: () => Promise<{ f
 
 export const senderDomain = (from: string | null) => from?.match(/@([A-Za-z0-9.-]+)>?$/)?.[1]?.toLowerCase() ?? null;
 
+const POWERED_BY = "Powered by Verexa HQ";
+
+/** Every email ends with "Powered by Verexa HQ" (a platform rule with no opt-out). Added here, where all email leaves, and only once. */
+export function withPoweredBy(m: EmailMessage): EmailMessage {
+  const html = m.html.includes(POWERED_BY) ? m.html : /<\/body>/i.test(m.html)
+    ? m.html.replace(/<\/body>/i, `<p style="margin:0;padding:12px 24px 24px;text-align:center;font:12px Arial,Helvetica,sans-serif;color:#9a958a">${POWERED_BY}</p></body>`)
+    : `${m.html}<p style="text-align:center;font:12px Arial,Helvetica,sans-serif;color:#9a958a">${POWERED_BY}</p>`;
+  const text = m.text.includes(POWERED_BY) ? m.text : `${m.text}\n\n${POWERED_BY}`;
+  return { ...m, html, text };
+}
+
 export class ResendEmailSender implements EmailSender {
   private config: EmailConfig;
   private fetchImpl: typeof fetch;
@@ -80,7 +91,8 @@ export class ResendEmailSender implements EmailSender {
     this.fetchImpl = fetchImpl;
   }
 
-  async send(m: EmailMessage): Promise<SendResult> {
+  async send(original: EmailMessage): Promise<SendResult> {
+    const m = withPoweredBy(original);
     const keyProblems = emailKeyProblems(this.config);
     if (keyProblems.length) return { ok: false, kind: "config", message: `Email is not configured. ${keyProblems[0]}` };
     if (!m.from) {

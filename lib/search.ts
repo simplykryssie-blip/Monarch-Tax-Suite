@@ -3,7 +3,7 @@ import type { Customer, Installation, License, Order, Product } from "./commerce
 // Global admin search over records the app already holds. Pure so it can be tested; the server action feeds it
 // freshly loaded records after checking the caller is an administrator.
 
-export type SearchHit = { id: string; group: "Contacts" | "Customers" | "Orders" | "Licenses" | "Products" | "Installations" | "Pages"; title: string; detail: string; href: string };
+export type SearchHit = { id: string; group: "Contacts" | "Invoices" | "Customers" | "Orders" | "Licenses" | "Products" | "Installations" | "Pages"; title: string; detail: string; href: string };
 export type SearchData = { customers: Customer[]; orders: Order[]; licenses: License[]; products: Product[]; installations: Installation[] };
 
 export const PAGES: SearchHit[] = [
@@ -31,7 +31,9 @@ export const PAGES: SearchHit[] = [
   { id: "p-efin-his", group: "Pages", title: "History (activity log)", detail: "Settings", href: "/bureau/settings/history" },
   { id: "p-settings", group: "Pages", title: "Settings: tax software and bank options", detail: "Settings", href: "/bureau/settings" },
   { id: "p-auto", group: "Pages", title: "Automation", detail: "Grow", href: "/automation/workflows" },
-  { id: "p-wf", group: "Pages", title: "Workflows", detail: "Automation", href: "/automation/workflows" },
+  { id: "p-wf", group: "Pages", title: "Automatic messages", detail: "Automation", href: "/automation/workflows" },
+  { id: "p-img", group: "Pages", title: "Pictures for emails", detail: "Automation", href: "/automation/images" },
+  { id: "p-emailtext", group: "Pages", title: "Email and text sending", detail: "Settings", href: "/settings/email" },
   { id: "p-tpl", group: "Pages", title: "Email templates", detail: "Automation", href: "/automation/templates" },
   { id: "p-pipe", group: "Pages", title: "Pipelines", detail: "Grow", href: "/pipelines" },
   { id: "p-integ", group: "Pages", title: "Calculator setup links", detail: "Settings", href: "/settings/integrations" },

@@ -83,6 +83,8 @@ export function daysToDeadline(today: string): { days: number; date: string } {
 
 // ---------------------------------------------------------------------------------------------------------- the cards
 
+/** "3 days", or "over a year" for a date that is clearly stale, so one old record cannot show "15685 days". */
+const lateBy = (days: number) => (days > 730 ? "over 2 years" : days > 365 ? "over a year" : plural(days, "day"));
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 export const STUCK_AFTER_DAYS = 5;
 
@@ -134,15 +136,15 @@ export function buildHome(input: HomeInput): HomeData {
   const pri: (Priority & { weight: number })[] = [];
   for (const i of overdueInvoices) {
     const late = daysBetween(i.due_on as string, today);
-    pri.push({ id: `inv-${i.id}`, rank: 0, weight: 100 + late, who: `${i.number} · ${name.get(i.client_id) ?? "Client"}`, what: `${money(balance(i))} unpaid`, why: `Invoice ${plural(late, "day")} late`, tone: "bad", href: "/workspace/billing" });
+    pri.push({ id: `inv-${i.id}`, rank: 0, weight: 100 + late, who: `${i.number} · ${name.get(i.client_id) ?? "Client"}`, what: `${money(balance(i))} unpaid`, why: `Invoice ${lateBy(late)} late`, tone: "bad", href: "/workspace/billing" });
   }
   for (const t of tasksDue) {
     const late = daysBetween(t.due_on as string, today);
-    pri.push({ id: `task-${t.id}`, rank: 0, weight: late > 0 ? 90 + late : 60, who: t.title, what: `Task · ${name.get(t.client_id) ?? "Client"}`, why: late > 0 ? `${plural(late, "day")} overdue` : "Due today", tone: late > 0 ? "bad" : "warn", href: `/workspace/clients/${t.client_id}?tab=tasks` });
+    pri.push({ id: `task-${t.id}`, rank: 0, weight: late > 0 ? 90 + late : 60, who: t.title, what: `Task · ${name.get(t.client_id) ?? "Client"}`, why: late > 0 ? `${lateBy(late)} overdue` : "Due today", tone: late > 0 ? "bad" : "warn", href: `/workspace/clients/${t.client_id}?tab=tasks` });
   }
   for (const r of lateReturns) {
     const late = daysBetween(r.due_on as string, today);
-    pri.push({ id: `late-${r.id}`, rank: 0, weight: 80 + late, who: `${name.get(r.client_id) ?? "Client"} · ${r.tax_year}`, what: stageById.get(r.stage_id)?.name ?? "In progress", why: `${plural(late, "day")} past due`, tone: "bad", href: `/workspace/clients/${r.client_id}?tab=work` });
+    pri.push({ id: `late-${r.id}`, rank: 0, weight: 80 + late, who: `${name.get(r.client_id) ?? "Client"} · ${r.tax_year}`, what: stageById.get(r.stage_id)?.name ?? "In progress", why: `${lateBy(late)} past due`, tone: "bad", href: `/workspace/clients/${r.client_id}?tab=work` });
   }
   const stuck = openReturns.filter((r) => daysBetween(dayOf(r.updated_at) ?? today, today) >= STUCK_AFTER_DAYS).map((r) => ({ r, days: daysBetween(dayOf(r.updated_at) ?? today, today) })).sort((a, b) => b.days - a.days);
   for (const { r, days } of stuck) {

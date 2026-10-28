@@ -137,7 +137,7 @@ export async function saveBrandingAction(form: FormData) {
       input = checkBrand({
         name: str(form, "name"), tagline: str(form, "tagline"), support_email: str(form, "support_email"), app_host: str(form, "app_host"),
         primary_color: str(form, "primary_color"), accent_color: str(form, "accent_color"), sidebar_color: str(form, "sidebar_color"),
-        white_label_admin: form.get("white_label_admin") === "on", show_powered_by: form.get("show_powered_by") === "on",
+        white_label_admin: form.get("white_label_admin") === "on", show_powered_by: true,
         logo_url: await image("logo"), mark_url: await image("mark"),
       });
     } catch (e) {
@@ -274,7 +274,7 @@ export async function deleteAttributeAction(form: FormData) {
 // ---- Text messaging: this office's own number, registration and credits (self-serve)
 
 export async function saveSmsSetupAction(form: FormData) {
-  await act("/settings/sms", async (adminId) => {
+  await act("/settings/email", async (adminId) => {
     const raw = Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string")) as Record<string, string>;
     const account = await saveSetupChoices(await smsSetupDeps(), raw, adminId);
     return account.chosen_number ? "Saved. Next, pay for the setup." : "Saved. Next, choose your number.";
@@ -282,7 +282,7 @@ export async function saveSmsSetupAction(form: FormData) {
 }
 
 export async function chooseSmsNumberAction(form: FormData) {
-  await act("/settings/sms", async () => {
+  await act("/settings/email", async () => {
     const account = await chooseNumber(await smsSetupDeps(), str(form, "number"));
     return `${account.chosen_number} is held for you until you pay. If someone else takes it first, you get another of the same kind.`;
   });
@@ -297,7 +297,7 @@ async function toCheckout(start: (adminId: string) => Promise<string>) {
   } catch (e) {
     const message = e instanceof ValidationError ? e.message : "The card payment couldn't be started. Nothing was charged. Please try again.";
     if (!(e instanceof ValidationError)) console.error(`sms checkout failed: ${sanitizeError(e, 200)}`);
-    target = withParam("/settings/sms", "error", message);
+    target = withParam("/settings/email", "error", message);
   }
   redirect(target);
 }
@@ -318,7 +318,7 @@ export async function buySmsCreditsAction(form: FormData) {
 
 /** Retries a setup that stopped, or reads the carrier registration's status now instead of waiting for the daily check. */
 export async function checkSmsStatusAction() {
-  await act("/settings/sms", async () => {
+  await act("/settings/email", async () => {
     const d = await smsSetupDeps();
     const before = await d.repo.get();
     const a = before?.provision_status === "error" || before?.provision_status === "provisioning" ? await provision(d) : await advanceRegistration(d);

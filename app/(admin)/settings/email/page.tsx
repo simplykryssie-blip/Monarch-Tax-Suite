@@ -4,18 +4,21 @@ import { SubmitOnce } from "@/components/admin/submit-once";
 import { defaultLinkHost } from "@/lib/brands.ts";
 import { senderAddress } from "@/lib/automation/senders.ts";
 import { Badge, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
+import { SmsSection, type SmsParams } from "./sms-section";
 import { addSenderAction, archiveSenderAction, checkDomainAction, connectDomainAction, defaultSenderAction, removeDomainAction, saveBrandAction, testSenderAction } from "../actions";
 
-export default async function EmailSendingPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
+export default async function EmailAndTextPage({ searchParams }: { searchParams: Promise<SmsParams> }) {
   await requireAdmin();
-  const { notice, error } = await searchParams;
+  const sp = await searchParams;
+  const { notice, error } = sp;
   const deps = automationDeps();
   const result = await load(async () => ({ domains: await deps.senders!.listDomains(), senders: (await deps.senders!.listSenders()).filter((s) => !s.archived_at) }));
   const fallback = deps.fallbackSender;
   return (
     <>
-      <PageTitle title="Email sending">Send client emails from your own domains. Add each domain you send from, then the addresses (brands) on it. Every email template and document step can choose which address it sends from.</PageTitle>
+      <PageTitle title="Email and text">Email your clients from your own domains and text them from your own number. Every email template and document step can choose which address it sends from.</PageTitle>
       <Flash notice={notice} error={error} />
+      <div className="monarch-section-head"><h2>Email sending</h2><p className="monarch-muted">Add each domain you send from, then the addresses (brands) on it.</p></div>
       {!result.ok ? <SetupRequired message={result.message} /> : (
         <>
           <section className="monarch-panel">
@@ -88,6 +91,7 @@ export default async function EmailSendingPage({ searchParams }: { searchParams:
           </section>
         </>
       )}
+      <SmsSection sp={sp} />
     </>
   );
 }

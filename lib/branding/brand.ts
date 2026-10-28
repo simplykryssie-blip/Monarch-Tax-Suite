@@ -103,7 +103,7 @@ export function brandOf(row: Partial<TenantBrandRow> | null | undefined, fallbac
     sidebar: row?.sidebar_color ?? DEFAULT_SIDEBAR,
     supportEmail: row?.support_email ?? null,
     whiteLabelAdmin: row?.white_label_admin === true,
-    showPoweredBy: row?.show_powered_by === true,
+    showPoweredBy: true, // mandatory: every form and email carries it; there is no opt-out
     appHost: row?.app_host ?? null,
     custom: !!row,
   };

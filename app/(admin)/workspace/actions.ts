@@ -268,7 +268,7 @@ export async function sendPortalMessageAction(form: FormData) {
     const body = str(form, "body").replace(/\r\n/g, "\n").trim().slice(0, 4000);
     if (!body) throw new ValidationError("Write the message.");
     const member = await portalMemberRepo(tenantId).getForClient(id);
-    if (!member || member.status !== "active") throw new ValidationError("This client doesn't have portal access yet. Use Send invite at the top of this page.");
+    if (!member || member.status !== "active") throw new ValidationError("This client hasn't accepted the portal invite yet. Use Send invite or Resend invite at the top of their page.");
     const subject = str(form, "subject").replace(/\s+/g, " ").trim().slice(0, 200);
     await repo.insertMessage({ client_id: id, direction: "out", channel: "portal", subject: subject || null, body, occurred_at: new Date().toISOString(), created_by: adminId, status: "sent", sent_to: member.email });
     const office = (await loadBrand(tenantId)).name;

@@ -198,7 +198,7 @@ async function libraryUpload(form: FormData, actorId: string) {
 }
 
 export async function uploadLibraryImageAction(form: FormData) {
-  await mutate("/settings/images", async (a) => {
+  await mutate("/automation/images", async (a) => {
     await libraryUpload(form, a.id);
     return { notice: "Picture uploaded. Copy its email code, or add it from the Picture button in any email template." };
   });
@@ -209,7 +209,7 @@ export async function uploadEmailImageAction(form: FormData): Promise<{ ok: true
   const session = await requireAdmin();
   try {
     const image = await libraryUpload(form, session.userId);
-    revalidatePath("/settings/images");
+    revalidatePath("/automation/images");
     return { ok: true, url: mediaUrl(await appOrigin(), currentTenantId(), image.storage_path) };
   } catch (e) {
     if (e instanceof ValidationError) return { ok: false, error: e.message };
@@ -230,7 +230,7 @@ async function libraryImageUses(imageId: string): Promise<string[]> {
 }
 
 export async function deleteLibraryImageAction(form: FormData) {
-  await mutate("/settings/images", async () => {
+  await mutate("/automation/images", async () => {
     const uses = await libraryImageUses(id(form));
     if (uses.length) throw new ValidationError(`This picture is still shown by ${uses.join(", ")}. Choose a different picture there first, then delete it.`);
     await deleteLibraryImage(imagesRepo(), imageStore(), id(form));
