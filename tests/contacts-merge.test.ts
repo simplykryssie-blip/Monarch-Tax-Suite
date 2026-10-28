@@ -60,3 +60,29 @@ describe("comparing how much two client records hold", () => {
     assert.deepEqual(await recordCounts(repo, contact({ leadId: "l1" })), []);
   });
 });
+
+import { mergeClients } from "../lib/workspace/service.ts";
+
+describe("merging two clients keeps what differs", () => {
+  test("a different email and phone go into a note, tags are combined, and the owner carries over", async () => {
+    const repo = new MemoryWorkspace();
+    const keep = await repo.insertClient({ full_name: "Ana Ruiz", email: "ana@a.com", phone: "(337) 555-0100", created_by: null, tags: ["vip"] } as never);
+    const drop = await repo.insertClient({ full_name: "Ana R Ruiz", email: "ana@b.com", phone: "337-555-0100", created_by: null, tags: ["referral"], owner_id: "22222222-2222-4222-8222-222222222222" } as never);
+    await mergeClients(repo, keep.id, drop.id);
+    const notes = await repo.listNotes(keep.id);
+    assert.equal(notes.length, 1);
+    assert.match(notes[0].body, /Other email: ana@b.com/);
+    assert.match(notes[0].body, /Name: Ana R Ruiz/);
+    assert.doesNotMatch(notes[0].body, /Other phone/);
+    const after = await repo.getClient(keep.id);
+    assert.deepEqual(after?.tags, ["referral", "vip"]);
+    assert.equal(after?.owner_id, "22222222-2222-4222-8222-222222222222");
+  });
+  test("when nothing differs, no note is added", async () => {
+    const repo = new MemoryWorkspace();
+    const keep = await repo.insertClient({ full_name: "Ana Ruiz", email: "ana@a.com", phone: null, created_by: null } as never);
+    const drop = await repo.insertClient({ full_name: "Ana Ruiz", email: "ana@a.com", phone: "3375550100", created_by: null } as never);
+    await mergeClients(repo, keep.id, drop.id);
+    assert.equal((await repo.listNotes(keep.id)).length, 0);
+  });
+});

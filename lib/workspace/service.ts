@@ -510,5 +510,22 @@ export async function mergeClients(repo: WorkspaceRepo, keepId: string, dropId: 
   if (!keep || !drop) throw new ValidationError("That client wasn't found.");
   if (keep.id === drop.id) throw new ValidationError("Choose two different clients.");
   if (keep.archived_at) throw new ValidationError("The client to keep is archived. Restore them first.");
-  return repo.mergeClients(keep.id, drop.id, actor?.id ?? null);
+  const moved = await repo.mergeClients(keep.id, drop.id, actor?.id ?? null);
+  // The merge fills only what the kept client was missing. Anything that differs is written into a note, and tags and the owner carry over.
+  try {
+    const digits = (v: string | null) => (v ?? "").replace(/\D+/g, "");
+    const left: string[] = [];
+    if (drop.full_name.trim().toLowerCase() !== keep.full_name.trim().toLowerCase()) left.push(`Name: ${drop.full_name}`);
+    if (drop.email && drop.email.toLowerCase() !== (keep.email ?? "").toLowerCase() && keep.email) left.push(`Other email: ${drop.email}`);
+    if (drop.phone && keep.phone && digits(drop.phone) !== digits(keep.phone)) left.push(`Other phone: ${drop.phone}`);
+    const addr = (c: typeof keep) => [c.address_line1 ?? c.address, c.city, c.state, c.zip].filter(Boolean).join(", ");
+    if (addr(drop) && addr(keep) && addr(drop).toLowerCase() !== addr(keep).toLowerCase()) left.push(`Other address: ${addr(drop)}`);
+    if (left.length) await repo.insertNote({ client_id: keep.id, body: `Merged from ${drop.full_name}. Details that differed:\n${left.join("\n")}`.slice(0, 4000), created_by: actor?.id ?? null });
+    const tags = [...new Set([...(keep.tags ?? []), ...(drop.tags ?? [])])].sort();
+    const patch: { tags?: string[]; owner_id?: string | null } = {};
+    if (tags.length > (keep.tags ?? []).length) patch.tags = tags;
+    if (!keep.owner_id && drop.owner_id) patch.owner_id = drop.owner_id;
+    if (patch.tags || "owner_id" in patch) await repo.updateClient(keep.id, patch);
+  } catch { /* the merge itself is done and stands */ }
+  return moved;
 }
