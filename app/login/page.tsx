@@ -8,11 +8,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { error, notice, next } = await searchParams;
   const brand = await brandForRequestHost().catch(() => null);
   const white = brand?.whiteLabelAdmin ? brand : null;
+  // A client arriving for the portal is spoken to as a client, not as staff.
+  const client = (next ?? "").startsWith("/portal");
   return (
     <AuthFrame brand={white}>
       <form action={signIn}>
-        <h1>Welcome back</h1>
-        <p className="mt-login-sub">Sign in to your {white ? white.name : PLATFORM.name} workspace.</p>
+        <h1>{client ? "Client portal" : "Welcome back"}</h1>
+        <p className="mt-login-sub">{client ? "Sign in to your secure client portal with the email your tax office invited." : `Sign in to your ${white ? white.name : PLATFORM.name} workspace.`}</p>
         {notice && <p className="mt-login-notice" role="status">{notice}</p>}
         <input type="hidden" name="next" value={next ?? "/"} />
         <label htmlFor="email">Email</label>
@@ -25,7 +27,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         {error && <p className="mt-login-error" role="alert">{error}</p>}
         <button type="submit" className="monarch-primary mt-login-go">Sign in</button>
         <Link href="/forgot-password" className="monarch-secondary mt-login-reset">Reset password</Link>
-        <small className="mt-login-foot">Authorized administrators only. Activity is recorded.</small>
+        <small className="mt-login-foot">{client ? "First time here? Open the invitation email from your tax office and use its link. Activity is recorded." : "Authorized administrators only. Activity is recorded."}</small>
       </form>
     </AuthFrame>
   );
