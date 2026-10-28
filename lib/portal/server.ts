@@ -66,7 +66,7 @@ export async function requirePortal(): Promise<PortalContext> {
   // Two-step sign-in is the client's choice; it is enforced only for a client who turned it on.
   if (practiceMfaGate(await mfaState()) === "verify") redirect("/portal/mfa");
   const members = await portalMembershipsForUser(user.id);
-  if (!members.length) redirect("/login?error=" + encodeURIComponent("This account doesn't have access to a client portal."));
+  if (!members.length) redirect("/login?next=/portal&error=" + encodeURIComponent("This email isn't set up for a client portal. Open the invitation email from your tax office, or ask them to resend it."));
   const offices: PortalOffice[] = await Promise.all(members.map(async (m) => ({ tenantId: m.tenant_id, clientId: m.client_id, name: (await loadBrand(m.tenant_id)).name })));
   const wanted = (await cookies()).get(PORTAL_COOKIE)?.value;
   const office = offices.find((o) => o.tenantId === wanted) ?? offices[0];
