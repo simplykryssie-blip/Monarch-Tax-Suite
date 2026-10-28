@@ -30,10 +30,12 @@ export async function bulkContactsAction(form: FormData) {
   const admin = await requireAdmin();
   const back = backTo(strOf(form, "back"));
   const one = strOf(form, "one");
-  const opRaw = one ? "convert" : strOf(form, "op");
+  // Enter pressed in the tag box submits the form's first button (a hidden one). A typed tag then means "Add tag".
+  const opSent = strOf(form, "op");
+  const opRaw = one ? "convert" : opSent === "none" || !opSent ? (parseTags(strOf(form, "tag")).length ? "tag_add" : "") : opSent;
   let target: string;
   try {
-    if (!OPS.has(opRaw)) throw new ValidationError("Choose what to do with the selected contacts.");
+    if (!OPS.has(opRaw)) throw new ValidationError("Tick the contacts, then press one of the buttons: Reassign, Convert leads to clients, Set lead status, Add tag or Remove tag.");
     const op = opRaw as BulkOp;
     const keys = (one ? [one] : form.getAll("key").filter((k): k is string => typeof k === "string")).filter((k) => parseContactKey(k));
     if (!keys.length) throw new ValidationError("Tick at least one contact first.");
