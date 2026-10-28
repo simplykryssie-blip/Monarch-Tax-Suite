@@ -376,3 +376,21 @@ export async function assignLead(deps: LeadsDeps, id: string, assignee: { id: st
   await deps.repo.addEvent({ lead_id: id, action: "assigned", detail: { to: assignee?.label ?? "No one" }, actor_id: actorId });
   return updated;
 }
+
+/** Folds a duplicate lead into the one being kept: missing details and tags move over, the other's details are kept in the notes, and it is marked Lost. */
+export async function mergeLeads(deps: LeadsDeps, keepId: string, dropId: string, actorId: string): Promise<Lead> {
+  if (keepId === dropId) throw new ValidationError("Choose two different leads.");
+  const keep = await deps.repo.getLead(keepId);
+  const drop = await deps.repo.getLead(dropId);
+  if (!keep || !drop) throw new ValidationError("That lead wasn't found.");
+  const from = [`Merged from lead ${drop.full_name}`, drop.email, drop.phone, drop.firm_name, drop.source ? `Source: ${sourceName(drop.source)}` : "", drop.notes ?? ""].filter(Boolean).join("\n");
+  const notes = [keep.notes, from].filter(Boolean).join("\n\n").slice(0, 4000);
+  const patch: Partial<Lead> = { notes, tags: [...new Set([...keep.tags, ...drop.tags])].sort() };
+  if (!keep.phone && drop.phone) patch.phone = drop.phone;
+  if (!keep.firm_name && drop.firm_name) patch.firm_name = drop.firm_name;
+  const after = await deps.repo.updateLead(keepId, patch);
+  await deps.repo.updateLead(dropId, { status: "lost" });
+  await deps.repo.addEvent({ lead_id: keepId, action: "merged", detail: { from: drop.full_name }, actor_id: actorId });
+  await deps.repo.addEvent({ lead_id: dropId, action: "merged_into", detail: { into: keep.full_name }, actor_id: actorId });
+  return after;
+}
