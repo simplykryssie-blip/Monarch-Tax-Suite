@@ -538,3 +538,5 @@ a.hm-row:hover{background:#fcfbf8}
 .dup-table tr.is-match td { background: #e8f6ec; }
 .dup-same { color: #1a7f3c; font-weight: 600; }
 .dup-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.ct-bulk { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--monarch-line, #e5e7eb); }
+.ct-bulk input[name="tag"] { min-width: 120px; }

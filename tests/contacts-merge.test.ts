@@ -179,3 +179,31 @@ describe("converting a lead into a client", () => {
     await assert.rejects(() => convertLeadToClient(repo, { repo: leads } as never, "00000000-0000-4000-8000-000000000000", { id: "u1" }), ValidationError);
   });
 });
+
+import { changeTags, planBulk } from "../lib/contacts/bulk.ts";
+
+describe("bulk actions on contacts", () => {
+  const person = (key: string, refs: Partial<Contact["refs"]>) => ({ ...contact(refs), key, name: key });
+  const list = [person("client-1", { clientId: "c1" }), person("lead-1", { leadId: "l1" }), person("lead-2", { leadId: "l2" }), person("customer-1", { customerIds: ["u1"] })];
+  test("convert takes only leads that are not yet clients or converted", () => {
+    const plan = planBulk(list, ["client-1", "lead-1", "lead-2", "customer-1"], "convert", (id) => (id === "l2" ? "converted" : "new"));
+    assert.deepEqual(plan.targets.map((c) => c.key), ["lead-1"]);
+    assert.deepEqual(plan.skipped.map((s) => s.reason).sort(), ["already a client", "already converted", "not a lead"]);
+  });
+  test("reassigning and tagging skip a store customer with no client or lead record", () => {
+    for (const op of ["assign", "tag_add", "tag_remove"] as const) {
+      const plan = planBulk(list, ["client-1", "lead-1", "customer-1"], op);
+      assert.deepEqual(plan.targets.map((c) => c.key), ["client-1", "lead-1"]);
+      assert.equal(plan.skipped.length, 1);
+    }
+  });
+  test("the same contact twice counts once, and a key that does not exist is ignored", () => {
+    assert.equal(planBulk(list, ["lead-1", "lead-1", "nobody"], "assign").targets.length, 1);
+  });
+  test("adding a tag twice does nothing new, and removing one that is not there changes nothing", () => {
+    assert.deepEqual(changeTags(["a"], "tag_add", "b"), ["a", "b"]);
+    assert.deepEqual(changeTags(["a", "b"], "tag_add", "b"), ["a", "b"]);
+    assert.deepEqual(changeTags(["a", "b"], "tag_remove", "a"), ["b"]);
+    assert.deepEqual(changeTags(["a"], "tag_remove", "z"), ["a"]);
+  });
+});
