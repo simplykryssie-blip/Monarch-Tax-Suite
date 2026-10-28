@@ -15,7 +15,7 @@ import { CopyLink } from "@/components/calendar/copy-link";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { addTaskAction } from "@/app/(admin)/workspace/actions";
 import { toggleTaskAction } from "@/app/(admin)/workspace/actions";
-import { cancelAction, moveAction, outcomeAction } from "./actions";
+import { cancelAction, moveAction, outcomeAction, resendConfirmationAction } from "./actions";
 
 type SP = { view?: string; date?: string; notice?: string; error?: string };
 const VIEWS = { month: 42, week: 7, day: 1, agenda: 30 } as const;
@@ -123,6 +123,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                                 <form action={outcomeAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="outcome" value="done" /><button className="monarch-secondary">Attended</button></form>
                                 <form action={outcomeAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="outcome" value="no_show" /><button className="monarch-secondary">No-show</button></form>
                               </>
+                            )}
+                            {Date.parse(a.starts_at) > Date.now() && (
+                              <form action={resendConfirmationAction}><input type="hidden" name="id" value={a.id} /><button className="monarch-secondary">Resend confirmation</button></form>
                             )}
                             <details>
                               <summary>Move</summary>
