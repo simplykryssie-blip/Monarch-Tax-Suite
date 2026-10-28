@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
+import { formatPhone } from "@/lib/format/ids.ts";
 import { EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { countContacts, DUPLICATE_REASON, filterContacts, type Contact, type ContactFilter } from "@/lib/contacts/combine.ts";
 import { loadContacts } from "@/lib/contacts/server";
@@ -90,7 +91,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                       <tr key={c.key}>
                         <td><Link href={c.refs.clientId ? `/workspace/clients/${c.refs.clientId}` : `/contacts/${c.key}`}><b>{c.name}</b></Link><small className="monarch-subcell">{c.email ?? "no email"}</small></td>
                         <td><Chips c={c} /></td>
-                        <td>{c.phone ?? "—"}</td>
+                        <td>{c.phone ? formatPhone(c.phone) : "—"}</td>
                         <td>{staffLabel(staff, c.assignedTo) ?? "—"}</td>
                         <td>{c.tags.join(", ") || "—"}</td>
                         <td>{when(c.lastActivity)}</td>
