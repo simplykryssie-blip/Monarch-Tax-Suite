@@ -35,11 +35,11 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const data = await loadContacts();
   const staff = await listStaff().catch(() => []);
   const counts = countContacts(data.contacts);
+  const byKey = new Map(data.contacts.map((c) => [c.key, c]));
   // How much each side holds, for the first pairs only (each count is a few lookups).
   const pairCounts = new Map<string, Awaited<ReturnType<typeof recordCounts>>>();
   await Promise.all(data.duplicates.slice(0, 20).flatMap((d) => [d.a, d.b]).map(async (k) => { const c = byKey.get(k); if (c && !pairCounts.has(k)) pairCounts.set(k, await recordCounts(workspaceRepo(), c)); }));
   const rows = filterContacts(data.contacts, { q: sp.q, kind, tag: sp.tag });
-  const byKey = new Map(data.contacts.map((c) => [c.key, c]));
   const allTags = [...new Set(data.contacts.flatMap((c) => c.tags))].sort();
   const tabs: [string, string, number][] = [["", "All", counts.all], ["lead", "Leads", counts.lead], ["client", "Clients", counts.client], ["customer", "Customers", counts.customer], ["inactive", "Archived", counts.inactive]];
 
