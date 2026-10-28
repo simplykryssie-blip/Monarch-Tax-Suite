@@ -134,8 +134,9 @@ export const DUPLICATE_REASON: Record<DuplicateReason, string> = {
   same_name: "Same first and last name",
 };
 
-/** Pairs of different contacts that might be the same person. Never merged automatically. */
-export function possibleDuplicates(contacts: Contact[]): PossibleDuplicate[] {
+/** Pairs of different contacts that might be the same person. Never merged automatically. A record that is archived, lost or converted (a merged one is) is no longer a candidate. */
+export function possibleDuplicates(all: Contact[]): PossibleDuplicate[] {
+  const contacts = all.filter((c) => c.active);
   const seen = new Set<string>();
   const out: PossibleDuplicate[] = [];
   const add = (x: Contact, y: Contact, reason: DuplicateReason) => {

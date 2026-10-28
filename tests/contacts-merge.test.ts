@@ -86,3 +86,16 @@ describe("merging two clients keeps what differs", () => {
     assert.equal((await repo.listNotes(keep.id)).length, 0);
   });
 });
+
+import { combineContacts, possibleDuplicates } from "../lib/contacts/combine.ts";
+
+describe("a merged record is no longer offered as a duplicate", () => {
+  test("an archived client and a lost lead drop out of the possible duplicates", () => {
+    const base = { phone: null, tags: [] as string[], created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" };
+    const client = (id: string, archived: string | null) => ({ ...base, id, full_name: "Ana Ruiz", email: "ana@example.com", archived_at: archived, owner_id: null }) as never;
+    const live = combineContacts({ clients: [client("11111111-1111-4111-8111-111111111111", null), client("22222222-2222-4222-8222-222222222222", null)], leads: [], customers: [] } as never);
+    const merged = combineContacts({ clients: [client("11111111-1111-4111-8111-111111111111", null), client("22222222-2222-4222-8222-222222222222", "2026-10-28T00:00:00Z")], leads: [], customers: [] } as never);
+    assert.equal(possibleDuplicates(live).length, 1);
+    assert.equal(possibleDuplicates(merged).length, 0);
+  });
+});
