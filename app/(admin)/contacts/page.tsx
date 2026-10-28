@@ -14,6 +14,7 @@ import { workspaceRepo } from "@/lib/workspace/server";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { undoDismissAction } from "./merge-actions";
 import { SelectAll } from "@/components/contacts/select-all";
+import { BulkMenu } from "@/components/contacts/bulk-menu";
 import { bulkContactsAction } from "./bulk-actions";
 import { SETTABLE_STATUSES } from "@/lib/leads/service.ts";
 import { LEAD_STATUSES } from "@/lib/leads/types.ts";
@@ -109,27 +110,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             <input type="hidden" name="back" value={backHref} />
             <section className="monarch-panel">
               <div className="monarch-panel-head"><h2>{rows.length} {rows.length === 1 ? "contact" : "contacts"}</h2></div>
-              {rows.length > 0 && (
-                <div className="ct-bulk" role="group" aria-label="Do something with the ticked contacts">
-                  {/* Pressing Enter in the tag box must not run the first real button (Reassign). */}
-                  <button name="op" value="none" hidden tabIndex={-1} aria-hidden="true" />
-                  <span className="monarch-muted">With the ticked contacts:</span>
-                  <select name="assignee" aria-label="Assign to" defaultValue="">
-                    <option value="">No one</option>
-                    {staff.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-                  </select>
-                  <button name="op" value="assign" className="monarch-secondary">Reassign</button>
-                  <button name="op" value="convert" className="monarch-secondary" title="Makes client records from the ticked leads">Convert leads to clients</button>
-                  <select name="status" aria-label="Lead status" defaultValue="contacted">
-                    {SETTABLE_STATUSES.map((st) => <option key={st} value={st}>{LEAD_STATUSES[st]}</option>)}
-                  </select>
-                  <button name="op" value="set_status" className="monarch-secondary" title="Changes the status of the ticked leads">Set lead status</button>
-                  <input name="tag" placeholder="tag" maxLength={40} aria-label="Tag" list="ct-tags" />
-                  <datalist id="ct-tags">{allTags.map((t) => <option key={t} value={t} />)}</datalist>
-                  <button name="op" value="tag_add" className="monarch-secondary">Add tag</button>
-                  <button name="op" value="tag_remove" className="monarch-secondary">Remove tag</button>
-                </div>
-              )}
+              {rows.length > 0 && <BulkMenu staff={staff.map((m) => ({ id: m.id, label: m.label }))} tags={allTags} statuses={SETTABLE_STATUSES.map((st) => ({ value: st, label: LEAD_STATUSES[st] }))} />}
               <div className="monarch-table-wrap">
                 <table>
                   <thead><tr><th><SelectAll /></th><th>NAME</th><th>STATUS</th><th>PHONE</th><th>ASSIGNED</th><th>TAGS</th><th>LAST ACTIVITY</th></tr></thead>
