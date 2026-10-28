@@ -163,7 +163,46 @@ const parseStart = (raw: unknown): Date => {
 
 // ---------------------------------------------------------------- booking
 
-export type Booked = { appointment: Appointment; token: string };
+/** How the confirmation went. sms null = not attempted (no number, or no text consent). */
+export type ConfirmationOutcome = { email: { ok: boolean; message?: string }; sms: { ok: boolean; message?: string } | null };
+export type Booked = { appointment: Appointment; token: string; confirmation: ConfirmationOutcome };
+
+const outcomeOf = (r: { ok: true } | { ok: false; message: string }) => (r.ok ? { ok: true } : { ok: false, message: r.message });
+const failure = (e: unknown) => ({ ok: false, message: e instanceof Error ? e.message.slice(0, 200) : "Could not send." });
+
+/** Sends the confirmation by email (and by text to someone who agreed to texts). Never throws: the result says what happened. */
+async function sendConfirmation(d: AppointmentDeps, t: AppointmentType, saved: Appointment, token: string): Promise<ConfirmationOutcome> {
+  let c: ReturnType<typeof confirmationFrom>;
+  let text: string;
+  try {
+    c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(token), await d.repo.getMessages().catch(() => null));
+    text = await signed(d, await withIntake(d, t, c.text));
+  } catch (e) {
+    const f = failure(e);
+    console.error(JSON.stringify({ event: "appointment_confirmation_failed", appointment: saved.id, channel: "prepare", message: f.message }));
+    return { email: f, sms: null };
+  }
+  let email: { ok: boolean; message?: string };
+  try { email = outcomeOf(await d.notify.email(saved.contact_email, c.subject, text)); } catch (e) { email = failure(e); }
+  let sms: { ok: boolean; message?: string } | null = null;
+  // The text goes only to someone who agreed to texts and gave a number.
+  if (saved.sms_consent && saved.contact_phone) {
+    try { sms = outcomeOf(await d.notify.sms(saved.contact_phone, c.sms)); } catch (e) { sms = failure(e); }
+  }
+  if (!email.ok) console.error(JSON.stringify({ event: "appointment_confirmation_failed", appointment: saved.id, channel: "email", message: email.message }));
+  if (sms && !sms.ok) console.error(JSON.stringify({ event: "appointment_confirmation_failed", appointment: saved.id, channel: "sms", message: sms.message }));
+  return { email, sms };
+}
+
+/** Sends the confirmation again for an upcoming booked appointment. */
+export async function resendConfirmation(d: AppointmentDeps, id: string): Promise<ConfirmationOutcome> {
+  const a = await d.repo.getAppointment(id);
+  if (!a) throw new ValidationError("That appointment was not found.");
+  if (a.status !== "booked" || Date.parse(a.starts_at) <= nowOf(d).getTime()) throw new ValidationError("Only upcoming booked appointments can be confirmed again.");
+  const t = await d.repo.getType(a.type_id);
+  if (!t) throw new ValidationError("That appointment type was not found.");
+  return sendConfirmation(d, t, a, d.tokenFor(a.id));
+}
 
 function remindersFor(a: Appointment, t: AppointmentType, now: Date): NewReminder[] {
   const out: NewReminder[] = [];
@@ -207,14 +246,9 @@ async function insertBooked(d: AppointmentDeps, t: AppointmentType, input: {
   await d.repo.insertReminders(remindersFor(saved, t, now));
   await emitSafe(d, "appointment.booked", saved);
   await told(d, { kind: "booked", appointment: saved, type: t, by: input.source === "public" ? "client" : "staff", actorId: input.actorId });
-  // The confirmation is a courtesy: if it can't be sent the booking still stands.
-  try {
-    const c = confirmationFrom(saved, t, await d.firmName(), await d.manageUrl(token), await d.repo.getMessages().catch(() => null));
-    await d.notify.email(saved.contact_email, c.subject, await signed(d, await withIntake(d, t, c.text)));
-    // The text goes only to someone who agreed to texts and gave a number.
-    if (saved.sms_consent && saved.contact_phone) await d.notify.sms(saved.contact_phone, c.sms);
-  } catch { /* kept */ }
-  return { appointment: saved, token };
+  // The confirmation is a courtesy: if it can't be sent the booking still stands, and the result says so.
+  const confirmation = await sendConfirmation(d, t, saved, token);
+  return { appointment: saved, token, confirmation };
 }
 
 /** The confirmation messages Settings saves. A message left empty goes back to the built-in wording. */
