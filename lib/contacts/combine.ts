@@ -29,6 +29,8 @@ export type Contact = {
   lastActivity: string | null;
   /** The teammate responsible: the client's owner, else the lead's assignee. */
   assignedTo: string | null;
+  /** The lead's stage (new, contacted, interested, lost), when this contact is a lead. */
+  leadStatus: string | null;
 };
 
 const ORDER: ContactKind[] = ["client", "lead", "customer"];
@@ -95,6 +97,7 @@ function build(g: Group): Contact {
     tags,
     refs: { leadId: lead?.id ?? null, clientId: client?.id ?? null, customerIds: g.customers.map((c) => c.id) },
     assignedTo: client?.owner_id ?? lead?.assigned_to ?? null,
+    leadStatus: lead ? lead.status : null,
     lastActivity: newest(client?.updated_at, lead?.last_contacted_at, lead?.updated_at, ...g.customers.map((c) => c.updated_at)),
   };
 }
@@ -176,7 +179,7 @@ export function possibleDuplicates(all: Contact[]): PossibleDuplicate[] {
 
 // --------------------------------------------------------------------------- the list: filters, counts, order
 
-export type ContactFilter = { q?: string; kind?: ContactKind | "inactive" | ""; /** Only contacts with this tag. */ tag?: string };
+export type ContactFilter = { q?: string; kind?: ContactKind | "inactive" | ""; /** Only contacts with this tag. */ tag?: string; /** A teammate's id, or "none" for nobody. */ assigned?: string; /** A lead stage, for leads. */ stage?: string };
 
 export function filterContacts(contacts: Contact[], f: ContactFilter): Contact[] {
   const term = (f.q ?? "").trim().toLowerCase();
@@ -186,6 +189,8 @@ export function filterContacts(contacts: Contact[], f: ContactFilter): Contact[]
     else if (f.kind && !c.kinds.includes(f.kind)) return false;
     else if (!f.kind && !c.active) return false;
     if (f.tag && !c.tags.includes(f.tag)) return false;
+    if (f.assigned === "none" ? c.assignedTo : f.assigned && c.assignedTo !== f.assigned) return false;
+    if (f.stage && c.leadStatus !== f.stage) return false;
     if (!term) return true;
     return c.name.toLowerCase().includes(term) || (c.email ?? "").includes(term) || (digits.length >= 4 && (normalizePhone(c.phone) ?? "").includes(digits)) || c.tags.some((t) => t.toLowerCase().includes(term));
   });

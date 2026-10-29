@@ -6,7 +6,7 @@ import { mergeLeads } from "../lib/leads/service.ts";
 import { ValidationError } from "../lib/commerce/validation.ts";
 import { MemoryLeads } from "./leads-memory.ts";
 
-const contact = (refs: Partial<Contact["refs"]>): Contact => ({ key: "x", name: "X", email: null, phone: null, kinds: [], chips: [], active: true, tags: [], refs: { leadId: null, clientId: null, customerIds: [], ...refs }, lastActivity: null, assignedTo: null });
+const contact = (refs: Partial<Contact["refs"]>): Contact => ({ key: "x", name: "X", email: null, phone: null, kinds: [], chips: [], active: true, tags: [], refs: { leadId: null, clientId: null, customerIds: [], ...refs }, lastActivity: null, assignedTo: null, leadStatus: null });
 
 describe("what a pair of possible duplicates can be merged into", () => {
   test("two clients merge, a lead folds into a client, two leads fold together", () => {
@@ -507,5 +507,27 @@ describe("saving what was typed", () => {
     const evening = new Date("2026-10-29T01:30:00.000Z"); // still Oct 28 in Central time
     const out = await editReturn(repo, ret.id, { stage_id: "s1", efile_status: "transmitted" }, stages, (x) => x, { assignee: () => "no one" }, undefined, evening, "2026-10-28");
     assert.equal(out.ret.efile_on, "2026-10-28");
+  });
+});
+
+import { filterContacts } from "../lib/contacts/combine.ts";
+
+describe("filtering the Contacts list by teammate and lead stage", () => {
+  const mk = (key: string, over: Partial<Contact>) => ({ ...contact({}), key, name: key, active: true, kinds: ["lead"] as Contact["kinds"], ...over }) as Contact;
+  const list = [
+    mk("a", { assignedTo: "u1", leadStatus: "new" }),
+    mk("b", { assignedTo: "u2", leadStatus: "interested" }),
+    mk("c", { assignedTo: null, leadStatus: "interested" }),
+    mk("d", { kinds: ["client"], assignedTo: "u1", leadStatus: null }),
+  ];
+  test("assigned to one person, to no one, or anyone", () => {
+    assert.deepEqual(filterContacts(list, { assigned: "u1" }).map((c) => c.key), ["a", "d"]);
+    assert.deepEqual(filterContacts(list, { assigned: "none" }).map((c) => c.key), ["c"]);
+    assert.equal(filterContacts(list, {}).length, 4);
+  });
+  test("lead stage narrows to leads at that stage, and filters combine", () => {
+    assert.deepEqual(filterContacts(list, { stage: "interested" }).map((c) => c.key), ["b", "c"]);
+    assert.deepEqual(filterContacts(list, { stage: "interested", assigned: "u2" }).map((c) => c.key), ["b"]);
+    assert.deepEqual(filterContacts(list, { kind: "client", assigned: "u1" }).map((c) => c.key), ["d"]);
   });
 });
