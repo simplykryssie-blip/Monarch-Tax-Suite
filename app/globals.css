@@ -550,5 +550,5 @@ a.hm-row:hover{background:#fcfbf8}
 .hm-list a:hover, .hm-list button:hover:not(:disabled), .hm-list a:focus-visible, .hm-list button:focus-visible { background: #f1eee6; }
 .hm-list button:disabled { opacity: 0.5; cursor: not-allowed; }
 .hm-panel.is-right { left: auto; right: 0; }
-.cl-actions-right { display: flex; justify-content: flex-end; }
+.cl-actions-right { display: flex; justify-content: flex-end; position: relative; z-index: 40; }
 .ct-bulk { justify-content: space-between; }
