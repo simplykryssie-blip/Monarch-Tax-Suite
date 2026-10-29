@@ -16,6 +16,7 @@ import { NewInvoice } from "@/components/contacts/new-invoice";
 import { Modal } from "@/components/ui/modal";
 import { HoverMenu } from "@/components/ui/hover-menu";
 import { staffLabel } from "@/lib/staff/assign.ts";
+import { EFILE_STATUSES } from "@/lib/workspace/types.ts";
 import { ReturnEditor } from "@/components/workspace/return-editor";
 import { duplicatesOfClient } from "@/lib/contacts/duplicates.ts";
 import { loadContacts } from "@/lib/contacts/server";
@@ -132,8 +133,10 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const staff = await listStaff().catch(() => []);
   const portalLabel = !member ? "Not invited" : member.status === "active" ? "Active" : member.status === "invited" ? (inviteExpired(member) ? "Invite expired" : "Invited") : "Off";
   const hiddenTab = (HIDDEN as readonly string[]).includes(tab);
+  const stateFilings = new Map<string, Awaited<ReturnType<ReturnType<typeof workspaceRepo>["listStateFilings"]>>>();
+  if (tab === "overview" || tab === "returns") await Promise.all(returns.map(async (x) => { stateFilings.set(x.id, await workspaceRepo().listStateFilings(x.id).catch(() => [])); }));
   const editorFor = (r: (typeof returns)[number], openLabel = "Open") => (
-    <ReturnEditor r={r} label={returnLabel(r)} label2={openLabel} stages={stages.map((x) => ({ id: x.id, name: x.name }))} staff={staff} tasks={tasks.filter((t) => t.return_id === r.id)}
+    <ReturnEditor r={r} states={stateFilings.get(r.id) ?? []} label={returnLabel(r)} label2={openLabel} stages={stages.map((x) => ({ id: x.id, name: x.name }))} staff={staff} tasks={tasks.filter((t) => t.return_id === r.id)}
       history={events.filter((e) => e.detail.return_id === r.id).map((e) => ({ id: e.id, text: describeEvent(e) ?? "", at: e.created_at, by: typeof e.detail.by === "string" ? e.detail.by : e.actor_id ? staffLabel(staff, e.actor_id) ?? "a teammate" : "the system" })).filter((h) => h.text)} />
   );
   const activity = events.map((e) => ({ id: e.id, text: describeEvent(e), by: typeof e.detail.by === "string" ? e.detail.by : e.actor_id ? "a teammate" : "the system", at: e.created_at })).filter((e): e is { id: string; text: string; by: string; at: string } => e.text !== null);
@@ -483,10 +486,10 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Returns</h2></div><Link className="mt-card-link" href="/workspace/work">Open the board</Link></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>RETURN</th><th>STAGE</th><th>PREPARER</th><th>DUE</th><th>FILED</th><th /></tr></thead>
+              <thead><tr><th>RETURN</th><th>FORM</th><th>STAGE</th><th>E-FILE</th><th>PREPARER</th><th>DUE</th><th>FILED</th><th /></tr></thead>
               <tbody>
-                {newestFirst.length === 0 ? <EmptyRow colSpan={6}>No returns yet.</EmptyRow> : newestFirst.map((r) => (
-                  <tr key={r.id} id={`return-${r.id}`}><td><b>{returnLabel(r)}</b></td><td>{stageName(r.stage_id)}</td><td>{r.assignee_id ? staffLabel(staff, r.assignee_id) ?? "—" : "—"}</td><td className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ?? "—"}</td><td>{r.filed_on ?? "—"}</td><td>{editorFor(r)}</td></tr>
+                {newestFirst.length === 0 ? <EmptyRow colSpan={8}>No returns yet.</EmptyRow> : newestFirst.map((r) => (
+                  <tr key={r.id} id={`return-${r.id}`}><td><b>{returnLabel(r)}</b></td><td>{r.form_type ?? "—"}</td><td>{stageName(r.stage_id)}</td><td>{EFILE_STATUSES[r.efile_status ?? "not_sent"]}</td><td>{r.assignee_id ? staffLabel(staff, r.assignee_id) ?? "—" : "—"}</td><td className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ?? "—"}</td><td>{r.filed_on ?? "—"}</td><td>{editorFor(r)}</td></tr>
                 ))}
               </tbody>
             </table></div>

@@ -312,3 +312,57 @@ describe("editing a return", () => {
     await assert.rejects(() => archiveReturn(repo, ret.id), ValidationError);
   });
 });
+
+import { removeStateFiling, saveStateFiling } from "../lib/workspace/service.ts";
+
+describe("return details: form, filing status, e-file, result, fee and state returns", () => {
+  const stages = ["s1", "s2"];
+  const nameOf = (id: string) => id;
+  const who = { assignee: () => "no one" };
+  const seed = async () => {
+    const repo = new MemoryWorkspace();
+    const client = await repo.insertClient({ full_name: "Ana Ruiz", email: "a@example.com", phone: null, created_by: null } as never);
+    const ret = await repo.insertReturn({ client_id: client.id, tax_year: 2025, kind: "original", parent_id: null, stage_id: "s1", due_on: "2026-04-15", notes: null } as never);
+    return { repo, client, ret };
+  };
+  const base = { stage_id: "s1", due_on: "2026-04-15" };
+  test("saves form, filing status, e-file (dated today when not given), result and fee, and records them", async () => {
+    const { repo, client, ret } = await seed();
+    const out = await editReturn(repo, ret.id, { ...base, form_type: "1040", filing_status: "married_joint", efile_status: "transmitted", result_kind: "refund", result: "$1,234.50", fee: "275" }, stages, nameOf, who, undefined, new Date("2026-02-01T12:00:00Z"));
+    const after = out.ret;
+    assert.equal(after.form_type, "1040");
+    assert.equal(after.filing_status, "married_joint");
+    assert.equal(after.efile_status, "transmitted");
+    assert.equal(after.efile_on, "2026-02-01");
+    assert.equal(after.result_kind, "refund");
+    assert.equal(after.result_cents, 123450);
+    assert.equal(after.fee_cents, 27500);
+    const ev = (await repo.listClientEvents(client.id, 5)).find((e) => e.action === "return.updated")!;
+    assert.match(describeEvent(ev)!, /Fee from blank to \$275\.00/);
+    const rejected = await editReturn(repo, ret.id, { ...base, efile_status: "rejected", efile_reject_reason: "R0000-504 SSN mismatch" }, stages, nameOf, who);
+    assert.equal(rejected.ret.efile_status, "rejected");
+    assert.equal(rejected.ret.efile_reject_reason, "R0000-504 SSN mismatch");
+  });
+  test("fields the form did not send are left alone, and bad values are refused", async () => {
+    const { repo, ret } = await seed();
+    await editReturn(repo, ret.id, { ...base, form_type: "1120-S", fee: "100" }, stages, nameOf, who);
+    const kept = await editReturn(repo, ret.id, { ...base, notes: "hello" }, stages, nameOf, who);
+    assert.equal(kept.ret.form_type, "1120-S");
+    assert.equal(kept.ret.fee_cents, 10000);
+    await assert.rejects(() => editReturn(repo, ret.id, { ...base, form_type: "9999" }, stages, nameOf, who), /isn't one of the choices/);
+    await assert.rejects(() => editReturn(repo, ret.id, { ...base, fee: "abc" }, stages, nameOf, who), /valid amount/);
+    await assert.rejects(() => editReturn(repo, ret.id, { ...base, result: "50" }, stages, nameOf, who), /Refund or Amount owed/);
+  });
+  test("state returns are added, updated in place, and removed", async () => {
+    const { repo, ret } = await seed();
+    const a = await saveStateFiling(repo, ret.id, { state: "la", status: "in_prep" });
+    assert.equal(a.state, "LA");
+    await saveStateFiling(repo, ret.id, { state: "LA", status: "filed", filed_on: "2026-03-01" });
+    const list = await repo.listStateFilings(ret.id);
+    assert.equal(list.length, 1);
+    assert.equal(list[0].status, "filed");
+    await assert.rejects(() => saveStateFiling(repo, ret.id, { state: "Louisiana", status: "filed" }), /two letters/);
+    await removeStateFiling(repo, ret.id, list[0].id);
+    assert.equal((await repo.listStateFilings(ret.id)).length, 0);
+  });
+});

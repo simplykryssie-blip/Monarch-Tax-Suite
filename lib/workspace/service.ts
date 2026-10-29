@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
-import { parseMoney } from "../fees/engine.ts";
+import { dollars, parseMoney } from "../fees/engine.ts";
 import { parseTags, TAG_MAX } from "../leads/tags.ts";
 import { changedFields, type FieldChange } from "./activity.ts";
 import { balance, checkBillingSettings, checkBusiness, checkClient, checkFeeProduct, checkWork, taxOn, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
 import { checkPlan, type Installment } from "./plan.ts";
 import { RECEIPT_METHODS, type InvoiceReceipt, type ReceiptMethod } from "./types.ts";
-import { PREP_STATUSES, type PrepStatus } from "./types.ts";
+import { EFILE_STATUSES, FILING_STATUSES, FORM_TYPES, PREP_STATUSES, RESULT_KINDS, STATE_FILING_STATUSES, type EfileStatus, type FilingStatus, type FormType, type PrepStatus, type ResultKind, type ReturnDetails, type StateFilingStatus } from "./types.ts";
 import type { BillingSettings, ClientWork, FeeProduct, Payer, Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
 // My Workspace orchestration: each function checks its input with the rules, then uses the repository. Nothing here
@@ -123,7 +123,7 @@ export async function editReturn(
 ): Promise<{ ret: ClientReturn; changes: string[] }> {
   const before = await repo.getReturn(uuid(id, "That return"));
   if (!before || before.archived_at) throw new ValidationError("That return wasn't found.");
-  const patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "assignee_id" | "prep_status">> = {};
+  const patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "assignee_id" | "prep_status">> & ReturnDetails = {};
   const changes: string[] = [];
   const stage = typeof raw.stage_id === "string" && raw.stage_id ? raw.stage_id : before.stage_id;
   if (!stageIds.includes(stage)) throw new ValidationError("That stage isn't in the pipeline.");
@@ -144,7 +144,42 @@ export async function editReturn(
   if (assignee !== (before.assignee_id ?? null)) { patch.assignee_id = assignee; changes.push(`Preparer from ${who.assignee(before.assignee_id)} to ${who.assignee(assignee)}`); }
   const notes = typeof raw.notes === "string" ? raw.notes.replace(/\r\n/g, "\n").trim().slice(0, 2000) : "";
   if ((notes || null) !== (before.notes ?? null)) { patch.notes = notes || null; changes.push("Notes edited"); }
+  // The details an office tracks. A field the form didn't send is left alone.
+  const details: ReturnDetails = {};
+  const pick = <T extends string>(key: string, allowed: Record<string, string>, current: T | null | undefined, label: string, set: (v: T | null) => void) => {
+    if (!(key in raw)) return;
+    const v = typeof raw[key] === "string" && raw[key] ? (raw[key] as T) : null;
+    if (v !== null && !(v in allowed)) throw new ValidationError(`${label} isn't one of the choices.`);
+    if (v !== (current ?? null)) { set(v); changes.push(`${label} from ${current ? allowed[current] : "blank"} to ${v ? allowed[v] : "blank"}`); }
+  };
+  pick<FormType>("form_type", FORM_TYPES, before.form_type, "Form", (v) => { details.form_type = v; });
+  pick<FilingStatus>("filing_status", FILING_STATUSES, before.filing_status, "Filing status", (v) => { details.filing_status = v; });
+  pick<ResultKind>("result_kind", RESULT_KINDS, before.result_kind, "Result", (v) => { details.result_kind = v; });
+  const efile = typeof raw.efile_status === "string" && raw.efile_status ? (raw.efile_status as EfileStatus) : (before.efile_status ?? "not_sent");
+  if (!(efile in EFILE_STATUSES)) throw new ValidationError("E-file status isn't one of the choices.");
+  if (efile !== (before.efile_status ?? "not_sent")) {
+    details.efile_status = efile;
+    changes.push(`E-file from ${EFILE_STATUSES[before.efile_status ?? "not_sent"]} to ${EFILE_STATUSES[efile]}`);
+    // A new e-file status without a date is dated today.
+    if (!("efile_on" in raw) || !raw.efile_on) details.efile_on = efile === "not_sent" ? null : now.toISOString().slice(0, 10);
+  }
+  if ("efile_on" in raw && raw.efile_on) { const d = isoDay(raw.efile_on, "The e-file date"); if (d !== (before.efile_on ?? null)) { details.efile_on = d; if (!changes.some((c) => c.startsWith("E-file"))) changes.push(`E-file date to ${d}`); } }
+  if ("efile_reject_reason" in raw) {
+    const reason = typeof raw.efile_reject_reason === "string" ? raw.efile_reject_reason.replace(/\s+/g, " ").trim().slice(0, 500) : "";
+    if ((reason || null) !== (before.efile_reject_reason ?? null)) { details.efile_reject_reason = reason || null; changes.push("Rejection reason edited"); }
+  }
+  const money = (key: string, label: string, set: (c: number | null) => void, current: number | null | undefined) => {
+    if (!(key in raw)) return;
+    const t = typeof raw[key] === "string" ? (raw[key] as string).trim() : "";
+    const cents = t ? parseMoney(t) : null;
+    if (t && cents === null) throw new ValidationError(`${label} isn't a valid amount.`);
+    if (cents !== (current ?? null)) { set(cents); changes.push(`${label} from ${current != null ? dollars(current) : "blank"} to ${cents != null ? dollars(cents) : "blank"}`); }
+  };
+  money("result", "Result amount", (c) => { details.result_cents = c; }, before.result_cents);
+  money("fee", "Fee", (c) => { details.fee_cents = c; }, before.fee_cents);
+  if (details.result_cents != null && !(details.result_kind ?? before.result_kind)) throw new ValidationError("Choose Refund or Amount owed for that amount.");
   if (!changes.length) return { ret: before, changes };
+  Object.assign(patch, details);
   const ret = await repo.updateReturn(before.id, patch);
   await record(repo, before.client_id, actor ?? null, "return.updated", { return_id: before.id, label: returnLabelOf(before), changes });
   return { ret, changes };
@@ -585,4 +620,27 @@ export async function mergeClients(repo: WorkspaceRepo, keepId: string, dropId: 
     if (patch.tags || "owner_id" in patch) await repo.updateClient(keep.id, patch);
   } catch { /* the merge itself is done and stands */ }
   return moved;
+}
+
+
+/** Adds a state return to a return, or updates its status and filed date. */
+export async function saveStateFiling(repo: WorkspaceRepo, returnId: string, raw: { state: unknown; status: unknown; filed_on?: unknown }, actor?: Actor) {
+  const r = await repo.getReturn(uuid(returnId, "That return"));
+  if (!r || r.archived_at) throw new ValidationError("That return wasn't found.");
+  const state = typeof raw.state === "string" ? raw.state.trim().toUpperCase() : "";
+  if (!/^[A-Z]{2}$/.test(state)) throw new ValidationError("Enter the state as two letters, like LA.");
+  const status = (typeof raw.status === "string" && raw.status ? raw.status : "not_started") as StateFilingStatus;
+  if (!(status in STATE_FILING_STATUSES)) throw new ValidationError("Choose a status for the state return.");
+  const filedOn = isoDay(raw.filed_on, "The filed date");
+  const saved = await repo.saveStateFiling(r.id, state, status, filedOn);
+  await record(repo, r.client_id, actor ?? null, "return.updated", { return_id: r.id, label: returnLabelOf(r), changes: [`${state} state return: ${STATE_FILING_STATUSES[status]}`] });
+  return saved;
+}
+
+export async function removeStateFiling(repo: WorkspaceRepo, returnId: string, filingId: string, actor?: Actor): Promise<void> {
+  const r = await repo.getReturn(uuid(returnId, "That return"));
+  const filing = r ? (await repo.listStateFilings(r.id)).find((x) => x.id === filingId) : null;
+  if (!r || !filing) throw new ValidationError("That state return wasn't found.");
+  await repo.removeStateFiling(filing.id);
+  await record(repo, r.client_id, actor ?? null, "return.updated", { return_id: r.id, label: returnLabelOf(r), changes: [`${filing.state} state return removed`] });
 }

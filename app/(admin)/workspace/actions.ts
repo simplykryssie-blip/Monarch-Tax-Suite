@@ -33,7 +33,7 @@ import { currentTenantId } from "@/lib/tenants.ts";
 import { checkSsn, copySsn, hasStoredSsn, revealSsn, storeSsn } from "@/lib/ssn/service.ts";
 import { revealGate, ssnDeps } from "@/lib/ssn/server";
 import type { Invoice } from "@/lib/workspace/types";
-import { archiveReturn, editReturn } from "@/lib/workspace/service.ts";
+import { archiveReturn, editReturn, removeStateFiling, saveStateFiling } from "@/lib/workspace/service.ts";
 import { staffLabel } from "@/lib/staff/assign.ts";
 import { listStaff } from "@/lib/staff/server";
 
@@ -220,6 +220,22 @@ export async function editReturnAction(form: FormData) {
     );
     if (before && ret.stage_id !== before.stage_id) await emitReturnStage(ret.id, ret.stage_id);
     return { notice: changes.length ? `Return saved. ${changes.length} ${changes.length === 1 ? "change" : "changes"}.` : "Nothing was changed." };
+  });
+}
+
+export async function saveStateFilingAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(clientPage(clientId, "returns"), async () => {
+    const f = await saveStateFiling(workspaceRepo(), str(form, "return_id"), { state: form.get("state"), status: form.get("status"), filed_on: form.get("filed_on") }, await whoIs());
+    return { notice: `${f.state} state return saved.` };
+  });
+}
+
+export async function removeStateFilingAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(clientPage(clientId, "returns"), async () => {
+    await removeStateFiling(workspaceRepo(), str(form, "return_id"), str(form, "id"), await whoIs());
+    return { notice: "State return removed." };
   });
 }
 
