@@ -191,7 +191,7 @@ export function checkReturn(raw: Record<string, unknown>, existing: ClientReturn
   return { client_id, tax_year, kind, parent_id, due_on: day(raw.due_on, "The due date") ?? defaultDue(tax_year, kind), notes: one(raw.notes, 2000) || null };
 }
 
-export type BoardCard = { id: string; clientId: string; clientName: string; label: string; taxYear: number | null; kind: ReturnKind | null; stageId: string; dueOn: string | null; late: boolean; parentId: string | null };
+export type BoardCard = { id: string; clientId: string; clientName: string; label: string; taxYear: number | null; kind: ReturnKind | null; stageId: string; dueOn: string | null; late: boolean; parentId: string | null; /** Where the e-file stands, once it has left "not sent". */ efile?: "transmitted" | "accepted" | "rejected" | null };
 export type BoardColumn = { stage: { id: string; name: string; color: string; done: boolean }; cards: BoardCard[] };
 
 /** The My Work board for a year: one column per stage, a card per return (extensions and amendments are their own cards). */
@@ -202,7 +202,7 @@ export function buildBoard(stages: { id: string; name: string; color: string; do
     // A card in a stage that was removed from the pipeline shows in the first stage until someone moves it.
     const col = cols.find((c) => c.stage.id === (known.has(r.stage_id) ? r.stage_id : stages[0]?.id));
     if (!col) continue;
-    col.cards.push({ id: r.id, clientId: r.client_id, clientName: clients.get(r.client_id)?.full_name ?? "Unknown client", label: String(r.tax_year), taxYear: r.tax_year, kind: r.kind, stageId: col.stage.id, dueOn: r.due_on, late: Boolean(r.due_on && r.due_on < today && !col.stage.done), parentId: r.parent_id });
+    col.cards.push({ id: r.id, clientId: r.client_id, clientName: clients.get(r.client_id)?.full_name ?? "Unknown client", label: String(r.tax_year), taxYear: r.tax_year, kind: r.kind, stageId: col.stage.id, dueOn: r.due_on, late: Boolean(r.due_on && r.due_on < today && !col.stage.done), parentId: r.parent_id, efile: r.efile_status && r.efile_status !== "not_sent" ? r.efile_status : null });
   }
   for (const c of cols) c.cards.sort((a, b) => (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999") || a.clientName.localeCompare(b.clientName));
   return cols;
