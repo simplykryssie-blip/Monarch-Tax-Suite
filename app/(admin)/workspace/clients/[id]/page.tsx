@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { DetailsCard, type Details } from "@/components/contacts/details-card";
+import { leadsDeps } from "@/lib/leads/server";
 import { recordCounts } from "@/lib/contacts/record-counts.ts";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { MessageComposer } from "@/components/contacts/message-composer";
@@ -103,7 +104,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
   const ssnOnFile = await hasStoredSsn(ssnDeps(), client.id).catch(() => false);
   const duplicates = tab === "overview" ? await loadContacts().then((d) => duplicatesOfClient(d.contacts, d.duplicates, client.id)).catch(() => []) : [];
-  const dupCounts = new Map(await Promise.all(duplicates.flatMap((d) => [d.mine, d.other]).map(async (c) => [c.key, await recordCounts(workspaceRepo(), c)] as const)));
+  const dupCounts = new Map(await Promise.all(duplicates.flatMap((d) => [d.mine, d.other]).map(async (c) => [c.key, await recordCounts(workspaceRepo(), c, leadsDeps().repo)] as const)));
   const sheetCtx = tab === "billing" ? await loadSheetContext() : null!;
   const invoicePlans = tab === "billing" ? await workspaceRepo().listInstallments(invoices.map((i) => i.id)).catch(() => []) : [];
   const invoicePayments = tab === "billing" ? await paymentsFor(workspaceRepo(), invoices.filter((i) => i.paid_cents > 0).map((i) => i.id)).catch(() => []) : [];

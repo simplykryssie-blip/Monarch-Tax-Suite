@@ -44,7 +44,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
   const value = paid.reduce((sum, o) => sum + o.amount_cents - o.amount_refunded_cents, 0);
   const byKey = new Map(data.contacts.map((c) => [c.key, c]));
   const related = data.duplicates.filter((d) => d.a === key || d.b === key);
-  const counts = new Map(await Promise.all([contact, ...related.map((d) => byKey.get(d.a === key ? d.b : d.a)).filter((c): c is Contact => !!c)].map(async (c) => [c.key, await recordCounts(workspaceRepo(), c)] as const)));
+  const counts = new Map(await Promise.all([contact, ...related.map((d) => byKey.get(d.a === key ? d.b : d.a)).filter((c): c is Contact => !!c)].map(async (c) => [c.key, await recordCounts(workspaceRepo(), c, leadsDeps().repo)] as const)));
   const leadFull = lead ? await leadsDeps().repo.getLead(lead.id).catch(() => null) : null;
   const leadEvents = leadFull ? await leadsDeps().repo.listEvents(leadFull.id).catch(() => []) : [];
   const tagOptions = leadFull ? (await leadsDeps().repo.tagCounts().catch(() => [])).map((t) => t.tag) : [];

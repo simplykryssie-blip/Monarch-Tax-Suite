@@ -258,3 +258,14 @@ describe("opening a contact by an older key", () => {
     assert.equal(contactForKey([combined], "nonsense"), null);
   });
 });
+
+describe("comparing counts for leads too", () => {
+  test("a lead shows whether it has notes and how many history entries, so two leads can be compared", async () => {
+    const leads = new MemoryLeads();
+    const lead = await leads.insertLead({ tags: [], notes: "Call Friday", phone: null, firm_name: null, status: "new", source: "manual", last_contacted_at: null, audit_id: null, audit_score: null, wisp_plan_id: null, customer_id: null, order_id: null, organization_id: null, converted_at: null, full_name: "Ana Ruiz", email: "ana@example.com" } as never);
+    await leads.addEvent({ lead_id: lead.id, action: "contacted", detail: {}, actor_id: null });
+    const got = await recordCounts(new MemoryWorkspace(), contact({ leadId: lead.id }), leads);
+    assert.deepEqual(got, [{ label: "Notes", n: 1 }, { label: "History entries", n: 1 }]);
+    assert.deepEqual(await recordCounts(new MemoryWorkspace(), contact({ leadId: lead.id })), [], "without the leads list there is nothing to count");
+  });
+});

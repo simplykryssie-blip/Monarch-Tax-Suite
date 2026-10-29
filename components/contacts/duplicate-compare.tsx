@@ -27,9 +27,10 @@ function rowsOf(a: Contact, b: Contact): Row[] {
 /** Two possible duplicates side by side: what matches is marked, what differs is plain, so a person can tell if it is the same person. */
 export function DuplicateCompare({ a, b, reason, back = "/contacts", openA, openB, countsA = [], countsB = [] }: { a: Contact; b: Contact; reason: string; back?: string; openA: string; openB: string; countsA?: RecordCounts; countsB?: RecordCounts }) {
   const plan = mergePlan(a, b);
-  const countRows: Row[] = countsA.length || countsB.length
-    ? (countsA.length ? countsA : countsB).map((x, i) => ({ label: x.label, a: String(countsA[i]?.n ?? "—"), b: String(countsB[i]?.n ?? "—"), same: false }))
-    : [];
+  // Lined up by name, so a lead's two rows sit beside the matching rows of a client's six.
+  const labels = [...new Set([...countsA, ...countsB].map((x) => x.label))];
+  const countOf = (list: RecordCounts, label: string) => list.find((x) => x.label === label)?.n;
+  const countRows: Row[] = labels.map((label) => ({ label, a: String(countOf(countsA, label) ?? "—"), b: String(countOf(countsB, label) ?? "—"), same: false }));
   return (
     <div className="dup-card">
       <p className="dup-why">{reason}</p>
