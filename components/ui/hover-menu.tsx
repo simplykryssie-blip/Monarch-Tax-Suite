@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
  * A button that opens a small menu. It opens when the mouse is over it (or on click or Enter), and closes when the mouse
  * moves away, when Escape is pressed, or after a choice is made.
  */
-export function HoverMenu({ label, children, disabled = false }: { label: string; children: React.ReactNode; disabled?: boolean }) {
+export function HoverMenu({ label, children, disabled = false, align = "left" }: { label: string; children: React.ReactNode; disabled?: boolean; align?: "left" | "right" }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -26,7 +26,7 @@ export function HoverMenu({ label, children, disabled = false }: { label: string
   return (
     <div className="hm" ref={wrap} onMouseEnter={() => { if (!disabled) { cancel(); setOpen(true); } }} onMouseLeave={leave}>
       <button type="button" className="monarch-secondary" disabled={disabled} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{label} ▾</button>
-      {open && <div className="hm-panel" role="menu" onClick={(e) => { if ((e.target as HTMLElement).closest("a")) setOpen(false); }}>{children}</div>}
+      {open && <div className={align === "right" ? "hm-panel is-right" : "hm-panel"} role="menu" onClick={(e) => { if ((e.target as HTMLElement).closest("a")) setOpen(false); }}>{children}</div>}
     </div>
   );
 }
