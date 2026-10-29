@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
+import { resolveState } from "./states.ts";
 import { dollars, parseMoney } from "../fees/engine.ts";
 import { parseTags, TAG_MAX } from "../leads/tags.ts";
 import { changedFields, type FieldChange } from "./activity.ts";
@@ -130,10 +131,8 @@ export async function editReturn(
   if (stage !== before.stage_id) { patch.stage_id = stage; changes.push(`Stage from ${stageName(before.stage_id)} to ${stageName(stage)}`); }
   const due = isoDay(raw.due_on, "The due date");
   if (due !== before.due_on) { patch.due_on = due; changes.push(`Due date from ${before.due_on ?? "blank"} to ${due ?? "blank"}`); }
-  let filed = isoDay(raw.filed_on, "The filed date");
-  // Moving a return to the last stage fills in today's date as filed, as dragging it on the board does.
-  if (patch.stage_id === stageIds[stageIds.length - 1] && !filed && !before.filed_on) filed = now.toISOString().slice(0, 10);
-  if (filed !== before.filed_on) { patch.filed_on = filed; changes.push(`Filed date from ${before.filed_on ?? "blank"} to ${filed ?? "blank"}`); }
+  // The filed date is set by moving the return to the last stage, as dragging it on the board does. It isn't typed here.
+  if (patch.stage_id === stageIds[stageIds.length - 1] && !before.filed_on) patch.filed_on = now.toISOString().slice(0, 10);
   const prep = typeof raw.prep_status === "string" && raw.prep_status ? (raw.prep_status as PrepStatus) : before.prep_status;
   if (prep !== before.prep_status) {
     if (!EDITABLE_PREP.includes(prep) || before.prep_status === "handed_off") throw new ValidationError("A return handed to an ERO is changed by the hand-off, not here.");
@@ -146,6 +145,10 @@ export async function editReturn(
   if ((notes || null) !== (before.notes ?? null)) { patch.notes = notes || null; changes.push("Notes edited"); }
   // The details an office tracks. A field the form didn't send is left alone.
   const details: ReturnDetails = {};
+  if ("submitted_on" in raw) {
+    const d = isoDay(raw.submitted_on, "The submission date");
+    if (d !== (before.submitted_on ?? null)) { details.submitted_on = d; changes.push(`Submission date from ${before.submitted_on ?? "blank"} to ${d ?? "blank"}`); }
+  }
   const pick = <T extends string>(key: string, allowed: Record<string, string>, current: T | null | undefined, label: string, set: (v: T | null) => void) => {
     if (!(key in raw)) return;
     const v = typeof raw[key] === "string" && raw[key] ? (raw[key] as T) : null;
@@ -211,7 +214,11 @@ export async function moveWork(repo: WorkspaceRepo, id: string, stageId: string,
   return repo.updateWork(w.id, { stage_id: stageId });
 }
 
-export async function addTask(repo: WorkspaceRepo, clientId: string, raw: Record<string, unknown>, actorId: string) {
+/** The same thing saved twice within a few seconds (a double click) is saved once. */
+const JUST_NOW_MS = 20_000;
+const justNow = (iso: string, now: Date) => now.getTime() - Date.parse(iso) < JUST_NOW_MS;
+
+export async function addTask(repo: WorkspaceRepo, clientId: string, raw: Record<string, unknown>, actorId: string, now = new Date()) {
   const id = uuid(clientId, "That client");
   if (!(await repo.getClient(id))) throw new ValidationError("That client wasn't found.");
   const t = checkTask(raw);
@@ -219,19 +226,63 @@ export async function addTask(repo: WorkspaceRepo, clientId: string, raw: Record
     const r = await repo.getReturn(uuid(t.return_id, "That return"));
     if (!r || r.client_id !== id) throw new ValidationError("That return isn't this client's.");
   }
+  const twin = (await repo.listTasks({ clientId: id })).find((x) => x.title === t.title && (x.due_on ?? null) === t.due_on && (x.return_id ?? null) === t.return_id && justNow(x.created_at, now));
+  if (twin) return twin;
   return repo.insertTask({ client_id: id, ...t, created_by: actorId });
+}
+
+/** Changes a task's wording, due date or return. */
+export async function editTask(repo: WorkspaceRepo, taskId: string, raw: Record<string, unknown>, actor?: Actor) {
+  const before = await repo.getTask(uuid(taskId, "That task"));
+  if (!before) throw new ValidationError("That task wasn't found.");
+  const t = checkTask(raw);
+  if (t.return_id) {
+    const r = await repo.getReturn(uuid(t.return_id, "That return"));
+    if (!r || r.client_id !== before.client_id) throw new ValidationError("That return isn't this client's.");
+  }
+  if (t.title === before.title && t.due_on === (before.due_on ?? null) && t.return_id === (before.return_id ?? null)) return before;
+  const after = await repo.updateTask(before.id, t);
+  await record(repo, before.client_id, actor ?? null, "task.edited", { name: before.title === t.title ? t.title : `${before.title} to ${t.title}` });
+  return after;
+}
+
+export async function deleteTask(repo: WorkspaceRepo, taskId: string, actor?: Actor): Promise<void> {
+  const t = await repo.getTask(uuid(taskId, "That task"));
+  if (!t) throw new ValidationError("That task wasn't found.");
+  await repo.deleteTask(t.id);
+  await record(repo, t.client_id, actor ?? null, "task.deleted", { name: t.title });
 }
 
 export async function setTaskDone(repo: WorkspaceRepo, taskId: string, done: boolean, now = new Date()) {
   return repo.updateTask(uuid(taskId, "That task"), { done_at: done ? now.toISOString() : null });
 }
 
-export async function addNote(repo: WorkspaceRepo, clientId: string, body: unknown, actorId: string) {
+export async function addNote(repo: WorkspaceRepo, clientId: string, body: unknown, actorId: string, now = new Date()) {
   const id = uuid(clientId, "That client");
   if (!(await repo.getClient(id))) throw new ValidationError("That client wasn't found.");
   const text = clean(body, 4000);
   if (!text) throw new ValidationError("Write the note.");
+  const twin = (await repo.listNotes(id)).find((n) => n.body === text && justNow(n.created_at, now));
+  if (twin) return twin;
   return repo.insertNote({ client_id: id, body: text, created_by: actorId });
+}
+
+export async function editNote(repo: WorkspaceRepo, noteId: string, body: unknown, actor?: Actor) {
+  const before = await repo.getNote(uuid(noteId, "That note"));
+  if (!before) throw new ValidationError("That note wasn't found.");
+  const text = clean(body, 4000);
+  if (!text) throw new ValidationError("Write the note, or delete it.");
+  if (text === before.body) return before;
+  const after = await repo.updateNote(before.id, { body: text });
+  await record(repo, before.client_id, actor ?? null, "note.edited", {});
+  return after;
+}
+
+export async function deleteNote(repo: WorkspaceRepo, noteId: string, actor?: Actor): Promise<void> {
+  const n = await repo.getNote(uuid(noteId, "That note"));
+  if (!n) throw new ValidationError("That note wasn't found.");
+  await repo.deleteNote(n.id);
+  await record(repo, n.client_id, actor ?? null, "note.deleted", {});
 }
 
 export async function logMessage(repo: WorkspaceRepo, clientId: string, raw: Record<string, unknown>, actorId: string, now = new Date()) {
@@ -628,8 +679,8 @@ export async function mergeClients(repo: WorkspaceRepo, keepId: string, dropId: 
 export async function saveStateFiling(repo: WorkspaceRepo, returnId: string, raw: { state: unknown; status: unknown; filed_on?: unknown; result?: unknown }, actor?: Actor) {
   const r = await repo.getReturn(uuid(returnId, "That return"));
   if (!r || r.archived_at) throw new ValidationError("That return wasn't found.");
-  const state = typeof raw.state === "string" ? raw.state.trim().toUpperCase() : "";
-  if (!/^[A-Z]{2}$/.test(state)) throw new ValidationError("Enter the state as two letters, like LA.");
+  const state = resolveState(raw.state);
+  if (!state) throw new ValidationError(`${typeof raw.state === "string" && raw.state.trim() ? `"${raw.state.trim().slice(0, 30)}" isn't a state abbreviation` : "Choose a state"}. Pick one from the list, like LA for Louisiana.`);
   const status = (typeof raw.status === "string" && raw.status ? raw.status : "not_started") as StateFilingStatus;
   if (!(status in STATE_FILING_STATUSES)) throw new ValidationError("Choose a status for the state return.");
   const filedOn = isoDay(raw.filed_on, "The filed date");

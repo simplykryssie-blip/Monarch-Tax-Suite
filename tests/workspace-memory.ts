@@ -90,7 +90,12 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async insertMessage(input: NewClientMessage) { const m: ClientMessage = { status: "logged", sent_to: null, provider_id: null, error: null, segments: null, ...this.c(input), id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.messages.push(m); return this.c(m); }
   async listTasks(f: { clientId?: string; openOnly?: boolean } = {}) { return this.c(this.tasks.filter((t) => (!f.clientId || t.client_id === f.clientId) && (!f.openOnly || !t.done_at))); }
   async insertTask(input: Pick<ClientTask, "client_id" | "return_id" | "title" | "due_on" | "created_by">) { const t: ClientTask = { ...this.c(input), id: randomUUID(), tenant_id: "t", done_at: null, created_at: this.at() }; this.tasks.push(t); return this.c(t); }
-  async updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at">>) { const t = this.tasks.find((x) => x.id === id)!; Object.assign(t, patch); return this.c(t); }
+  async getTask(id: string) { return this.c(this.tasks.find((t) => t.id === id) ?? null); }
+  async deleteTask(id: string) { this.tasks = this.tasks.filter((t) => t.id !== id); }
+  async getNote(id: string) { return this.c(this.notes.find((n) => n.id === id) ?? null); }
+  async updateNote(id: string, patch: Pick<ClientNote, "body">) { const n = this.notes.find((x) => x.id === id)!; Object.assign(n, patch); return this.c(n); }
+  async deleteNote(id: string) { this.notes = this.notes.filter((n) => n.id !== id); }
+  async updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at" | "title" | "due_on" | "return_id">>) { const t = this.tasks.find((x) => x.id === id)!; Object.assign(t, patch); return this.c(t); }
   async listNotes(clientId: string) { return this.c(this.notes.filter((n) => n.client_id === clientId)); }
   async insertNote(input: Pick<ClientNote, "client_id" | "body" | "created_by">) { const n: ClientNote = { ...this.c(input), id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.notes.push(n); return this.c(n); }
 

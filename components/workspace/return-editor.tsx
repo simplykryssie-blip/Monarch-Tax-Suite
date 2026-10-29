@@ -3,6 +3,9 @@ import { archiveReturnAction, editReturnAction, removeStateFilingAction, saveSta
 import { EDITABLE_PREP } from "@/lib/workspace/service.ts";
 import { formatResult } from "@/lib/workspace/rules.ts";
 import { EfileFields } from "@/components/workspace/efile-fields";
+import { SignedMoneyInput } from "@/components/workspace/signed-money-input";
+import { FormattedInput } from "@/components/forms/formatted-input";
+import { US_STATES } from "@/lib/workspace/states.ts";
 import { FILING_STATUSES, FORM_TYPES, PREP_STATUSES, STATE_FILING_STATUSES, type ClientReturn, type ClientTask, type StateFiling } from "@/lib/workspace/types.ts";
 import type { StaffMember } from "@/lib/staff/assign.ts";
 
@@ -34,7 +37,7 @@ export function ReturnEditor({ r, label, stages, staff, tasks, history, states =
           )}
         </label>
         <label>Due date<input type="date" name="due_on" defaultValue={r.due_on ?? ""} /></label>
-        <label>Filed date<input type="date" name="filed_on" defaultValue={r.filed_on ?? ""} /></label>
+        <label>Submission date<input type="date" name="submitted_on" defaultValue={r.submitted_on ?? ""} /><small className="monarch-muted">The day they submitted their intake form.</small></label>
         <h3 className="is-wide" style={{ margin: "8px 0 0" }}>Return details</h3>
         <label>Form
           <select name="form_type" defaultValue={r.form_type ?? ""}><option value="">Not set</option>{Object.entries(FORM_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
@@ -44,10 +47,10 @@ export function ReturnEditor({ r, label, stages, staff, tasks, history, states =
         </label>
         <EfileFields status={r.efile_status ?? "not_sent"} on={r.efile_on ?? ""} reason={r.efile_reject_reason ?? ""} />
         <label>Federal amount
-          <input name="federal_result" inputMode="decimal" placeholder="1,234.50 or -1,234.50" defaultValue={r.federal_result_cents != null ? (r.federal_result_cents / 100).toFixed(2) : ""} />
+          <SignedMoneyInput name="federal_result" placeholder="$0.00  (minus if owed)" defaultValue={r.federal_result_cents != null ? (r.federal_result_cents / 100).toFixed(2).replace(/^(-?)/, "$1") : ""} />
           <small className="monarch-muted">A refund has no sign. An amount the client owes has a minus.</small>
         </label>
-        <label>Fee amount<input name="fee" inputMode="decimal" placeholder="0.00" defaultValue={r.fee_cents != null ? (r.fee_cents / 100).toFixed(2) : ""} /></label>
+        <label>Fee amount<FormattedInput kind="money" name="fee" placeholder="$0.00" defaultValue={r.fee_cents != null ? (r.fee_cents / 100).toFixed(2) : ""} /></label>
         <label className="is-wide">Notes<textarea name="notes" rows={4} maxLength={2000} defaultValue={r.notes ?? ""} placeholder="Anything the next person should know about this return." /></label>
         <div className="is-wide ac-actions"><button className="monarch-primary" data-no-confirm>Save return</button></div>
       </form>
@@ -65,10 +68,11 @@ export function ReturnEditor({ r, label, stages, staff, tasks, history, states =
       )}
       <form action={saveStateFilingAction} className="cl-quick" style={{ marginTop: 8 }}>
         <input type="hidden" name="return_id" value={r.id} /><input type="hidden" name="client_id" value={r.client_id} />
-        <input name="state" maxLength={2} placeholder="State, like LA" aria-label="State" required style={{ width: 120, textTransform: "uppercase" }} />
+        <input name="state" list={`states-${r.id}`} placeholder="State: type or pick (LA)" aria-label="State" required autoComplete="off" style={{ width: 190 }} />
+        <datalist id={`states-${r.id}`}>{Object.entries(US_STATES).map(([abbr, name]) => <option key={abbr} value={abbr}>{name}</option>)}</datalist>
         <select name="status" aria-label="State return status" defaultValue="not_started">{Object.entries(STATE_FILING_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         <input type="date" name="filed_on" aria-label="Filed date" />
-        <input name="result" inputMode="decimal" placeholder="State amount, -1.00 if owed" aria-label="State amount" style={{ width: 190 }} />
+        <SignedMoneyInput name="result" placeholder="State amount (minus if owed)" aria-label="State amount" style={{ width: 210 }} />
         <button className="monarch-secondary" data-no-confirm>Add or update</button>
       </form>
 

@@ -2,13 +2,14 @@
 -- client_returns and one new table. Nothing is dropped and no existing value is changed; every existing return keeps working
 -- as it is. Safe to run again.
 --
--- client_returns (new columns)   form_type, filing_status, e-file status with its date and any rejection reason, the federal
+-- client_returns (new columns)   submitted_on (the day the client submitted their intake form), form_type, filing_status, e-file status with its date and any rejection reason, the federal
 --                                result (positive = refund, negative = amount owed) and the fee amount.
 -- return_state_filings           one row per state return tied to a return: the state, its status, filed date and result
 --                                (positive = refund, negative = amount owed).
 
 set local lock_timeout = '10s';
 
+alter table public.client_returns add column if not exists submitted_on date check (submitted_on is null or submitted_on between date '2000-01-01' and date '2100-01-01');
 alter table public.client_returns add column if not exists form_type text check (form_type is null or form_type in ('1040', '1040-SR', '1040-NR', '1120', '1120-S', '1065', '990', '941', '940', 'other'));
 alter table public.client_returns add column if not exists filing_status text check (filing_status is null or filing_status in ('single', 'married_joint', 'married_separate', 'head_of_household', 'qualifying_surviving_spouse'));
 alter table public.client_returns add column if not exists efile_status text not null default 'not_sent' check (efile_status in ('not_sent', 'transmitted', 'accepted', 'rejected'));

@@ -552,3 +552,8 @@ a.hm-row:hover{background:#fcfbf8}
 .hm-panel.is-right { left: auto; right: 0; }
 .cl-actions-right { display: flex; justify-content: flex-end; position: relative; z-index: 40; }
 .ct-bulk { justify-content: space-between; }
+.item-actions { display: inline-flex; gap: 12px; align-items: center; white-space: nowrap; }
+.item-actions form { display: inline; margin: 0; }
+.cl-strip > a.cl-card-link { border: 1px solid var(--line, #d9d4c7); border-radius: 10px; padding: 10px 12px; background: var(--surface, #fff); display: grid; gap: 2px; color: inherit; text-decoration: none; }
+.cl-strip > a.cl-card-link:hover, .cl-strip > a.cl-card-link:focus-visible { border-color: #214d82; box-shadow: 0 2px 8px rgba(33, 77, 130, 0.15); }
+.cl-strip > a.cl-card-link small { color: var(--muted, #6b665a); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }

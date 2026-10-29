@@ -361,7 +361,7 @@ describe("return details: form, filing status, e-file, result, fee and state ret
     const list = await repo.listStateFilings(ret.id);
     assert.equal(list.length, 1);
     assert.equal(list[0].status, "filed");
-    await assert.rejects(() => saveStateFiling(repo, ret.id, { state: "Louisiana", status: "filed" }), /two letters/);
+    await assert.rejects(() => saveStateFiling(repo, ret.id, { state: "Loo", status: "filed" }), /isn't a state abbreviation/);
     const owed = await saveStateFiling(repo, ret.id, { state: "TX", status: "filed", result: "-45.10" });
     assert.equal(owed.result_cents, -4510);
     await removeStateFiling(repo, ret.id, list[0].id);
@@ -376,5 +376,82 @@ describe("return details: form, filing status, e-file, result, fee and state ret
     assert.equal(formatResult(-123450), "-$1,234.50");
     assert.equal(formatResult(123450), "$1,234.50");
     assert.equal(formatResult(null), "—");
+  });
+});
+
+import { resolveState } from "../lib/workspace/states.ts";
+import { addNote, addTask, deleteNote, deleteTask, editNote, editTask } from "../lib/workspace/service.ts";
+
+describe("states", () => {
+  test("an abbreviation or a full name is accepted, and anything else, like LO, is not", () => {
+    assert.equal(resolveState("LA"), "LA");
+    assert.equal(resolveState(" la "), "LA");
+    assert.equal(resolveState("Louisiana"), "LA");
+    assert.equal(resolveState("new york"), "NY");
+    assert.equal(resolveState("LO"), null);
+    assert.equal(resolveState("XX"), null);
+    assert.equal(resolveState(""), null);
+  });
+  test("a state return with a made-up abbreviation is refused with a plain message", async () => {
+    const repo = new MemoryWorkspace();
+    const client = await repo.insertClient({ full_name: "Ana Ruiz", email: "a@example.com", phone: null, created_by: null } as never);
+    const ret = await repo.insertReturn({ client_id: client.id, tax_year: 2025, kind: "original", parent_id: null, stage_id: "s1", due_on: null, notes: null } as never);
+    await assert.rejects(() => saveStateFiling(repo, ret.id, { state: "LO", status: "filed" }), /"LO" isn't a state abbreviation/);
+    assert.equal((await saveStateFiling(repo, ret.id, { state: "Louisiana", status: "filed" })).state, "LA");
+  });
+});
+
+describe("saving a return's submission date", () => {
+  test("it is the intake submission date, set on its own, and the filed date is no longer typed", async () => {
+    const repo = new MemoryWorkspace();
+    const client = await repo.insertClient({ full_name: "Ana Ruiz", email: "a@example.com", phone: null, created_by: null } as never);
+    const ret = await repo.insertReturn({ client_id: client.id, tax_year: 2025, kind: "original", parent_id: null, stage_id: "s1", due_on: null, notes: null } as never);
+    const out = await editReturn(repo, ret.id, { stage_id: "s1", submitted_on: "2026-01-20", filed_on: "2026-12-31" }, ["s1", "s2"], (x) => x, { assignee: () => "no one" });
+    assert.equal(out.ret.submitted_on, "2026-01-20");
+    assert.equal(out.ret.filed_on ?? null, null, "a typed filed date is ignored");
+    await assert.rejects(() => editReturn(repo, ret.id, { stage_id: "s1", submitted_on: "soon" }, ["s1", "s2"], (x) => x, { assignee: () => "no one" }), /valid date/);
+  });
+});
+
+describe("editing and deleting tasks and notes", () => {
+  const seed = async () => {
+    const repo = new MemoryWorkspace();
+    const client = await repo.insertClient({ full_name: "Ana Ruiz", email: "a@example.com", phone: null, created_by: null } as never);
+    return { repo, client };
+  };
+  test("a note can be edited and deleted, and each is recorded", async () => {
+    const { repo, client } = await seed();
+    const n = await addNote(repo, client.id, "Call after Friday", "u1");
+    const after = await editNote(repo, n.id, "Call Monday instead", { id: "u1" });
+    assert.equal(after.body, "Call Monday instead");
+    await assert.rejects(() => editNote(repo, n.id, "   ", { id: "u1" }), /Write the note/);
+    await deleteNote(repo, n.id, { id: "u1" });
+    assert.equal((await repo.listNotes(client.id)).length, 0);
+    const actions = (await repo.listClientEvents(client.id, 10)).map((e) => e.action);
+    assert.ok(actions.includes("note.edited") && actions.includes("note.deleted"));
+    await assert.rejects(() => deleteNote(repo, n.id), ValidationError);
+  });
+  test("a task can be edited and deleted", async () => {
+    const { repo, client } = await seed();
+    const t = await addTask(repo, client.id, { title: "Get W-2", due_on: "2026-02-01" }, "u1");
+    const after = await editTask(repo, t.id, { title: "Get W-2 and 1099", due_on: "2026-02-05" }, { id: "u1" });
+    assert.equal(after.title, "Get W-2 and 1099");
+    assert.equal(after.due_on, "2026-02-05");
+    await assert.rejects(() => editTask(repo, t.id, { title: "" }, { id: "u1" }), /Write the task/);
+    await deleteTask(repo, t.id, { id: "u1" });
+    assert.equal((await repo.listTasks({ clientId: client.id })).length, 0);
+  });
+  test("saving the same note or task twice in a moment (a double click) keeps one", async () => {
+    const { repo, client } = await seed();
+    const now = new Date("2026-10-15T12:00:00.000Z"); // the in-memory records are stamped with this moment
+    const a = await addNote(repo, client.id, "Same note", "u1", now);
+    const b = await addNote(repo, client.id, "Same note", "u1", new Date(now.getTime() + 2000));
+    assert.equal(a.id, b.id);
+    assert.equal((await repo.listNotes(client.id)).length, 1);
+    await addTask(repo, client.id, { title: "Same task" }, "u1", now);
+    await addTask(repo, client.id, { title: "Same task" }, "u1", new Date(now.getTime() + 2000));
+    assert.equal((await repo.listTasks({ clientId: client.id })).length, 1);
+    await addNote(repo, client.id, "Same note", "u1", new Date(now.getTime() + 60_000));
+    assert.equal((await repo.listNotes(client.id)).length, 2, "a real repeat later is kept");
   });
 });
