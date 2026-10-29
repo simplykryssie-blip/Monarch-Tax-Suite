@@ -226,7 +226,7 @@ export async function editReturnAction(form: FormData) {
 export async function saveStateFilingAction(form: FormData) {
   const clientId = str(form, "client_id");
   await act(clientPage(clientId, "returns"), async () => {
-    const f = await saveStateFiling(workspaceRepo(), str(form, "return_id"), { state: form.get("state"), status: form.get("status"), filed_on: form.get("filed_on") }, await whoIs());
+    const f = await saveStateFiling(workspaceRepo(), str(form, "return_id"), { state: form.get("state"), status: form.get("status"), filed_on: form.get("filed_on"), result: form.get("result") }, await whoIs());
     return { notice: `${f.state} state return saved.` };
   });
 }

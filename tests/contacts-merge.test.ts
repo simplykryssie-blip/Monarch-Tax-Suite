@@ -314,6 +314,7 @@ describe("editing a return", () => {
 });
 
 import { removeStateFiling, saveStateFiling } from "../lib/workspace/service.ts";
+import { formatResult } from "../lib/workspace/rules.ts";
 
 describe("return details: form, filing status, e-file, result, fee and state returns", () => {
   const stages = ["s1", "s2"];
@@ -328,17 +329,16 @@ describe("return details: form, filing status, e-file, result, fee and state ret
   const base = { stage_id: "s1", due_on: "2026-04-15" };
   test("saves form, filing status, e-file (dated today when not given), result and fee, and records them", async () => {
     const { repo, client, ret } = await seed();
-    const out = await editReturn(repo, ret.id, { ...base, form_type: "1040", filing_status: "married_joint", efile_status: "transmitted", result_kind: "refund", result: "$1,234.50", fee: "275" }, stages, nameOf, who, undefined, new Date("2026-02-01T12:00:00Z"));
+    const out = await editReturn(repo, ret.id, { ...base, form_type: "1040", filing_status: "married_joint", efile_status: "transmitted", federal_result: "$1,234.50", fee: "275" }, stages, nameOf, who, undefined, new Date("2026-02-01T12:00:00Z"));
     const after = out.ret;
     assert.equal(after.form_type, "1040");
     assert.equal(after.filing_status, "married_joint");
     assert.equal(after.efile_status, "transmitted");
     assert.equal(after.efile_on, "2026-02-01");
-    assert.equal(after.result_kind, "refund");
-    assert.equal(after.result_cents, 123450);
+    assert.equal(after.federal_result_cents, 123450);
     assert.equal(after.fee_cents, 27500);
     const ev = (await repo.listClientEvents(client.id, 5)).find((e) => e.action === "return.updated")!;
-    assert.match(describeEvent(ev)!, /Fee from blank to \$275\.00/);
+    assert.match(describeEvent(ev)!, /Fee amount from blank to \$275\.00; Federal result from blank to \$1,234\.50/);
     const rejected = await editReturn(repo, ret.id, { ...base, efile_status: "rejected", efile_reject_reason: "R0000-504 SSN mismatch" }, stages, nameOf, who);
     assert.equal(rejected.ret.efile_status, "rejected");
     assert.equal(rejected.ret.efile_reject_reason, "R0000-504 SSN mismatch");
@@ -351,7 +351,7 @@ describe("return details: form, filing status, e-file, result, fee and state ret
     assert.equal(kept.ret.fee_cents, 10000);
     await assert.rejects(() => editReturn(repo, ret.id, { ...base, form_type: "9999" }, stages, nameOf, who), /isn't one of the choices/);
     await assert.rejects(() => editReturn(repo, ret.id, { ...base, fee: "abc" }, stages, nameOf, who), /valid amount/);
-    await assert.rejects(() => editReturn(repo, ret.id, { ...base, result: "50" }, stages, nameOf, who), /Refund or Amount owed/);
+    await assert.rejects(() => editReturn(repo, ret.id, { ...base, federal_result: "abc" }, stages, nameOf, who), /valid amount/);
   });
   test("state returns are added, updated in place, and removed", async () => {
     const { repo, ret } = await seed();
@@ -362,7 +362,19 @@ describe("return details: form, filing status, e-file, result, fee and state ret
     assert.equal(list.length, 1);
     assert.equal(list[0].status, "filed");
     await assert.rejects(() => saveStateFiling(repo, ret.id, { state: "Louisiana", status: "filed" }), /two letters/);
+    const owed = await saveStateFiling(repo, ret.id, { state: "TX", status: "filed", result: "-45.10" });
+    assert.equal(owed.result_cents, -4510);
     await removeStateFiling(repo, ret.id, list[0].id);
-    assert.equal((await repo.listStateFilings(ret.id)).length, 0);
+    assert.equal((await repo.listStateFilings(ret.id)).length, 1);
+  });
+  test("an amount the client owes is negative, a refund is not, and both read back with a minus only for owed", async () => {
+    const { repo, ret } = await seed();
+    for (const [typed, cents] of [["1,234.50", 123450], ["-1,234.50", -123450], ["(200)", -20000], ["$-5.5", -550], ["0", 0]] as const) {
+      const out = await editReturn(repo, ret.id, { ...base, federal_result: typed }, stages, nameOf, who);
+      assert.equal(out.ret.federal_result_cents, cents, typed);
+    }
+    assert.equal(formatResult(-123450), "-$1,234.50");
+    assert.equal(formatResult(123450), "$1,234.50");
+    assert.equal(formatResult(null), "—");
   });
 });

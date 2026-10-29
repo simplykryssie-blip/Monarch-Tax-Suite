@@ -1,7 +1,9 @@
 import { Modal } from "@/components/ui/modal";
 import { archiveReturnAction, editReturnAction, removeStateFilingAction, saveStateFilingAction } from "@/app/(admin)/workspace/actions";
 import { EDITABLE_PREP } from "@/lib/workspace/service.ts";
-import { EFILE_STATUSES, FILING_STATUSES, FORM_TYPES, PREP_STATUSES, RESULT_KINDS, STATE_FILING_STATUSES, type ClientReturn, type ClientTask, type StateFiling } from "@/lib/workspace/types.ts";
+import { formatResult } from "@/lib/workspace/rules.ts";
+import { EfileFields } from "@/components/workspace/efile-fields";
+import { FILING_STATUSES, FORM_TYPES, PREP_STATUSES, STATE_FILING_STATUSES, type ClientReturn, type ClientTask, type StateFiling } from "@/lib/workspace/types.ts";
 import type { StaffMember } from "@/lib/staff/assign.ts";
 
 export type ReturnHistoryLine = { id: string; text: string; at: string; by: string };
@@ -40,16 +42,12 @@ export function ReturnEditor({ r, label, stages, staff, tasks, history, states =
         <label>Filing status
           <select name="filing_status" defaultValue={r.filing_status ?? ""}><option value="">Not set</option>{Object.entries(FILING_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         </label>
-        <label>E-file
-          <select name="efile_status" defaultValue={r.efile_status ?? "not_sent"}>{Object.entries(EFILE_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        <EfileFields status={r.efile_status ?? "not_sent"} on={r.efile_on ?? ""} reason={r.efile_reject_reason ?? ""} />
+        <label>Federal amount
+          <input name="federal_result" inputMode="decimal" placeholder="1,234.50 or -1,234.50" defaultValue={r.federal_result_cents != null ? (r.federal_result_cents / 100).toFixed(2) : ""} />
+          <small className="monarch-muted">A refund has no sign. An amount the client owes has a minus.</small>
         </label>
-        <label>E-file date<input type="date" name="efile_on" defaultValue={r.efile_on ?? ""} /></label>
-        <label className="is-wide">If rejected, why<input name="efile_reject_reason" maxLength={500} defaultValue={r.efile_reject_reason ?? ""} placeholder="The reject code or reason from your software" /></label>
-        <label>Result
-          <select name="result_kind" defaultValue={r.result_kind ?? ""}><option value="">Not set</option>{Object.entries(RESULT_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-        </label>
-        <label>Result amount<input name="result" inputMode="decimal" placeholder="0.00" defaultValue={r.result_cents != null ? (r.result_cents / 100).toFixed(2) : ""} /></label>
-        <label>Fee quoted<input name="fee" inputMode="decimal" placeholder="0.00" defaultValue={r.fee_cents != null ? (r.fee_cents / 100).toFixed(2) : ""} /></label>
+        <label>Fee amount<input name="fee" inputMode="decimal" placeholder="0.00" defaultValue={r.fee_cents != null ? (r.fee_cents / 100).toFixed(2) : ""} /></label>
         <label className="is-wide">Notes<textarea name="notes" rows={4} maxLength={2000} defaultValue={r.notes ?? ""} placeholder="Anything the next person should know about this return." /></label>
         <div className="is-wide ac-actions"><button className="monarch-primary" data-no-confirm>Save return</button></div>
       </form>
@@ -59,7 +57,7 @@ export function ReturnEditor({ r, label, stages, staff, tasks, history, states =
         <ul className="cl-list">
           {states.map((x) => (
             <li key={x.id}>
-              <span><b>{x.state}</b><small className="monarch-subcell">{STATE_FILING_STATUSES[x.status]}{x.filed_on ? ` · filed ${x.filed_on}` : ""}</small></span>
+              <span><b>{x.state}</b><small className="monarch-subcell">{STATE_FILING_STATUSES[x.status]}{x.filed_on ? ` · filed ${x.filed_on}` : ""}{x.result_cents != null ? ` · ${formatResult(x.result_cents)}` : ""}</small></span>
               <form action={removeStateFilingAction}><input type="hidden" name="id" value={x.id} /><input type="hidden" name="return_id" value={r.id} /><input type="hidden" name="client_id" value={r.client_id} /><button className="monarch-link is-danger">Remove</button></form>
             </li>
           ))}
@@ -70,6 +68,7 @@ export function ReturnEditor({ r, label, stages, staff, tasks, history, states =
         <input name="state" maxLength={2} placeholder="State, like LA" aria-label="State" required style={{ width: 120, textTransform: "uppercase" }} />
         <select name="status" aria-label="State return status" defaultValue="not_started">{Object.entries(STATE_FILING_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         <input type="date" name="filed_on" aria-label="Filed date" />
+        <input name="result" inputMode="decimal" placeholder="State amount, -1.00 if owed" aria-label="State amount" style={{ width: 190 }} />
         <button className="monarch-secondary" data-no-confirm>Add or update</button>
       </form>
 
