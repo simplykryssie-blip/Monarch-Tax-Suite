@@ -120,8 +120,9 @@ const isoDay = (v: unknown, label: string): string | null => {
  */
 export async function editReturn(
   repo: WorkspaceRepo, id: string, raw: Record<string, unknown>, stageIds: string[], stageName: (id: string) => string,
-  who: { assignee: (id: string | null) => string }, actor?: Actor, now = new Date(),
+  who: { assignee: (id: string | null) => string }, actor?: Actor, now = new Date(), today?: string,
 ): Promise<{ ret: ClientReturn; changes: string[] }> {
+  const dayNow = today ?? now.toISOString().slice(0, 10);
   const before = await repo.getReturn(uuid(id, "That return"));
   if (!before || before.archived_at) throw new ValidationError("That return wasn't found.");
   const patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "assignee_id" | "prep_status">> & ReturnDetails = {};
@@ -132,7 +133,7 @@ export async function editReturn(
   const due = isoDay(raw.due_on, "The due date");
   if (due !== before.due_on) { patch.due_on = due; changes.push(`Due date from ${before.due_on ?? "blank"} to ${due ?? "blank"}`); }
   // The filed date is set by moving the return to the last stage, as dragging it on the board does. It isn't typed here.
-  if (patch.stage_id === stageIds[stageIds.length - 1] && !before.filed_on) patch.filed_on = now.toISOString().slice(0, 10);
+  if (patch.stage_id === stageIds[stageIds.length - 1] && !before.filed_on) patch.filed_on = dayNow;
   const prep = typeof raw.prep_status === "string" && raw.prep_status ? (raw.prep_status as PrepStatus) : before.prep_status;
   if (prep !== before.prep_status) {
     if (!EDITABLE_PREP.includes(prep) || before.prep_status === "handed_off") throw new ValidationError("A return handed to an ERO is changed by the hand-off, not here.");
@@ -163,7 +164,7 @@ export async function editReturn(
     details.efile_status = efile;
     changes.push(`E-file from ${EFILE_STATUSES[before.efile_status ?? "not_sent"]} to ${EFILE_STATUSES[efile]}`);
     // A new e-file status without a date is dated today.
-    if (!("efile_on" in raw) || !raw.efile_on) details.efile_on = efile === "not_sent" ? null : now.toISOString().slice(0, 10);
+    if (!("efile_on" in raw) || !raw.efile_on) details.efile_on = efile === "not_sent" ? null : dayNow;
   }
   if ("efile_on" in raw && raw.efile_on) { const d = isoDay(raw.efile_on, "The e-file date"); if (d !== (before.efile_on ?? null)) { details.efile_on = d; if (!changes.some((c) => c.startsWith("E-file"))) changes.push(`E-file date to ${d}`); } }
   if ("efile_reject_reason" in raw) {
@@ -681,10 +682,14 @@ export async function saveStateFiling(repo: WorkspaceRepo, returnId: string, raw
   if (!r || r.archived_at) throw new ValidationError("That return wasn't found.");
   const state = resolveState(raw.state);
   if (!state) throw new ValidationError(`${typeof raw.state === "string" && raw.state.trim() ? `"${raw.state.trim().slice(0, 30)}" isn't a state abbreviation` : "Choose a state"}. Pick one from the list, like LA for Louisiana.`);
-  const status = (typeof raw.status === "string" && raw.status ? raw.status : "not_started") as StateFilingStatus;
+  const existing = (await repo.listStateFilings(r.id)).find((x) => x.state === state);
+  // Adding a state that is already there updates it; whatever the form leaves blank keeps its current value.
+  const status = (typeof raw.status === "string" && raw.status ? raw.status : existing?.status ?? "not_started") as StateFilingStatus;
   if (!(status in STATE_FILING_STATUSES)) throw new ValidationError("Choose a status for the state return.");
-  const filedOn = isoDay(raw.filed_on, "The filed date");
-  const resultCents = parseSignedMoney(raw.result);
+  const typedDate = isoDay(raw.filed_on, "The filed date");
+  const filedOn = typedDate ?? existing?.filed_on ?? null;
+  const typedResult = parseSignedMoney(raw.result);
+  const resultCents = typedResult ?? existing?.result_cents ?? null;
   const saved = await repo.saveStateFiling(r.id, state, status, filedOn, resultCents);
   await record(repo, r.client_id, actor ?? null, "return.updated", { return_id: r.id, label: returnLabelOf(r), changes: [`${state} state return: ${STATE_FILING_STATUSES[status]}${resultCents != null ? `, ${formatResult(resultCents)}` : ""}`] });
   return saved;
