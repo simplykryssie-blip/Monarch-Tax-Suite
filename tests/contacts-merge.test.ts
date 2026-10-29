@@ -269,3 +269,46 @@ describe("comparing counts for leads too", () => {
     assert.deepEqual(await recordCounts(new MemoryWorkspace(), contact({ leadId: lead.id })), [], "without the leads list there is nothing to count");
   });
 });
+
+import { archiveReturn, editReturn } from "../lib/workspace/service.ts";
+import { describeEvent } from "../lib/workspace/activity.ts";
+
+describe("editing a return", () => {
+  const stages = ["s1", "s2", "s3"];
+  const nameOf = (id: string) => ({ s1: "Intake", s2: "Prep", s3: "Filed" })[id] ?? id;
+  const who = { assignee: (id: string | null) => (id ? "Luna" : "no one") };
+  const seed = async () => {
+    const repo = new MemoryWorkspace();
+    const client = await repo.insertClient({ full_name: "Ana Ruiz", email: "a@example.com", phone: null, created_by: null } as never);
+    const ret = await repo.insertReturn({ client_id: client.id, tax_year: 2025, kind: "original", parent_id: null, stage_id: "s1", due_on: "2026-04-15", notes: null } as never);
+    return { repo, client, ret };
+  };
+  test("saves only what changed and writes it to the client's activity", async () => {
+    const { repo, client, ret } = await seed();
+    const out = await editReturn(repo, ret.id, { stage_id: "s2", due_on: "2026-05-01", filed_on: "", prep_status: "in_prep", assignee_id: "22222222-2222-4222-8222-222222222222", notes: "Needs W-2" }, stages, nameOf, who);
+    assert.equal(out.changes.length, 5);
+    const after = (await repo.getReturn(ret.id))!;
+    assert.equal(after.stage_id, "s2");
+    assert.equal(after.prep_status, "in_prep");
+    assert.equal(after.notes, "Needs W-2");
+    const ev = (await repo.listClientEvents(client.id, 5)).find((e) => e.action === "return.updated")!;
+    assert.match(describeEvent(ev)!, /^2025 return: Stage from Intake to Prep; Due date from 2026-04-15 to 2026-05-01/);
+    const same = await editReturn(repo, ret.id, { stage_id: "s2", due_on: "2026-05-01", prep_status: "in_prep", assignee_id: "22222222-2222-4222-8222-222222222222", notes: "Needs W-2" }, stages, nameOf, who);
+    assert.deepEqual(same.changes, [], "nothing changed, nothing recorded");
+  });
+  test("moving to the last stage fills in today's date as filed, and a bad date or stage is refused", async () => {
+    const { repo, ret } = await seed();
+    const out = await editReturn(repo, ret.id, { stage_id: "s3", due_on: "2026-04-15" }, stages, nameOf, who, undefined, new Date("2026-04-10T12:00:00Z"));
+    assert.equal(out.ret.filed_on, "2026-04-10");
+    await assert.rejects(() => editReturn(repo, ret.id, { stage_id: "nope" }, stages, nameOf, who), /isn't in the pipeline/);
+    await assert.rejects(() => editReturn(repo, ret.id, { stage_id: "s3", due_on: "13/45/2026" }, stages, nameOf, who), /valid date/);
+  });
+  test("a return handed to an ERO can't be set back by hand, and an archived return can't be edited", async () => {
+    const { repo, ret } = await seed();
+    await repo.updateReturn(ret.id, { prep_status: "handed_off" });
+    await assert.rejects(() => editReturn(repo, ret.id, { stage_id: "s1", prep_status: "in_prep", due_on: "2026-04-15" }, stages, nameOf, who), /hand-off/);
+    await archiveReturn(repo, ret.id);
+    await assert.rejects(() => editReturn(repo, ret.id, { notes: "x" }, stages, nameOf, who), ValidationError);
+    await assert.rejects(() => archiveReturn(repo, ret.id), ValidationError);
+  });
+});

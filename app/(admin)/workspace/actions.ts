@@ -33,6 +33,9 @@ import { currentTenantId } from "@/lib/tenants.ts";
 import { checkSsn, copySsn, hasStoredSsn, revealSsn, storeSsn } from "@/lib/ssn/service.ts";
 import { revealGate, ssnDeps } from "@/lib/ssn/server";
 import type { Invoice } from "@/lib/workspace/types";
+import { archiveReturn, editReturn } from "@/lib/workspace/service.ts";
+import { staffLabel } from "@/lib/staff/assign.ts";
+import { listStaff } from "@/lib/staff/server";
 
 // My Workspace actions. Each re-checks administrator access and acts only on the current tenant's rows.
 
@@ -199,6 +202,33 @@ export async function moveWorkAction(workId: string, stageId: string): Promise<{
     unstable_rethrow(e);
     return { ok: false, error: failure(e) };
   }
+}
+
+/** Saves a return's stage, preparer, preparation status, dates and notes, and writes what changed to the client's activity. */
+export async function editReturnAction(form: FormData) {
+  const returnId = str(form, "id");
+  const clientId = str(form, "client_id");
+  await act(clientPage(clientId, "returns"), async () => {
+    const stages = await firstStage();
+    const team = await listStaff();
+    const assignee = str(form, "assignee_id");
+    if (assignee && !team.some((m) => m.id === assignee)) throw new ValidationError("That person isn't on your team.");
+    const before = await workspaceRepo().getReturn(returnId);
+    const { changes, ret } = await editReturn(
+      workspaceRepo(), returnId, raw(form), stages.map((x) => x.id), (sid) => stages.find((x) => x.id === sid)?.name ?? "Intake",
+      { assignee: (uid) => (uid ? staffLabel(team, uid) ?? "someone" : "no one") }, await whoIs(),
+    );
+    if (before && ret.stage_id !== before.stage_id) await emitReturnStage(ret.id, ret.stage_id);
+    return { notice: changes.length ? `Return saved. ${changes.length} ${changes.length === 1 ? "change" : "changes"}.` : "Nothing was changed." };
+  });
+}
+
+export async function archiveReturnAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(clientPage(clientId, "returns"), async () => {
+    await archiveReturn(workspaceRepo(), str(form, "id"), await whoIs());
+    return { notice: "Return archived." };
+  });
 }
 
 /** Called by the board when a card is dropped on another stage. */
