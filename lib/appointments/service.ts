@@ -4,7 +4,7 @@ import { ValidationError } from "../commerce/validation.ts";
 import { checkEmail, checkName, checkPhone } from "../leads/service.ts";
 import { matchPerson, type PeopleDeps } from "../people/match.ts";
 import type { AppointmentActivity } from "./activity.ts";
-import { cancellationFrom, confirmationFrom, reminderFrom } from "./messages.ts";
+import { cancellationFrom, confirmationFrom, fromFriendly, reminderFrom } from "./messages.ts";
 import { availableSlots, slotIsOffered, type Rule, type Slot } from "./slots.ts";
 import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type BookingMessages, type NewReminder, type Notifier, type TypeInput } from "./types.ts";
 
@@ -269,7 +269,7 @@ export async function saveBookingMessages(d: AppointmentDeps, raw: Record<string
   const pick = (v: unknown, max: number, label: string) => {
     const s = para(v, max);
     if (typeof v === "string" && v.trim().length > max) throw new ValidationError(`${label} can be up to ${max} characters.`);
-    return s || null;
+    return s ? fromFriendly(s) : null;
   };
   const group = typeof raw.group === "string" && raw.group in MESSAGE_GROUPS ? (raw.group as keyof typeof MESSAGE_GROUPS) : "confirm";
   const current = (await d.repo.getMessages().catch(() => null)) ?? { confirm_subject: null, confirm_body: null, confirm_sms: null };

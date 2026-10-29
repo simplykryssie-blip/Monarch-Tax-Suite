@@ -1,13 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { DEFAULT_CANCEL_BODY, DEFAULT_CANCEL_SUBJECT, DEFAULT_CONFIRM_BODY, DEFAULT_CONFIRM_SMS, DEFAULT_CONFIRM_SUBJECT, DEFAULT_REMINDER_BODY, DEFAULT_REMINDER_SMS, DEFAULT_REMINDER_SUBJECT } from "@/lib/appointments/messages.ts";
+import { toFriendly, TAG_WORDS, DEFAULT_CANCEL_BODY, DEFAULT_CANCEL_SUBJECT, DEFAULT_CONFIRM_BODY, DEFAULT_CONFIRM_SMS, DEFAULT_CONFIRM_SUBJECT, DEFAULT_REMINDER_BODY, DEFAULT_REMINDER_SMS, DEFAULT_REMINDER_SUBJECT } from "@/lib/appointments/messages.ts";
 import { SubmitOnce } from "@/components/admin/submit-once";
 
 const TAGS: [string, string][] = [
   ["Client name", "name"], ["First name", "first_name"], ["Appointment type", "type"], ["Firm name", "office"],
   ["Date and time", "date_time"], ["Location", "location_line"], ["Cancel or change link", "manage_link"],
 ];
+void TAG_WORDS;
 type Field = "subject" | "body" | "sms";
 export type MessageGroup = "confirm" | "reminder" | "cancel";
 const DEFAULTS: Record<MessageGroup, { subject: string; body: string; sms: string | null }> = {
@@ -16,10 +17,10 @@ const DEFAULTS: Record<MessageGroup, { subject: string; body: string; sms: strin
   cancel: { subject: DEFAULT_CANCEL_SUBJECT, body: DEFAULT_CANCEL_BODY, sms: null },
 };
 
-/** The confirmation email subject and body, and the text. Click a tag to drop it into whichever box you were typing in. */
+/** The confirmation email subject and body, and the text. Pick what to add from the list and it drops into the box you were typing in, shown in [brackets]. */
 export function MessageFields({ group = "confirm", subject, body, sms }: { group?: MessageGroup; subject: string | null; body: string | null; sms: string | null }) {
   const d = DEFAULTS[group];
-  const [vals, setVals] = useState<Record<Field, string>>({ subject: subject ?? d.subject, body: body ?? d.body, sms: sms ?? d.sms ?? "" });
+  const [vals, setVals] = useState<Record<Field, string>>({ subject: toFriendly(subject ?? d.subject), body: toFriendly(body ?? d.body), sms: toFriendly(sms ?? d.sms ?? "") });
   const [active, setActive] = useState<Field>("body");
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -28,7 +29,7 @@ export function MessageFields({ group = "confirm", subject, body, sms }: { group
 
   const remember = (f: Field) => (e: React.SyntheticEvent<HTMLInputElement | HTMLTextAreaElement>) => { caret.current[f] = e.currentTarget.selectionStart ?? e.currentTarget.value.length; };
   const insert = (key: string) => {
-    const tag = `{{${key}}}`;
+    const tag = `[${TAG_WORDS[key] ?? key}]`;
     const at = caret.current[active];
     setVals((v) => ({ ...v, [active]: v[active].slice(0, at) + tag + v[active].slice(at) }));
     caret.current[active] = at + tag.length;

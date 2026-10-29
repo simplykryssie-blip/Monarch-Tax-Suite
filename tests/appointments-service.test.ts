@@ -445,3 +445,14 @@ test("an appointment type can be archived and restored; archived types take no p
   assert.ok(await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM }));
   await assert.rejects(setTypeArchived(deps, "nope", true), /wasn't found/);
 });
+
+test("people read and write [First name], never {{first_name}}", async () => {
+  const { toFriendly, fromFriendly } = await import("../lib/appointments/messages.ts");
+  assert.equal(toFriendly("Hi {{first_name}}, {{date_time}} {{unknown}}"), "Hi [First name], [Date and time] {{unknown}}");
+  assert.equal(fromFriendly("Hi [First name], see you [date and time] [not a tag]"), "Hi {{first_name}}, see you {{date_time}} [not a tag]");
+  const { deps } = make();
+  await saveBookingMessages(deps, { group: "confirm", confirm_subject: "Booked, [First name]", confirm_body: "See you [Date and time]. [Cancel or change link]" }, null);
+  const saved = await deps.repo.getMessages();
+  assert.equal(saved?.confirm_subject, "Booked, {{first_name}}");
+  assert.equal(saved?.confirm_body, "See you {{date_time}}. {{manage_link}}");
+});

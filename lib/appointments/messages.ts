@@ -26,6 +26,22 @@ export const CONFIRM_FIELDS: Record<string, string> = {
   location: "Where it is", location_line: "\"Where: ...\", or nothing when there is no location", manage_link: "The link to cancel or change it",
 };
 
+/** The words a person sees for each piece of information, in place of {{name}} and the like. */
+export const TAG_WORDS: Record<string, string> = {
+  name: "Client name", first_name: "First name", type: "Appointment type", office: "Firm name", date_time: "Date and time",
+  location: "Location", location_line: "Location", manage_link: "Cancel or change link",
+};
+const WORD_TO_KEY = new Map(Object.entries(TAG_WORDS).filter(([k]) => k !== "location").map(([k, w]) => [w.toLowerCase(), k]));
+
+/** A stored message as a person reads it: {{first_name}} shown as [First name]. */
+export function toFriendly(template: string): string {
+  return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (all, k: string) => (TAG_WORDS[k] ? `[${TAG_WORDS[k]}]` : all));
+}
+/** What a person wrote back to the stored form: [First name] becomes {{first_name}}. Anything else in brackets is left as typed. */
+export function fromFriendly(text: string): string {
+  return text.replace(/\[([^\[\]]{1,40})\]/g, (all, w: string) => { const k = WORD_TO_KEY.get(w.trim().toLowerCase()); return k ? `{{${k}}}` : all; });
+}
+
 /** Fills {{placeholders}} in a message. An unknown placeholder is left out; blank lines left behind are tidied. */
 export function fillMessage(template: string, values: Record<string, string>): string {
   return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_, k: string) => values[k] ?? "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();

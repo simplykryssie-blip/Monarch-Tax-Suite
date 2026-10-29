@@ -14,7 +14,7 @@ export default async function FirmProfilePage({ searchParams }: { searchParams: 
   const p = result.ok ? result.data : null;
   return (
     <>
-      <PageTitle title="Firm profile">Your firm&apos;s details. Document merge fields ({"{{firm_name}}"}, {"{{firm_phone}}"} …) and the emails clients receive use them.</PageTitle>
+      <PageTitle title="Firm profile">Your firm&apos;s details. Your documents and the emails clients receive fill them in for you.</PageTitle>
       <Flash notice={notice} error={error} />
       {!result.ok ? <SetupRequired message={result.message} /> : (
         <form action={saveFirmProfileAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
