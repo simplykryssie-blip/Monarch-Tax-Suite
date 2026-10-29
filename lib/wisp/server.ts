@@ -1,15 +1,14 @@
 import "server-only";
-import { headers } from "next/headers";
 import { appOrigin } from "../admin";
 import { senderFor } from "../automation/engine.ts";
 import { sanitizeError } from "../automation/sanitize.ts";
 import { automationDeps } from "../automation/server";
 import { SupabaseSendersRepo } from "../automation/supabase-senders.ts";
-import { brandsOf, hostFromHeaders } from "../brands.ts";
+import { brandsOf } from "../brands.ts";
 import { CrmSecrets } from "../crm/crypto.ts";
 import { SupabaseDocumentStore, SupabaseDocumentsRepo } from "../documents/supabase-repo.ts";
 import { heldBack } from "../forms/after.ts";
-import { platformClient, tenantClient } from "../supabase/service";
+import { tenantClient } from "../supabase/service";
 import { MONARCH_TENANT_ID } from "../tenants.ts";
 import { convertFromPurchase } from "../leads/service.ts";
 import { leadsDeps } from "../leads/server";
@@ -18,21 +17,6 @@ import { SupabaseWispRepo } from "./supabase-repo.ts";
 
 // Server wiring for the WISP Generator. The public page belongs to the tenant whose brand web address it was opened
 // on (Monarch for the app's own address); everything after that acts as that tenant only.
-
-/** The tenant whose brand owns this web address, or Monarch. One indexed lookup, logged as platform access. */
-export async function tenantForHost(host: string | null): Promise<string> {
-  if (!host) return MONARCH_TENANT_ID;
-  const bare = host.replace(/:\d+$/, "");
-  const { data } = await platformClient("wisp_link").from("email_domains").select("tenant_id").eq("link_host", bare).maybeSingle();
-  if (data?.tenant_id) return data.tenant_id as string;
-  // An office's website address also names the office, so booking pages and forms embedded in its site work on it.
-  const site = await platformClient("site_host").from("site_domains").select("tenant_id").eq("hostname", bare).maybeSingle();
-  return (site.data?.tenant_id as string | undefined) ?? MONARCH_TENANT_ID;
-}
-
-export async function requestTenant(): Promise<string> {
-  return tenantForHost(hostFromHeaders(await headers()));
-}
 
 export function wispDeps(tenantId: string): WispDeps {
   const secrets = CrmSecrets.fromBase64(process.env.MONARCH_ENCRYPTION_KEY);

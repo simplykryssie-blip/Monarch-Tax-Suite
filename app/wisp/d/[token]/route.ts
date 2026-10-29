@@ -1,5 +1,6 @@
 import { downloadUrl, planForLink } from "@/lib/wisp/service.ts";
-import { requestTenant, wispDeps } from "@/lib/wisp/server";
+import { requestTenant } from "@/lib/request-tenant";
+import { wispDeps } from "@/lib/wisp/server";
 
 /** The download link in the delivery email: works for a year, and each download is logged. */
 export async function GET(request: Request, { params }: { params: Promise<{ token: string }> }) {

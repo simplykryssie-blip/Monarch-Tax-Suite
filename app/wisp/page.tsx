@@ -5,7 +5,8 @@ import { MONARCH_TENANT_ID } from "@/lib/tenants";
 import { SupabaseCommerceRepo } from "@/lib/commerce/supabase-repo.ts";
 import { tenantClient } from "@/lib/supabase/service";
 import { comparisonFee } from "@/lib/wisp/content.ts";
-import { requestTenant, wispDeps } from "@/lib/wisp/server";
+import { requestTenant } from "@/lib/request-tenant";
+import { wispDeps } from "@/lib/wisp/server";
 import { WispApp } from "@/components/wisp/wisp-app";
 import { storeStripeClient } from "@/lib/store-stripe/server";
 
