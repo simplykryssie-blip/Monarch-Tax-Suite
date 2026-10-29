@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/admin";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { leadsDeps } from "@/lib/leads/server";
 import { assignLead } from "@/lib/leads/service.ts";
-import { checkAssignee } from "@/lib/staff/assign.ts";
+import { checkAssignee, LEAD_ASSIGNMENT_INSTALLED } from "@/lib/staff/assign.ts";
 import { listStaff } from "@/lib/staff/server";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { assignClient } from "@/lib/workspace/service.ts";
@@ -28,7 +28,10 @@ export async function assignContactAction(form: FormData) {
     if (!UUID.test(id) || (kind !== "client" && kind !== "lead")) throw new ValidationError("That contact wasn't found.");
     const who = checkAssignee(await listStaff(), form.get("assignee"));
     if (kind === "client") await assignClient(workspaceRepo(), id, who, { id: admin.userId, email: admin.email });
-    else await assignLead(leadsDeps(), id, who, admin.userId);
+    else {
+      if (!LEAD_ASSIGNMENT_INSTALLED) throw new ValidationError("Assigning leads to a teammate isn't turned on yet.");
+      await assignLead(leadsDeps(), id, who, admin.userId);
+    }
     target = to(back, "notice", who ? `Assigned to ${who.label}.` : "Now assigned to no one.");
   } catch (e) {
     unstable_rethrow(e);
