@@ -18,7 +18,7 @@ export function LeadFields({ v, tagOptions = [], showSource = false }: { v: Lead
       {showSource ? <label>Source<input name="source" maxLength={120} defaultValue={v.source ?? ""} autoComplete="off" /><small className="monarch-muted">Set automatically; change it if it&apos;s wrong.</small></label> : <input type="hidden" name="source" value="manual" />}
       <label>Status
         <select name="status" defaultValue={v.status ?? "new"}>
-          {STATUS_KEYS.map((s) => <option key={s} value={s}>{LEAD_STATUSES[s]}</option>)}
+          {STATUS_KEYS.filter((s) => s !== "converted" || v.status === "converted").map((s) => <option key={s} value={s}>{LEAD_STATUSES[s]}</option>)}
         </select>
       </label>
       <label>Last contacted<input name="last_contacted_at" type="date" defaultValue={v.last_contacted_at ?? ""} /></label>
