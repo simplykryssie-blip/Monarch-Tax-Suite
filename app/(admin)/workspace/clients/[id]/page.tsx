@@ -14,6 +14,7 @@ import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { MessageComposer } from "@/components/contacts/message-composer";
 import { NewInvoice } from "@/components/contacts/new-invoice";
 import { Modal } from "@/components/ui/modal";
+import { HoverMenu } from "@/components/ui/hover-menu";
 import { duplicatesOfClient } from "@/lib/contacts/duplicates.ts";
 import { loadContacts } from "@/lib/contacts/server";
 import { documentDeps } from "@/lib/documents/server";
@@ -149,9 +150,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       <PageTitle title={client.full_name} back={{ href: "/contacts", label: "Contacts" }}>
         {[client.email, client.phone].filter(Boolean).join(" · ") || "No contact details yet"}{client.archived_at ? " · Archived" : ""}
       </PageTitle>
-      <details className="cl-menu">
-        <summary className="monarch-secondary">Actions ▾</summary>
-        <ul className="cl-menu-list">
+      <HoverMenu label="Actions">
+        <ul className="hm-list">
           <li><Link href={`/workspace/clients/${id}?tab=messages`}>Send a message</Link></li>
           <li><Link href={`/workspace/clients/${id}?tab=documents`}>Upload a document</Link></li>
           <li><Link href={`/workspace/clients/${id}?tab=billing`}>Create an invoice</Link></li>
@@ -175,7 +175,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             </form>
           </li>
         </ul>
-      </details>
+      </HoverMenu>
       <Flash notice={sp.notice} error={sp.error} />
       {duplicates.length > 0 && (
         <div className="cl-dupe" role="note">

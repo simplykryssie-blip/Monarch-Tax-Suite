@@ -541,14 +541,11 @@ a.hm-row:hover{background:#fcfbf8}
 .ct-bulk { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--monarch-line, #e5e7eb); }
 .ct-bulk input[name="tag"] { min-width: 120px; }
 .cl-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-.ct-menu { position: relative; }
-.ct-menu-list { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; margin: 0; padding: 6px; list-style: none; min-width: 230px; background: var(--surface, #fff); border: 1px solid var(--line, #d9d4c7); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); }
-.ct-menu-list button { width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 6px; cursor: pointer; font: inherit; }
-.ct-menu-list button:hover, .ct-menu-list button:focus-visible { background: rgba(0, 0, 0, 0.06); }
-.cl-menu { position: relative; display: inline-block; margin: 0 0 12px; }
-.cl-menu > summary { list-style: none; cursor: pointer; display: inline-block; }
-.cl-menu > summary::-webkit-details-marker { display: none; }
-.cl-menu-list { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; margin: 0; padding: 6px; list-style: none; min-width: 220px; background: var(--surface, #fff); border: 1px solid var(--line, #d9d4c7); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); }
-.cl-menu-list a, .cl-menu-list button { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 6px; cursor: pointer; font: inherit; color: inherit; text-decoration: none; }
-.cl-menu-list a:hover, .cl-menu-list button:hover:not(:disabled), .cl-menu-list a:focus-visible, .cl-menu-list button:focus-visible { background: rgba(0, 0, 0, 0.06); }
-.cl-menu-list button:disabled { opacity: 0.5; cursor: not-allowed; }
+/* Small menus: opaque, above the page, closing when the mouse leaves. */
+.hm { position: relative; display: inline-block; margin: 0 0 12px; }
+.ct-bulk .hm { margin: 0; }
+.hm-panel { position: absolute; z-index: 1000; top: 100%; left: 0; padding-top: 4px; min-width: 230px; }
+.hm-list { margin: 0; padding: 6px; list-style: none; background: #ffffff; color: #211f19; border: 1px solid #d9d4c7; border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18); }
+.hm-list a, .hm-list button { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 6px; cursor: pointer; font: inherit; color: inherit; text-decoration: none; }
+.hm-list a:hover, .hm-list button:hover:not(:disabled), .hm-list a:focus-visible, .hm-list button:focus-visible { background: #f1eee6; }
+.hm-list button:disabled { opacity: 0.5; cursor: not-allowed; }
