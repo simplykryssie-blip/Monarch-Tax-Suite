@@ -14,7 +14,11 @@ import { leadsDeps } from "@/lib/leads/server";
 import { assignLead, setLeadStatus } from "@/lib/leads/service.ts";
 import { LEAD_STATUSES, type LeadStatus } from "@/lib/leads/types.ts";
 import { parseTags, TAG_LENGTH, TAG_MAX } from "@/lib/leads/tags.ts";
+<<<<<<< HEAD
 import { checkAssignee } from "@/lib/staff/assign.ts";
+=======
+import { checkAssignee, LEAD_ASSIGNMENT_INSTALLED } from "@/lib/staff/assign.ts";
+>>>>>>> claude/archive-fix
 import { listStaff } from "@/lib/staff/server";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { assignClient, saveClientTags } from "@/lib/workspace/service.ts";
@@ -52,8 +56,15 @@ export async function bulkContactsAction(form: FormData) {
     if (op === "assign") {
       const who = checkAssignee(await listStaff(), form.get("assignee"));
       for (const c of targets) {
+<<<<<<< HEAD
         if (c.refs.clientId) await assignClient(repo, c.refs.clientId, who, actor);
         if (c.refs.leadId) await assignLead(leads, c.refs.leadId, who, admin.userId);
+=======
+        // A contact that is only a lead can't be assigned until lead assignment is installed.
+        if (!c.refs.clientId && !LEAD_ASSIGNMENT_INSTALLED) { skipped.push({ name: c.name, reason: "leads can't be assigned yet" }); continue; }
+        if (c.refs.clientId) await assignClient(repo, c.refs.clientId, who, actor);
+        if (c.refs.leadId && LEAD_ASSIGNMENT_INSTALLED) await assignLead(leads, c.refs.leadId, who, admin.userId);
+>>>>>>> claude/archive-fix
         done++;
       }
       message = who ? `Assigned ${plural(done, "contact", "contacts")} to ${who.label}.` : `${plural(done, "contact", "contacts")} now assigned to no one.`;

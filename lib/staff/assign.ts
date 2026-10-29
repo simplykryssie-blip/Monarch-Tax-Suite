@@ -15,3 +15,13 @@ export function checkAssignee(staff: StaffMember[], raw: unknown): Assignee {
 }
 
 export const staffLabel = (staff: StaffMember[], id: string | null | undefined): string | null => (id ? staff.find((s) => s.id === id)?.label ?? "A former teammate" : null);
+<<<<<<< HEAD
+=======
+
+/**
+ * Whether leads can be assigned to a teammate. Clients are assigned through their existing owner field. Leads need an
+ * "assigned to" field in the database that is not installed in production yet, so this stays false until that change is
+ * approved and applied there (supabase/migrations/20261128090000_leads_assigned_to.sql).
+ */
+export const LEAD_ASSIGNMENT_INSTALLED = false;
+>>>>>>> claude/archive-fix

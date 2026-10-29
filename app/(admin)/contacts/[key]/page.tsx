@@ -5,7 +5,11 @@ import { Badge, Flash, money, PageTitle, when } from "@/components/admin/ui";
 import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { AssignTo } from "@/components/contacts/assign-to";
 import { listStaff } from "@/lib/staff/server";
+<<<<<<< HEAD
 import { staffLabel } from "@/lib/staff/assign.ts";
+=======
+import { LEAD_ASSIGNMENT_INSTALLED, staffLabel } from "@/lib/staff/assign.ts";
+>>>>>>> claude/archive-fix
 import { describeLeadEvent } from "@/lib/leads/history.ts";
 import { SETTABLE_STATUSES } from "@/lib/leads/service.ts";
 import { LEAD_STATUSES, sourceName } from "@/lib/leads/types.ts";
@@ -87,7 +91,11 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
           <div><small>Source</small><b>{sourceName(leadFull.source)}</b></div>
           <div><small>Lead since</small><b>{when(leadFull.created_at)}</b></div>
           <div><small>Last contacted</small><b>{leadFull.last_contacted_at ? when(leadFull.last_contacted_at) : "Not yet"}</b></div>
+<<<<<<< HEAD
           <div><small>Assigned to</small><b>{staffLabel(staff, leadFull.assigned_to ?? null) ?? "No one"}</b></div>
+=======
+          {LEAD_ASSIGNMENT_INSTALLED && <div><small>Assigned to</small><b>{staffLabel(staff, leadFull.assigned_to ?? null) ?? "No one"}</b></div>}
+>>>>>>> claude/archive-fix
           <div><small>Tags</small><b>{leadFull.tags.length ? leadFull.tags.join(", ") : "None"}</b></div>
         </section>
       )}
@@ -100,7 +108,11 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
           <button className="monarch-primary">Convert to client</button> <small className="monarch-muted">Makes a client record with this lead&apos;s details, tags and notes.</small>
         </form>
       )}
+<<<<<<< HEAD
       {lead && <AssignTo kind="lead" id={lead.id} current={lead.assigned_to ?? null} staff={staff} back={`/contacts/${key}`} />}
+=======
+      {lead && LEAD_ASSIGNMENT_INSTALLED && <AssignTo kind="lead" id={lead.id} current={lead.assigned_to ?? null} staff={staff} back={`/contacts/${key}`} />}
+>>>>>>> claude/archive-fix
       <div style={{ marginBottom: 14 }}><AppointmentsCard email={contact.email} /></div>
 
       <section className="monarch-panel" style={{ marginBottom: 14 }}>

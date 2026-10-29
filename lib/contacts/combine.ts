@@ -151,10 +151,14 @@ export const DUPLICATE_REASON: Record<DuplicateReason, string> = {
 };
 
 /** Pairs of different contacts that might be the same person. Never merged automatically. A record that is archived, lost or converted (a merged one is) is no longer a candidate. */
+<<<<<<< HEAD
 export type ExtraMethods = { emails?: (c: Contact) => string[]; phones?: (c: Contact) => string[] };
 
 /** `extra` adds the second and third emails and phones a person has on file, so they are compared too. */
 export function possibleDuplicates(all: Contact[], extra: ExtraMethods = {}): PossibleDuplicate[] {
+=======
+export function possibleDuplicates(all: Contact[]): PossibleDuplicate[] {
+>>>>>>> claude/archive-fix
   const contacts = all.filter((c) => c.active);
   const seen = new Set<string>();
   const out: PossibleDuplicate[] = [];
@@ -175,9 +179,15 @@ export function possibleDuplicates(all: Contact[], extra: ExtraMethods = {}): Po
     }
     return [...m.values()].filter((v) => v.length > 1);
   };
+<<<<<<< HEAD
   for (const list of index((c) => [c.email, ...(extra.emails?.(c) ?? []).map(normalizeEmail)])) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) add(list[i], list[j], "shared_email");
   for (const list of index((c) => [c.phone, ...(extra.phones?.(c) ?? [])].map((v) => normalizePhone(v ?? null)))) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) add(list[i], list[j], "same_phone");
   for (const list of index((c) => [nameKey(c.name)])) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) if (sameName(list[i].name, list[j].name)) add(list[i], list[j], "same_name");
+=======
+  for (const list of index((c) => c.email)) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) add(list[i], list[j], "shared_email");
+  for (const list of index((c) => normalizePhone(c.phone))) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) add(list[i], list[j], "same_phone");
+  for (const list of index((c) => nameKey(c.name))) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) if (sameName(list[i].name, list[j].name)) add(list[i], list[j], "same_name");
+>>>>>>> claude/archive-fix
   return out;
 }
 
