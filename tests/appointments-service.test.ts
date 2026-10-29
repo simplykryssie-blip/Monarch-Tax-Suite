@@ -7,7 +7,7 @@ import { DEFAULT_WEEK } from "../lib/calendar/business.ts";
 import { ValidationError } from "../lib/commerce/validation.ts";
 import { appointmentIcs, reminderSms, whenFor } from "../lib/appointments/messages.ts";
 import {
-  addDateOverride, bookByStaff, bookPublic, saveBookingMessages, setTypeArchived, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
+  addDateOverride, bookByStaff, bookPublic, saveBookingMessages, sendTestMessage, setTypeArchived, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
   rescheduleByStaff, rescheduleByToken, resendConfirmation, saveWeekly, sendDueReminders, slugOf, type AppointmentDeps,
 } from "../lib/appointments/service.ts";
 import type { Busy } from "../lib/appointments/slots.ts";
@@ -455,4 +455,16 @@ test("people read and write [First name], never {{first_name}}", async () => {
   const saved = await deps.repo.getMessages();
   assert.equal(saved?.confirm_subject, "Booked, {{first_name}}");
   assert.equal(saved?.confirm_body, "See you {{date_time}}. {{manage_link}}");
+});
+
+test("a test message goes to the person editing it, with the wording on screen and made-up details", async () => {
+  const { deps, sent } = make();
+  const note = await sendTestMessage(deps, { group: "reminder", reminder_subject: "Hello [First name]", reminder_body: "See you [Date and time] about [Appointment type]." }, "owner@acme.test");
+  assert.equal(note, "Test sent to owner@acme.test.");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, "owner@acme.test");
+  assert.match(sent[0].body, /^\[Test\] Hello Sample\n/);
+  assert.match(sent[0].body, /This is a test\. Nothing was booked\./);
+  assert.match(sent[0].body, /about Tax prep consultation\./);
+  await assert.rejects(sendTestMessage(deps, { group: "confirm" }, ""), /no email address/);
 });

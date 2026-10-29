@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { toFriendly, TAG_WORDS, DEFAULT_CANCEL_BODY, DEFAULT_CANCEL_SUBJECT, DEFAULT_CONFIRM_BODY, DEFAULT_CONFIRM_SMS, DEFAULT_CONFIRM_SUBJECT, DEFAULT_REMINDER_BODY, DEFAULT_REMINDER_SMS, DEFAULT_REMINDER_SUBJECT } from "@/lib/appointments/messages.ts";
 import { SubmitOnce } from "@/components/admin/submit-once";
+import { sendTestMessageAction } from "@/app/(admin)/calendar/actions";
 
 const TAGS: [string, string][] = [
   ["Client name", "name"], ["First name", "first_name"], ["Appointment type", "type"], ["Firm name", "office"],
@@ -55,6 +56,7 @@ export function MessageFields({ group = "confirm", subject, body, sms }: { group
         <SubmitOnce className="monarch-primary">Save messages</SubmitOnce>
         <span className="msg-gap" aria-hidden="true" />
         <button name="reset" value="yes" className="monarch-secondary">Use the standard wording</button>
+        <button formAction={sendTestMessageAction} data-no-confirm className="monarch-secondary" title="Emails this message, as it is on screen, to you. Nothing is booked.">Send me a test</button>
       </div>
     </>
   );

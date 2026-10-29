@@ -61,7 +61,7 @@ export function MonthPicker({ slots, officeTz, name = "starts_at", problem }: Pr
             );
           })}
         </div>
-        <p className="monarch-muted bk-tz">Times are shown in {tz.replace(/_/g, " ")}.</p>
+        <p className="monarch-muted bk-tz">{`Times are shown in ${tz.replace(/_/g, " ")}.`}</p>
         {problem && <p className="bk-problem" role="alert">{problem}</p>}
       </div>
       <div className="bk-times">

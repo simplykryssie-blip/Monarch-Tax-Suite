@@ -4,7 +4,7 @@ import { ValidationError } from "../commerce/validation.ts";
 import { checkEmail, checkName, checkPhone } from "../leads/service.ts";
 import { matchPerson, type PeopleDeps } from "../people/match.ts";
 import type { AppointmentActivity } from "./activity.ts";
-import { cancellationFrom, confirmationFrom, fromFriendly, reminderFrom } from "./messages.ts";
+import { DEFAULT_CANCEL_BODY, DEFAULT_CANCEL_SUBJECT, DEFAULT_CONFIRM_BODY, DEFAULT_CONFIRM_SUBJECT, DEFAULT_REMINDER_BODY, DEFAULT_REMINDER_SUBJECT, cancellationFrom, confirmationFrom, fillMessage, fromFriendly, reminderFrom } from "./messages.ts";
 import { availableSlots, slotIsOffered, type Rule, type Slot } from "./slots.ts";
 import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type BookingMessages, type NewReminder, type Notifier, type TypeInput } from "./types.ts";
 
@@ -263,6 +263,28 @@ const MESSAGE_GROUPS = {
   reminder: [["reminder_subject", 200, "The subject"], ["reminder_body", 4000, "The email"], ["reminder_sms", 320, "The text"]],
   cancel: [["cancel_subject", 200, "The subject"], ["cancel_body", 4000, "The email"]],
 } as const;
+
+/**
+ * A test of one message, sent to the person editing it: the wording they have on screen (saved or not), filled in with a
+ * made-up client and visit. Nothing is booked, saved or sent to anyone else.
+ */
+export async function sendTestMessage(d: AppointmentDeps, raw: Record<string, unknown>, toEmail: string): Promise<string> {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) throw new ValidationError("Your sign-in has no email address to send the test to.");
+  const group = typeof raw.group === "string" && raw.group in MESSAGE_GROUPS ? (raw.group as keyof typeof MESSAGE_GROUPS) : "confirm";
+  const field = (suffix: string) => (typeof raw[`${group}_${suffix}`] === "string" ? fromFriendly((raw[`${group}_${suffix}`] as string).trim()) : "");
+  const defaults = group === "confirm" ? { subject: DEFAULT_CONFIRM_SUBJECT, body: DEFAULT_CONFIRM_BODY } : group === "reminder" ? { subject: DEFAULT_REMINDER_SUBJECT, body: DEFAULT_REMINDER_BODY } : { subject: DEFAULT_CANCEL_SUBJECT, body: DEFAULT_CANCEL_BODY };
+  const when = new Date(nowOf(d).getTime() + 2 * 86_400_000);
+  const values = {
+    name: "Sample Client", first_name: "Sample", type: "Tax prep consultation", office: await d.firmName(),
+    date_time: when.toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: (await d.calendar()).timeZone }),
+    location: "Your office", location_line: "Where: Your office", manage_link: "(the link to cancel or change goes here)",
+  };
+  const subject = fillMessage(field("subject") || defaults.subject, values);
+  const body = fillMessage(field("body") || defaults.body, values);
+  const result = await d.notify.email(toEmail, `[Test] ${subject}`, await signed(d, `This is a test. Nothing was booked.\n\n${body}`));
+  if (!result.ok) throw new ValidationError(result.message || "The test email could not be sent. Check Settings → Email and text.");
+  return `Test sent to ${toEmail}.`;
+}
 
 /** One group of messages Settings saves (confirmation, reminder or cancellation); the others are left as they are. A message left empty goes back to the built-in wording. */
 export async function saveBookingMessages(d: AppointmentDeps, raw: Record<string, unknown>, actorId: string | null): Promise<void> {

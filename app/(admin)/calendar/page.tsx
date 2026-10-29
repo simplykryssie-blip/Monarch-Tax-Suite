@@ -167,7 +167,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               </section>
             ))}
             {view !== "month" && view === "agenda" && byDay.size === 0 && tasksByDay.size === 0 && <p className="monarch-muted">No appointments in the next 30 days.</p>}
-            <p className="monarch-muted">Times are shown in {tz.replace(/_/g, " ")}. {types.length === 0 ? "Add an appointment type to start taking bookings." : ""}</p>
+            <p className="monarch-muted">{`Times are shown in ${tz.replace(/_/g, " ")}. ${types.length === 0 ? "Add an appointment type to start taking bookings." : ""}`}</p>
             </div>
             <aside className="cal-side monarch-panel" aria-label="Tasks">
               <h2>Tasks</h2>

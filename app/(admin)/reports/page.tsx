@@ -34,7 +34,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageTitle title="Reports">How the {year} season is going. These are read-only; open Work, Billing or Contacts to change anything.</PageTitle>
+      <PageTitle title="Reports">{`How the ${year} season is going. These are read-only; open Work, Billing or Contacts to change anything.`}</PageTitle>
       <div className="monarch-page-actions">
         <nav className="subtabs" aria-label="Tax year">
           {(years.includes(year) ? years : [year, ...years]).map((y) => <Link key={y} href={`/reports?year=${y}`} className={"subtab" + (y === year ? " is-on" : "")} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
@@ -43,14 +43,14 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
       <div className="monarch-metrics">
         <div className="monarch-metric"><div>Returns</div><strong>{r.returnCount}</strong></div>
-        <div className="monarch-metric"><div>Invoiced</div><strong>{money(r.fees.invoiced)}</strong></div>
+        <div className="monarch-metric"><div>Invoiced (sent and paid)</div><strong>{money(r.fees.invoiced)}</strong></div>
         <div className="monarch-metric"><div>Collected</div><strong>{money(r.fees.collected)}</strong></div>
         <div className="monarch-metric"><div>Still owed to you</div><strong>{money(r.fees.outstanding)}</strong></div>
       </div>
 
       <section className="monarch-panel" style={{ padding: 20 }}>
         <h2 style={{ marginTop: 0 }}>Returns by stage</h2>
-        {r.returnCount === 0 ? <p className="monarch-muted">No {year} returns yet.</p> : (
+        {r.returnCount === 0 ? <p className="monarch-muted">{`No ${year} returns yet.`}</p> : (
           <div className="monarch-table-wrap"><table><thead><tr><th>STAGE</th><th>RETURNS</th></tr></thead><tbody>{r.byStage.map((s) => <tr key={s.name}><td>{s.name}</td><td>{s.count}</td></tr>)}</tbody></table></div>
         )}
       </section>
@@ -58,11 +58,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       <section className="monarch-panel" style={{ padding: 20 }}>
         <h2 style={{ marginTop: 0 }}>E-file and results</h2>
         <div className="monarch-table-wrap"><table><thead><tr><th>E-FILE STATUS</th><th>RETURNS</th></tr></thead><tbody>{r.byEfile.map((e) => <tr key={e.key}><td>{e.label}</td><td>{e.count}</td></tr>)}</tbody></table></div>
+        <p className="monarch-muted">Invoices still in draft are not counted in the money figures.</p>
         <p className="monarch-muted">Federal results entered on returns: refunds {money(r.federal.refunds)} · amounts owed {money(r.federal.owed)}.</p>
       </section>
 
       <section className="monarch-panel" style={{ padding: 20 }}>
-        <h2 style={{ marginTop: 0 }}>Month by month in {year + 1}</h2>
+        <h2 style={{ marginTop: 0 }}>{`Month by month in ${year + 1}`}</h2>
         <div className="monarch-table-wrap">
           <table>
             <thead><tr><th>MONTH</th><th>INVOICED</th><th>COLLECTED</th><th>NEW CLIENTS</th>{leads && <th>NEW LEADS</th>}</tr></thead>
@@ -79,13 +80,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             </tbody>
           </table>
         </div>
-        <p className="monarch-muted">A tax year is worked the next calendar year, so these are the months of {year + 1}. Money is counted by the month an invoice was issued and the month it was paid.</p>
+        <p className="monarch-muted">{`A tax year is worked the next calendar year, so these are the months of ${year + 1}. Money is counted by the month an invoice was issued and the month it was paid.`}</p>
       </section>
 
       {leads && (
         <section className="monarch-panel" style={{ padding: 20 }}>
-          <h2 style={{ marginTop: 0 }}>Where leads came from in {year + 1}</h2>
-          {r.leadSources.length === 0 ? <p className="monarch-muted">No leads in {year + 1}.</p> : (
+          <h2 style={{ marginTop: 0 }}>{`Where leads came from in ${year + 1}`}</h2>
+          {r.leadSources.length === 0 ? <p className="monarch-muted">{`No leads in ${year + 1}.`}</p> : (
             <div className="monarch-table-wrap"><table><thead><tr><th>SOURCE</th><th>LEADS</th></tr></thead><tbody>{r.leadSources.map((s) => <tr key={s.source}><td>{s.source}</td><td>{s.count}</td></tr>)}</tbody></table></div>
           )}
         </section>
