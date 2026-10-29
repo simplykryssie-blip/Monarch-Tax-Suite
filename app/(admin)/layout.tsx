@@ -43,6 +43,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const adminHost = await onAdminHost();
   const platformAdmin = adminSeparationOn() ? adminHost && (await isPlatformAdmin()) : await isPlatformAdmin();
   // Inside the Monarch workspace the Admin entry is a link to the platform admin's own address (when that address is set up).
-  const adminLink = !adminHost && currentTenantId() === MONARCH_TENANT_ID && adminHosts().length > 0 ? `https://${adminHosts()[0]}` : null;
+  const adminLink = !adminHost && currentTenantId() === MONARCH_TENANT_ID && adminHosts().length > 0 ? `https://${adminHosts().find((h) => h.startsWith("admin.")) ?? adminHosts()[0]}` : null;
   return <AdminShell email={admin.email} tier={tier} platformAdmin={platformAdmin} adminOnly={adminHost} adminLink={adminLink} alerts={alerts} bell={bell} brand={brand} today={new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" }).format(new Date())}>{children}</AdminShell>;
 }
