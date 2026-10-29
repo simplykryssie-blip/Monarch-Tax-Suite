@@ -23,4 +23,11 @@ export function methodsRepo(tenantId: string = currentTenantId()): MethodsRepo {
   };
 }
 
+/** Every extra email and phone in the workspace, for comparing people. Empty when the table can't be read. */
+export async function listAllMethods(tenantId: string = currentTenantId()): Promise<ContactMethod[]> {
+  const r = await tenantClient(tenantId).from("contact_methods").select("*").limit(20000);
+  if (r.error) return [];
+  return (r.data ?? []) as ContactMethod[];
+}
+
 export const methodsDeps = (): MethodsDeps => ({ methods: methodsRepo(), clients: workspaceRepo(), leads: leadsDeps().repo });
