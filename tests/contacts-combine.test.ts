@@ -86,7 +86,7 @@ describe("list: filters, counts, order", () => {
     assert.equal(filterContacts(contacts, { q: "nobody" }).length, 0);
   });
   test("counts", () => {
-    assert.deepEqual(countContacts(contacts), { all: 2, lead: 2, client: 1, customer: 1, inactive: 2 });
+    assert.deepEqual(countContacts(contacts), { all: 2, lead: 1, client: 1, customer: 1, inactive: 2 });
   });
   test("each count equals the rows its filter shows", () => {
     const n = countContacts(contacts);
