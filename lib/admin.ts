@@ -108,7 +108,8 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
   }
   // Two-step sign-in, once the person has turned it on in Settings → Security: a code is asked for at each sign-in.
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  if (workspaceNeedsCode(aal)) redirect("/two-step");
+  // On the platform admin's own address only /admin and the sign-in pages exist, so the code screen there is the admin one.
+  if (workspaceNeedsCode(aal)) redirect((await onAdminHost()) ? ADMIN_TWO_STEP_PATH : "/two-step");
   return { userId: decision.userId, email: user?.email ?? "" };
 });
 
