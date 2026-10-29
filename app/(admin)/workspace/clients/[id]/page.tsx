@@ -150,7 +150,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       <PageTitle title={client.full_name} back={{ href: "/contacts", label: "Contacts" }}>
         {[client.email, client.phone].filter(Boolean).join(" · ") || "No contact details yet"}{client.archived_at ? " · Archived" : ""}
       </PageTitle>
-      <HoverMenu label="Actions">
+      <div className="cl-actions-right"><HoverMenu label="Actions" align="right">
         <ul className="hm-list">
           <li><Link href={`/workspace/clients/${id}?tab=messages`}>Send a message</Link></li>
           <li><Link href={`/workspace/clients/${id}?tab=documents`}>Upload a document</Link></li>
@@ -175,7 +175,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             </form>
           </li>
         </ul>
-      </HoverMenu>
+      </HoverMenu></div>
       <Flash notice={sp.notice} error={sp.error} />
       {duplicates.length > 0 && (
         <div className="cl-dupe" role="note">

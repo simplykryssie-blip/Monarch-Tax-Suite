@@ -50,10 +50,10 @@ export function BulkMenu({ staff, tags, statuses }: { staff: { id: string; label
     <div className="ct-bulk" ref={root}>
       <input type="hidden" name="op" value={op ?? ""} />
       <span className="monarch-muted">{count ? `${count} selected` : "Tick contacts to act on them"}</span>
-      <div className="hm" onMouseEnter={() => { if (count) setMenuOpen(true); }} onMouseLeave={() => setMenuOpen(false)}>
+      <div className="hm ct-right" onMouseEnter={() => { if (count) setMenuOpen(true); }} onMouseLeave={() => setMenuOpen(false)}>
         <button type="button" className="monarch-secondary" disabled={count === 0} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>Actions ▾</button>
         {menuOpen && (
-          <div className="hm-panel" role="menu">
+          <div className="hm-panel is-right" role="menu">
             <ul className="hm-list">
               {MENU.map((m) => (
                 <li key={m.op} role="none"><button type="button" role="menuitem" onClick={() => { setOp(m.op); setMenuOpen(false); }}>{m.label}</button></li>
