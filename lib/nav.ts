@@ -1,7 +1,7 @@
 import type { IconName } from "@/components/admin/icons";
 import { allows, type Section, type Tier } from "./tier.ts";
 
-export type Leaf = { label: string; icon: IconName; href?: string; section?: Section };
+export type Leaf = { label: string; icon: IconName; href?: string; section?: Section; /** A full web address on another site: opened as a plain link, not a page of this app. */ external?: boolean };
 export type Branch = { label: string; icon: IconName; href?: string; section?: Section; items: (Leaf | Branch)[] };
 export type Entry = Leaf | Branch;
 export const isBranch = (e: Entry): e is Branch => "items" in e;

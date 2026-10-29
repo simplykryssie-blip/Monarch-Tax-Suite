@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { AdminShell } from "@/components/admin/shell";
 import { PlatformShell } from "@/components/admin/platform-shell";
 import { isPlatformAdmin, onAdminHost, requireAdmin, requirePlatformAdmin } from "@/lib/admin";
-import { adminSeparationOn } from "@/lib/admin-host.ts";
+import { adminHosts, adminSeparationOn } from "@/lib/admin-host.ts";
 import { loadAlerts } from "@/lib/attention";
 import { loadBell } from "@/lib/notifications/server";
 import { allows, sectionOf } from "@/lib/tier.ts";
@@ -10,7 +10,7 @@ import { currentTier } from "@/lib/tier-server";
 import { loadBrand } from "@/lib/branding/server";
 import { PLATFORM } from "@/lib/platform-brand";
 import type { Metadata } from "next";
-import { currentTenantId } from "@/lib/tenants.ts";
+import { currentTenantId, MONARCH_TENANT_ID } from "@/lib/tenants.ts";
 
 /** Tab title and icon: the platform's, or the account's own when it white-labels its admin. */
 export async function generateMetadata(): Promise<Metadata> {
@@ -42,5 +42,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Separated: the Admin menu belongs to the admin address alone (and that address shows nothing else). Not yet separated: as before.
   const adminHost = await onAdminHost();
   const platformAdmin = adminSeparationOn() ? adminHost && (await isPlatformAdmin()) : await isPlatformAdmin();
-  return <AdminShell email={admin.email} tier={tier} platformAdmin={platformAdmin} adminOnly={adminHost} alerts={alerts} bell={bell} brand={brand} today={new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" }).format(new Date())}>{children}</AdminShell>;
+  // Inside the Monarch workspace the Admin entry is a link to the platform admin's own address (when that address is set up).
+  const adminLink = !adminHost && currentTenantId() === MONARCH_TENANT_ID && adminHosts().length > 0 ? `https://${adminHosts().find((h) => h.startsWith("admin.")) ?? adminHosts()[0]}` : null;
+  return <AdminShell email={admin.email} tier={tier} platformAdmin={platformAdmin} adminOnly={adminHost} adminLink={adminLink} alerts={alerts} bell={bell} brand={brand} today={new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" }).format(new Date())}>{children}</AdminShell>;
 }

@@ -44,6 +44,14 @@ function Group({ entry, depth, pathname, open, toggle, close }: { entry: Entry; 
         </span>
       );
     }
+    if (entry.external) {
+      return (
+        <a href={entry.href} onClick={close} className="mt-nav" style={{ paddingLeft: 14 + depth * 14 }}>
+          <Icon name={entry.icon} size={18} />
+          <span>{entry.label}</span>
+        </a>
+      );
+    }
     const active = matches(pathname, entry.href);
     return (
       <Link href={entry.href} onClick={close} className={"mt-nav" + (active ? " is-active" : "")} aria-current={active ? "page" : undefined} style={{ paddingLeft: 14 + depth * 14 }}>
@@ -108,9 +116,11 @@ function Popover({ trigger, children }: { trigger: (open: boolean, toggle: () =>
   );
 }
 
-export function AdminShell({ email, brand, today, alerts = [], bell = { items: [], unread: 0 }, tier = "bureau", platformAdmin = false, adminOnly = false, children }: { email: string; brand?: Brand; today: string; alerts?: Alert[]; bell?: { items: BellItem[]; unread: number }; tier?: Tier; platformAdmin?: boolean; adminOnly?: boolean; children: React.ReactNode }) {
+export function AdminShell({ email, brand, today, alerts = [], bell = { items: [], unread: 0 }, tier = "bureau", platformAdmin = false, adminOnly = false, adminLink = null, children }: { email: string; brand?: Brand; today: string; alerts?: Alert[]; bell?: { items: BellItem[]; unread: number }; tier?: Tier; platformAdmin?: boolean; adminOnly?: boolean; /** Where the Admin entry goes (the platform admin's own address), for the Monarch workspace's menu. */ adminLink?: string | null; children: React.ReactNode }) {
   const pathname = usePathname();
   const nav = navFor(tier, adminOnly ? NAV.filter((e) => e.section === "platform") : undefined, undefined, platformAdmin);
+  // The Monarch workspace's Admin entry is a link to the platform admin's own address, last in the menu.
+  if (adminLink && !adminOnly) nav.push({ label: "Admin", icon: "shield", href: adminLink, external: true });
   // White-labelled accounts see their own brand in the shell; everyone else sees the platform brand.
   const white = !!brand?.whiteLabelAdmin;
   const id = white && brand ? { name: brand.name, logo: brand.logoUrl, mark: brand.markUrl ?? brand.logoUrl, eyebrow: brand.name.toUpperCase(), tagline: brand.tagline ?? "" } : { name: PLATFORM.name, logo: PLATFORM.logo, mark: PLATFORM.mark, eyebrow: PLATFORM.eyebrow, tagline: PLATFORM.tagline };

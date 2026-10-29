@@ -42,7 +42,7 @@ describe("the platform administrator must use two-step sign-in", () => {
     assert.match(guard, /status === "verified"/);
     const workspace = block("lib/admin.ts", "export const requireAdmin");
     assert.doesNotMatch(workspace, /adminTwoStepGate/, "no one is forced to set it up");
-    assert.match(workspace, /workspaceNeedsCode\(aal\)\) redirect\("\/two-step"\)/);
+    assert.match(workspace, /workspaceNeedsCode\(aal\)\) redirect\(\(await onAdminHost\(\)\) \? ADMIN_TWO_STEP_PATH : "\/two-step"\)/);
   });
 });
 
