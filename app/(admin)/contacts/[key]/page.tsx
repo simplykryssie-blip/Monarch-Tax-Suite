@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
-import { Badge, money, PageTitle, when } from "@/components/admin/ui";
+import { Badge, Flash, money, PageTitle, when } from "@/components/admin/ui";
 import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { AssignTo } from "@/components/contacts/assign-to";
 import { listStaff } from "@/lib/staff/server";
@@ -29,9 +29,10 @@ import { currentTier } from "@/lib/tier-server";
 
 // One person, wherever they are kept. Read-only: it shows which records are combined here and links to each one's own page.
 // Sensitive personal details stay on the client's own page, not here.
-export default async function ContactPage({ params }: { params: Promise<{ key: string }> }) {
+export default async function ContactPage({ params, searchParams }: { params: Promise<{ key: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
   await requireAdmin();
   const { key } = await params;
+  const sp = await searchParams;
   if (!parseContactKey(key)) notFound();
   const data = await loadContacts();
   // A lead who became a client (or shares an email with one) is one contact under the client's key: an older link to the lead's key lands there.
@@ -63,6 +64,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
       <PageTitle title={contact.name} back={{ href: "/contacts", label: "All contacts" }}>
         {contact.email ?? "No email on file"}{contact.phone ? ` · ${contact.phone}` : ""}
       </PageTitle>
+      <Flash notice={sp.notice} error={sp.error} />
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
         {contact.chips.map((c) => <span key={c.kind} className="monarch-badge" style={{ opacity: c.active ? 1 : 0.6 }}>{c.label}</span>)}
         {contact.tags.map((t) => <span key={t} className="monarch-badge">{t}</span>)}
