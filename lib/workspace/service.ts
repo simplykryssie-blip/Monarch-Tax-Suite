@@ -6,6 +6,7 @@ import { changedFields, type FieldChange } from "./activity.ts";
 import { balance, checkBillingSettings, checkBusiness, checkClient, checkFeeProduct, checkWork, taxOn, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
 import { checkPlan, type Installment } from "./plan.ts";
 import { RECEIPT_METHODS, type InvoiceReceipt, type ReceiptMethod } from "./types.ts";
+import { PREP_STATUSES, type PrepStatus } from "./types.ts";
 import type { BillingSettings, ClientWork, FeeProduct, Payer, Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
 // My Workspace orchestration: each function checks its input with the rules, then uses the repository. Nothing here
@@ -100,6 +101,62 @@ export async function moveReturn(repo: WorkspaceRepo, id: string, stageId: strin
   if (!r || r.archived_at) throw new ValidationError("That return wasn't found.");
   if (!stageIds.includes(stageId)) throw new ValidationError("That stage isn't in the pipeline.");
   return repo.updateReturn(r.id, { stage_id: stageId, ...(stageId === stageIds[stageIds.length - 1] && !r.filed_on ? { filed_on: now.toISOString().slice(0, 10) } : {}) });
+}
+
+/** Preparation statuses a person can set by hand. "Handed to ERO" is set by the hand-off itself, so it is never picked here. */
+export const EDITABLE_PREP: PrepStatus[] = ["not_started", "in_prep", "ready_for_review"];
+const returnLabelOf = (r: Pick<ClientReturn, "tax_year" | "kind">) => `${r.tax_year} ${r.kind === "original" ? "return" : r.kind}`;
+const isoDay = (v: unknown, label: string): string | null => {
+  const t = typeof v === "string" ? v.trim() : "";
+  if (!t) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || Number.isNaN(Date.parse(`${t}T12:00:00Z`))) throw new ValidationError(`${label} isn't a valid date.`);
+  return t;
+};
+
+/**
+ * Edits a return: stage, who prepares it, where preparation stands, due and filed dates, and notes. Only what changed is
+ * saved, and it is written to the client's activity. The caller has already checked that the preparer is on the team.
+ */
+export async function editReturn(
+  repo: WorkspaceRepo, id: string, raw: Record<string, unknown>, stageIds: string[], stageName: (id: string) => string,
+  who: { assignee: (id: string | null) => string }, actor?: Actor, now = new Date(),
+): Promise<{ ret: ClientReturn; changes: string[] }> {
+  const before = await repo.getReturn(uuid(id, "That return"));
+  if (!before || before.archived_at) throw new ValidationError("That return wasn't found.");
+  const patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "assignee_id" | "prep_status">> = {};
+  const changes: string[] = [];
+  const stage = typeof raw.stage_id === "string" && raw.stage_id ? raw.stage_id : before.stage_id;
+  if (!stageIds.includes(stage)) throw new ValidationError("That stage isn't in the pipeline.");
+  if (stage !== before.stage_id) { patch.stage_id = stage; changes.push(`Stage from ${stageName(before.stage_id)} to ${stageName(stage)}`); }
+  const due = isoDay(raw.due_on, "The due date");
+  if (due !== before.due_on) { patch.due_on = due; changes.push(`Due date from ${before.due_on ?? "blank"} to ${due ?? "blank"}`); }
+  let filed = isoDay(raw.filed_on, "The filed date");
+  // Moving a return to the last stage fills in today's date as filed, as dragging it on the board does.
+  if (patch.stage_id === stageIds[stageIds.length - 1] && !filed && !before.filed_on) filed = now.toISOString().slice(0, 10);
+  if (filed !== before.filed_on) { patch.filed_on = filed; changes.push(`Filed date from ${before.filed_on ?? "blank"} to ${filed ?? "blank"}`); }
+  const prep = typeof raw.prep_status === "string" && raw.prep_status ? (raw.prep_status as PrepStatus) : before.prep_status;
+  if (prep !== before.prep_status) {
+    if (!EDITABLE_PREP.includes(prep) || before.prep_status === "handed_off") throw new ValidationError("A return handed to an ERO is changed by the hand-off, not here.");
+    patch.prep_status = prep;
+    changes.push(`Preparation from ${PREP_STATUSES[before.prep_status]} to ${PREP_STATUSES[prep]}`);
+  }
+  const assignee = typeof raw.assignee_id === "string" && raw.assignee_id ? raw.assignee_id : null;
+  if (assignee !== (before.assignee_id ?? null)) { patch.assignee_id = assignee; changes.push(`Preparer from ${who.assignee(before.assignee_id)} to ${who.assignee(assignee)}`); }
+  const notes = typeof raw.notes === "string" ? raw.notes.replace(/\r\n/g, "\n").trim().slice(0, 2000) : "";
+  if ((notes || null) !== (before.notes ?? null)) { patch.notes = notes || null; changes.push("Notes edited"); }
+  if (!changes.length) return { ret: before, changes };
+  const ret = await repo.updateReturn(before.id, patch);
+  await record(repo, before.client_id, actor ?? null, "return.updated", { return_id: before.id, label: returnLabelOf(before), changes });
+  return { ret, changes };
+}
+
+/** Archives a return added by mistake. Its history stays in the client's activity. */
+export async function archiveReturn(repo: WorkspaceRepo, id: string, actor?: Actor): Promise<ClientReturn> {
+  const r = await repo.getReturn(uuid(id, "That return"));
+  if (!r || r.archived_at) throw new ValidationError("That return wasn't found.");
+  const ret = await repo.updateReturn(r.id, { archived_at: new Date().toISOString() });
+  await record(repo, r.client_id, actor ?? null, "return.archived", { return_id: r.id, label: returnLabelOf(r) });
+  return ret;
 }
 
 /** Starts a piece of work (planning, bookkeeping, payroll...) for a client in one of the office's pipelines, in its first stage. */

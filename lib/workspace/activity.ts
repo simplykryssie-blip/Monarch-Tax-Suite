@@ -52,6 +52,11 @@ const LABELS: Record<string, string> = {
 
 /** One sentence for one event. Null for events this list doesn't show. */
 export function describeEvent(e: Pick<ClientEvent, "action" | "detail">): string | null {
+  if (e.action === "return.updated") {
+    const changes = Array.isArray(e.detail.changes) ? (e.detail.changes as unknown[]).filter((c): c is string => typeof c === "string") : [];
+    return `${typeof e.detail.label === "string" ? e.detail.label.replace(/^./, (c) => c.toUpperCase()) : "Return"}: ${changes.join("; ") || "edited"}`;
+  }
+  if (e.action === "return.archived") return `${typeof e.detail.label === "string" ? e.detail.label.replace(/^./, (c) => c.toUpperCase()) : "Return"} archived`;
   if (e.action === "client.updated") {
     const changes = Array.isArray(e.detail.changes) ? (e.detail.changes as FieldChange[]) : [];
     if (!changes.length) return null;
