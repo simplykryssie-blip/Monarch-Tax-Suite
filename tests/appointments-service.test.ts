@@ -7,7 +7,7 @@ import { DEFAULT_WEEK } from "../lib/calendar/business.ts";
 import { ValidationError } from "../lib/commerce/validation.ts";
 import { appointmentIcs, reminderSms, whenFor } from "../lib/appointments/messages.ts";
 import {
-  addDateOverride, bookByStaff, bookPublic, saveBookingMessages, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
+  addDateOverride, bookByStaff, bookPublic, saveBookingMessages, sendTestMessage, setTypeArchived, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
   rescheduleByStaff, rescheduleByToken, resendConfirmation, saveWeekly, sendDueReminders, slugOf, type AppointmentDeps,
 } from "../lib/appointments/service.ts";
 import type { Busy } from "../lib/appointments/slots.ts";
@@ -413,4 +413,58 @@ test("the public booking page marks each detail that needs fixing, and texts onl
   assert.equal(wantsTexts(true, ""), false, "no number, no texts, and the booking still goes through");
   assert.equal(wantsTexts(true, "(337) 555-0100"), true);
   assert.equal(wantsTexts(false, "(337) 555-0100"), false);
+});
+
+test("the reminder and cancellation wording can be edited on its own, without touching the confirmation", async () => {
+  const { deps, sent, clock } = make();
+  const t = await createType(deps, { ...TYPE, reminder_hours: "24" });
+  await saveBookingMessages(deps, { group: "confirm", confirm_subject: "Booked, {{first_name}}" }, null);
+  await saveBookingMessages(deps, { group: "reminder", reminder_subject: "Tomorrow: {{type}}", reminder_body: "{{first_name}}, see you {{date_time}}. {{manage_link}}", reminder_sms: "Tomorrow at the office" }, null);
+  await saveBookingMessages(deps, { group: "cancel", cancel_subject: "Cancelled for {{first_name}}", cancel_body: "We cancelled {{type}}." }, null);
+  const a = await bookPublic(deps, t.slug, { ...person, starts_at: "2026-10-14T14:00:00.000Z" });
+  assert.match(sent[0].body, /^Booked, Ana\n/, "the confirmation kept its wording");
+  sent.length = 0;
+  clock.t = new Date("2026-10-13T15:00:00Z");
+  await sendDueReminders(deps);
+  assert.match(sent.find((m) => m.channel === "email")!.body, /^Tomorrow: Tax Prep Consultation\nAna, see you /);
+  assert.match(sent.find((m) => m.channel === "sms")!.body, /^Tomorrow at the office$/);
+  sent.length = 0;
+  await cancelByStaff(deps, a.appointment.id, "", true);
+  assert.match(sent[0].body, /^Cancelled for Ana\nWe cancelled Tax Prep Consultation\./);
+  await saveBookingMessages(deps, { group: "reminder" }, null);
+  assert.equal((await deps.repo.getMessages())?.reminder_subject, null, "resetting one group clears only it");
+  assert.equal((await deps.repo.getMessages())?.cancel_subject, "Cancelled for {{first_name}}");
+});
+
+test("an appointment type can be archived and restored; archived types take no public bookings", async () => {
+  const { deps } = make();
+  const t = await createType(deps, TYPE);
+  assert.equal((await setTypeArchived(deps, t.id, true)).active, false);
+  await assert.rejects(bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM }), /isn't available/);
+  assert.equal((await setTypeArchived(deps, t.id, false)).active, true);
+  assert.ok(await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM }));
+  await assert.rejects(setTypeArchived(deps, "nope", true), /wasn't found/);
+});
+
+test("people read and write [First name], never {{first_name}}", async () => {
+  const { toFriendly, fromFriendly } = await import("../lib/appointments/messages.ts");
+  assert.equal(toFriendly("Hi {{first_name}}, {{date_time}} {{unknown}}"), "Hi [First name], [Date and time] {{unknown}}");
+  assert.equal(fromFriendly("Hi [First name], see you [date and time] [not a tag]"), "Hi {{first_name}}, see you {{date_time}} [not a tag]");
+  const { deps } = make();
+  await saveBookingMessages(deps, { group: "confirm", confirm_subject: "Booked, [First name]", confirm_body: "See you [Date and time]. [Cancel or change link]" }, null);
+  const saved = await deps.repo.getMessages();
+  assert.equal(saved?.confirm_subject, "Booked, {{first_name}}");
+  assert.equal(saved?.confirm_body, "See you {{date_time}}. {{manage_link}}");
+});
+
+test("a test message goes to the person editing it, with the wording on screen and made-up details", async () => {
+  const { deps, sent } = make();
+  const note = await sendTestMessage(deps, { group: "reminder", reminder_subject: "Hello [First name]", reminder_body: "See you [Date and time] about [Appointment type]." }, "owner@acme.test");
+  assert.equal(note, "Test sent to owner@acme.test.");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, "owner@acme.test");
+  assert.match(sent[0].body, /^\[Test\] Hello Sample\n/);
+  assert.match(sent[0].body, /This is a test\. Nothing was booked\./);
+  assert.match(sent[0].body, /about Tax prep consultation\./);
+  await assert.rejects(sendTestMessage(deps, { group: "confirm" }, ""), /no email address/);
 });
