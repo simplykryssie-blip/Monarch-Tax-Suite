@@ -38,7 +38,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
         {lead.audit_score !== null && <span className="monarch-muted">WISP audit score: <b>{lead.audit_score}</b>/100</span>}
         <form action={markContactedAction}><input type="hidden" name="id" value={lead.id} /><button className="monarch-secondary">Contacted today</button></form>
         <a className="monarch-secondary" href={`mailto:${lead.email}`}>Email</a>
-        <form action={convertLeadAction}><input type="hidden" name="id" value={lead.id} /><input type="hidden" name="back" value={`/leads/${lead.id}`} /><button className="monarch-primary" title="Makes a client record from this lead">Convert to client</button></form>
+        {lead.status !== "converted" && <form action={convertLeadAction}><input type="hidden" name="id" value={lead.id} /><input type="hidden" name="back" value={`/leads/${lead.id}`} /><button className="monarch-primary" title="Makes a client record from this lead">Convert to client</button></form>}
       </section>
 
       <form action={updateLeadAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
