@@ -6,7 +6,7 @@ import { CopyLink } from "@/components/calendar/copy-link";
 import { MessageFields } from "@/components/calendar/message-fields";
 import { appointmentDeps } from "@/lib/appointments/server";
 import type { AppointmentType, BookingMessages } from "@/lib/appointments/types.ts";
-import { addOverrideAction, removeOverrideAction, saveBookingMessagesAction, saveTypeAction, saveWeeklyAction } from "../../calendar/actions";
+import { addOverrideAction, archiveTypeAction, removeOverrideAction, saveBookingMessagesAction, saveTypeAction, saveWeeklyAction } from "../../calendar/actions";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const hm = (t: string | null) => (t ? t.slice(0, 5) : "");
@@ -69,17 +69,37 @@ export function TypeCards({ types, forms }: { types: AppointmentType[]; forms: F
     <section className="monarch-panel" style={{ padding: 20 }}>
       <div className="cl-card-head"><h2>Appointment types</h2><Modal label="Add appointment type" title="Add an appointment type" className="monarch-secondary" wide><TypeForm forms={forms} /></Modal></div>
       {types.length === 0 ? <p className="monarch-muted">None yet.</p> : (
-        <div className="pl-grid">
-          {types.map((t) => (
-            <section key={t.id} className="monarch-panel pl-card" style={{ borderTopColor: t.active ? undefined : "#94a3b8" }}>
-              <b className="pl-name">{t.name}</b>
-              <dl className="pl-facts"><div><dt>Length</dt><dd>{t.duration_minutes} min</dd></div><div><dt>Booking</dt><dd>{t.active ? "Open" : "Closed"}</dd></div></dl>
-              <span className="cl-card-actions">
-                <Modal label="Edit" title={`Edit ${t.name}`} className="monarch-link" wide><TypeForm t={t} forms={forms} /></Modal>
-              </span>
-            </section>
-          ))}
-        </div>
+        <>
+          <div className="pl-grid">
+            {types.filter((t) => t.active).map((t) => (
+              <section key={t.id} className="monarch-panel pl-card">
+                <b className="pl-name">{t.name}</b>
+                <dl className="pl-facts"><div><dt>Length</dt><dd>{t.duration_minutes} min</dd></div><div><dt>Booking</dt><dd>Open</dd></div></dl>
+                <span className="cl-card-actions">
+                  <Modal label="Edit" title={`Edit ${t.name}`} className="monarch-secondary" wide><TypeForm t={t} forms={forms} /></Modal>
+                  <form action={archiveTypeAction}><input type="hidden" name="id" value={t.id} /><button className="monarch-link">Archive</button></form>
+                </span>
+              </section>
+            ))}
+          </div>
+          {types.some((t) => !t.active) && (
+            <>
+              <h3>Archived</h3>
+              <p className="monarch-muted">Not taking bookings. Past appointments are kept.</p>
+              <div className="pl-grid">
+                {types.filter((t) => !t.active).map((t) => (
+                  <section key={t.id} className="monarch-panel pl-card" style={{ borderTopColor: "#94a3b8" }}>
+                    <b className="pl-name">{t.name}</b>
+                    <span className="cl-card-actions">
+                      <Modal label="Edit" title={`Edit ${t.name}`} className="monarch-secondary" wide><TypeForm t={t} forms={forms} /></Modal>
+                      <form action={archiveTypeAction}><input type="hidden" name="id" value={t.id} /><input type="hidden" name="restore" value="yes" /><button className="monarch-link">Restore</button></form>
+                    </span>
+                  </section>
+                ))}
+              </div>
+            </>
+          )}
+        </>
       )}
     </section>
   );
@@ -105,7 +125,7 @@ export async function AvailabilitySection({ who, adminId }: { who: "office" | "m
             <form action={saveWeeklyAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
               <input type="hidden" name="who" value={who} />
               <h2>Weekly hours</h2>
-              <p className="monarch-muted">{weekly.length ? "Days left unticked are closed for booking." : "Nothing saved yet: business hours are being used. Saving here replaces them for booking."}</p>
+              <p className="monarch-muted">{weekly.length ? "Days left unticked are closed for booking." : "These start from your business hours. Saving here sets the hours people can book."}</p>
               {DAYS.map((name, d) => {
                 const spans = weekly.filter((r) => r.weekday === d).sort((a, b) => (a.start_time ?? "").localeCompare(b.start_time ?? ""));
                 return (
@@ -153,14 +173,23 @@ export async function AvailabilitySection({ who, adminId }: { who: "office" | "m
   );
 }
 
-/** The confirmation email and text, with tags to click instead of typing. */
+/** The emails and texts that go out by themselves, each with tags to click instead of typing. */
 export function MessagesSection({ messages }: { messages: BookingMessages | null }) {
   return (
     <section className="monarch-panel" style={{ padding: 20 }}>
-      <h2 style={{ marginTop: 0 }}>Confirmation email and text</h2>
-      <form action={saveBookingMessagesAction} className="monarch-form">
-        <MessageFields subject={messages?.confirm_subject ?? null} body={messages?.confirm_body ?? null} sms={messages?.confirm_sms ?? null} />
-      </form>
+      <h2 style={{ marginTop: 0 }}>Automatic emails and texts</h2>
+      <p className="monarch-muted">These go out by themselves. Edit the wording, then Save. &ldquo;Use the standard wording&rdquo; puts back the built-in message.</p>
+      <ul className="cl-list">
+        <li><span><b>Confirmation</b><small className="monarch-subcell">Sent when someone books or moves a visit</small></span><Modal label="Edit" title="Confirmation email and text" className="monarch-link" wide>
+          <form action={saveBookingMessagesAction} className="monarch-form"><MessageFields group="confirm" subject={messages?.confirm_subject ?? null} body={messages?.confirm_body ?? null} sms={messages?.confirm_sms ?? null} /></form>
+        </Modal></li>
+        <li><span><b>Reminder</b><small className="monarch-subcell">Sent before the visit, at the hours set on each appointment type</small></span><Modal label="Edit" title="Reminder email and text" className="monarch-link" wide>
+          <form action={saveBookingMessagesAction} className="monarch-form"><MessageFields group="reminder" subject={messages?.reminder_subject ?? null} body={messages?.reminder_body ?? null} sms={messages?.reminder_sms ?? null} /></form>
+        </Modal></li>
+        <li><span><b>Cancellation</b><small className="monarch-subcell">Sent when a visit is cancelled</small></span><Modal label="Edit" title="Cancellation email" className="monarch-link" wide>
+          <form action={saveBookingMessagesAction} className="monarch-form"><MessageFields group="cancel" subject={messages?.cancel_subject ?? null} body={messages?.cancel_body ?? null} sms={null} /></form>
+        </Modal></li>
+      </ul>
     </section>
   );
 }

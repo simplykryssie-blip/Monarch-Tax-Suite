@@ -32,7 +32,11 @@ export type RuleRow = Rule & { id: string; assignee_id: string | null };
 export class OverlapError extends Error {}
 
 /** The confirmation messages an office has edited. A null field uses the built-in wording. */
-export type BookingMessages = { confirm_subject: string | null; confirm_body: string | null; confirm_sms: string | null };
+export type BookingMessages = {
+  confirm_subject: string | null; confirm_body: string | null; confirm_sms: string | null;
+  reminder_subject?: string | null; reminder_body?: string | null; reminder_sms?: string | null;
+  cancel_subject?: string | null; cancel_body?: string | null;
+};
 
 export interface AppointmentRepo {
   getMessages(): Promise<BookingMessages | null>;

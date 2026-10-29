@@ -11,7 +11,7 @@ export class SupabaseAppointmentRepo implements AppointmentRepo {
   constructor(private db: SupabaseClient) {}
 
   async getMessages() {
-    const { data, error } = await this.db.from("appointment_messages").select("confirm_subject, confirm_body, confirm_sms").maybeSingle();
+    const { data, error } = await this.db.from("appointment_messages").select("confirm_subject, confirm_body, confirm_sms, reminder_subject, reminder_body, reminder_sms, cancel_subject, cancel_body").maybeSingle();
     if (error) throw fail("messages failed", error);
     return (data as BookingMessages | null) ?? null;
   }

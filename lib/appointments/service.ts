@@ -4,9 +4,9 @@ import { ValidationError } from "../commerce/validation.ts";
 import { checkEmail, checkName, checkPhone } from "../leads/service.ts";
 import { matchPerson, type PeopleDeps } from "../people/match.ts";
 import type { AppointmentActivity } from "./activity.ts";
-import { cancelledEmail, confirmationFrom, reminderEmail, reminderSms } from "./messages.ts";
+import { DEFAULT_CANCEL_BODY, DEFAULT_CANCEL_SUBJECT, DEFAULT_CONFIRM_BODY, DEFAULT_CONFIRM_SUBJECT, DEFAULT_REMINDER_BODY, DEFAULT_REMINDER_SUBJECT, cancellationFrom, confirmationFrom, fillMessage, fromFriendly, reminderFrom } from "./messages.ts";
 import { availableSlots, slotIsOffered, type Rule, type Slot } from "./slots.ts";
-import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type NewReminder, type Notifier, type TypeInput } from "./types.ts";
+import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type BookingMessages, type NewReminder, type Notifier, type TypeInput } from "./types.ts";
 
 // Booking, rescheduling, cancelling and reminding. Staff and the public use the same rules; the database refuses two
 // bookings that overlap for the same staff member, so two people picking the same time can't both get it.
@@ -96,6 +96,13 @@ export async function editType(d: AppointmentDeps, id: string, raw: Record<strin
   const clash = await d.repo.getTypeBySlug(input.slug);
   if (clash && clash.id !== id) throw new ValidationError("Another appointment type already uses that link name.");
   return d.repo.updateType(id, input);
+}
+
+/** Archives a type (closed for booking, kept with its past appointments and moved out of the way) or brings it back. */
+export async function setTypeArchived(d: AppointmentDeps, id: string, archived: boolean): Promise<AppointmentType> {
+  const current = UUID.test(id) ? await d.repo.getType(id) : null;
+  if (!current) throw new ValidationError("That appointment type wasn't found.");
+  return d.repo.updateType(id, { active: !archived });
 }
 
 // ---------------------------------------------------------------- availability
@@ -251,14 +258,46 @@ async function insertBooked(d: AppointmentDeps, t: AppointmentType, input: {
   return { appointment: saved, token, confirmation };
 }
 
-/** The confirmation messages Settings saves. A message left empty goes back to the built-in wording. */
+const MESSAGE_GROUPS = {
+  confirm: [["confirm_subject", 200, "The subject"], ["confirm_body", 4000, "The email"], ["confirm_sms", 320, "The text"]],
+  reminder: [["reminder_subject", 200, "The subject"], ["reminder_body", 4000, "The email"], ["reminder_sms", 320, "The text"]],
+  cancel: [["cancel_subject", 200, "The subject"], ["cancel_body", 4000, "The email"]],
+} as const;
+
+/**
+ * A test of one message, sent to the person editing it: the wording they have on screen (saved or not), filled in with a
+ * made-up client and visit. Nothing is booked, saved or sent to anyone else.
+ */
+export async function sendTestMessage(d: AppointmentDeps, raw: Record<string, unknown>, toEmail: string): Promise<string> {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) throw new ValidationError("Your sign-in has no email address to send the test to.");
+  const group = typeof raw.group === "string" && raw.group in MESSAGE_GROUPS ? (raw.group as keyof typeof MESSAGE_GROUPS) : "confirm";
+  const field = (suffix: string) => (typeof raw[`${group}_${suffix}`] === "string" ? fromFriendly((raw[`${group}_${suffix}`] as string).trim()) : "");
+  const defaults = group === "confirm" ? { subject: DEFAULT_CONFIRM_SUBJECT, body: DEFAULT_CONFIRM_BODY } : group === "reminder" ? { subject: DEFAULT_REMINDER_SUBJECT, body: DEFAULT_REMINDER_BODY } : { subject: DEFAULT_CANCEL_SUBJECT, body: DEFAULT_CANCEL_BODY };
+  const when = new Date(nowOf(d).getTime() + 2 * 86_400_000);
+  const values = {
+    name: "Sample Client", first_name: "Sample", type: "Tax prep consultation", office: await d.firmName(),
+    date_time: when.toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: (await d.calendar()).timeZone }),
+    location: "Your office", location_line: "Where: Your office", manage_link: "(the link to cancel or change goes here)",
+  };
+  const subject = fillMessage(field("subject") || defaults.subject, values);
+  const body = fillMessage(field("body") || defaults.body, values);
+  const result = await d.notify.email(toEmail, `[Test] ${subject}`, await signed(d, `This is a test. Nothing was booked.\n\n${body}`));
+  if (!result.ok) throw new ValidationError(result.message || "The test email could not be sent. Check Settings → Email and text.");
+  return `Test sent to ${toEmail}.`;
+}
+
+/** One group of messages Settings saves (confirmation, reminder or cancellation); the others are left as they are. A message left empty goes back to the built-in wording. */
 export async function saveBookingMessages(d: AppointmentDeps, raw: Record<string, unknown>, actorId: string | null): Promise<void> {
   const pick = (v: unknown, max: number, label: string) => {
     const s = para(v, max);
     if (typeof v === "string" && v.trim().length > max) throw new ValidationError(`${label} can be up to ${max} characters.`);
-    return s || null;
+    return s ? fromFriendly(s) : null;
   };
-  await d.repo.saveMessages({ confirm_subject: pick(raw.confirm_subject, 200, "The subject"), confirm_body: pick(raw.confirm_body, 4000, "The email"), confirm_sms: pick(raw.confirm_sms, 320, "The text") }, actorId);
+  const group = typeof raw.group === "string" && raw.group in MESSAGE_GROUPS ? (raw.group as keyof typeof MESSAGE_GROUPS) : "confirm";
+  const current = (await d.repo.getMessages().catch(() => null)) ?? { confirm_subject: null, confirm_body: null, confirm_sms: null };
+  const next: BookingMessages = { ...current };
+  for (const [key, max, label] of MESSAGE_GROUPS[group]) next[key] = pick(raw[key], max, label);
+  await d.repo.saveMessages(next, actorId);
 }
 
 /** A booking from the public page. */
@@ -313,7 +352,7 @@ async function cancelRow(d: AppointmentDeps, a: Appointment, t: AppointmentType,
   await emitSafe(d, "appointment.cancelled", saved);
   await told(d, { kind: "cancelled", appointment: saved, type: t, by, actorId });
   if (notifyClient) {
-    try { const m = cancelledEmail(saved, t, await d.firmName()); await d.notify.email(saved.contact_email, m.subject, await signed(d, m.text)); } catch { /* kept */ }
+    try { const m = cancellationFrom(saved, t, await d.firmName(), await d.repo.getMessages().catch(() => null)); await d.notify.email(saved.contact_email, m.subject, await signed(d, m.text)); } catch { /* kept */ }
   }
   return saved;
 }
@@ -391,6 +430,7 @@ export async function sendDueReminders(d: AppointmentDeps, limit = 50): Promise<
   const due = await d.repo.dueReminders(now, limit);
   if (!due.length) return run;
   const firm = await d.firmName();
+  const custom = await d.repo.getMessages().catch(() => null);
   for (const r of due) {
     // Claimed first, so two sweeps at once can't both send it.
     if (!(await d.repo.claimReminder(r.id, now))) continue;
@@ -404,10 +444,10 @@ export async function sendDueReminders(d: AppointmentDeps, limit = 50): Promise<
     const url = await d.manageUrl(d.tokenFor(a.id));
     let result;
     if (r.channel === "email") {
-      const m = reminderEmail(a, t, firm, url);
+      const m = reminderFrom(a, t, firm, url, custom);
       result = await d.notify.email(a.contact_email, m.subject, await signed(d, m.text));
     } else if (a.sms_consent && a.contact_phone) {
-      result = await d.notify.sms(a.contact_phone, reminderSms(a, t, firm, url));
+      result = await d.notify.sms(a.contact_phone, reminderFrom(a, t, firm, url, custom).sms);
     } else {
       await d.repo.markReminder(r.id, "skipped", "No text consent or number", now);
       run.skipped++;
