@@ -7,7 +7,7 @@ import { DEFAULT_WEEK } from "../lib/calendar/business.ts";
 import { ValidationError } from "../lib/commerce/validation.ts";
 import { appointmentIcs, reminderSms, whenFor } from "../lib/appointments/messages.ts";
 import {
-  addDateOverride, bookByStaff, bookPublic, saveBookingMessages, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
+  addDateOverride, bookByStaff, bookPublic, saveBookingMessages, setTypeArchived, cancelByStaff, cancelByToken, checkType, createType, editType, listSlots, lookupByToken, markOutcome,
   rescheduleByStaff, rescheduleByToken, resendConfirmation, saveWeekly, sendDueReminders, slugOf, type AppointmentDeps,
 } from "../lib/appointments/service.ts";
 import type { Busy } from "../lib/appointments/slots.ts";
@@ -434,4 +434,14 @@ test("the reminder and cancellation wording can be edited on its own, without to
   await saveBookingMessages(deps, { group: "reminder" }, null);
   assert.equal((await deps.repo.getMessages())?.reminder_subject, null, "resetting one group clears only it");
   assert.equal((await deps.repo.getMessages())?.cancel_subject, "Cancelled for {{first_name}}");
+});
+
+test("an appointment type can be archived and restored; archived types take no public bookings", async () => {
+  const { deps } = make();
+  const t = await createType(deps, TYPE);
+  assert.equal((await setTypeArchived(deps, t.id, true)).active, false);
+  await assert.rejects(bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM }), /isn't available/);
+  assert.equal((await setTypeArchived(deps, t.id, false)).active, true);
+  assert.ok(await bookPublic(deps, t.slug, { ...person, starts_at: MON_10AM }));
+  await assert.rejects(setTypeArchived(deps, "nope", true), /wasn't found/);
 });

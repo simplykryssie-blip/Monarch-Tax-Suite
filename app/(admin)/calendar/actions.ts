@@ -10,7 +10,7 @@ import { createLead } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
 import { workspaceRepo } from "@/lib/workspace/server";
 import {
-  addDateOverride, bookByStaff, cancelByStaff, createType, editType, markOutcome, officeLocalToIso, rescheduleByStaff, resendConfirmation, saveBookingMessages, saveWeekly, type ConfirmationOutcome,
+  addDateOverride, bookByStaff, cancelByStaff, createType, editType, markOutcome, setTypeArchived, officeLocalToIso, rescheduleByStaff, resendConfirmation, saveBookingMessages, saveWeekly, type ConfirmationOutcome,
 } from "@/lib/appointments/service.ts";
 
 // Every action re-checks administrator access and acts for the signed-in tenant only.
@@ -139,6 +139,14 @@ export async function saveTypeAction(form: FormData) {
     if (id) { await editType(office(), id, raw); return "Appointment type saved."; }
     await createType(office(), raw);
     return "Appointment type added.";
+  });
+}
+
+export async function archiveTypeAction(form: FormData) {
+  await act("/settings/calendar", async () => {
+    const restore = str(form, "restore") === "yes";
+    await setTypeArchived(office(), str(form, "id"), !restore);
+    return restore ? "Appointment type restored. It is open for booking again." : "Appointment type archived. It no longer takes bookings; past appointments are kept.";
   });
 }
 

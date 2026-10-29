@@ -98,6 +98,13 @@ export async function editType(d: AppointmentDeps, id: string, raw: Record<strin
   return d.repo.updateType(id, input);
 }
 
+/** Archives a type (closed for booking, kept with its past appointments and moved out of the way) or brings it back. */
+export async function setTypeArchived(d: AppointmentDeps, id: string, archived: boolean): Promise<AppointmentType> {
+  const current = UUID.test(id) ? await d.repo.getType(id) : null;
+  if (!current) throw new ValidationError("That appointment type wasn't found.");
+  return d.repo.updateType(id, { active: !archived });
+}
+
 // ---------------------------------------------------------------- availability
 
 const hhmm = (v: unknown, label: string) => {

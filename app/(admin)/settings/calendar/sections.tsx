@@ -6,7 +6,7 @@ import { CopyLink } from "@/components/calendar/copy-link";
 import { MessageFields } from "@/components/calendar/message-fields";
 import { appointmentDeps } from "@/lib/appointments/server";
 import type { AppointmentType, BookingMessages } from "@/lib/appointments/types.ts";
-import { addOverrideAction, removeOverrideAction, saveBookingMessagesAction, saveTypeAction, saveWeeklyAction } from "../../calendar/actions";
+import { addOverrideAction, archiveTypeAction, removeOverrideAction, saveBookingMessagesAction, saveTypeAction, saveWeeklyAction } from "../../calendar/actions";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const hm = (t: string | null) => (t ? t.slice(0, 5) : "");
@@ -69,17 +69,37 @@ export function TypeCards({ types, forms }: { types: AppointmentType[]; forms: F
     <section className="monarch-panel" style={{ padding: 20 }}>
       <div className="cl-card-head"><h2>Appointment types</h2><Modal label="Add appointment type" title="Add an appointment type" className="monarch-secondary" wide><TypeForm forms={forms} /></Modal></div>
       {types.length === 0 ? <p className="monarch-muted">None yet.</p> : (
-        <div className="pl-grid">
-          {types.map((t) => (
-            <section key={t.id} className="monarch-panel pl-card" style={{ borderTopColor: t.active ? undefined : "#94a3b8" }}>
-              <b className="pl-name">{t.name}</b>
-              <dl className="pl-facts"><div><dt>Length</dt><dd>{t.duration_minutes} min</dd></div><div><dt>Booking</dt><dd>{t.active ? "Open" : "Closed"}</dd></div></dl>
-              <span className="cl-card-actions">
-                <Modal label="Edit" title={`Edit ${t.name}`} className="monarch-link" wide><TypeForm t={t} forms={forms} /></Modal>
-              </span>
-            </section>
-          ))}
-        </div>
+        <>
+          <div className="pl-grid">
+            {types.filter((t) => t.active).map((t) => (
+              <section key={t.id} className="monarch-panel pl-card">
+                <b className="pl-name">{t.name}</b>
+                <dl className="pl-facts"><div><dt>Length</dt><dd>{t.duration_minutes} min</dd></div><div><dt>Booking</dt><dd>Open</dd></div></dl>
+                <span className="cl-card-actions">
+                  <Modal label="Edit" title={`Edit ${t.name}`} className="monarch-secondary" wide><TypeForm t={t} forms={forms} /></Modal>
+                  <form action={archiveTypeAction}><input type="hidden" name="id" value={t.id} /><button className="monarch-link">Archive</button></form>
+                </span>
+              </section>
+            ))}
+          </div>
+          {types.some((t) => !t.active) && (
+            <>
+              <h3>Archived</h3>
+              <p className="monarch-muted">Not taking bookings. Past appointments are kept.</p>
+              <div className="pl-grid">
+                {types.filter((t) => !t.active).map((t) => (
+                  <section key={t.id} className="monarch-panel pl-card" style={{ borderTopColor: "#94a3b8" }}>
+                    <b className="pl-name">{t.name}</b>
+                    <span className="cl-card-actions">
+                      <Modal label="Edit" title={`Edit ${t.name}`} className="monarch-secondary" wide><TypeForm t={t} forms={forms} /></Modal>
+                      <form action={archiveTypeAction}><input type="hidden" name="id" value={t.id} /><input type="hidden" name="restore" value="yes" /><button className="monarch-link">Restore</button></form>
+                    </span>
+                  </section>
+                ))}
+              </div>
+            </>
+          )}
+        </>
       )}
     </section>
   );
