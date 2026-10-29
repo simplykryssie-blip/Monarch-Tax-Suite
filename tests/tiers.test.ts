@@ -36,9 +36,9 @@ describe("tiers", () => {
     assert.equal(sb.items[0].href, "/efin");
   });
 
-  test("nothing is shown that isn't built: no Soon items, no service orders, courses, memberships, support, marketing or reports", () => {
+  test("nothing is shown that isn't built: no Soon items, no service orders, courses, memberships, support or marketing", () => {
     const all = labels(NAV);
-    for (const gone of ["Service orders", "Courses", "Memberships", "Support", "Marketing", "Reports"]) assert.ok(!all.includes(gone), `${gone} should not be in the menu`);
+    for (const gone of ["Service orders", "Courses", "Memberships", "Support", "Marketing"]) assert.ok(!all.includes(gone), `${gone} should not be in the menu`);
     const leaves = (entries: Entry[]): Entry[] => entries.flatMap((e) => (isBranch(e) ? leaves(e.items) : [e]));
     assert.deepEqual(leaves(NAV).filter((l) => !l.href).map((l) => l.label), []);
   });
@@ -154,7 +154,7 @@ describe("menu shape", () => {
   test("the daily group lists the daily work in order", () => {
     const daily = NAV[0];
     assert.ok(isBranch(daily));
-    assert.deepEqual(daily.items.map((i) => i.label), ["Home", "Contacts", "Work", "Billing", "Calendar", "Documents"]);
+    assert.deepEqual(daily.items.map((i) => i.label), ["Home", "Contacts", "Work", "Billing", "Calendar", "Documents", "Reports"]);
   });
 
   test("Calendar, Websites, Forms, Automation and Campaigns are open to every plan, and their pages are gated the same way", () => {

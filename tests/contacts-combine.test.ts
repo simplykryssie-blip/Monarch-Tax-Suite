@@ -86,7 +86,14 @@ describe("list: filters, counts, order", () => {
     assert.equal(filterContacts(contacts, { q: "nobody" }).length, 0);
   });
   test("counts", () => {
-    assert.deepEqual(countContacts(contacts), { all: 2, lead: 2, client: 2, customer: 1, inactive: 2 });
+    assert.deepEqual(countContacts(contacts), { all: 2, lead: 1, client: 1, customer: 1, inactive: 2 });
+  });
+  test("each count equals the rows its filter shows", () => {
+    const n = countContacts(contacts);
+    assert.equal(filterContacts(contacts, { kind: "lead" }).length, n.lead);
+    assert.equal(filterContacts(contacts, { kind: "client" }).length, n.client);
+    assert.equal(filterContacts(contacts, { kind: "customer" }).length, n.customer);
+    assert.equal(filterContacts(contacts, { kind: "inactive" }).length, n.inactive);
   });
   test("newest activity first", () => {
     const sorted = sortContacts(contacts);

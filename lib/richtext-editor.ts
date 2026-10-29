@@ -1,36 +1,38 @@
 import { parseRich, type Block, type Inline } from "./richtext.ts";
+import { labelFromKey } from "./ui/merge-words.ts";
 
 // The editor works on HTML in the browser and saves Markdown (see richtext.ts). These two functions are the bridge.
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-function inlineToEditor(nodes: Inline[]): string {
+function inlineToEditor(nodes: Inline[], label: (name: string) => string): string {
   return nodes.map((n) => {
     switch (n.t) {
       case "text": return esc(n.v).replace(/\n/g, "<br>");
-      case "token": return `<span data-token="${esc(n.name)}" contenteditable="false" class="re-chip">{{${esc(n.name)}}}</span>`;
-      case "b": return `<b>${inlineToEditor(n.c)}</b>`;
-      case "i": return `<i>${inlineToEditor(n.c)}</i>`;
-      case "u": return `<u>${inlineToEditor(n.c)}</u>`;
-      case "a": return `<a href="${esc(n.href)}">${inlineToEditor(n.c)}</a>`;
+      case "token": return `<span data-token="${esc(n.name)}" contenteditable="false" class="re-chip">[${esc(label(n.name))}]</span>`;
+      case "b": return `<b>${inlineToEditor(n.c, label)}</b>`;
+      case "i": return `<i>${inlineToEditor(n.c, label)}</i>`;
+      case "u": return `<u>${inlineToEditor(n.c, label)}</u>`;
+      case "a": return `<a href="${esc(n.href)}">${inlineToEditor(n.c, label)}</a>`;
       case "img": return `<img src="${esc(n.src)}" alt="${esc(n.alt)}">`;
-      case "span": return `<span style="${n.color ? `color:${n.color};` : ""}${n.size ? `font-size:${n.size}px;` : ""}">${inlineToEditor(n.c)}</span>`;
+      case "span": return `<span style="${n.color ? `color:${n.color};` : ""}${n.size ? `font-size:${n.size}px;` : ""}">${inlineToEditor(n.c, label)}</span>`;
     }
   }).join("");
 }
 
-function blockToEditor(b: Block): string {
+function blockToEditor(b: Block, label: (name: string) => string): string {
   switch (b.t) {
-    case "h": return `<h${b.level}>${inlineToEditor(b.c)}</h${b.level}>`;
-    case "p": return `<p>${inlineToEditor(b.c)}</p>`;
-    case "ul": return `<ul>${b.items.map((i) => `<li>${inlineToEditor(i)}</li>`).join("")}</ul>`;
-    case "ol": return `<ol>${b.items.map((i) => `<li>${inlineToEditor(i)}</li>`).join("")}</ol>`;
+    case "h": return `<h${b.level}>${inlineToEditor(b.c, label)}</h${b.level}>`;
+    case "p": return `<p>${inlineToEditor(b.c, label)}</p>`;
+    case "ul": return `<ul>${b.items.map((i) => `<li>${inlineToEditor(i, label)}</li>`).join("")}</ul>`;
+    case "ol": return `<ol>${b.items.map((i) => `<li>${inlineToEditor(i, label)}</li>`).join("")}</ol>`;
   }
 }
 
 /** Markdown to the HTML shown in the editor. Text is escaped; only the supported tags are produced. */
-export function markdownToEditorHtml(md: string): string {
-  const html = parseRich(md).map(blockToEditor).join("");
+/** `label` names a merge tag the way a person reads it; without it the tag's own name is made readable. */
+export function markdownToEditorHtml(md: string, label: (name: string) => string = labelFromKey): string {
+  const html = parseRich(md).map((b) => blockToEditor(b, label)).join("");
   return html || "<p><br></p>";
 }
 
@@ -67,7 +69,7 @@ export function editorToMarkdown(root: HTMLElement): string {
     const inner = kids();
     if (!inner.trim()) return inner;
     const wrap = (mark: string) => wrapWith(inner, mark);
-    // A browser can put colour or size straight on a <b>, <i> or <u>.
+    // A browser can put color or size straight on a <b>, <i> or <u>.
     const styled = (core: string) => {
       const color = cssColorToHex(el.style.color);
       const px = /^(\d{2})px$/.exec(el.style.fontSize)?.[1];

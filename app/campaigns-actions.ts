@@ -1,5 +1,7 @@
 "use server";
 
+import { CAMPAIGN_WORDS } from "@/lib/campaigns/words.ts";
+import { fromFriendlyWith } from "@/lib/ui/merge-words.ts";
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
@@ -59,11 +61,14 @@ function audienceFrom(form: FormData) {
   };
 }
 
+/** What a person typed in a message box, with [First name] turned back into the merge tag. */
+const friendly = (v: FormDataEntryValue | null) => (typeof v === "string" ? fromFriendlyWith(CAMPAIGN_WORDS, v) : v);
+
 export async function saveCampaignAction(form: FormData) {
   const id = str(form, "campaign_id");
   await run(form, `/${id}`, async (ctx) => {
     const c = await saveCampaign(ctx.deps, id, {
-      name: form.get("name"), channel: str(form, "channel"), subject: form.get("subject"), body: form.get("body"),
+      name: form.get("name"), channel: str(form, "channel"), subject: friendly(form.get("subject")), body: friendly(form.get("body")),
       audience: audienceFrom(form), respect_hours: form.get("respect_hours") === "on", sender_id: str(form, "sender_id") || null,
     }, ctx.userId);
     const next = str(form, "then");

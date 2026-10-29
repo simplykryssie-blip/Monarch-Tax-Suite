@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { moveReturnAction } from "@/app/(admin)/workspace/actions";
 import type { BoardColumn } from "@/lib/workspace/rules.ts";
+import { EFILE_STATUSES } from "@/lib/workspace/types.ts";
 
 const KIND = { original: "Original", extension: "Extension", amendment: "Amendment" } as const;
 
@@ -54,7 +55,7 @@ export function WorkBoard({ columns, move = moveReturnAction }: { columns: Board
               {c.cards.map((k) => (
                 <article key={k.id} className={"wb-card" + (drag === k.id ? " is-drag" : "")} draggable onDragStart={() => setDrag(k.id)} onDragEnd={() => { setDrag(null); setOver(null); }}>
                   <Link href={`/workspace/clients/${k.clientId}#return-${k.id}`}>{k.clientName}</Link>
-                  <span>{k.kind && <span className={`wb-kind is-${k.kind}`}>{KIND[k.kind]}</span>} {k.label}</span>
+                  <span>{k.kind && <span className={`wb-kind is-${k.kind}`}>{KIND[k.kind]}</span>} {k.label}{k.efile && <span className={`wb-efile is-${k.efile}`}>{EFILE_STATUSES[k.efile]}</span>}</span>
                   {k.dueOn && <small className={k.late ? "wb-late" : "monarch-muted"}>{k.late ? "Late · " : "Due "}{k.dueOn}</small>}
                 </article>
               ))}

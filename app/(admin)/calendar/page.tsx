@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/admin";
+import { appOrigin, requireAdmin } from "@/lib/admin";
 import { Badge, Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { formDeps } from "@/lib/forms/server";
@@ -45,7 +45,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     const formIds = [...new Set(types.map((t) => t.intake_form_id).filter((f): f is string => !!f))];
     const subs = formIds.length ? (await Promise.all(formIds.map((f) => formDeps().repo.listSubmissions(f, { limit: 500 }).then((r) => r.rows).catch(() => [])))).flat() : [];
     const intake = intakeStatus(appts, types, subs);
-    return { tz: cal.timeZone, today, first, anchor, days, appts, types, tasks, open, clients, intake };
+    return { tz: cal.timeZone, today, first, anchor, days, appts, types, tasks, open, clients, intake, origin: await appOrigin() };
   });
   const base = (v: View, date?: string) => `/calendar?view=${v}${date ? `&date=${date}` : ""}`;
   return (
@@ -53,7 +53,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <PageTitle title="Calendar">Appointments booked online or by your staff, in your office&apos;s time zone.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <SetupRequired message={result.message} /> : (() => {
-        const { tz, today, first, anchor, days, appts, types, tasks, open, clients, intake } = result.data;
+        const { tz, today, first, anchor, days, appts, types, tasks, open, clients, intake, origin } = result.data;
         const tasksByDay = new Map<string, typeof tasks>();
         for (const t of tasks) tasksByDay.set(t.due_on, [...(tasksByDay.get(t.due_on) ?? []), t]);
         const typeName = new Map(types.map((t) => [t.id, t.name]));
@@ -76,9 +76,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               <Link className="monarch-primary" href="/calendar/new">New appointment</Link>
               <Modal label="Booking links" title="Booking links" className="monarch-secondary">
                 <ul className="cl-list">
-                  <li><span><b>All appointment types</b></span><span className="cl-card-actions"><CopyLink href="/book" label="Copy" className="monarch-link" /></span></li>
-                  {types.filter((t) => t.active).map((t) => <li key={t.id}><span><b>{t.name}</b></span><span className="cl-card-actions"><CopyLink href={`/book/${t.slug}`} label="Copy" className="monarch-link" /></span></li>)}
+                  <li><span><b>All appointment types</b><small className="monarch-subcell">{origin}/book</small></span><span className="cl-card-actions"><CopyLink href="/book" label="Copy" className="monarch-link" /></span></li>
+                  {types.filter((t) => t.active).map((t) => <li key={t.id}><span><b>{t.name}</b><small className="monarch-subcell">{origin}/book/{t.slug}</small></span><span className="cl-card-actions"><CopyLink href={`/book/${t.slug}`} label="Copy" className="monarch-link" /></span></li>)}
                 </ul>
+                <p className="monarch-muted">Change your hours, types and messages in <Link href="/settings/calendar">Settings → Booking and hours</Link>.</p>
               </Modal>
             </div>
             {view === "month" && (
@@ -166,7 +167,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               </section>
             ))}
             {view !== "month" && view === "agenda" && byDay.size === 0 && tasksByDay.size === 0 && <p className="monarch-muted">No appointments in the next 30 days.</p>}
-            <p className="monarch-muted">Times are shown in {tz.replace(/_/g, " ")}. {types.length === 0 ? "Add an appointment type to start taking bookings." : ""}</p>
+            <p className="monarch-muted">{`Times are shown in ${tz.replace(/_/g, " ")}. ${types.length === 0 ? "Add an appointment type to start taking bookings." : ""}`}</p>
             </div>
             <aside className="cal-side monarch-panel" aria-label="Tasks">
               <h2>Tasks</h2>
