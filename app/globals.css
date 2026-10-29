@@ -569,3 +569,8 @@ a.hm-row:hover{background:#fcfbf8}
 .mfld-list button { display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; background: transparent; border-radius: 6px; font: inherit; color: inherit; cursor: pointer; }
 .mfld-list button:hover, .mfld-list button:focus-visible { background: #f1eee6; }
 .mfld input, .mfld textarea { width: 100%; }
+
+body:has(dialog[open]) .hm-panel { visibility: hidden; }
+.wb-efile { margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 0.72rem; background: #eceae2; color: #3a372e; }
+.wb-efile.is-accepted { background: #dcefdc; color: #1f5a2a; }
+.wb-efile.is-rejected { background: #f6dcdc; color: #8a1f1f; }

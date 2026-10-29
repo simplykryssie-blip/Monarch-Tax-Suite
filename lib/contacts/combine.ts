@@ -186,8 +186,7 @@ export function filterContacts(contacts: Contact[], f: ContactFilter): Contact[]
   const digits = term.replace(/\D+/g, "");
   return contacts.filter((c) => {
     if (f.kind === "inactive") { if (c.active) return false; }
-    else if (f.kind && !c.kinds.includes(f.kind)) return false;
-    else if (!f.kind && !c.active) return false;
+    else if (!c.active || (f.kind && !c.kinds.includes(f.kind))) return false;
     if (f.tag && !c.tags.includes(f.tag)) return false;
     if (f.assigned === "none" ? c.assignedTo : f.assigned && c.assignedTo !== f.assigned) return false;
     if (f.stage && c.leadStatus !== f.stage) return false;
@@ -200,9 +199,10 @@ export function countContacts(contacts: Contact[]) {
   const active = contacts.filter((c) => c.active);
   return {
     all: active.length,
-    lead: contacts.filter((c) => c.kinds.includes("lead")).length,
-    client: contacts.filter((c) => c.kinds.includes("client")).length,
-    customer: contacts.filter((c) => c.kinds.includes("customer")).length,
+    // Only people still active, so the counts add up to what the list shows. Archived people have their own count.
+    lead: active.filter((c) => c.kinds.includes("lead")).length,
+    client: active.filter((c) => c.kinds.includes("client")).length,
+    customer: active.filter((c) => c.kinds.includes("customer")).length,
     inactive: contacts.length - active.length,
   };
 }

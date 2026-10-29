@@ -21,6 +21,7 @@ export const NAV: Entry[] = [
       { label: "Billing", icon: "card", href: "/workspace/billing" },
       { label: "Calendar", icon: "calendar", href: "/calendar" },
       { label: "Documents", icon: "reports", href: "/documents" },
+      { label: "Reports", icon: "reports", href: "/reports" },
     ],
   },
   {

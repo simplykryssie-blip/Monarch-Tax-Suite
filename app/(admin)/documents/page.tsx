@@ -40,6 +40,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const shown = inView(all, view).filter((d) => (searching ? `${d.name} ${d.description ?? ""}`.toLowerCase().includes(q) : (d.folder_id ?? null) === (current?.id ?? null)));
   const subfolders = searching || view === "archived" ? [] : folders.filter((f) => (f.parent_id ?? null) === (current?.id ?? null));
   const counts = viewCounts(all);
+  const recent = inView(all, "current").slice().sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5);
   return (
     <>
       <PageTitle title="Documents">Client files and your office&apos;s own documents, in folders.</PageTitle>
@@ -51,17 +52,32 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
       ) : where === "clients" ? (
         <ClientsList q={q} />
       ) : where === "root" ? (
+        <>
+        <div className="monarch-page-actions">
+          <form method="get" action="/documents" role="search"><input type="hidden" name="clients" value="1" /><input name="q" placeholder="Find a client's folder" aria-label="Find a client's folder" /></form>
+          <Modal label="Add a document" title="Add a document" className="monarch-primary">
+            <DocumentUploader folderId={undefined} />
+            <p className="monarch-muted">This adds to your Internal docs. To add to a client, open their folder under Clients. PDF, Word, Excel or image (JPG, PNG), up to 25 MB.</p>
+          </Modal>
+        </div>
         <div className="pl-grid">
-          <section className="monarch-panel pl-card pl-folder"><Link className="pl-name" href="/documents?clients=1">Clients</Link><small className="monarch-muted">A folder for each client, named with their name and the last four of their SSN. What clients upload lands here too.</small></section>
+          <section className="monarch-panel pl-card pl-folder"><Link className="pl-name" href="/documents?clients=1">Clients</Link><small className="monarch-muted">A folder for each client. What clients upload lands here too.</small></section>
           <section className="monarch-panel pl-card pl-folder"><Link className="pl-name" href="/documents?internal=1">Internal docs</Link><small className="monarch-muted">Your office&apos;s own files and folders.</small></section>
         </div>
+        {recent.length > 0 && (
+          <section className="monarch-panel" style={{ padding: 20 }}>
+            <h2 style={{ marginTop: 0 }}>Recent documents</h2>
+            <ul className="cl-list">{recent.map((d) => <li key={d.id}><span><Link href={`/documents/${d.id}`}><b>{d.name}</b></Link></span><span className="monarch-muted">{when(d.updated_at)}</span></li>)}</ul>
+          </section>
+        )}
+        </>
       ) : (
         <>
           <div className="monarch-page-actions">
             <nav className="pl-crumbs" aria-label="Folder">
               <Link href="/documents">All documents</Link> / <DropLink scope="document" move={moveByDragAction} to={null} href="/documents?internal=1" current={!current && view === "current"}>Internal docs</DropLink>
               {crumbs.map((f) => <span key={f.id}> / <DropLink scope="document" move={moveByDragAction} to={f.id} href={`/documents?internal=1&folder=${f.id}`} current={f.id === current?.id}>{f.name}</DropLink></span>)}
-              {counts.archived > 0 && <span> · <Link href={view === "archived" ? "/documents?internal=1" : "/documents?internal=1&view=archived"} aria-current={view === "archived" ? "page" : undefined}>{view === "archived" ? "Back to documents" : `Archived (${counts.archived})`}</Link></span>}
+              {<span> · <Link href={view === "archived" ? "/documents?internal=1" : "/documents?internal=1&view=archived"} aria-current={view === "archived" ? "page" : undefined}>{view === "archived" ? "Back to documents" : `Archived (${counts.archived})`}</Link></span>}
             </nav>
             <span className="cl-card-actions">
               <form method="get" action="/documents" role="search"><input type="hidden" name="internal" value="1" /><input name="q" defaultValue={sp.q ?? ""} placeholder="Search documents" aria-label="Search documents" maxLength={80} /></form>
