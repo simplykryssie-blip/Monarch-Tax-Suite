@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LAYOUTS, sectionsOf, type Block, type LeafBlock } from "@/lib/sites/blocks.ts";
+import { isHtmlOnly, LAYOUTS, sectionsOf, widthOf, type Block, type LeafBlock } from "@/lib/sites/blocks.ts";
 import { onColor } from "@/lib/forms/theme.ts";
 import { HtmlEmbed } from "./html-embed";
 
@@ -82,8 +82,8 @@ export function Blocks({ blocks, view }: { blocks: Block[]; view: SiteView }) {
   return (
     <>
       {sectionsOf(blocks).map((s) => (
-        <section key={s.id} className={`ws-section ws-tone-${s.tone} ws-pad-${s.pad}`}>
-          <div className={`ws-wrap ws-w-${s.width}`}>
+        <section key={s.id} className={`ws-section${isHtmlOnly(s) ? " ws-bleed" : ""} ws-tone-${s.tone} ws-pad-${s.pad}`}>
+          <div className={`ws-wrap ws-w-${widthOf(s)}`}>
             {s.rows.map((r) => (
               <div key={r.id} className={`ws-row ws-gap-${r.gap} ws-va-${r.valign} ws-cols-${r.columns.length}`} style={{ gridTemplateColumns: LAYOUTS[r.layout].map((n) => `${n}fr`).join(" ") }}>
                 {r.columns.map((c) => <div key={c.id} className="ws-col">{c.children.map((e) => <Leaf key={e.id} block={e} view={view} />)}</div>)}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { BLOCK_LABEL, LAYOUT_KEYS, LAYOUT_LABEL, LAYOUTS, LEAF_TYPES, newElement, newRow, newSection, ROW_GAPS, SECTION_PADS, SECTION_TONES, SECTION_WIDTHS, type Block, type ColumnBlock, type LayoutKey, type LeafBlock, type RowBlock, type SectionBlock } from "@/lib/sites/blocks.ts";
+import { BLOCK_LABEL, LAYOUT_KEYS, LAYOUT_LABEL, LAYOUTS, LEAF_TYPES, newElement, newRow, newSection, ROW_GAPS, SECTION_PADS, SECTION_TONES, SECTION_WIDTHS, widthOf, type Block, type ColumnBlock, type LayoutKey, type LeafBlock, type RowBlock, type SectionBlock } from "@/lib/sites/blocks.ts";
 import { LeafFields, type PickBooking, type PickForm, type PickImage } from "./page-form";
 import { Blocks, Leaf, SITE_CSS, SiteFrame, siteVars, type SiteView } from "./render";
 import { SECTION_TEMPLATES } from "@/lib/sites/templates.ts";
@@ -529,7 +529,7 @@ export function PageEditor({ action, area, siteId, pageId, seo, title, descripti
                 <div key={s.id}>
                   <section className={`ws-section ws-tone-${s.tone} ws-pad-${s.pad} ed-section${isSel(s.id) ? " is-sel" : ""}`} onClick={(e) => { e.stopPropagation(); choose({ kind: "section", id: s.id }); }} onDragOver={overArea} onDrop={finishDrop}>
                     {isSel(s.id) && label("Section", s.id)}
-                    <div className={`ws-wrap ws-w-${s.width}`}>
+                    <div className={`ws-wrap ws-w-${widthOf(s)}`}>
                       {s.rows.map((r) => (
                         <div key={r.id} className={`ed-row${isSel(r.id) ? " is-sel" : ""}`} onClick={(e) => { e.stopPropagation(); choose({ kind: "row", id: r.id }); }}>
                           {isSel(r.id) && label("Row", r.id)}
