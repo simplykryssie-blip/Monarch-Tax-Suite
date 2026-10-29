@@ -31,6 +31,19 @@ export function fillMessage(template: string, values: Record<string, string>): s
   return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_, k: string) => values[k] ?? "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+export const DEFAULT_REMINDER_SUBJECT = "Reminder: {{type}} on {{date_time}}";
+export const DEFAULT_REMINDER_BODY = "Hi {{name}},\n\nThis is a reminder of your {{type}} with {{office}}: {{date_time}}.\n\n{{location_line}}\n\nCan't make it? Cancel or reschedule here: {{manage_link}}\n\n{{office}}";
+export const DEFAULT_REMINDER_SMS = "{{office}}: reminder of your {{type}} on {{date_time}}. Change it: {{manage_link}} Reply STOP to opt out.";
+export const DEFAULT_CANCEL_SUBJECT = "Cancelled: {{type}} with {{office}}";
+export const DEFAULT_CANCEL_BODY = "Hi {{name}},\n\nYour {{type}} on {{date_time}} has been cancelled.\n\n{{office}}";
+
+function valuesFor(a: Appointment, t: AppointmentType, firm: string, manageUrl: string, dateTime: string): Record<string, string> {
+  return {
+    name: a.contact_name, first_name: a.contact_name.split(" ")[0] ?? a.contact_name, type: t.name, office: firm, date_time: dateTime,
+    location: t.location ?? "", location_line: t.location ? `Where: ${t.location}` : "", manage_link: manageUrl,
+  };
+}
+
 export type ConfirmationSet = { subject: string; text: string; sms: string };
 /** The confirmation email and text for a booking: the office's own wording where it has written some, else the built-in one. */
 export function confirmationFrom(a: Appointment, t: AppointmentType, firm: string, manageUrl: string, custom: { confirm_subject: string | null; confirm_body: string | null; confirm_sms: string | null } | null): ConfirmationSet {
@@ -93,4 +106,22 @@ export function appointmentIcs(a: Appointment, t: AppointmentType, firm: string,
     `STATUS:${a.status === "cancelled" ? "CANCELLED" : "CONFIRMED"}`,
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n") + "\r\n";
+}
+
+type Custom = { reminder_subject?: string | null; reminder_body?: string | null; reminder_sms?: string | null; cancel_subject?: string | null; cancel_body?: string | null } | null;
+
+/** The reminder email and text: the office's own wording where it has written some, else the built-in one. */
+export function reminderFrom(a: Appointment, t: AppointmentType, firm: string, manageUrl: string, custom: Custom): ConfirmationSet {
+  const v = valuesFor(a, t, firm, manageUrl, whenFor(a));
+  return {
+    subject: fillMessage(custom?.reminder_subject || DEFAULT_REMINDER_SUBJECT, v),
+    text: fillMessage(custom?.reminder_body || DEFAULT_REMINDER_BODY, v),
+    sms: fillMessage(custom?.reminder_sms || DEFAULT_REMINDER_SMS, v),
+  };
+}
+
+/** The email a client gets when an appointment is cancelled. */
+export function cancellationFrom(a: Appointment, t: AppointmentType, firm: string, custom: Custom): { subject: string; text: string } {
+  const v = valuesFor(a, t, firm, "", whenFor(a));
+  return { subject: fillMessage(custom?.cancel_subject || DEFAULT_CANCEL_SUBJECT, v), text: fillMessage(custom?.cancel_body || DEFAULT_CANCEL_BODY, v) };
 }

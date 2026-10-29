@@ -414,3 +414,24 @@ test("the public booking page marks each detail that needs fixing, and texts onl
   assert.equal(wantsTexts(true, "(337) 555-0100"), true);
   assert.equal(wantsTexts(false, "(337) 555-0100"), false);
 });
+
+test("the reminder and cancellation wording can be edited on its own, without touching the confirmation", async () => {
+  const { deps, sent, clock } = make();
+  const t = await createType(deps, { ...TYPE, reminder_hours: "24" });
+  await saveBookingMessages(deps, { group: "confirm", confirm_subject: "Booked, {{first_name}}" }, null);
+  await saveBookingMessages(deps, { group: "reminder", reminder_subject: "Tomorrow: {{type}}", reminder_body: "{{first_name}}, see you {{date_time}}. {{manage_link}}", reminder_sms: "Tomorrow at the office" }, null);
+  await saveBookingMessages(deps, { group: "cancel", cancel_subject: "Cancelled for {{first_name}}", cancel_body: "We cancelled {{type}}." }, null);
+  const a = await bookPublic(deps, t.slug, { ...person, starts_at: "2026-10-14T14:00:00.000Z" });
+  assert.match(sent[0].body, /^Booked, Ana\n/, "the confirmation kept its wording");
+  sent.length = 0;
+  clock.t = new Date("2026-10-13T15:00:00Z");
+  await sendDueReminders(deps);
+  assert.match(sent.find((m) => m.channel === "email")!.body, /^Tomorrow: Tax Prep Consultation\nAna, see you /);
+  assert.match(sent.find((m) => m.channel === "sms")!.body, /^Tomorrow at the office$/);
+  sent.length = 0;
+  await cancelByStaff(deps, a.appointment.id, "", true);
+  assert.match(sent[0].body, /^Cancelled for Ana\nWe cancelled Tax Prep Consultation\./);
+  await saveBookingMessages(deps, { group: "reminder" }, null);
+  assert.equal((await deps.repo.getMessages())?.reminder_subject, null, "resetting one group clears only it");
+  assert.equal((await deps.repo.getMessages())?.cancel_subject, "Cancelled for {{first_name}}");
+});

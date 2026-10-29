@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { DEFAULT_CONFIRM_BODY, DEFAULT_CONFIRM_SMS, DEFAULT_CONFIRM_SUBJECT } from "@/lib/appointments/messages.ts";
+import { DEFAULT_CANCEL_BODY, DEFAULT_CANCEL_SUBJECT, DEFAULT_CONFIRM_BODY, DEFAULT_CONFIRM_SMS, DEFAULT_CONFIRM_SUBJECT, DEFAULT_REMINDER_BODY, DEFAULT_REMINDER_SMS, DEFAULT_REMINDER_SUBJECT } from "@/lib/appointments/messages.ts";
 import { SubmitOnce } from "@/components/admin/submit-once";
 
 const TAGS: [string, string][] = [
@@ -9,10 +9,17 @@ const TAGS: [string, string][] = [
   ["Date and time", "date_time"], ["Location", "location_line"], ["Cancel or change link", "manage_link"],
 ];
 type Field = "subject" | "body" | "sms";
+export type MessageGroup = "confirm" | "reminder" | "cancel";
+const DEFAULTS: Record<MessageGroup, { subject: string; body: string; sms: string | null }> = {
+  confirm: { subject: DEFAULT_CONFIRM_SUBJECT, body: DEFAULT_CONFIRM_BODY, sms: DEFAULT_CONFIRM_SMS },
+  reminder: { subject: DEFAULT_REMINDER_SUBJECT, body: DEFAULT_REMINDER_BODY, sms: DEFAULT_REMINDER_SMS },
+  cancel: { subject: DEFAULT_CANCEL_SUBJECT, body: DEFAULT_CANCEL_BODY, sms: null },
+};
 
 /** The confirmation email subject and body, and the text. Click a tag to drop it into whichever box you were typing in. */
-export function MessageFields({ subject, body, sms }: { subject: string | null; body: string | null; sms: string | null }) {
-  const [vals, setVals] = useState<Record<Field, string>>({ subject: subject ?? DEFAULT_CONFIRM_SUBJECT, body: body ?? DEFAULT_CONFIRM_BODY, sms: sms ?? DEFAULT_CONFIRM_SMS });
+export function MessageFields({ group = "confirm", subject, body, sms }: { group?: MessageGroup; subject: string | null; body: string | null; sms: string | null }) {
+  const d = DEFAULTS[group];
+  const [vals, setVals] = useState<Record<Field, string>>({ subject: subject ?? d.subject, body: body ?? d.body, sms: sms ?? d.sms ?? "" });
   const [active, setActive] = useState<Field>("body");
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -31,6 +38,7 @@ export function MessageFields({ subject, body, sms }: { subject: string | null; 
 
   return (
     <>
+      <input type="hidden" name="group" value={group} />
       <div className="is-wide">
         <label>Add information
           <select value="" onChange={(e) => { if (e.target.value) insert(e.target.value); }}>
@@ -39,9 +47,9 @@ export function MessageFields({ subject, body, sms }: { subject: string | null; 
           </select>
         </label>
       </div>
-      <label className="is-wide">Email subject<input name="confirm_subject" maxLength={200} ref={subjectRef} {...common("subject")} /></label>
-      <label className="is-wide">Email<textarea name="confirm_body" rows={9} maxLength={4000} ref={bodyRef} {...common("body")} /></label>
-      <label className="is-wide">Text message (sent only to people who agreed to texts)<textarea name="confirm_sms" rows={3} maxLength={320} ref={smsRef} {...common("sms")} /></label>
+      <label className="is-wide">Email subject<input name={`${group}_subject`} maxLength={200} ref={subjectRef} {...common("subject")} /></label>
+      <label className="is-wide">Email<textarea name={`${group}_body`} rows={9} maxLength={4000} ref={bodyRef} {...common("body")} /></label>
+      {d.sms !== null && <label className="is-wide">Text message (sent only to people who agreed to texts)<textarea name={`${group}_sms`} rows={3} maxLength={320} ref={smsRef} {...common("sms")} /></label>}
       <div className="is-wide msg-actions">
         <SubmitOnce className="monarch-primary">Save messages</SubmitOnce>
         <span className="msg-gap" aria-hidden="true" />

@@ -4,9 +4,9 @@ import { ValidationError } from "../commerce/validation.ts";
 import { checkEmail, checkName, checkPhone } from "../leads/service.ts";
 import { matchPerson, type PeopleDeps } from "../people/match.ts";
 import type { AppointmentActivity } from "./activity.ts";
-import { cancelledEmail, confirmationFrom, reminderEmail, reminderSms } from "./messages.ts";
+import { cancellationFrom, confirmationFrom, reminderFrom } from "./messages.ts";
 import { availableSlots, slotIsOffered, type Rule, type Slot } from "./slots.ts";
-import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type NewReminder, type Notifier, type TypeInput } from "./types.ts";
+import { OverlapError, type Appointment, type AppointmentRepo, type AppointmentType, type BookingMessages, type NewReminder, type Notifier, type TypeInput } from "./types.ts";
 
 // Booking, rescheduling, cancelling and reminding. Staff and the public use the same rules; the database refuses two
 // bookings that overlap for the same staff member, so two people picking the same time can't both get it.
@@ -251,14 +251,24 @@ async function insertBooked(d: AppointmentDeps, t: AppointmentType, input: {
   return { appointment: saved, token, confirmation };
 }
 
-/** The confirmation messages Settings saves. A message left empty goes back to the built-in wording. */
+const MESSAGE_GROUPS = {
+  confirm: [["confirm_subject", 200, "The subject"], ["confirm_body", 4000, "The email"], ["confirm_sms", 320, "The text"]],
+  reminder: [["reminder_subject", 200, "The subject"], ["reminder_body", 4000, "The email"], ["reminder_sms", 320, "The text"]],
+  cancel: [["cancel_subject", 200, "The subject"], ["cancel_body", 4000, "The email"]],
+} as const;
+
+/** One group of messages Settings saves (confirmation, reminder or cancellation); the others are left as they are. A message left empty goes back to the built-in wording. */
 export async function saveBookingMessages(d: AppointmentDeps, raw: Record<string, unknown>, actorId: string | null): Promise<void> {
   const pick = (v: unknown, max: number, label: string) => {
     const s = para(v, max);
     if (typeof v === "string" && v.trim().length > max) throw new ValidationError(`${label} can be up to ${max} characters.`);
     return s || null;
   };
-  await d.repo.saveMessages({ confirm_subject: pick(raw.confirm_subject, 200, "The subject"), confirm_body: pick(raw.confirm_body, 4000, "The email"), confirm_sms: pick(raw.confirm_sms, 320, "The text") }, actorId);
+  const group = typeof raw.group === "string" && raw.group in MESSAGE_GROUPS ? (raw.group as keyof typeof MESSAGE_GROUPS) : "confirm";
+  const current = (await d.repo.getMessages().catch(() => null)) ?? { confirm_subject: null, confirm_body: null, confirm_sms: null };
+  const next: BookingMessages = { ...current };
+  for (const [key, max, label] of MESSAGE_GROUPS[group]) next[key] = pick(raw[key], max, label);
+  await d.repo.saveMessages(next, actorId);
 }
 
 /** A booking from the public page. */
@@ -313,7 +323,7 @@ async function cancelRow(d: AppointmentDeps, a: Appointment, t: AppointmentType,
   await emitSafe(d, "appointment.cancelled", saved);
   await told(d, { kind: "cancelled", appointment: saved, type: t, by, actorId });
   if (notifyClient) {
-    try { const m = cancelledEmail(saved, t, await d.firmName()); await d.notify.email(saved.contact_email, m.subject, await signed(d, m.text)); } catch { /* kept */ }
+    try { const m = cancellationFrom(saved, t, await d.firmName(), await d.repo.getMessages().catch(() => null)); await d.notify.email(saved.contact_email, m.subject, await signed(d, m.text)); } catch { /* kept */ }
   }
   return saved;
 }
@@ -391,6 +401,7 @@ export async function sendDueReminders(d: AppointmentDeps, limit = 50): Promise<
   const due = await d.repo.dueReminders(now, limit);
   if (!due.length) return run;
   const firm = await d.firmName();
+  const custom = await d.repo.getMessages().catch(() => null);
   for (const r of due) {
     // Claimed first, so two sweeps at once can't both send it.
     if (!(await d.repo.claimReminder(r.id, now))) continue;
@@ -404,10 +415,10 @@ export async function sendDueReminders(d: AppointmentDeps, limit = 50): Promise<
     const url = await d.manageUrl(d.tokenFor(a.id));
     let result;
     if (r.channel === "email") {
-      const m = reminderEmail(a, t, firm, url);
+      const m = reminderFrom(a, t, firm, url, custom);
       result = await d.notify.email(a.contact_email, m.subject, await signed(d, m.text));
     } else if (a.sms_consent && a.contact_phone) {
-      result = await d.notify.sms(a.contact_phone, reminderSms(a, t, firm, url));
+      result = await d.notify.sms(a.contact_phone, reminderFrom(a, t, firm, url, custom).sms);
     } else {
       await d.repo.markReminder(r.id, "skipped", "No text consent or number", now);
       run.skipped++;

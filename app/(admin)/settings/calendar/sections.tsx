@@ -153,14 +153,23 @@ export async function AvailabilitySection({ who, adminId }: { who: "office" | "m
   );
 }
 
-/** The confirmation email and text, with tags to click instead of typing. */
+/** The emails and texts that go out by themselves, each with tags to click instead of typing. */
 export function MessagesSection({ messages }: { messages: BookingMessages | null }) {
   return (
     <section className="monarch-panel" style={{ padding: 20 }}>
-      <h2 style={{ marginTop: 0 }}>Confirmation email and text</h2>
-      <form action={saveBookingMessagesAction} className="monarch-form">
-        <MessageFields subject={messages?.confirm_subject ?? null} body={messages?.confirm_body ?? null} sms={messages?.confirm_sms ?? null} />
-      </form>
+      <h2 style={{ marginTop: 0 }}>Automatic emails and texts</h2>
+      <p className="monarch-muted">These go out by themselves. Edit the wording, then Save. &ldquo;Use the standard wording&rdquo; puts back the built-in message.</p>
+      <ul className="cl-list">
+        <li><span><b>Confirmation</b><small className="monarch-subcell">Sent when someone books or moves a visit</small></span><Modal label="Edit" title="Confirmation email and text" className="monarch-link" wide>
+          <form action={saveBookingMessagesAction} className="monarch-form"><MessageFields group="confirm" subject={messages?.confirm_subject ?? null} body={messages?.confirm_body ?? null} sms={messages?.confirm_sms ?? null} /></form>
+        </Modal></li>
+        <li><span><b>Reminder</b><small className="monarch-subcell">Sent before the visit, at the hours set on each appointment type</small></span><Modal label="Edit" title="Reminder email and text" className="monarch-link" wide>
+          <form action={saveBookingMessagesAction} className="monarch-form"><MessageFields group="reminder" subject={messages?.reminder_subject ?? null} body={messages?.reminder_body ?? null} sms={messages?.reminder_sms ?? null} /></form>
+        </Modal></li>
+        <li><span><b>Cancellation</b><small className="monarch-subcell">Sent when a visit is cancelled</small></span><Modal label="Edit" title="Cancellation email" className="monarch-link" wide>
+          <form action={saveBookingMessagesAction} className="monarch-form"><MessageFields group="cancel" subject={messages?.cancel_subject ?? null} body={messages?.cancel_body ?? null} sms={null} /></form>
+        </Modal></li>
+      </ul>
     </section>
   );
 }

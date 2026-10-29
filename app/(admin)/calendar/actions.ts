@@ -125,7 +125,7 @@ export async function outcomeAction(form: FormData) {
 export async function saveBookingMessagesAction(form: FormData) {
   await act("/settings/calendar", async (adminId) => {
     const reset = str(form, "reset") === "yes";
-    await saveBookingMessages(office(), reset ? {} : Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string")), adminId);
+    await saveBookingMessages(office(), reset ? { group: str(form, "group") } : Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string")), adminId);
     return reset ? "Back to the standard wording." : "Messages saved.";
   });
 }
