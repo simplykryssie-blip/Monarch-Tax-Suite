@@ -1,3 +1,4 @@
+import { closeAtToOfficeClock } from "@/lib/forms/close-time.ts";
 import { notFound } from "next/navigation";
 import { imageStore, requireAdmin, tenantDb } from "@/lib/admin";
 import { SupabaseImagesRepo } from "@/lib/images/supabase-repo";
@@ -21,7 +22,7 @@ function QuestionSelect({ name, value, fields, types, format, none = "(none)" }:
   return (
     <select name={name} defaultValue={value ?? ""}>
       <option value="">{none}</option>
-      {options.map((f) => <option key={f.key} value={f.key}>{f.label || f.key} ({f.key})</option>)}
+      {options.map((f) => <option key={f.key} value={f.key}>{f.label || f.key}</option>)}
     </select>
   );
 }
@@ -56,7 +57,8 @@ export default async function FormSettingsPage({ params, searchParams }: { param
   const theme = s.theme;
   const fields = def ? inputFields(def) : [];
   const brandName = brands.find((b) => b.id === s.brand_domain_id)?.name ?? (brands.length === 1 ? brands[0].name : null);
-  const closeLocal = s.close_at ? new Date(s.close_at).toISOString().slice(0, 16) : "";
+  const officeZone = (await formDeps().profile().catch(() => null))?.time_zone ?? null;
+  const closeLocal = closeAtToOfficeClock(s.close_at, officeZone);
   const people = [...s.firm.people, ...Array.from({ length: Math.max(0, 6 - s.firm.people.length) }, () => null)].slice(0, 6);
   return (
     <>
@@ -67,7 +69,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
       <section className="monarch-panel" style={{ padding: 20 }}>
         <h2>Public link</h2>
         {!link ? <p className="monarch-alert is-error">Your form links need your own web address. Add it under Settings → Email sending (the firm&apos;s &ldquo;web address&rdquo;), for example <code>forms.yourfirm.com</code>, and connect that domain to this app. Until then no public link is shown, because links never use a hosting address.</p> : version && form.status === "published" ? <p><code>{link}</code> · <a href={link} target="_blank" rel="noreferrer">Open</a></p> : <p className="monarch-muted">{version ? "The form is not taking submissions right now." : "Publish the form from the Build tab to make its link live."}</p>}
-        <p className="monarch-muted">Form id for workflow conditions (<code>form_id</code>): <code>{form.id}</code> · Versions published: {versions.length}{version ? ` (current v${version.version}, ${when(version.published_at)})` : ""} · Real submissions: {submitted}</p>
+        <p className="monarch-muted">Versions published: {versions.length}{version ? ` (current v${version.version}, ${when(version.published_at)})` : ""} · Real submissions: {submitted}</p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {form.status === "published" && <form action={formStatusAction}><input type="hidden" name="id" value={form.id} /><input type="hidden" name="to" value="closed" /><button className="monarch-secondary">Close the form</button></form>}
           {form.status === "closed" && <form action={formStatusAction}><input type="hidden" name="id" value={form.id} /><input type="hidden" name="to" value="published" /><button className="monarch-primary">Reopen the form</button></form>}
@@ -171,7 +173,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
             <label className="monarch-check"><input type="radio" name="after_submit" value="message" defaultChecked={s.after_submit !== "redirect"} /> <b>Show a thank-you message</b></label>
             <small className="monarch-muted">The respondent stays on your form page and sees the message below, with a button to download their PDF copy.</small>
             <label>Message they will see<textarea name="confirmation_message" rows={4} maxLength={2000} defaultValue={s.confirmation_message} />
-              <small className="monarch-muted">Put <b>**two asterisks**</b> around words to make them bold. Press Enter for a new line; leave a blank line for a new paragraph.</small>
+              <small className="monarch-muted">Press Enter for a new line, or leave a blank line between paragraphs.</small>
             </label>
           </div>
           <div className="mf-choice">
@@ -184,7 +186,7 @@ export default async function FormSettingsPage({ params, searchParams }: { param
         </div>
         <h2 className="is-wide">Closing and limits</h2>
         <label className="is-wide">Message when the form is closed<textarea name="closed_message" rows={2} maxLength={1000} defaultValue={s.closed_message} /></label>
-        <label>Close automatically at (UTC, optional)<input type="datetime-local" name="close_at" defaultValue={closeLocal} /></label>
+        <label>Close the form automatically on (your office time, optional)<input type="datetime-local" name="close_at" defaultValue={closeLocal} /></label>
         <label>Stop after this many submissions (optional)<input type="number" name="max_submissions" min={1} defaultValue={s.max_submissions ?? ""} /></label>
         <label className="monarch-check is-wide"><input type="checkbox" name="allow_save_later" defaultChecked={s.allow_save_later} /> Let respondents save and continue later (we email them a link that works for 30 days)</label>
         <div className="is-wide"><button className="monarch-primary">Save settings</button></div>

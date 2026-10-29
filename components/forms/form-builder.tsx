@@ -84,7 +84,6 @@ function FieldCard({ field, sectionId, selected, problem, onSelect, onMove, onDu
       <button type="button" className="mf-card-body" onClick={onSelect} aria-pressed={selected}>
         <small>{FIELD_LABELS[field.type]}{field.internal ? " · staff only" : ""}{field.locked ? " · locked value" : field.defaultValue ? " · pre-filled" : ""}{field.required ? " · required" : ""}{field.format ? ` · ${field.format.toUpperCase()}` : field.sensitive ? " · sensitive" : ""}</small>
         <b>{field.type === "paragraph" ? (field.text ?? "").slice(0, 80) : field.label || <i>No label</i>}</b>
-        {!DISPLAY_TYPES.includes(field.type) && <code>{field.key}</code>}
       </button>
       <span className="mf-card-tools">
         <button type="button" onClick={() => onMove(-1)} aria-label="Move up">↑</button>

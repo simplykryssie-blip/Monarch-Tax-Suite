@@ -125,10 +125,8 @@ export default async function PipelinesPage({ searchParams }: { searchParams: Pr
                       <div><dt>Type</dt><dd>{p.type_label || (p.kind === "returns" ? "Tax returns" : "—")}</dd></div>
                       <div><dt>Stages</dt><dd>{p.stages.length}</dd></div>
                     </dl>
-                    <span className="cl-card-actions">
+                    <span className="cl-card-actions pl-actions">
                       <form action={publishPipelineAction}>{here}<input type="hidden" name="id" value={p.id} /><input type="hidden" name="publish" value={live ? "no" : "yes"} /><button className={live ? "monarch-secondary" : "monarch-primary"} aria-pressed={live}>{live ? "Published" : "Publish"}</button></form>
-                    </span>
-                    <span className="cl-card-actions">
                       <Link className="monarch-link" href={`/pipelines/${p.id}`}>Edit</Link>
                       {paths.length > 0 && (
                         <Modal label="Move" title={`Move ${p.name}`} className="monarch-link">

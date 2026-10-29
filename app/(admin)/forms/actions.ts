@@ -1,5 +1,6 @@
 "use server";
 
+import { closeAtFromOfficeClock } from "@/lib/forms/close-time.ts";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
@@ -115,6 +116,7 @@ export async function saveFormDetailsAction(form: FormData) {
 
 export async function saveFormSettingsAction(form: FormData) {
   await act(`/forms/${str(form, "id")}/settings`, async (adminId) => {
+    const officeZone = (await formDeps().profile().catch(() => null))?.time_zone;
     const people = [0, 1, 2, 3, 4, 5].map((i) => ({ role: str(form, `p_role_${i}`), name_key: str(form, `p_name_${i}`), email_key: str(form, `p_email_${i}`), phone_key: str(form, `p_phone_${i}`), ptin_key: str(form, `p_ptin_${i}`) }));
     const raw = {
       respondent: { email_key: str(form, "email_key"), name_key: str(form, "name_key"), phone_key: str(form, "phone_key") },
@@ -134,7 +136,7 @@ export async function saveFormSettingsAction(form: FormData) {
       after_submit: str(form, "after_submit"),
       redirect_url: str(form, "redirect_url"),
       closed_message: str(form, "closed_message"),
-      close_at: str(form, "close_at"),
+      close_at: closeAtFromOfficeClock(str(form, "close_at"), officeZone),
       max_submissions: str(form, "max_submissions"),
       allow_save_later: form.get("allow_save_later") === "on",
     };
