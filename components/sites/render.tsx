@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { GRADIENTS, LAYOUTS, sectionsOf, videoEmbed, type Block, type LeafBlock } from "@/lib/sites/blocks.ts";
+import { GRADIENTS, isHtmlOnly, LAYOUTS, sectionsOf, videoEmbed, widthOf, type Block, type LeafBlock } from "@/lib/sites/blocks.ts";
 import { hasLook, lookClasses, lookCss, type Look } from "@/lib/sites/look.ts";
 import { onColor } from "@/lib/forms/theme.ts";
 import { HtmlEmbed } from "./html-embed";
@@ -153,7 +153,7 @@ export function sectionStyle(s: Block, view: SiteView): React.CSSProperties {
   }
   return css as React.CSSProperties;
 }
-export const sectionClass = (s: Block, view: SiteView) => `ws-section ws-tone-${s.tone} ws-pad-${s.pad}${s.bgImage && view.images[s.bgImage] ? " ws-onimg" : ""}${s.gradient && (s.gradient === "midnight" || s.gradient === "ocean" || s.gradient === "forest" || s.gradient === "gold") ? " ws-onimg" : ""} ${lookClasses(s.look)}`.trim();
+export const sectionClass = (s: Block, view: SiteView) => `ws-section${s.type === "section" && isHtmlOnly(s) ? " ws-bleed" : ""} ws-tone-${s.tone} ws-pad-${s.pad}${s.bgImage && view.images[s.bgImage] ? " ws-onimg" : ""}${s.gradient && (s.gradient === "midnight" || s.gradient === "ocean" || s.gradient === "forest" || s.gradient === "gold") ? " ws-onimg" : ""} ${lookClasses(s.look)}`.trim();
 
 /** The page's sections, rows and columns. Older pages (loose elements, one-column sections) are converted on the way in. */
 export function Blocks({ blocks, view }: { blocks: Block[]; view: SiteView }) {
@@ -161,7 +161,7 @@ export function Blocks({ blocks, view }: { blocks: Block[]; view: SiteView }) {
     <>
       {sectionsOf(blocks).map((s) => (
         <section key={s.id} className={sectionClass(s, view)} style={sectionStyle(s, view)}>
-          <div className={`ws-wrap ws-w-${s.width}`}>
+          <div className={`ws-wrap ws-w-${widthOf(s)}`}>
             {s.rows.map((r) => (
               <div key={r.id} className={`ws-row ws-gap-${r.gap} ws-va-${r.valign} ws-cols-${r.columns.length} ${lookClasses(r.look)}`.trim()} style={{ gridTemplateColumns: LAYOUTS[r.layout].map((n) => `${n}fr`).join(" "), ...(lookCss(r.look) as React.CSSProperties) }}>
                 {r.columns.map((c) => <div key={c.id} className={`ws-col ${lookClasses(c.look)}`.trim()} style={lookCss(c.look) as React.CSSProperties}>{c.children.map((e) => <Leaf key={e.id} block={e} view={view} />)}</div>)}
@@ -198,6 +198,7 @@ export const SITE_CSS = `
 .ws-section{padding:44px 0}
 .ws-pad-none{padding:0}.ws-pad-small{padding:20px 0}.ws-pad-large{padding:clamp(56px,9vw,104px) 0}
 .ws-w-wide{max-width:1160px}.ws-w-full{max-width:none}
+.ws-bleed{padding:0}.ws-bleed .ws-wrap{padding:0}.ws-bleed .ws-frame{margin:0;border-radius:0}
 .ws-row{display:grid;gap:0 32px;min-width:0}
 .ws-gap-small{column-gap:14px}.ws-gap-large{column-gap:64px}
 .ws-va-center{align-items:center}

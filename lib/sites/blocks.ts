@@ -366,3 +366,11 @@ export function imageIdsOf(blocks: Block[]): string[] {
 
 /** True when the page would show nothing. */
 export const isEmptyPage = (blocks: Block[]) => elementsOf(blocks).every((e) => e.type === "spacer" || e.type === "divider");
+
+const leavesOf = (s: SectionBlock) => s.rows.flatMap((r) => r.columns.flatMap((c) => c.children));
+/** A section holding the owner's own pasted HTML. That code is a whole design with its own layout, so it is never squeezed into the reading column. */
+export const holdsHtml = (s: SectionBlock): boolean => leavesOf(s).some((b) => b.type === "html");
+/** A section that is nothing but pasted HTML: shown edge to edge with no padding, so the pasted design looks the way it was built. */
+export const isHtmlOnly = (s: SectionBlock): boolean => { const l = leavesOf(s); return l.length > 0 && l.every((b) => b.type === "html"); };
+/** The width a section is actually shown at: what was chosen, except that pasted HTML always gets the full width. */
+export const widthOf = (s: SectionBlock): (typeof SECTION_WIDTHS)[number] => (holdsHtml(s) ? "full" : s.width);
