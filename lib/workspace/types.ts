@@ -43,7 +43,20 @@ export const RETURN_KINDS = { original: "Original", extension: "Extension", amen
 export type ReturnKind = keyof typeof RETURN_KINDS;
 export const PREP_STATUSES = { not_started: "Not started", in_prep: "In prep", ready_for_review: "Ready for review", handed_off: "Handed to ERO" } as const;
 export type PrepStatus = keyof typeof PREP_STATUSES;
-export type ClientReturn = {
+export const FORM_TYPES = { "1040": "1040", "1040-SR": "1040-SR", "1040-NR": "1040-NR", "1120": "1120", "1120-S": "1120-S", "1065": "1065", "990": "990", "941": "941", "940": "940", other: "Other" } as const;
+export type FormType = keyof typeof FORM_TYPES;
+export const FILING_STATUSES = { single: "Single", married_joint: "Married filing jointly", married_separate: "Married filing separately", head_of_household: "Head of household", qualifying_surviving_spouse: "Qualifying surviving spouse" } as const;
+export type FilingStatus = keyof typeof FILING_STATUSES;
+export const EFILE_STATUSES = { not_sent: "Not sent", transmitted: "Transmitted", accepted: "Accepted", rejected: "Rejected" } as const;
+export type EfileStatus = keyof typeof EFILE_STATUSES;
+export const RESULT_KINDS = { refund: "Refund", owed: "Amount owed" } as const;
+export type ResultKind = keyof typeof RESULT_KINDS;
+export const STATE_FILING_STATUSES = { not_started: "Not started", in_prep: "In prep", filed: "Filed", accepted: "Accepted", rejected: "Rejected" } as const;
+export type StateFilingStatus = keyof typeof STATE_FILING_STATUSES;
+export type StateFiling = { id: string; tenant_id: string; return_id: string; state: string; status: StateFilingStatus; filed_on: string | null; created_at: string };
+/** The details an office tracks beyond stage and dates. Optional: a return made before they existed has none. */
+export type ReturnDetails = { form_type?: FormType | null; filing_status?: FilingStatus | null; efile_status?: EfileStatus; efile_on?: string | null; efile_reject_reason?: string | null; result_kind?: ResultKind | null; result_cents?: number | null; fee_cents?: number | null };
+export type ClientReturn = ReturnDetails & {
   id: string; tenant_id: string; client_id: string; tax_year: number; kind: ReturnKind; parent_id: string | null; stage_id: string;
   due_on: string | null; filed_on: string | null; notes: string | null; archived_at: string | null; created_at: string; updated_at: string;
   /** Who works the return, where it stands in preparation, and its office (null = the account's own). */
@@ -139,6 +152,9 @@ export interface WorkspaceRepo {
   /** Moves everything on `drop` to `keep` in one step and archives `drop`. Returns how much of each kind moved. */
   mergeClients(keep: string, drop: string, actorId: string | null): Promise<Record<string, number>>;
 
+  listStateFilings(returnId: string): Promise<StateFiling[]>;
+  saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null): Promise<StateFiling>;
+  removeStateFiling(id: string): Promise<void>;
   listReturns(f?: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string }): Promise<ClientReturn[]>;
   getReturn(id: string): Promise<ClientReturn | null>;
   listWork(f?: { clientId?: string; pipelineId?: string }): Promise<ClientWork[]>;
@@ -146,7 +162,7 @@ export interface WorkspaceRepo {
   insertWork(input: WorkInput & { created_by: string | null; assignee_id?: string | null }): Promise<ClientWork>;
   updateWork(id: string, patch: Partial<Pick<ClientWork, "stage_id" | "title" | "due_on" | "notes" | "assignee_id" | "archived_at">>): Promise<ClientWork>;
   insertReturn(input: ReturnInput & { assignee_id?: string | null; organization_id?: string | null }): Promise<ClientReturn>;
-  updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>): Promise<ClientReturn>;
+  updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">> & ReturnDetails): Promise<ClientReturn>;
 
   listDocs(clientId: string): Promise<ClientDoc[]>;
   getDoc(id: string): Promise<ClientDoc | null>;

@@ -1,14 +1,14 @@
 import { Modal } from "@/components/ui/modal";
-import { archiveReturnAction, editReturnAction } from "@/app/(admin)/workspace/actions";
+import { archiveReturnAction, editReturnAction, removeStateFilingAction, saveStateFilingAction } from "@/app/(admin)/workspace/actions";
 import { EDITABLE_PREP } from "@/lib/workspace/service.ts";
-import { PREP_STATUSES, type ClientReturn, type ClientTask } from "@/lib/workspace/types.ts";
+import { EFILE_STATUSES, FILING_STATUSES, FORM_TYPES, PREP_STATUSES, RESULT_KINDS, STATE_FILING_STATUSES, type ClientReturn, type ClientTask, type StateFiling } from "@/lib/workspace/types.ts";
 import type { StaffMember } from "@/lib/staff/assign.ts";
 
 export type ReturnHistoryLine = { id: string; text: string; at: string; by: string };
 
 /** A return's own window: where it stands, who prepares it, its dates and notes, the tasks for it and what has been done to it. */
-export function ReturnEditor({ r, label, stages, staff, tasks, history, label2 = "Open" }: {
-  r: ClientReturn; label: string; stages: { id: string; name: string }[]; staff: StaffMember[]; tasks: ClientTask[]; history: ReturnHistoryLine[]; label2?: string;
+export function ReturnEditor({ r, label, stages, staff, tasks, history, states = [], label2 = "Open" }: {
+  r: ClientReturn; label: string; stages: { id: string; name: string }[]; staff: StaffMember[]; tasks: ClientTask[]; history: ReturnHistoryLine[]; states?: StateFiling[]; label2?: string;
 }) {
   const handedOff = r.prep_status === "handed_off";
   const known = !r.assignee_id || staff.some((s) => s.id === r.assignee_id);
@@ -33,8 +33,44 @@ export function ReturnEditor({ r, label, stages, staff, tasks, history, label2 =
         </label>
         <label>Due date<input type="date" name="due_on" defaultValue={r.due_on ?? ""} /></label>
         <label>Filed date<input type="date" name="filed_on" defaultValue={r.filed_on ?? ""} /></label>
+        <h3 className="is-wide" style={{ margin: "8px 0 0" }}>Return details</h3>
+        <label>Form
+          <select name="form_type" defaultValue={r.form_type ?? ""}><option value="">Not set</option>{Object.entries(FORM_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        </label>
+        <label>Filing status
+          <select name="filing_status" defaultValue={r.filing_status ?? ""}><option value="">Not set</option>{Object.entries(FILING_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        </label>
+        <label>E-file
+          <select name="efile_status" defaultValue={r.efile_status ?? "not_sent"}>{Object.entries(EFILE_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        </label>
+        <label>E-file date<input type="date" name="efile_on" defaultValue={r.efile_on ?? ""} /></label>
+        <label className="is-wide">If rejected, why<input name="efile_reject_reason" maxLength={500} defaultValue={r.efile_reject_reason ?? ""} placeholder="The reject code or reason from your software" /></label>
+        <label>Result
+          <select name="result_kind" defaultValue={r.result_kind ?? ""}><option value="">Not set</option>{Object.entries(RESULT_KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        </label>
+        <label>Result amount<input name="result" inputMode="decimal" placeholder="0.00" defaultValue={r.result_cents != null ? (r.result_cents / 100).toFixed(2) : ""} /></label>
+        <label>Fee quoted<input name="fee" inputMode="decimal" placeholder="0.00" defaultValue={r.fee_cents != null ? (r.fee_cents / 100).toFixed(2) : ""} /></label>
         <label className="is-wide">Notes<textarea name="notes" rows={4} maxLength={2000} defaultValue={r.notes ?? ""} placeholder="Anything the next person should know about this return." /></label>
         <div className="is-wide ac-actions"><button className="monarch-primary" data-no-confirm>Save return</button></div>
+      </form>
+
+      <h3 style={{ margin: "18px 0 6px" }}>State returns</h3>
+      {states.length === 0 ? <p className="monarch-muted">None added.</p> : (
+        <ul className="cl-list">
+          {states.map((x) => (
+            <li key={x.id}>
+              <span><b>{x.state}</b><small className="monarch-subcell">{STATE_FILING_STATUSES[x.status]}{x.filed_on ? ` · filed ${x.filed_on}` : ""}</small></span>
+              <form action={removeStateFilingAction}><input type="hidden" name="id" value={x.id} /><input type="hidden" name="return_id" value={r.id} /><input type="hidden" name="client_id" value={r.client_id} /><button className="monarch-link is-danger">Remove</button></form>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form action={saveStateFilingAction} className="cl-quick" style={{ marginTop: 8 }}>
+        <input type="hidden" name="return_id" value={r.id} /><input type="hidden" name="client_id" value={r.client_id} />
+        <input name="state" maxLength={2} placeholder="State, like LA" aria-label="State" required style={{ width: 120, textTransform: "uppercase" }} />
+        <select name="status" aria-label="State return status" defaultValue="not_started">{Object.entries(STATE_FILING_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        <input type="date" name="filed_on" aria-label="Filed date" />
+        <button className="monarch-secondary" data-no-confirm>Add or update</button>
       </form>
 
       <h3 style={{ margin: "18px 0 6px" }}>Tasks for this return</h3>

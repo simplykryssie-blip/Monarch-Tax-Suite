@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Installment } from "./plan.ts";
-import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, BillingSettings, InvoiceReceipt, ReceiptInsert, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ReturnDetails, StateFiling, StateFilingStatus, ClientTask, ClientWork, BillingSettings, InvoiceReceipt, ReceiptInsert, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "./types.ts";
 
 // Workspace rows for one tenant, on the tenant client: the database's tenant policies scope every query.
 const unwrap = <T>(r: { data: T | null; error: { message: string } | null }): T => {
@@ -75,6 +75,11 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   async deleteBusiness(id: string) { unwrap(await this.db.from("client_businesses").delete().eq("id", id).select("id")); }
   async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[]; owner_id?: string | null }) { return unwrap(await this.db.from("clients").update(patch).eq("id", id).select("*").single()) as Client; }
 
+  async listStateFilings(returnId: string) { return unwrap(await this.db.from("return_state_filings").select("*").eq("return_id", returnId).order("state")) as StateFiling[]; }
+  async saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null) {
+    return unwrap(await this.db.from("return_state_filings").upsert({ return_id: returnId, state, status, filed_on: filedOn }, { onConflict: "tenant_id,return_id,state" }).select("*").single()) as StateFiling;
+  }
+  async removeStateFiling(id: string) { unwrap(await this.db.from("return_state_filings").delete().eq("id", id).select("id")); }
   async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) {
     let q = this.db.from("client_returns").select("*").order("created_at").limit(5000);
     if (!f.includeArchived) q = q.is("archived_at", null);
@@ -95,7 +100,7 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   async updateWork(id: string, patch: Partial<Pick<ClientWork, "stage_id" | "title" | "due_on" | "notes" | "assignee_id" | "archived_at">>) { return unwrap(await this.db.from("client_work").update(patch).eq("id", id).select("*").single()) as ClientWork; }
   async getReturn(id: string) { return unwrap(await this.db.from("client_returns").select("*").eq("id", id).maybeSingle()) as ClientReturn | null; }
   async insertReturn(input: ReturnInput & { assignee_id?: string | null; organization_id?: string | null }) { return unwrap(await this.db.from("client_returns").insert(input).select("*").single()) as ClientReturn; }
-  async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>) { return unwrap(await this.db.from("client_returns").update(patch).eq("id", id).select("*").single()) as ClientReturn; }
+  async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">> & ReturnDetails) { return unwrap(await this.db.from("client_returns").update(patch).eq("id", id).select("*").single()) as ClientReturn; }
 
   async listDocs(clientId: string) { return unwrap(await this.db.from("client_docs").select("*").eq("client_id", clientId).eq("status", "stored").order("created_at", { ascending: false })) as ClientDoc[]; }
   async getDoc(id: string) { return unwrap(await this.db.from("client_docs").select("*").eq("id", id).maybeSingle()) as ClientDoc | null; }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Installment } from "../lib/workspace/plan.ts";
-import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, BillingSettings, InvoiceReceipt, ReceiptInsert, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ReturnDetails, StateFiling, StateFilingStatus, ClientTask, ClientWork, BillingSettings, InvoiceReceipt, ReceiptInsert, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
 
 // The workspace in memory, with the database rules that matter: one original and one extension per client per year,
 // unique invoice numbers. Returns copies.
@@ -55,6 +55,16 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async deleteBusiness(id: string) { this.businesses = this.businesses.filter((b) => b.id !== id); }
   async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[]; owner_id?: string | null }) { const x = this.clients.find((y) => y.id === id)!; Object.assign(x, this.c(patch)); return this.c(x); }
 
+  stateFilings: StateFiling[] = [];
+  async listStateFilings(returnId: string) { return this.c(this.stateFilings.filter((x) => x.return_id === returnId).sort((a, b) => a.state.localeCompare(b.state))); }
+  async saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null) {
+    const hit = this.stateFilings.find((x) => x.return_id === returnId && x.state === state);
+    if (hit) { hit.status = status; hit.filed_on = filedOn; return this.c(hit); }
+    const x: StateFiling = { id: randomUUID(), tenant_id: "t", return_id: returnId, state, status, filed_on: filedOn, created_at: this.at() };
+    this.stateFilings.push(x);
+    return this.c(x);
+  }
+  async removeStateFiling(id: string) { this.stateFilings = this.stateFilings.filter((x) => x.id !== id); }
   async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) { return this.c(this.returns.filter((r) => (f.includeArchived || !r.archived_at) && (!f.assigneeId || r.assignee_id === f.assigneeId) && (!f.organizationId || r.organization_id === f.organizationId) && (!f.year || r.tax_year === f.year) && (!f.clientId || r.client_id === f.clientId))); }
   work: ClientWork[] = [];
   async listWork(f: { clientId?: string; pipelineId?: string } = {}) { return this.c(this.work.filter((w) => !w.archived_at && (!f.clientId || w.client_id === f.clientId) && (!f.pipelineId || w.pipeline_id === f.pipelineId))); }
@@ -67,7 +77,7 @@ export class MemoryWorkspace implements WorkspaceRepo {
     const r: ClientReturn = { assignee_id: null, organization_id: null, prep_status: "not_started", handed_off_at: null, ...this.c(input), id: randomUUID(), tenant_id: "t", filed_on: null, archived_at: null, created_at: this.at(), updated_at: this.at() };
     this.returns.push(r); return this.c(r);
   }
-  async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>) { const r = this.returns.find((x) => x.id === id)!; Object.assign(r, this.c(patch)); return this.c(r); }
+  async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">> & ReturnDetails) { const r = this.returns.find((x) => x.id === id)!; Object.assign(r, this.c(patch)); return this.c(r); }
 
   async listDocs(clientId: string) { return this.c(this.docs.filter((d) => d.client_id === clientId && d.status === "stored")); }
   async getDoc(id: string) { return this.c(this.docs.find((d) => d.id === id) ?? null); }
