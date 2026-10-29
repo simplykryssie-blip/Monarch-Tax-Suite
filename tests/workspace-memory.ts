@@ -57,10 +57,10 @@ export class MemoryWorkspace implements WorkspaceRepo {
 
   stateFilings: StateFiling[] = [];
   async listStateFilings(returnId: string) { return this.c(this.stateFilings.filter((x) => x.return_id === returnId).sort((a, b) => a.state.localeCompare(b.state))); }
-  async saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null) {
+  async saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null, resultCents: number | null) {
     const hit = this.stateFilings.find((x) => x.return_id === returnId && x.state === state);
-    if (hit) { hit.status = status; hit.filed_on = filedOn; return this.c(hit); }
-    const x: StateFiling = { id: randomUUID(), tenant_id: "t", return_id: returnId, state, status, filed_on: filedOn, created_at: this.at() };
+    if (hit) { hit.status = status; hit.filed_on = filedOn; hit.result_cents = resultCents; return this.c(hit); }
+    const x: StateFiling = { id: randomUUID(), tenant_id: "t", return_id: returnId, state, status, filed_on: filedOn, result_cents: resultCents, created_at: this.at() };
     this.stateFilings.push(x);
     return this.c(x);
   }

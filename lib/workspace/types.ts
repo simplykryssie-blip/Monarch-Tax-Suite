@@ -49,13 +49,12 @@ export const FILING_STATUSES = { single: "Single", married_joint: "Married filin
 export type FilingStatus = keyof typeof FILING_STATUSES;
 export const EFILE_STATUSES = { not_sent: "Not sent", transmitted: "Transmitted", accepted: "Accepted", rejected: "Rejected" } as const;
 export type EfileStatus = keyof typeof EFILE_STATUSES;
-export const RESULT_KINDS = { refund: "Refund", owed: "Amount owed" } as const;
-export type ResultKind = keyof typeof RESULT_KINDS;
 export const STATE_FILING_STATUSES = { not_started: "Not started", in_prep: "In prep", filed: "Filed", accepted: "Accepted", rejected: "Rejected" } as const;
 export type StateFilingStatus = keyof typeof STATE_FILING_STATUSES;
-export type StateFiling = { id: string; tenant_id: string; return_id: string; state: string; status: StateFilingStatus; filed_on: string | null; created_at: string };
+/** result_cents: positive = refund to the client, negative = amount owed. */
+export type StateFiling = { id: string; tenant_id: string; return_id: string; state: string; status: StateFilingStatus; filed_on: string | null; result_cents?: number | null; created_at: string };
 /** The details an office tracks beyond stage and dates. Optional: a return made before they existed has none. */
-export type ReturnDetails = { form_type?: FormType | null; filing_status?: FilingStatus | null; efile_status?: EfileStatus; efile_on?: string | null; efile_reject_reason?: string | null; result_kind?: ResultKind | null; result_cents?: number | null; fee_cents?: number | null };
+export type ReturnDetails = { form_type?: FormType | null; filing_status?: FilingStatus | null; efile_status?: EfileStatus; efile_on?: string | null; efile_reject_reason?: string | null; /** Positive = refund to the client, negative = amount owed. */ federal_result_cents?: number | null; fee_cents?: number | null };
 export type ClientReturn = ReturnDetails & {
   id: string; tenant_id: string; client_id: string; tax_year: number; kind: ReturnKind; parent_id: string | null; stage_id: string;
   due_on: string | null; filed_on: string | null; notes: string | null; archived_at: string | null; created_at: string; updated_at: string;
@@ -153,7 +152,7 @@ export interface WorkspaceRepo {
   mergeClients(keep: string, drop: string, actorId: string | null): Promise<Record<string, number>>;
 
   listStateFilings(returnId: string): Promise<StateFiling[]>;
-  saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null): Promise<StateFiling>;
+  saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null, resultCents: number | null): Promise<StateFiling>;
   removeStateFiling(id: string): Promise<void>;
   listReturns(f?: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string }): Promise<ClientReturn[]>;
   getReturn(id: string): Promise<ClientReturn | null>;

@@ -429,3 +429,22 @@ export function planImport(importId: string, lines: BankLine[], invoices: Invoic
     return { import_id: importId, row_no: l.row_no, posted_on: l.posted_on, description: l.description, amount_cents: l.amount_cents, tax_year: read.taxYear, ssn_last4: read.last4, name_guess: read.name.slice(0, 200) || null, invoice_id: m.invoiceId, match: m.match };
   });
 }
+
+/** A signed amount typed by a person: "1,234.50" is money coming to the client, "-1,234.50" or "(1,234.50)" is money they owe. Cents, or null when empty. */
+export function parseSignedMoney(raw: unknown): number | null {
+  const t = typeof raw === "string" ? raw.trim() : "";
+  if (!t) return null;
+  const negative = /^\(.*\)$/.test(t) || /^[-\u2212]/.test(t.replace(/^\$/, "")) || /^\$?\s*[-\u2212]/.test(t);
+  const digits = t.replace(/[()\s$,\-\u2212]/g, "");
+  if (!/^\d{1,9}(\.\d{1,2})?$/.test(digits)) throw new ValidationError("That isn't a valid amount. Type a refund like 1,234.50, or an amount owed with a minus, like -1,234.50.");
+  const [whole, frac = ""] = digits.split(".");
+  const cents = Number(whole) * 100 + Number(frac.padEnd(2, "0"));
+  return negative && cents !== 0 ? -cents : cents;
+}
+
+/** A signed amount for display: a refund has no sign, an amount owed has a minus in front. */
+export function formatResult(cents: number | null | undefined): string {
+  if (cents == null) return "—";
+  const abs = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(cents) / 100);
+  return cents < 0 ? `-${abs}` : abs;
+}

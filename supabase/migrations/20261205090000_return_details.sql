@@ -2,9 +2,10 @@
 -- client_returns and one new table. Nothing is dropped and no existing value is changed; every existing return keeps working
 -- as it is. Safe to run again.
 --
--- client_returns (new columns)   form_type, filing_status, e-file status with its date and any rejection reason, the result
---                                (refund or amount owed) and the fee quoted.
--- return_state_filings           one row per state return tied to a return: the state, its status and filed date.
+-- client_returns (new columns)   form_type, filing_status, e-file status with its date and any rejection reason, the federal
+--                                result (positive = refund, negative = amount owed) and the fee amount.
+-- return_state_filings           one row per state return tied to a return: the state, its status, filed date and result
+--                                (positive = refund, negative = amount owed).
 
 set local lock_timeout = '10s';
 
@@ -13,8 +14,7 @@ alter table public.client_returns add column if not exists filing_status text ch
 alter table public.client_returns add column if not exists efile_status text not null default 'not_sent' check (efile_status in ('not_sent', 'transmitted', 'accepted', 'rejected'));
 alter table public.client_returns add column if not exists efile_on date check (efile_on is null or efile_on between date '2000-01-01' and date '2100-01-01');
 alter table public.client_returns add column if not exists efile_reject_reason text check (efile_reject_reason is null or length(efile_reject_reason) <= 500);
-alter table public.client_returns add column if not exists result_kind text check (result_kind is null or result_kind in ('refund', 'owed'));
-alter table public.client_returns add column if not exists result_cents bigint check (result_cents is null or result_cents between 0 and 100000000000);
+alter table public.client_returns add column if not exists federal_result_cents bigint check (federal_result_cents is null or federal_result_cents between -100000000000 and 100000000000);
 alter table public.client_returns add column if not exists fee_cents bigint check (fee_cents is null or fee_cents between 0 and 100000000000);
 
 create table if not exists public.return_state_filings (
@@ -24,6 +24,7 @@ create table if not exists public.return_state_filings (
   state text not null check (state ~ '^[A-Z]{2}$'),
   status text not null default 'not_started' check (status in ('not_started', 'in_prep', 'filed', 'accepted', 'rejected')),
   filed_on date check (filed_on is null or filed_on between date '2000-01-01' and date '2100-01-01'),
+  result_cents bigint check (result_cents is null or result_cents between -100000000000 and 100000000000),
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );

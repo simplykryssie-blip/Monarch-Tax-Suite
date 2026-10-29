@@ -76,8 +76,8 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
   async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[]; owner_id?: string | null }) { return unwrap(await this.db.from("clients").update(patch).eq("id", id).select("*").single()) as Client; }
 
   async listStateFilings(returnId: string) { return unwrap(await this.db.from("return_state_filings").select("*").eq("return_id", returnId).order("state")) as StateFiling[]; }
-  async saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null) {
-    return unwrap(await this.db.from("return_state_filings").upsert({ return_id: returnId, state, status, filed_on: filedOn }, { onConflict: "tenant_id,return_id,state" }).select("*").single()) as StateFiling;
+  async saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null, resultCents: number | null) {
+    return unwrap(await this.db.from("return_state_filings").upsert({ return_id: returnId, state, status, filed_on: filedOn, result_cents: resultCents }, { onConflict: "tenant_id,return_id,state" }).select("*").single()) as StateFiling;
   }
   async removeStateFiling(id: string) { unwrap(await this.db.from("return_state_filings").delete().eq("id", id).select("id")); }
   async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) {

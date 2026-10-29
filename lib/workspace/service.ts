@@ -3,10 +3,10 @@ import { ValidationError } from "../commerce/validation.ts";
 import { dollars, parseMoney } from "../fees/engine.ts";
 import { parseTags, TAG_MAX } from "../leads/tags.ts";
 import { changedFields, type FieldChange } from "./activity.ts";
-import { balance, checkBillingSettings, checkBusiness, checkClient, checkFeeProduct, checkWork, taxOn, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
+import { balance, checkBillingSettings, checkBusiness, checkClient, checkFeeProduct, checkWork, taxOn, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, formatResult, parseSignedMoney, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
 import { checkPlan, type Installment } from "./plan.ts";
 import { RECEIPT_METHODS, type InvoiceReceipt, type ReceiptMethod } from "./types.ts";
-import { EFILE_STATUSES, FILING_STATUSES, FORM_TYPES, PREP_STATUSES, RESULT_KINDS, STATE_FILING_STATUSES, type EfileStatus, type FilingStatus, type FormType, type PrepStatus, type ResultKind, type ReturnDetails, type StateFilingStatus } from "./types.ts";
+import { EFILE_STATUSES, FILING_STATUSES, FORM_TYPES, PREP_STATUSES, STATE_FILING_STATUSES, type EfileStatus, type FilingStatus, type FormType, type PrepStatus, type ReturnDetails, type StateFilingStatus } from "./types.ts";
 import type { BillingSettings, ClientWork, FeeProduct, Payer, Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
 // My Workspace orchestration: each function checks its input with the rules, then uses the repository. Nothing here
@@ -154,7 +154,6 @@ export async function editReturn(
   };
   pick<FormType>("form_type", FORM_TYPES, before.form_type, "Form", (v) => { details.form_type = v; });
   pick<FilingStatus>("filing_status", FILING_STATUSES, before.filing_status, "Filing status", (v) => { details.filing_status = v; });
-  pick<ResultKind>("result_kind", RESULT_KINDS, before.result_kind, "Result", (v) => { details.result_kind = v; });
   const efile = typeof raw.efile_status === "string" && raw.efile_status ? (raw.efile_status as EfileStatus) : (before.efile_status ?? "not_sent");
   if (!(efile in EFILE_STATUSES)) throw new ValidationError("E-file status isn't one of the choices.");
   if (efile !== (before.efile_status ?? "not_sent")) {
@@ -175,9 +174,11 @@ export async function editReturn(
     if (t && cents === null) throw new ValidationError(`${label} isn't a valid amount.`);
     if (cents !== (current ?? null)) { set(cents); changes.push(`${label} from ${current != null ? dollars(current) : "blank"} to ${cents != null ? dollars(cents) : "blank"}`); }
   };
-  money("result", "Result amount", (c) => { details.result_cents = c; }, before.result_cents);
-  money("fee", "Fee", (c) => { details.fee_cents = c; }, before.fee_cents);
-  if (details.result_cents != null && !(details.result_kind ?? before.result_kind)) throw new ValidationError("Choose Refund or Amount owed for that amount.");
+  money("fee", "Fee amount", (c) => { details.fee_cents = c; }, before.fee_cents);
+  if ("federal_result" in raw) {
+    const cents = parseSignedMoney(raw.federal_result);
+    if (cents !== (before.federal_result_cents ?? null)) { details.federal_result_cents = cents; changes.push(`Federal result from ${before.federal_result_cents == null ? "blank" : formatResult(before.federal_result_cents)} to ${cents == null ? "blank" : formatResult(cents)}`); }
+  }
   if (!changes.length) return { ret: before, changes };
   Object.assign(patch, details);
   const ret = await repo.updateReturn(before.id, patch);
@@ -624,7 +625,7 @@ export async function mergeClients(repo: WorkspaceRepo, keepId: string, dropId: 
 
 
 /** Adds a state return to a return, or updates its status and filed date. */
-export async function saveStateFiling(repo: WorkspaceRepo, returnId: string, raw: { state: unknown; status: unknown; filed_on?: unknown }, actor?: Actor) {
+export async function saveStateFiling(repo: WorkspaceRepo, returnId: string, raw: { state: unknown; status: unknown; filed_on?: unknown; result?: unknown }, actor?: Actor) {
   const r = await repo.getReturn(uuid(returnId, "That return"));
   if (!r || r.archived_at) throw new ValidationError("That return wasn't found.");
   const state = typeof raw.state === "string" ? raw.state.trim().toUpperCase() : "";
@@ -632,8 +633,9 @@ export async function saveStateFiling(repo: WorkspaceRepo, returnId: string, raw
   const status = (typeof raw.status === "string" && raw.status ? raw.status : "not_started") as StateFilingStatus;
   if (!(status in STATE_FILING_STATUSES)) throw new ValidationError("Choose a status for the state return.");
   const filedOn = isoDay(raw.filed_on, "The filed date");
-  const saved = await repo.saveStateFiling(r.id, state, status, filedOn);
-  await record(repo, r.client_id, actor ?? null, "return.updated", { return_id: r.id, label: returnLabelOf(r), changes: [`${state} state return: ${STATE_FILING_STATUSES[status]}`] });
+  const resultCents = parseSignedMoney(raw.result);
+  const saved = await repo.saveStateFiling(r.id, state, status, filedOn, resultCents);
+  await record(repo, r.client_id, actor ?? null, "return.updated", { return_id: r.id, label: returnLabelOf(r), changes: [`${state} state return: ${STATE_FILING_STATUSES[status]}${resultCents != null ? `, ${formatResult(resultCents)}` : ""}`] });
   return saved;
 }
 
