@@ -155,9 +155,16 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         </form>
       )}
       <Flash notice={sp.notice} error={sp.error} />
-      {duplicates.map((d) => (
+      {duplicates.length > 0 && (
+        <div className="cl-dupe" role="note">
+          <span><b>{duplicates.length === 1 ? "Possible duplicate:" : `${duplicates.length} possible duplicates:`}</b> {duplicates.slice(0, 2).map((d) => d.other.name).join(", ")}{duplicates.length > 2 ? "…" : ""}</span>
+          <Modal label="Review" title={duplicates.length === 1 ? "Possible duplicate" : "Possible duplicates"} className="monarch-secondary" wide>
+        {duplicates.map((d) => (
         <DuplicateCompare key={d.other.key} a={d.mine} b={d.other} reason={`Possible duplicate: ${d.reason}`} back={`/workspace/clients/${client.id}`} openA={`/workspace/clients/${client.id}`} openB={d.other.refs.clientId ? `/workspace/clients/${d.other.refs.clientId}` : `/contacts/${d.other.key}`} countsA={dupCounts.get(d.mine.key)} countsB={dupCounts.get(d.other.key)} />
-      ))}
+        ))}
+          </Modal>
+        </div>
+      )}
       <nav className="cl-tabs" aria-label="Client">
         {TABS.map(([k, label]) => <Link key={k} href={`/workspace/clients/${id}?tab=${k}`} className={k === tab ? "is-on" : undefined} aria-current={k === tab ? "page" : undefined}>{label}</Link>)}
       </nav>
