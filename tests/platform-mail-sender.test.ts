@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PLATFORM_MAIL_FROM, sendSystemMail } from "../lib/platform-mail.ts";
 
 const run = async (from?: string | null) => {
-  const sent: { from?: string; replyTo?: string | null }[] = [];
+  const sent: { from?: string | null; replyTo?: string | null }[] = [];
   await sendSystemMail({ env: "production", testRecipients: [], from, send: async (m) => { sent.push({ from: m.from, replyTo: m.replyTo }); return { ok: true } as never; } }, "owner@firm.test", { subject: "Your Verexa HQ payment didn't go through", text: "Hi" });
   return sent[0];
 };
