@@ -9,7 +9,6 @@ import { CrmSecrets } from "../crm/crypto.ts";
 import { SupabaseDocumentStore, SupabaseDocumentsRepo } from "../documents/supabase-repo.ts";
 import { heldBack } from "../forms/after.ts";
 import { tenantClient } from "../supabase/service";
-import { MONARCH_TENANT_ID } from "../tenants.ts";
 import { convertFromPurchase } from "../leads/service.ts";
 import { leadsDeps } from "../leads/server";
 import type { WispDeps } from "./service.ts";
