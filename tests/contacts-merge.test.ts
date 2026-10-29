@@ -455,3 +455,57 @@ describe("editing and deleting tasks and notes", () => {
     assert.equal((await repo.listNotes(client.id)).length, 2, "a real repeat later is kept");
   });
 });
+
+import { shapeMoney } from "../lib/format/money-shape.ts";
+
+describe("money boxes", () => {
+  test("a leading minus is kept while typing, and the amount is formatted", () => {
+    assert.equal(shapeMoney("-", true), "-");
+    assert.equal(shapeMoney("-1", true), "-$1");
+    assert.equal(shapeMoney("-1234.5", true), "-$1,234.5");
+    assert.equal(shapeMoney("-$1,234.5", true, true), "-$1,234.50");
+    assert.equal(shapeMoney("1234.5", true, true), "$1,234.50");
+    assert.equal(shapeMoney("-50", false), "$50", "a fee can't be negative");
+  });
+  test("letters are left as typed so the server can refuse them instead of the box erasing them", () => {
+    assert.equal(shapeMoney("abc", true), "abc");
+    assert.equal(shapeMoney("12x", false), "12x");
+  });
+});
+
+describe("saving what was typed", () => {
+  const stages = ["s1", "s2"];
+  const seed = async () => {
+    const repo = new MemoryWorkspace();
+    const client = await repo.insertClient({ full_name: "Ana Ruiz", email: "a@example.com", phone: null, created_by: null } as never);
+    const ret = await repo.insertReturn({ client_id: client.id, tax_year: 2025, kind: "original", parent_id: null, stage_id: "s1", due_on: null, notes: null } as never);
+    return { repo, ret };
+  };
+  test("text that is not an amount is refused and the saved figure stays", async () => {
+    const { repo, ret } = await seed();
+    await editReturn(repo, ret.id, { stage_id: "s1", federal_result: "-1,234.50", fee: "$100" }, stages, (x) => x, { assignee: () => "no one" });
+    await assert.rejects(() => editReturn(repo, ret.id, { stage_id: "s1", federal_result: "abc" }, stages, (x) => x, { assignee: () => "no one" }), /valid amount/);
+    await assert.rejects(() => editReturn(repo, ret.id, { stage_id: "s1", fee: "abc" }, stages, (x) => x, { assignee: () => "no one" }), /valid amount/);
+    const kept = (await repo.getReturn(ret.id))!;
+    assert.equal(kept.federal_result_cents, -123450);
+    assert.equal(kept.fee_cents, 10000);
+  });
+  test("adding a state that is already there keeps its status, date and amount unless they are filled in", async () => {
+    const { repo, ret } = await seed();
+    await saveStateFiling(repo, ret.id, { state: "LA", status: "filed", filed_on: "2026-03-01", result: "-45.10" });
+    const again = await saveStateFiling(repo, ret.id, { state: "Louisiana", status: "" });
+    assert.equal(again.status, "filed");
+    assert.equal(again.filed_on, "2026-03-01");
+    assert.equal(again.result_cents, -4510);
+    const changed = await saveStateFiling(repo, ret.id, { state: "LA", status: "accepted" });
+    assert.equal(changed.status, "accepted");
+    assert.equal(changed.filed_on, "2026-03-01");
+    assert.equal((await saveStateFiling(repo, ret.id, { state: "TX", status: "" })).status, "not_started", "a new state starts as not started");
+  });
+  test("the e-file date uses the date the office gives (its own day), not the UTC day", async () => {
+    const { repo, ret } = await seed();
+    const evening = new Date("2026-10-29T01:30:00.000Z"); // still Oct 28 in Central time
+    const out = await editReturn(repo, ret.id, { stage_id: "s1", efile_status: "transmitted" }, stages, (x) => x, { assignee: () => "no one" }, undefined, evening, "2026-10-28");
+    assert.equal(out.ret.efile_on, "2026-10-28");
+  });
+});

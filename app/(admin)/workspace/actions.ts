@@ -35,6 +35,7 @@ import { revealGate, ssnDeps } from "@/lib/ssn/server";
 import type { Invoice } from "@/lib/workspace/types";
 import { archiveReturn, deleteNote, deleteTask, editNote, editReturn, editTask, removeStateFiling, saveStateFiling } from "@/lib/workspace/service.ts";
 import { staffLabel } from "@/lib/staff/assign.ts";
+import { appointmentDeps } from "@/lib/appointments/server";
 import { listStaff } from "@/lib/staff/server";
 
 // My Workspace actions. Each re-checks administrator access and acts only on the current tenant's rows.
@@ -204,6 +205,16 @@ export async function moveWorkAction(workId: string, stageId: string): Promise<{
   }
 }
 
+/** Today's date in the office's own time zone (not UTC, which is already tomorrow in the evening). */
+async function officeToday(): Promise<string> {
+  try {
+    const tz = (await appointmentDeps().calendar()).timeZone;
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 /** Saves a return's stage, preparer, preparation status, dates and notes, and writes what changed to the client's activity. */
 export async function editReturnAction(form: FormData) {
   const returnId = str(form, "id");
@@ -216,7 +227,7 @@ export async function editReturnAction(form: FormData) {
     const before = await workspaceRepo().getReturn(returnId);
     const { changes, ret } = await editReturn(
       workspaceRepo(), returnId, raw(form), stages.map((x) => x.id), (sid) => stages.find((x) => x.id === sid)?.name ?? "Intake",
-      { assignee: (uid) => (uid ? staffLabel(team, uid) ?? "someone" : "no one") }, await whoIs(),
+      { assignee: (uid) => (uid ? staffLabel(team, uid) ?? "someone" : "no one") }, await whoIs(), new Date(), await officeToday(),
     );
     if (before && ret.stage_id !== before.stage_id) await emitReturnStage(ret.id, ret.stage_id);
     return { notice: changes.length ? `Return saved. ${changes.length} ${changes.length === 1 ? "change" : "changes"}.` : "Nothing was changed." };
