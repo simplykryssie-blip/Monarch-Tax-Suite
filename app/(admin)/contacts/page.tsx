@@ -9,6 +9,7 @@ import { staffLabel } from "@/lib/staff/assign.ts";
 import { listStaff } from "@/lib/staff/server";
 import { AutoSelect } from "@/components/contacts/auto-select";
 import { Modal } from "@/components/ui/modal";
+import { leadsDeps } from "@/lib/leads/server";
 import { recordCounts } from "@/lib/contacts/record-counts.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
@@ -45,7 +46,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const byKey = new Map(data.contacts.map((c) => [c.key, c]));
   // How much each side holds, for the first pairs only (each count is a few lookups).
   const pairCounts = new Map<string, Awaited<ReturnType<typeof recordCounts>>>();
-  await Promise.all(data.duplicates.slice(0, 20).flatMap((d) => [d.a, d.b]).map(async (k) => { const c = byKey.get(k); if (c && !pairCounts.has(k)) pairCounts.set(k, await recordCounts(workspaceRepo(), c)); }));
+  await Promise.all(data.duplicates.slice(0, 20).flatMap((d) => [d.a, d.b]).map(async (k) => { const c = byKey.get(k); if (c && !pairCounts.has(k)) pairCounts.set(k, await recordCounts(workspaceRepo(), c, leadsDeps().repo)); }));
   const backHref = `/contacts${[sp.q ? `q=${encodeURIComponent(sp.q)}` : "", sp.kind ? `kind=${encodeURIComponent(sp.kind)}` : "", sp.tag ? `tag=${encodeURIComponent(sp.tag)}` : ""].filter(Boolean).length ? `?${[sp.q ? `q=${encodeURIComponent(sp.q)}` : "", sp.kind ? `kind=${encodeURIComponent(sp.kind)}` : "", sp.tag ? `tag=${encodeURIComponent(sp.tag)}` : ""].filter(Boolean).join("&")}` : ""}`;
   const rows = filterContacts(data.contacts, { q: sp.q, kind, tag: sp.tag });
   const allTags = [...new Set(data.contacts.flatMap((c) => c.tags))].sort();
