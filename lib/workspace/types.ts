@@ -54,7 +54,7 @@ export type StateFilingStatus = keyof typeof STATE_FILING_STATUSES;
 /** result_cents: positive = refund to the client, negative = amount owed. */
 export type StateFiling = { id: string; tenant_id: string; return_id: string; state: string; status: StateFilingStatus; filed_on: string | null; result_cents?: number | null; created_at: string };
 /** The details an office tracks beyond stage and dates. Optional: a return made before they existed has none. */
-export type ReturnDetails = { form_type?: FormType | null; filing_status?: FilingStatus | null; efile_status?: EfileStatus; efile_on?: string | null; efile_reject_reason?: string | null; /** Positive = refund to the client, negative = amount owed. */ federal_result_cents?: number | null; fee_cents?: number | null };
+export type ReturnDetails = { /** The day the client submitted their intake form. */ submitted_on?: string | null; form_type?: FormType | null; filing_status?: FilingStatus | null; efile_status?: EfileStatus; efile_on?: string | null; efile_reject_reason?: string | null; /** Positive = refund to the client, negative = amount owed. */ federal_result_cents?: number | null; fee_cents?: number | null };
 export type ClientReturn = ReturnDetails & {
   id: string; tenant_id: string; client_id: string; tax_year: number; kind: ReturnKind; parent_id: string | null; stage_id: string;
   due_on: string | null; filed_on: string | null; notes: string | null; archived_at: string | null; created_at: string; updated_at: string;
@@ -175,7 +175,12 @@ export interface WorkspaceRepo {
   insertMessage(input: NewClientMessage): Promise<ClientMessage>;
   listTasks(f?: { clientId?: string; openOnly?: boolean }): Promise<ClientTask[]>;
   insertTask(input: Pick<ClientTask, "client_id" | "return_id" | "title" | "due_on" | "created_by">): Promise<ClientTask>;
-  updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at">>): Promise<ClientTask>;
+  getTask(id: string): Promise<ClientTask | null>;
+  updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at" | "title" | "due_on" | "return_id">>): Promise<ClientTask>;
+  deleteTask(id: string): Promise<void>;
+  getNote(id: string): Promise<ClientNote | null>;
+  updateNote(id: string, patch: Pick<ClientNote, "body">): Promise<ClientNote>;
+  deleteNote(id: string): Promise<void>;
   listNotes(clientId: string): Promise<ClientNote[]>;
   insertNote(input: Pick<ClientNote, "client_id" | "body" | "created_by">): Promise<ClientNote>;
 

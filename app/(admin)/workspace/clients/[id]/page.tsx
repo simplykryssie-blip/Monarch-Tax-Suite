@@ -17,6 +17,8 @@ import { Modal } from "@/components/ui/modal";
 import { HoverMenu } from "@/components/ui/hover-menu";
 import { staffLabel } from "@/lib/staff/assign.ts";
 import { EFILE_STATUSES } from "@/lib/workspace/types.ts";
+import { SubmitOnce } from "@/components/admin/submit-once";
+import { NoteEditor, TaskEditor } from "@/components/workspace/item-editors";
 import { ReturnEditor } from "@/components/workspace/return-editor";
 import { duplicatesOfClient } from "@/lib/contacts/duplicates.ts";
 import { loadContacts } from "@/lib/contacts/server";
@@ -151,7 +153,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="back" value={back} />
       <input name={field} required maxLength={field === "body" ? 4000 : 200} placeholder={placeholder} aria-label={placeholder} />
       {withDate && <input name="due_on" type="date" aria-label="Due" />}
-      <button className="monarch-secondary">{field === "body" ? "Save" : "Add"}</button>
+      <SubmitOnce className="monarch-secondary">{field === "body" ? "Save" : "Add"}</SubmitOnce>
     </form>
   );
   return (
@@ -204,12 +206,12 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       {tab === "overview" && (
         <>
           <section className="cl-strip" aria-label="At a glance">
-            <div><small>Returns</small><b>{newestFirst.length ? `${returnLabel(newestFirst[0])} · ${stageName(newestFirst[0].stage_id)}` : "None"}</b></div>
-            <div><small>Owes</small><b>{owes ? dollars(owes) : "Nothing"}</b></div>
-            <div><small>Next due</small><b style={nextDue && nextDue.on < todayStr ? { color: "#b42318" } : undefined}>{nextDue ? `${nextDue.on}${nextDue.on < todayStr ? " (overdue)" : ""}` : "Nothing due"}</b>{nextDue && <small className="monarch-subcell">{nextDue.what}</small>}</div>
-            <div><small>Open tasks</small><b>{openTasks.length}</b></div>
-            <div><small>Documents</small><b>{docs.length}</b></div>
-            <div><small>Last message</small><b>{lastMessage ? `${CHANNELS[lastMessage.channel]} · ${when(lastMessage.occurred_at)}` : "None"}</b></div>
+            <Link href={`/workspace/clients/${id}?tab=returns`} className="cl-card-link"><small>Returns</small><b>{newestFirst.length ? `${returnLabel(newestFirst[0])} · ${stageName(newestFirst[0].stage_id)}` : "None"}</b></Link>
+            <Link href={`/workspace/clients/${id}?tab=billing`} className="cl-card-link"><small>Owes</small><b>{owes ? dollars(owes) : "Nothing"}</b></Link>
+            <Link href={nextDue ? `/calendar?view=month&date=${nextDue.on}` : "/calendar"} className="cl-card-link"><small>Next due</small><b style={nextDue && nextDue.on < todayStr ? { color: "#b42318" } : undefined}>{nextDue ? `${nextDue.on}${nextDue.on < todayStr ? " (overdue)" : ""}` : "Nothing due"}</b>{nextDue && <small className="monarch-subcell">{nextDue.what}</small>}</Link>
+            <Link href={`/workspace/clients/${id}?tab=tasks`} className="cl-card-link"><small>Open tasks</small><b>{openTasks.length}</b></Link>
+            <Link href={`/workspace/clients/${id}?tab=documents`} className="cl-card-link"><small>Documents</small><b>{docs.length}</b></Link>
+            <Link href={`/workspace/clients/${id}?tab=messages`} className="cl-card-link"><small>Last message</small><b>{lastMessage ? `${CHANNELS[lastMessage.channel]} · ${when(lastMessage.occurred_at)}` : "None"}</b></Link>
             <div><small>Portal</small><b>{portalLabel}</b></div>
           </section>
           <AssignTo kind="client" id={id} current={client.owner_id ?? null} staff={staff} back={back} />
@@ -340,7 +342,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 {openTasks.length === 0 ? <p className="monarch-muted cl-empty">None open</p> : (
                   <ul className="cl-list">{openTasks.slice(0, FIVE).map((x) => (
                     <li key={x.id}><span><b>{x.title}</b>{x.due_on && <small className={`monarch-subcell${x.due_on < today ? " wb-late" : ""}`}>due {x.due_on}</small>}</span>
-                      <form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} />{x.source && <input type="hidden" name="source" value={x.source} />}<input type="hidden" name="back" value={back} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form></li>
+                      <form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} />{x.source && <input type="hidden" name="source" value={x.source} />}<input type="hidden" name="back" value={back} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form>{x.source ? null : <TaskEditor task={x} returns={newestFirst.map((r) => ({ id: r.id, label: returnLabel(r) }))} back={back} />}</li>
                   ))}</ul>
                 )}
               </section>
@@ -349,7 +351,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 <div className="cl-card-head"><h2>Notes</h2>{notes.length > 0 && <Link className="monarch-link" href={`/workspace/clients/${id}?tab=notes`}>See all ({notes.length})</Link>}</div>
                 {quickAdd(addNoteAction, "body", "Add a note", false)}
                 {notes.length === 0 ? <p className="monarch-muted cl-empty">None</p> : (
-                  <ul className="cl-list">{notes.slice(0, FIVE).map((n) => <li key={n.id}><span style={{ whiteSpace: "pre-wrap" }}>{n.body}<small className="monarch-subcell">{when(n.created_at)}</small></span></li>)}</ul>
+                  <ul className="cl-list">{notes.slice(0, FIVE).map((n) => <li key={n.id}><span style={{ whiteSpace: "pre-wrap" }}>{n.body}<small className="monarch-subcell">{when(n.created_at)}</small></span><NoteEditor note={n} back={back} /></li>)}</ul>
                 )}
               </section>
 
@@ -486,10 +488,10 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Returns</h2></div><Link className="mt-card-link" href="/workspace/work">Open the board</Link></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>RETURN</th><th>FORM</th><th>STAGE</th><th>E-FILE</th><th>PREPARER</th><th>DUE</th><th>FILED</th><th /></tr></thead>
+              <thead><tr><th>RETURN</th><th>FORM</th><th>STAGE</th><th>E-FILE</th><th>PREPARER</th><th>DUE</th><th>SUBMITTED</th><th /></tr></thead>
               <tbody>
                 {newestFirst.length === 0 ? <EmptyRow colSpan={8}>No returns yet.</EmptyRow> : newestFirst.map((r) => (
-                  <tr key={r.id} id={`return-${r.id}`}><td><b>{returnLabel(r)}</b></td><td>{r.form_type ?? "—"}</td><td>{stageName(r.stage_id)}</td><td>{EFILE_STATUSES[r.efile_status ?? "not_sent"]}</td><td>{r.assignee_id ? staffLabel(staff, r.assignee_id) ?? "—" : "—"}</td><td className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ?? "—"}</td><td>{r.filed_on ?? "—"}</td><td>{editorFor(r)}</td></tr>
+                  <tr key={r.id} id={`return-${r.id}`}><td><b>{returnLabel(r)}</b></td><td>{r.form_type ?? "—"}</td><td>{stageName(r.stage_id)}</td><td>{EFILE_STATUSES[r.efile_status ?? "not_sent"]}</td><td>{r.assignee_id ? staffLabel(staff, r.assignee_id) ?? "—" : "—"}</td><td className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ?? "—"}</td><td>{r.submitted_on ?? "—"}</td><td>{editorFor(r)}</td></tr>
                 ))}
               </tbody>
             </table></div>
@@ -505,20 +507,21 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               <input name="title" required maxLength={200} placeholder="Task" aria-label="Task" />
               <input name="due_on" type="date" aria-label="Due" />
               <select name="return_id" defaultValue="" aria-label="Which return is this for?"><option value="">No specific return</option>{newestFirst.map((r) => <option key={r.id} value={r.id}>{returnLabel(r)}</option>)}</select>
-              <button className="monarch-secondary">Add</button>
+              <SubmitOnce className="monarch-secondary">Add</SubmitOnce>
             </form>
           </section>
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Tasks</h2></div></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>TASK</th><th>DUE</th><th>RETURN</th><th></th></tr></thead>
+              <thead><tr><th>TASK</th><th>DUE</th><th>RETURN</th><th></th><th></th></tr></thead>
               <tbody>
-                {tasks.length === 0 ? <EmptyRow colSpan={4}>No tasks yet.</EmptyRow> : tasks.map((x) => (
+                {tasks.length === 0 ? <EmptyRow colSpan={5}>No tasks yet.</EmptyRow> : tasks.map((x) => (
                   <tr key={x.id} style={x.done_at ? { opacity: 0.55 } : undefined}>
                     <td style={x.done_at ? { textDecoration: "line-through" } : undefined}><b>{x.title}</b></td>
                     <td className={!x.done_at && x.due_on && x.due_on < today ? "wb-late" : undefined}>{x.due_on ?? "—"}</td>
                     <td>{x.return_id ? (() => { const r = returns.find((y) => y.id === x.return_id); return r ? returnLabel(r) : "—"; })() : "—"}</td>
                     <td><form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} />{x.source && <input type="hidden" name="source" value={x.source} />}<input type="hidden" name="back" value={back} /><input type="hidden" name="done" value={x.done_at ? "no" : "yes"} /><button className="monarch-link">{x.done_at ? "Reopen" : "Done"}</button></form></td>
+                    <td>{x.source ? null : <TaskEditor task={x} returns={newestFirst.map((r) => ({ id: r.id, label: returnLabel(r) }))} back={back} />}</td>
                   </tr>
                 ))}
               </tbody>
@@ -532,7 +535,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <section className="monarch-panel cl-card"><h2 style={{ marginTop: 0 }}>Add a note</h2>{quickAdd(addNoteAction, "body", "Note", false)}</section>
           <section className="monarch-panel">
             <div className="monarch-table-wrap"><table><tbody>
-              {notes.length === 0 ? <EmptyRow colSpan={2}>No notes yet.</EmptyRow> : notes.map((n) => <tr key={n.id}><td style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>{when(n.created_at)}</td><td style={{ whiteSpace: "pre-wrap" }}>{n.body}</td></tr>)}
+              {notes.length === 0 ? <EmptyRow colSpan={3}>No notes yet.</EmptyRow> : notes.map((n) => <tr key={n.id}><td style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>{when(n.created_at)}</td><td style={{ whiteSpace: "pre-wrap" }}>{n.body}</td><td><NoteEditor note={n} back={back} /></td></tr>)}
             </tbody></table></div>
           </section>
         </>

@@ -118,7 +118,12 @@ export class SupabaseWorkspaceRepo implements WorkspaceRepo {
     return unwrap(await q) as ClientTask[];
   }
   async insertTask(input: Pick<ClientTask, "client_id" | "return_id" | "title" | "due_on" | "created_by">) { return unwrap(await this.db.from("client_tasks").insert(input).select("*").single()) as ClientTask; }
-  async updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at">>) { return unwrap(await this.db.from("client_tasks").update(patch).eq("id", id).select("*").single()) as ClientTask; }
+  async getTask(id: string) { return unwrap(await this.db.from("client_tasks").select("*").eq("id", id).maybeSingle()) as ClientTask | null; }
+  async deleteTask(id: string) { unwrap(await this.db.from("client_tasks").delete().eq("id", id).select("id")); }
+  async getNote(id: string) { return unwrap(await this.db.from("client_notes").select("*").eq("id", id).maybeSingle()) as ClientNote | null; }
+  async updateNote(id: string, patch: Pick<ClientNote, "body">) { return unwrap(await this.db.from("client_notes").update(patch).eq("id", id).select("*").single()) as ClientNote; }
+  async deleteNote(id: string) { unwrap(await this.db.from("client_notes").delete().eq("id", id).select("id")); }
+  async updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at" | "title" | "due_on" | "return_id">>) { return unwrap(await this.db.from("client_tasks").update(patch).eq("id", id).select("*").single()) as ClientTask; }
   async listNotes(clientId: string) { return unwrap(await this.db.from("client_notes").select("*").eq("client_id", clientId).order("created_at", { ascending: false }).limit(300)) as ClientNote[]; }
   async insertNote(input: Pick<ClientNote, "client_id" | "body" | "created_by">) { return unwrap(await this.db.from("client_notes").insert(input).select("*").single()) as ClientNote; }
 

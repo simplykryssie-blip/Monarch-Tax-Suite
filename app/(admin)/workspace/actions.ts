@@ -33,7 +33,7 @@ import { currentTenantId } from "@/lib/tenants.ts";
 import { checkSsn, copySsn, hasStoredSsn, revealSsn, storeSsn } from "@/lib/ssn/service.ts";
 import { revealGate, ssnDeps } from "@/lib/ssn/server";
 import type { Invoice } from "@/lib/workspace/types";
-import { archiveReturn, editReturn, removeStateFiling, saveStateFiling } from "@/lib/workspace/service.ts";
+import { archiveReturn, deleteNote, deleteTask, editNote, editReturn, editTask, removeStateFiling, saveStateFiling } from "@/lib/workspace/service.ts";
 import { staffLabel } from "@/lib/staff/assign.ts";
 import { listStaff } from "@/lib/staff/server";
 
@@ -291,6 +291,40 @@ export async function addNoteAction(form: FormData) {
   await act(clientPage(id, "notes"), async (adminId) => {
     await addNote(workspaceRepo(), id, str(form, "body"), adminId);
     return { notice: "Note added." };
+  });
+}
+
+const tabBack = (form: FormData, clientId: string, tab: string) => (str(form, "back").startsWith("/workspace/clients/") ? str(form, "back") : clientPage(clientId, tab));
+
+export async function editTaskAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(tabBack(form, clientId, "tasks"), async () => {
+    await editTask(workspaceRepo(), str(form, "id"), raw(form), await whoIs());
+    return { notice: "Task saved." };
+  });
+}
+
+export async function deleteTaskAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(tabBack(form, clientId, "tasks"), async () => {
+    await deleteTask(workspaceRepo(), str(form, "id"), await whoIs());
+    return { notice: "Task deleted." };
+  });
+}
+
+export async function editNoteAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(tabBack(form, clientId, "notes"), async () => {
+    await editNote(workspaceRepo(), str(form, "id"), str(form, "body"), await whoIs());
+    return { notice: "Note saved." };
+  });
+}
+
+export async function deleteNoteAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(tabBack(form, clientId, "notes"), async () => {
+    await deleteNote(workspaceRepo(), str(form, "id"), await whoIs());
+    return { notice: "Note deleted." };
   });
 }
 

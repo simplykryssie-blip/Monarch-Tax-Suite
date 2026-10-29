@@ -157,6 +157,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                         <span className="monarch-muted">Task</span> <strong>{t.title}</strong>
                         {t.clientId ? <Link href={`/workspace/clients/${t.clientId}`}>{t.clientName}</Link> : <span>{t.clientName}</span>}
                         <span style={{ flex: 1 }} />
+                        {t.clientId && t.source !== "workflow" && <Link className="monarch-link" href={`/workspace/clients/${t.clientId}?tab=tasks`}>Edit</Link>}
                         <form action={toggleTaskAction}><input type="hidden" name="id" value={t.id} /><input type="hidden" name="source" value={t.source === "workflow" ? "workflow" : ""} /><input type="hidden" name="back" value={`/calendar?view=${view}&date=${ymdString(first)}`} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form>
                       </li>
                     ))}
