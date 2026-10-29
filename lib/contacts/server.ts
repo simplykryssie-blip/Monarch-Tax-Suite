@@ -4,10 +4,7 @@ import { leadsDeps } from "../leads/server";
 import { allows } from "../tier.ts";
 import { currentTier } from "../tier-server";
 import { workspaceRepo } from "../workspace/server";
-<<<<<<< HEAD
 import { listAllMethods } from "./methods-server";
-=======
->>>>>>> claude/archive-fix
 import { listDismissals } from "./dismissals-server";
 import { withoutDismissed } from "./dismissals.ts";
 import { combineContacts, possibleDuplicates, sortContacts, type ClientRec, type Contact, type CustomerRec, type LeadRec, type PossibleDuplicate } from "./combine.ts";
@@ -58,7 +55,6 @@ export async function loadContacts(): Promise<ContactsData> {
   const contacts = sortContacts(combineContacts({ leads, clients, customers }));
   // Not a note when this can't be read: the list then simply shows every possible pair.
   const dismissals = await listDismissals().catch(() => []);
-<<<<<<< HEAD
   const methods = await listAllMethods().catch(() => []);
   const extras = (pick: "email" | "phone") => {
     const byOwner = new Map<string, string[]>();
@@ -66,9 +62,6 @@ export async function loadContacts(): Promise<ContactsData> {
     return (c: Contact) => [...(c.refs.clientId ? byOwner.get(c.refs.clientId) ?? [] : []), ...(c.refs.leadId ? byOwner.get(c.refs.leadId) ?? [] : [])];
   };
   const all = possibleDuplicates(contacts, { emails: extras("email"), phones: extras("phone") });
-=======
-  const all = possibleDuplicates(contacts);
->>>>>>> claude/archive-fix
   return {
     contacts,
     duplicates: withoutDismissed(all, dismissals),
