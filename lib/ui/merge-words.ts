@@ -14,3 +14,9 @@ export function fromFriendlyWith(words: MergeWordList, text: string): string {
   const key = new Map(words.map((w) => [w.label.toLowerCase(), w.key]));
   return text.replace(/\[([^\[\]]{1,40})\]/g, (all, w: string) => { const k = key.get(w.trim().toLowerCase()); return k ? `{{${k}}}` : all; });
 }
+
+/** The words a person sees for a merge tag whose name is all we have: first_name becomes "First name". */
+export function labelFromKey(key: string): string {
+  const words = key.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}

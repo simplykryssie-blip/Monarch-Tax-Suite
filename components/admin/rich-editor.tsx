@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { editorToMarkdown, markdownToEditorHtml } from "@/lib/richtext-editor.ts";
+import { InsertMenu } from "@/components/ui/merge-field";
+import { fromFriendlyWith, labelFromKey, toFriendlyWith } from "@/lib/ui/merge-words.ts";
 
 // A visual editor that saves Markdown (see lib/richtext.ts). "email" has the full bar: text type, size, color, bold,
 // italic, underline, lists, placeholders, links and pictures. "form" is the short bar for a form's paragraph blocks.
@@ -37,13 +39,15 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
   const [problem, setProblem] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const email = variant === "email";
+  const words = placeholders.map((p) => ({ key: p.name, label: labelFromKey(p.name), note: p.note }));
+  const labelOf = (n: string) => words.find((w) => w.key === n)?.label ?? labelFromKey(n);
 
   const publish = useCallback((next: string) => { setMd(next); onChange?.(next); }, [onChange]);
 
   // Load the starting text once; after that the editor owns its content.
   useEffect(() => {
     if (area.current) {
-      area.current.innerHTML = markdownToEditorHtml(initial);
+      area.current.innerHTML = markdownToEditorHtml(initial, labelOf);
       try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch { /* older browsers */ }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,7 +99,7 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
   function insertPlaceholder(token: string) {
     if (!token) return;
     restore();
-    document.execCommand("insertHTML", false, `<span data-token="${token}" contenteditable="false" class="re-chip">{{${token}}}</span>&nbsp;`);
+    document.execCommand("insertHTML", false, `<span data-token="${token}" contenteditable="false" class="re-chip">[${labelOf(token)}]</span>&nbsp;`);
     sync();
   }
 
@@ -141,7 +145,10 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
   return (
     <div className="re">
       <input type="hidden" name={name} value={md} />
-      <span className="field-label">{label}</span>
+      <div className="mfld-head">
+        <span className="field-label">{label}</span>
+        {email && words.length > 0 && !source && <InsertMenu words={words} onPick={(w) => insertPlaceholder(w.key)} />}
+      </div>
       <div className="re-bar" role="toolbar" aria-label="Formatting">
         {email && (
           <select aria-label="Text type" defaultValue="p" onChange={(e) => { run("formatBlock", e.target.value); e.target.value = "p"; }} disabled={source}>
@@ -162,13 +169,7 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
         <ToolButton title="Numbered list" onClick={() => run("insertOrderedList")}>1. List</ToolButton>
         <ToolButton title="Add a link" onClick={() => { setPanel(panel === "link" ? null : "link"); setProblem(null); }}>Link</ToolButton>
         {email && <ToolButton title="Add a picture" onClick={() => { setPanel(panel === "image" ? null : "image"); setProblem(null); }}>Picture</ToolButton>}
-        {email && placeholders.length > 0 && (
-          <select aria-label="Insert placeholder" defaultValue="" onChange={(e) => { insertPlaceholder(e.target.value); e.target.value = ""; }} disabled={source}>
-            <option value="">Insert placeholder…</option>
-            {placeholders.map((p) => <option key={p.name} value={p.name} title={p.note}>{p.name.replace(/_/g, " ")}</option>)}
-          </select>
-        )}
-        <label className="re-source"><input type="checkbox" checked={source} onChange={(e) => { setSource(e.target.checked); if (!e.target.checked && area.current) area.current.innerHTML = markdownToEditorHtml(md); }} /> Markdown</label>
+        <label className="re-source"><input type="checkbox" checked={source} onChange={(e) => { setSource(e.target.checked); if (!e.target.checked && area.current) area.current.innerHTML = markdownToEditorHtml(md, labelOf); }} /> Markdown</label>
       </div>
       {panel && (
         <div className="re-panel">
@@ -187,11 +188,11 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
       {problem && <p className="field-error" role="alert">{problem}</p>}
       {email && placeholders.length > 0 && (
         <details className="re-placeholders">
-          <summary>Placeholders you can use</summary>
+          <summary>Information you can add</summary>
           <ul>
             {placeholders.map((p) => (
               <li key={p.name}>
-                <button type="button" className="re-token" onMouseDown={(e) => e.preventDefault()} onClick={() => insertPlaceholder(p.name)} disabled={source} title="Click to insert into the message">{`{{${p.name}}}`}</button>
+                <button type="button" className="re-token" onMouseDown={(e) => e.preventDefault()} onClick={() => insertPlaceholder(p.name)} disabled={source} title="Click to insert into the message">{`[${labelOf(p.name)}]`}</button>
                 <span className="monarch-muted"> {p.note}</span>
               </li>
             ))}
@@ -212,7 +213,7 @@ export function RichEditor({ name, initial, variant, placeholders = [], maxLengt
         onBlur={sync}
       />
       {source && (
-        <textarea className="re-source-area" rows={rows} maxLength={maxLength} value={md} onChange={(e) => publish(e.target.value)} aria-label={`${label} as Markdown`} />
+        <textarea className="re-source-area" rows={rows} maxLength={maxLength} value={toFriendlyWith(words, md)} onChange={(e) => publish(fromFriendlyWith(words, e.target.value))} aria-label={`${label} as Markdown`} />
       )}
       <small className="monarch-muted">{md.length.toLocaleString()} / {maxLength.toLocaleString()} characters{md.length > maxLength ? " (too long)" : ""}</small>
     </div>
