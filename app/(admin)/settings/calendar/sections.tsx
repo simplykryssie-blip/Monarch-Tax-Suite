@@ -105,7 +105,7 @@ export async function AvailabilitySection({ who, adminId }: { who: "office" | "m
             <form action={saveWeeklyAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
               <input type="hidden" name="who" value={who} />
               <h2>Weekly hours</h2>
-              <p className="monarch-muted">{weekly.length ? "Days left unticked are closed for booking." : "Nothing saved yet: business hours are being used. Saving here replaces them for booking."}</p>
+              <p className="monarch-muted">{weekly.length ? "Days left unticked are closed for booking." : "These start from your business hours. Saving here sets the hours people can book."}</p>
               {DAYS.map((name, d) => {
                 const spans = weekly.filter((r) => r.weekday === d).sort((a, b) => (a.start_time ?? "").localeCompare(b.start_time ?? ""));
                 return (

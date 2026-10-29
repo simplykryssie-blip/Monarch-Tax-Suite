@@ -63,7 +63,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
               <div className="monarch-table-wrap"><table>
                 <thead><tr><th>INVOICE</th><th>CLIENT</th><th>YEAR</th><th>TOTAL</th><th>PAID</th><th>BALANCE</th><th>STATUS</th><th>PAYMENT TYPE</th><th></th></tr></thead>
                 <tbody>
-                  {shown.length === 0 ? <EmptyRow colSpan={9}>{invoices.length === 0 ? "No invoices yet. Create one below, or from a client's Billing tab." : "No invoices match."}</EmptyRow> : shown.map((i) => (
+                  {shown.length === 0 ? <EmptyRow colSpan={9}>{invoices.length === 0 ? "No invoices yet. Use New invoice above, or a client's Billing tab." : "No invoices match."}</EmptyRow> : shown.map((i) => (
                     <tr key={i.id}>
                       <td><b><InvoiceLink invoice={i} clientName={names.get(i.client_id) ?? "Client"} ctx={sheetCtx} payments={paid.filter((p) => p.invoice_id === i.id)} plan={plans.filter((p) => p.invoice_id === i.id)} /></b><small className="monarch-subcell">issued {i.issued_on}{i.due_on ? ` · due ${i.due_on}` : ""}</small></td>
                       <td><Link href={`/workspace/clients/${i.client_id}?tab=billing`}>{names.get(i.client_id) ?? "Unknown"}</Link></td>
