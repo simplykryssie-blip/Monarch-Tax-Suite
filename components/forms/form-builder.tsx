@@ -1,5 +1,6 @@
 "use client";
 
+import { InsertMenu } from "@/components/ui/merge-field";
 import { RichEditor } from "@/components/admin/rich-editor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -46,15 +47,12 @@ function prune(d: FormDefinition): FormDefinition {
   return d;
 }
 
-/** Adds a client or firm detail ({{client_name}} and so on) to some text: nobody has to type brackets. */
+/** A compact Insert menu for a client or firm detail ({{client_name}} and so on), placed right above the field it adds to. Nobody has to type brackets. */
 function InsertDetail({ onInsert }: { onInsert: (token: string) => void }) {
   return (
-    <label>Insert a detail
-      <select value="" onChange={(e) => { if (e.target.value) onInsert(`{{${e.target.value}}}`); }}>
-        <option value="">Choose a client or firm detail…</option>
-        {FORM_MERGE_KEYS.map((k) => <option key={k} value={k}>{FORM_MERGE_LABELS[k]}</option>)}
-      </select>
-    </label>
+    <div className="mfld-head" style={{ justifyContent: "flex-end", minHeight: 0 }}>
+      <InsertMenu label="Insert a detail" words={FORM_MERGE_KEYS.map((k) => ({ key: k, label: FORM_MERGE_LABELS[k] }))} onPick={(w) => onInsert(`{{${w.key}}}`)} />
+    </div>
   );
 }
 
@@ -290,13 +288,13 @@ export function FormBuilder(props: Props) {
         <h3>{FIELD_LABELS[f.type]}{f.internal && <span className="mf-badge">STAFF ONLY</span>}</h3>
         {f.type === "paragraph" ? (
           <>
-            <RichEditor key={`${f.id}-${bumps[f.id] ?? 0}`} name={`paragraph_${f.id}`} initial={f.text ?? ""} variant="form" label="Text" rows={6} maxLength={3000} onChange={(md) => updateField(f.id, { text: md.slice(0, 3000) })} />
             <InsertDetail onInsert={(t) => { updateField(f.id, { text: `${f.text ?? ""} ${t}`.trim().slice(0, 3000) }); setBumps((b) => ({ ...b, [f.id]: (b[f.id] ?? 0) + 1 })); }} />
+            <RichEditor key={`${f.id}-${bumps[f.id] ?? 0}`} name={`paragraph_${f.id}`} initial={f.text ?? ""} variant="form" label="Text" rows={6} maxLength={3000} onChange={(md) => updateField(f.id, { text: md.slice(0, 3000) })} />
           </>
         ) : (
           <>
-            <label>{f.type === "heading" ? "Heading" : "Question"}<input value={f.label} onChange={(e) => updateField(f.id, { label: e.target.value })} maxLength={300} /></label>
             {f.type === "heading" && <InsertDetail onInsert={(t) => updateField(f.id, { label: `${f.label} ${t}`.trim().slice(0, 300) })} />}
+            <label>{f.type === "heading" ? "Heading" : "Question"}<input value={f.label} onChange={(e) => updateField(f.id, { label: e.target.value })} maxLength={300} /></label>
           </>
         )}
         {!display && (
@@ -322,10 +320,10 @@ export function FormBuilder(props: Props) {
             )}
             {DEFAULT_TYPES.includes(f.type) && (
               <>
+                <InsertDetail onInsert={(t) => updateField(f.id, { defaultValue: `${f.defaultValue ?? ""}${f.defaultValue ? " " : ""}${t}`.slice(0, 20000) })} />
                 {f.type === "long_text"
                   ? <label>Pre-filled value (optional)<textarea rows={3} value={f.defaultValue ?? ""} onChange={(e) => updateField(f.id, { defaultValue: e.target.value, locked: e.target.value ? f.locked : undefined })} maxLength={20000} /></label>
                   : <label>Pre-filled value (optional)<input value={f.defaultValue ?? ""} onChange={(e) => updateField(f.id, { defaultValue: e.target.value, locked: e.target.value ? f.locked : undefined })} maxLength={1000} /></label>}
-                <InsertDetail onInsert={(t) => updateField(f.id, { defaultValue: `${f.defaultValue ?? ""}${f.defaultValue ? " " : ""}${t}`.slice(0, 20000) })} />
                 {!f.internal && (
                   <label className="monarch-check"><input type="checkbox" checked={!!f.locked} disabled={!f.defaultValue} onChange={(e) => updateField(f.id, { locked: e.target.checked || undefined })} /> Pre-fill and lock: the value appears in the field and the person filling in the form can&apos;t change it</label>
                 )}

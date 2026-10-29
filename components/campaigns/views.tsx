@@ -3,7 +3,8 @@ import { Flash } from "@/components/admin/ui";
 import { SupabaseSendersRepo } from "@/lib/automation/supabase-senders";
 import { senderAddress } from "@/lib/automation/senders.ts";
 import { addressFor, EXCLUSION_TEXT, LEAD_STATUSES, marketable, sanitizeFilter, textConsent, type AudienceFilter, type Exclusion } from "@/lib/campaigns/audience.ts";
-import { CAMPAIGN_VARIABLES, renderEmail, renderSmsBody, smsSegments, valuesFor } from "@/lib/campaigns/compose.ts";
+import { CampaignMessageFields } from "./message-fields";
+import { renderEmail, renderSmsBody, smsSegments, valuesFor } from "@/lib/campaigns/compose.ts";
 import type { CampaignsContext } from "@/lib/campaigns/context";
 import { officeHealth, previewAudience, scheduleProblems, type Campaign, type Recipient } from "@/lib/campaigns/service.ts";
 import { appOrigin } from "@/lib/admin";
@@ -150,10 +151,6 @@ export async function CampaignEditor({ ctx, c, sp }: { ctx: CampaignsContext; c:
         <label>Campaign name<input name="name" defaultValue={c.name} required maxLength={120} /></label>
         {c.channel === "email" && (
           <>
-            <label>Subject
-              <input name="subject" defaultValue={c.subject ?? ""} maxLength={200} placeholder="Say plainly what the email is about" />
-              <small className="monarch-muted">Be honest: the subject must match what is inside. No fake &ldquo;Re:&rdquo; or &ldquo;urgent&rdquo; tricks.</small>
-            </label>
             <label>Send from
               <select name="sender_id" defaultValue={c.sender_id ?? ""}>
                 <option value="">{senders.some((s) => s.isDefault) ? "Your default sending address" : "Default sending address"}</option>
@@ -163,13 +160,7 @@ export async function CampaignEditor({ ctx, c, sp }: { ctx: CampaignsContext; c:
             </label>
           </>
         )}
-        <label className="is-wide">Message
-          <textarea name="body" defaultValue={c.body} rows={c.channel === "sms" ? 5 : 12} maxLength={20000} />
-          <small className="monarch-muted">
-            Merge fields: {Object.entries(CAMPAIGN_VARIABLES).map(([k, d]) => <span key={k} title={d}><code>{`{{${k}}}`}</code> </span>)}
-            {c.channel === "email" ? " · Plain text with **bold**, *italic*, [link text](https://example.com) and lists. A footer with your mailing address and an unsubscribe link is added to every email." : " · The office name goes first and “Reply STOP to opt out.” goes last, added for you."}
-          </small>
-        </label>
+        <CampaignMessageFields channel={c.channel} subject={c.subject ?? ""} body={c.body} rows={c.channel === "sms" ? 5 : 12} footnote={c.channel === "email" ? "Plain text with **bold**, *italic*, [link text](https://example.com) and lists. A footer with your mailing address and an unsubscribe link is added to every email." : "The office name goes first and “Reply STOP to opt out” is added."} />
 
         <h2 className="is-wide" style={{ margin: "12px 0 0" }}>2. Who gets it</h2>
         <fieldset className="is-wide cp-box">
