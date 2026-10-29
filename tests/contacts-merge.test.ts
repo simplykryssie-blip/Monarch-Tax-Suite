@@ -614,3 +614,85 @@ describe("more than one email and phone per person", () => {
     assert.equal(methods.rows.length, 0);
   });
 });
+
+import { addRelationship, relationshipsFor, removeRelationship, type PersonRef, type Relationship, type RelationshipsDeps, type RelationshipsRepo } from "../lib/contacts/relationships.ts";
+
+describe("family relationships", () => {
+  const memoryRels = (): RelationshipsRepo & { rows: Relationship[] } => {
+    const rows: Relationship[] = [];
+    const involves = (r: Relationship, p: PersonRef) => (r.a.kind === p.kind && r.a.id === p.id) || (r.b.kind === p.kind && r.b.id === p.id);
+    return {
+      rows,
+      async listFor(p) { return rows.filter((r) => involves(r, p)); },
+      async get(id) { return rows.find((r) => r.id === id) ?? null; },
+      async add(a, b, kind, note) { const r: Relationship = { id: randomUUID(), a, b, kind, note, created_at: "2026-10-29T00:00:00Z" }; rows.push(r); return r; },
+      async remove(id) { const i = rows.findIndex((r) => r.id === id); if (i >= 0) rows.splice(i, 1); },
+    };
+  };
+  const person = async (clients: MemoryWorkspace, name: string, email: string) => clients.insertClient({ full_name: name, email, phone: null, created_by: null } as never);
+  const seed = async () => {
+    const clients = new MemoryWorkspace();
+    const leads = new MemoryLeads();
+    const rels = memoryRels();
+    const deps: RelationshipsDeps = { rels, clients, leads };
+    const ana = await person(clients, "Ana Ruiz", "ana@example.com");
+    const bo = await person(clients, "Bo Ruiz", "bo@example.com");
+    const lead = await leads.insertLead({ tags: [], notes: null, phone: null, firm_name: null, status: "new", source: "manual", last_contacted_at: null, audit_id: null, audit_score: null, wisp_plan_id: null, customer_id: null, order_id: null, organization_id: null, converted_at: null, full_name: "Cy Dee", email: "cy@example.com" } as never);
+    return { deps, rels, clients, leads, ana: { kind: "client" as const, id: ana.id }, bo: { kind: "client" as const, id: bo.id }, cy: { kind: "lead" as const, id: lead.id } };
+  };
+
+  test("a relationship reads one way on one page and the other way on the other", async () => {
+    const { deps, ana, bo } = await seed();
+    // Bo is Ana's son.
+    await addRelationship(deps, ana, bo, "son", null, "u1");
+    const onAna = await relationshipsFor(deps, ana);
+    assert.deepEqual(onAna.map((r) => [r.label, r.otherName]), [["Son", "Bo Ruiz"]]);
+    const onBo = await relationshipsFor(deps, bo);
+    assert.deepEqual(onBo.map((r) => [r.label, r.otherName]), [["Parent", "Ana Ruiz"]]);
+  });
+
+  test("the family choices all work, and Other needs a note", async () => {
+    const { deps, ana, cy } = await seed();
+    for (const k of ["spouse", "parent", "daughter", "grandchild", "grandparent", "aunt", "uncle", "sibling"]) {
+      const { deps: d2, ana: a2, cy: c2 } = await seed();
+      await addRelationship(d2, a2, c2, k, null, "u1");
+      assert.equal((await relationshipsFor(d2, a2)).length, 1, k);
+    }
+    await assert.rejects(() => addRelationship(deps, ana, cy, "other", "  ", "u1"), /short note/);
+    await addRelationship(deps, ana, cy, "other", "Guardian", "u1");
+    assert.equal((await relationshipsFor(deps, cy))[0].note, "Guardian");
+    await assert.rejects(() => addRelationship(deps, ana, cy, "cousin", null, "u1"), /Choose how/);
+  });
+
+  test("a lead can be on either side", async () => {
+    const { deps, ana, cy } = await seed();
+    await addRelationship(deps, cy, ana, "sibling", null, "u1");
+    assert.equal((await relationshipsFor(deps, ana))[0].otherName, "Cy Dee");
+    assert.equal((await relationshipsFor(deps, cy))[0].label, "Sibling");
+  });
+
+  test("not yourself, and the same connection can't be entered twice even from the other side", async () => {
+    const { deps, ana, bo } = await seed();
+    await assert.rejects(() => addRelationship(deps, ana, ana, "sibling", null, "u1"), /someone else/);
+    await addRelationship(deps, ana, bo, "son", null, "u1"); // Bo is Ana's son
+    await assert.rejects(() => addRelationship(deps, ana, bo, "son", null, "u1"), /already entered/);
+    await assert.rejects(() => addRelationship(deps, bo, ana, "parent", null, "u1"), /already entered/, "Ana is Bo's parent is the same thing");
+    await addRelationship(deps, bo, ana, "sibling", null, "u1"); // a different kind is allowed
+  });
+
+  test("a spouse already in the Spouse section isn't entered again, and each add and remove is recorded on both people", async () => {
+    const { deps, rels, clients, ana, bo } = await seed();
+    await clients.updateClient(ana.id, { spouse_id: bo.id } as never);
+    await assert.rejects(() => addRelationship(deps, ana, bo, "spouse", null, "u1"), /Spouse section/);
+    const { deps: d2, ana: a2, bo: b2, clients: c2 } = await seed();
+    const r = await addRelationship(d2, a2, b2, "sibling", null, "u1");
+    const evA = (await c2.listClientEvents(a2.id, 5)).map((e) => e.action);
+    const evB = (await c2.listClientEvents(b2.id, 5)).map((e) => e.action);
+    assert.ok(evA.includes("relationship.added") && evB.includes("relationship.added"));
+    await removeRelationship(d2, a2, r.id, "u1");
+    assert.equal((await relationshipsFor(d2, b2)).length, 0);
+    assert.ok((await c2.listClientEvents(b2.id, 5)).some((e) => e.action === "relationship.removed"));
+    await assert.rejects(() => removeRelationship(d2, a2, r.id), ValidationError);
+    assert.equal(rels.rows.length, 0);
+  });
+});
