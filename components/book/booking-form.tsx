@@ -16,7 +16,8 @@ export function BookingForm({ slug, slots, officeTz }: { slug: string; slots: st
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
-  const [texts, setTexts] = useState(true);
+  // Agreeing to texts is the client's own choice, so the box starts unchecked.
+  const [texts, setTexts] = useState(false);
   const p = state.problems ?? {};
   // Sent by hand, so the form keeps what was typed instead of clearing itself.
   const submit = (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const data = new FormData(e.currentTarget); start(() => run(data)); };

@@ -1,9 +1,14 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
+import { staffLabel } from "@/lib/staff/assign.ts";
+import { listStaff } from "@/lib/staff/server";
 import { archiveStore } from "@/lib/archive-server";
 import { ACTION_LABELS, ENTITY } from "@/lib/archive.ts";
+import { recentSecurityEvents } from "@/lib/security-audit";
+import { SECURITY_ACTIONS } from "@/lib/security-audit-actions.ts";
 import { ssnDeps } from "@/lib/ssn/server";
 import { numberActivity } from "@/lib/ssn/service.ts";
+import { currentTenantId } from "@/lib/tenants.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
 import { EmptyRow, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 
@@ -20,14 +25,17 @@ export default async function ActivityLogPage({ searchParams }: { searchParams: 
   const sp = await searchParams;
   const only = sp.client && UUID.test(sp.client) ? sp.client : null;
   const result = await load(async () => {
-    const [archive, numbers, clients] = await Promise.all([
+    const [archive, numbers, clients, security] = await Promise.all([
       archiveStore().recent(200),
       numberActivity(ssnDeps(), only, 200).catch(() => []),
       workspaceRepo().listClients({ includeArchived: true }).catch(() => []),
+      only ? Promise.resolve([]) : recentSecurityEvents(currentTenantId()).catch(() => []),
     ]);
-    return { archive, numbers, names: new Map(clients.map((c) => [c.id, c.full_name])) };
+    return { archive, numbers, security, names: new Map(clients.map((c) => [c.id, c.full_name])) };
   });
-  const who = (actor: string | null, auto?: boolean) => (actor ? (actor === admin.userId ? "You" : "A teammate") : auto ? "Automatic" : "—");
+  // Names come from the team list, so a firm with more than one person can tell who did what.
+  const team = await listStaff().catch(() => []);
+  const who = (actor: string | null, auto?: boolean) => (actor ? (actor === admin.userId ? `You (${staffLabel(team, actor) ?? "this account"})` : (team.some((m) => m.id === actor) ? staffLabel(team, actor)! : "A former teammate")) : auto ? "Automatic" : "—");
   const lines: Line[] = !result.ok ? [] : [
     ...result.data.archive.filter((h) => !only || h.record_id === only).map((h): Line => ({
       key: `a:${h.id}`, at: h.created_at, what: ACTION_LABELS[h.action], kind: ENTITY[h.entity].noun, by: who(h.actor_id, h.action === "auto_restored"), why: h.reason ?? "—",
@@ -37,12 +45,13 @@ export default async function ActivityLogPage({ searchParams }: { searchParams: 
       key: `n:${n.clientId}:${n.at}:${i}`, at: n.at, what: n.label, kind: "Client's SSN or ITIN", by: who(n.actorId), why: "—",
       record: <Link href={`/workspace/clients/${n.clientId}`}>{result.data.names.get(n.clientId) ?? "A client"}</Link>,
     })),
+    ...result.data.security.map((e): Line => ({ key: `s:${e.id}`, at: e.at, what: SECURITY_ACTIONS[e.action], kind: "Account security", by: who(e.actorId), why: "—", record: "Sign-in" })),
   ].sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
   const clientName = only && result.ok ? result.data.names.get(only) : null;
   return (
     <>
       <PageTitle title="Activity log">
-        {only ? `Everything recorded for ${clientName ?? "this client"}: archives, restores and every time their SSN or ITIN was saved or revealed. ` : "Every record archived, restored or permanently deleted, and every time a client's SSN or ITIN was saved or revealed: who, when and why. "}This log can&apos;t be changed or deleted.
+        {only ? `Everything recorded for ${clientName ?? "this client"}: archives, restores and every time their SSN or ITIN was saved or revealed. ` : "Every record archived, restored or permanently deleted, and every time a client's SSN or ITIN was saved or revealed, and changes to two-step sign-in: who, when and why. "}This log can&apos;t be changed or deleted.
       </PageTitle>
       {only && <p><Link href="/settings/archive" className="monarch-link">Show everyone&apos;s activity</Link></p>}
       {!result.ok ? (

@@ -1,3 +1,5 @@
+import { AssignTo } from "@/components/contacts/assign-to";
+import { listStaff } from "@/lib/staff/server";
 import { FormattedInput } from "@/components/forms/formatted-input";
 import { StateSelect } from "@/components/forms/state-select";
 import { PortalPanel } from "@/components/portal/panel";
@@ -6,10 +8,24 @@ import { notFound } from "next/navigation";
 import { Badge, EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { AppointmentsCard } from "@/components/contacts/appointments-card";
 import { DetailsCard, type Details } from "@/components/contacts/details-card";
-import { MergeChoice } from "@/components/contacts/merge-choice";
+import { leadsDeps } from "@/lib/leads/server";
+import { recordCounts } from "@/lib/contacts/record-counts.ts";
+import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { MessageComposer } from "@/components/contacts/message-composer";
 import { NewInvoice } from "@/components/contacts/new-invoice";
 import { Modal } from "@/components/ui/modal";
+import { HoverMenu } from "@/components/ui/hover-menu";
+import { staffLabel } from "@/lib/staff/assign.ts";
+import { EFILE_STATUSES } from "@/lib/workspace/types.ts";
+import { RelationshipsCard } from "@/components/contacts/relationships-card";
+import { relationshipsFor } from "@/lib/contacts/relationships.ts";
+import { relationshipsDeps } from "@/lib/contacts/relationships-server";
+import { ContactMethods } from "@/components/contacts/contact-methods";
+import { methodsFor } from "@/lib/contacts/methods.ts";
+import { methodsDeps } from "@/lib/contacts/methods-server";
+import { SubmitOnce } from "@/components/admin/submit-once";
+import { NoteEditor, TaskEditor } from "@/components/workspace/item-editors";
+import { ReturnEditor } from "@/components/workspace/return-editor";
 import { duplicatesOfClient } from "@/lib/contacts/duplicates.ts";
 import { loadContacts } from "@/lib/contacts/server";
 import { documentDeps } from "@/lib/documents/server";
@@ -31,7 +47,7 @@ import { cancelFormInviteAction, invitePortalAction } from "@/app/portal-staff-a
 import { formDeps } from "@/lib/forms/server";
 import { inviteStatus } from "@/lib/forms/invites.ts";
 import { ClientDrive } from "../../../documents/client-drive";
-import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, linkSpouseAction, logMessageAction, mergeClientsAction, mergeLeadIntoClientAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
+import { addBusinessAction, addDependentAction, addNoteAction, addReturnAction, addTaskAction, archiveClientAction, linkSpouseAction, logMessageAction, removeBusinessAction, removeDependentAction, removeSpouseAction, saveClientTagsAction, saveSpouseAction, toggleTaskAction, unlinkSpouseAction } from "../../actions";
 import { toE164 } from "@/lib/automation/twilio.ts";
 import { tenantSms } from "@/lib/sms/server";
 import { emailConfig, emailKeyProblems } from "@/lib/automation/email.ts";
@@ -100,6 +116,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const credits = sms?.route.billing === "credits" ? await sms.repo.balance().catch(() => null) : null;
   const ssnOnFile = await hasStoredSsn(ssnDeps(), client.id).catch(() => false);
   const duplicates = tab === "overview" ? await loadContacts().then((d) => duplicatesOfClient(d.contacts, d.duplicates, client.id)).catch(() => []) : [];
+  const dupCounts = new Map(await Promise.all(duplicates.flatMap((d) => [d.mine, d.other]).map(async (c) => [c.key, await recordCounts(workspaceRepo(), c, leadsDeps().repo)] as const)));
   const sheetCtx = tab === "billing" ? await loadSheetContext() : null!;
   const invoicePlans = tab === "billing" ? await workspaceRepo().listInstallments(invoices.map((i) => i.id)).catch(() => []) : [];
   const invoicePayments = tab === "billing" ? await paymentsFor(workspaceRepo(), invoices.filter((i) => i.paid_cents > 0).map((i) => i.id)).catch(() => []) : [];
@@ -113,8 +130,26 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const spouse = client.spouse_id ? others.find((o) => o.id === client.spouse_id) ?? null : null;
   const names = client.first_name ? { first: client.first_name, last: client.last_name ?? "" } : (() => { const s = splitName(client.full_name); return { first: s.first, last: s.last ?? "" }; })();
   const lastMessage = messages[0] ?? null;
+  // The soonest thing that is due: an open task, an unfiled return, or an unpaid invoice.
+  const dueItems = [
+    ...openTasks.filter((x) => x.due_on).map((x) => ({ on: x.due_on!, what: x.title })),
+    ...returns.filter((r) => r.due_on && !r.filed_on && !r.archived_at).map((r) => ({ on: r.due_on!, what: `${returnLabel(r)} due` })),
+    ...invoices.filter((i) => i.status === "sent" && i.due_on && balance(i) > 0).map((i) => ({ on: i.due_on!, what: "Invoice due" })),
+  ].sort((a, b) => a.on.localeCompare(b.on));
+  const nextDue = dueItems[0] ?? null;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const staff = await listStaff().catch(() => []);
   const portalLabel = !member ? "Not invited" : member.status === "active" ? "Active" : member.status === "invited" ? (inviteExpired(member) ? "Invite expired" : "Invited") : "Off";
   const hiddenTab = (HIDDEN as readonly string[]).includes(tab);
+  // The extra emails and phones. Left out (not an error) where the table isn't installed yet.
+  const methods = tab === "overview" ? await methodsFor(methodsDeps(), { kind: "client", id }).catch(() => null) : null;
+  const relationships = tab === "overview" ? await relationshipsFor(relationshipsDeps(), { kind: "client", id }).catch(() => null) : null;
+  const stateFilings = new Map<string, Awaited<ReturnType<ReturnType<typeof workspaceRepo>["listStateFilings"]>>>();
+  if (tab === "overview" || tab === "returns") await Promise.all(returns.map(async (x) => { stateFilings.set(x.id, await workspaceRepo().listStateFilings(x.id).catch(() => [])); }));
+  const editorFor = (r: (typeof returns)[number], openLabel = "Open") => (
+    <ReturnEditor r={r} states={stateFilings.get(r.id) ?? []} label={returnLabel(r)} label2={openLabel} stages={stages.map((x) => ({ id: x.id, name: x.name }))} staff={staff} tasks={tasks.filter((t) => t.return_id === r.id)}
+      history={events.filter((e) => e.detail.return_id === r.id).map((e) => ({ id: e.id, text: describeEvent(e) ?? "", at: e.created_at, by: typeof e.detail.by === "string" ? e.detail.by : e.actor_id ? staffLabel(staff, e.actor_id) ?? "a teammate" : "the system" })).filter((h) => h.text)} />
+  );
   const activity = events.map((e) => ({ id: e.id, text: describeEvent(e), by: typeof e.detail.by === "string" ? e.detail.by : e.actor_id ? "a teammate" : "the system", at: e.created_at })).filter((e): e is { id: string; text: string; by: string; at: string } => e.text !== null);
   const details: Details = {
     id: client.id, first_name: names.first, last_name: names.last, email: client.email ?? "", phone: client.phone ?? "", dob: client.dob ?? "", ssn_last4: client.ssn_last4, ssn_on_file: ssnOnFile,
@@ -127,7 +162,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="back" value={back} />
       <input name={field} required maxLength={field === "body" ? 4000 : 200} placeholder={placeholder} aria-label={placeholder} />
       {withDate && <input name="due_on" type="date" aria-label="Due" />}
-      <button className="monarch-secondary">{field === "body" ? "Save" : "Add"}</button>
+      <SubmitOnce className="monarch-secondary">{field === "body" ? "Save" : "Add"}</SubmitOnce>
     </form>
   );
   return (
@@ -135,34 +170,43 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       <PageTitle title={client.full_name} back={{ href: "/contacts", label: "Contacts" }}>
         {[client.email, client.phone].filter(Boolean).join(" · ") || "No contact details yet"}{client.archived_at ? " · Archived" : ""}
       </PageTitle>
-      {(!member || member.status === "invited" || (member.status === "suspended" && !member.user_id)) && (
-        <form action={invitePortalAction} className="cl-head-actions">
-          <input type="hidden" name="area" value="admin" /><input type="hidden" name="client_id" value={client.id} />
-          <button className="monarch-secondary" disabled={!client.email} title={client.email ? undefined : "Add an email address first"}>{member?.status === "invited" ? "Resend invite" : "Send invite"}</button>
-        </form>
-      )}
-      <Flash notice={sp.notice} error={sp.error} />
-      {duplicates.map((d) => (
-        <div key={d.other.key} className="cl-dupe" role="note">
-          <span><b>Possible duplicate:</b> <Link href={d.other.refs.clientId ? `/workspace/clients/${d.other.refs.clientId}` : `/contacts/${d.other.key}`} target="_blank" rel="noreferrer">{d.other.name}</Link> · {d.reason}</span>
-          {(d.other.refs.clientId || d.other.refs.leadId) && (
-            <Modal label="Merge" title={`Merge ${d.other.name}`} className="monarch-secondary">
-              {d.other.refs.clientId ? (
-                <form action={mergeClientsAction} className="monarch-form">
-                  <MergeChoice thisId={client.id} thisName={client.full_name} otherId={d.other.refs.clientId} otherName={d.other.name} />
-                  <div className="is-wide ac-actions"><button className="monarch-primary">Merge</button></div>
-                </form>
-              ) : (
-                <form action={mergeLeadIntoClientAction} className="monarch-form">
-                  <input type="hidden" name="client_id" value={client.id} /><input type="hidden" name="lead_id" value={d.other.refs.leadId ?? ""} />
-                  <p className="is-wide">Keep {client.full_name} and fold the lead {d.other.name} into this client. The lead&apos;s details become a note here and the lead is marked converted.</p>
-                  <div className="is-wide ac-actions"><button className="monarch-primary">Merge</button></div>
-                </form>
-              )}
-            </Modal>
+      <div className="cl-actions-right"><HoverMenu label="Actions" align="right">
+        <ul className="hm-list">
+          <li><Link href={`/workspace/clients/${id}?tab=messages`}>Send a message</Link></li>
+          <li><Link href={`/workspace/clients/${id}?tab=documents`}>Upload a document</Link></li>
+          <li><Link href={`/workspace/clients/${id}?tab=billing`}>Create an invoice</Link></li>
+          <li><Link href={`/workspace/clients/${id}?tab=notes`}>Add a note</Link></li>
+          <li><Link href={`/workspace/clients/${id}?tab=tasks`}>Add a task</Link></li>
+          <li><Link href="/forms">Send a form</Link></li>
+          {(!member || member.status === "invited" || (member.status === "suspended" && !member.user_id)) && (
+            <li>
+              <form action={invitePortalAction}>
+                <input type="hidden" name="area" value="admin" /><input type="hidden" name="client_id" value={client.id} />
+                <button disabled={!client.email} title={client.email ? undefined : "Add an email address first"}>{member?.status === "invited" ? "Resend portal invite" : "Send portal invite"}</button>
+              </form>
+            </li>
           )}
+          <li>
+            <form action={archiveClientAction}>
+              <input type="hidden" name="id" value={client.id} />
+              <input type="hidden" name="confirm" value="yes" />
+              {client.archived_at && <input type="hidden" name="restore" value="yes" />}
+              <button>{client.archived_at ? "Restore client" : "Archive client"}</button>
+            </form>
+          </li>
+        </ul>
+      </HoverMenu></div>
+      <Flash notice={sp.notice} error={sp.error} />
+      {duplicates.length > 0 && (
+        <div className="cl-dupe" role="note">
+          <span><b>{duplicates.length === 1 ? "Possible duplicate:" : `${duplicates.length} possible duplicates:`}</b> {duplicates.slice(0, 2).map((d) => d.other.name).join(", ")}{duplicates.length > 2 ? "…" : ""}</span>
+          <Modal label="Review" title={duplicates.length === 1 ? "Possible duplicate" : "Possible duplicates"} className="monarch-secondary" wide>
+        {duplicates.map((d) => (
+        <DuplicateCompare key={d.other.key} a={d.mine} b={d.other} reason={`Possible duplicate: ${d.reason}`} back={`/workspace/clients/${client.id}`} openA={`/workspace/clients/${client.id}`} openB={d.other.refs.clientId ? `/workspace/clients/${d.other.refs.clientId}` : `/contacts/${d.other.key}`} countsA={dupCounts.get(d.mine.key)} countsB={dupCounts.get(d.other.key)} />
+        ))}
+          </Modal>
         </div>
-      ))}
+      )}
       <nav className="cl-tabs" aria-label="Client">
         {TABS.map(([k, label]) => <Link key={k} href={`/workspace/clients/${id}?tab=${k}`} className={k === tab ? "is-on" : undefined} aria-current={k === tab ? "page" : undefined}>{label}</Link>)}
       </nav>
@@ -171,16 +215,32 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       {tab === "overview" && (
         <>
           <section className="cl-strip" aria-label="At a glance">
-            <div><small>Returns</small><b>{newestFirst.length ? `${returnLabel(newestFirst[0])} · ${stageName(newestFirst[0].stage_id)}` : "None"}</b></div>
-            <div><small>Owes</small><b>{owes ? dollars(owes) : "Nothing"}</b></div>
-            <div><small>Open tasks</small><b>{openTasks.length}</b></div>
-            <div><small>Documents</small><b>{docs.length}</b></div>
-            <div><small>Last message</small><b>{lastMessage ? `${CHANNELS[lastMessage.channel]} · ${when(lastMessage.occurred_at)}` : "None"}</b></div>
+            <Link href={`/workspace/clients/${id}?tab=returns`} className="cl-card-link"><small>Returns</small><b>{newestFirst.length ? `${returnLabel(newestFirst[0])} · ${stageName(newestFirst[0].stage_id)}` : "None"}</b></Link>
+            <Link href={`/workspace/clients/${id}?tab=billing`} className="cl-card-link"><small>Owes</small><b>{owes ? dollars(owes) : "Nothing"}</b></Link>
+            <Link href={nextDue ? `/calendar?view=month&date=${nextDue.on}` : "/calendar"} className="cl-card-link"><small>Next due</small><b style={nextDue && nextDue.on < todayStr ? { color: "#b42318" } : undefined}>{nextDue ? `${nextDue.on}${nextDue.on < todayStr ? " (overdue)" : ""}` : "Nothing due"}</b>{nextDue && <small className="monarch-subcell">{nextDue.what}</small>}</Link>
+            <Link href={`/workspace/clients/${id}?tab=tasks`} className="cl-card-link"><small>Open tasks</small><b>{openTasks.length}</b></Link>
+            <Link href={`/workspace/clients/${id}?tab=documents`} className="cl-card-link"><small>Documents</small><b>{docs.length}</b></Link>
+            <Link href={`/workspace/clients/${id}?tab=messages`} className="cl-card-link"><small>Last message</small><b>{lastMessage ? `${CHANNELS[lastMessage.channel]} · ${when(lastMessage.occurred_at)}` : "None"}</b></Link>
             <div><small>Portal</small><b>{portalLabel}</b></div>
           </section>
+          <AssignTo kind="client" id={id} current={client.owner_id ?? null} staff={staff} back={back} />
           <div className="grid2 cl-cols">
             <div className="cl-col">
               <DetailsCard d={details} />
+
+              {relationships && (
+                <RelationshipsCard
+                  me={{ kind: "client", id }}
+                  items={relationships}
+                  back={back}
+                  legacy={[
+                    ...(spouse ? [{ label: "Spouse", text: spouse.full_name }] : manualSpouse ? [{ label: "Spouse", text: [manualSpouse.first_name, manualSpouse.last_name].filter(Boolean).join(" ") }] : []),
+                    ...(dependents ?? []).map((d) => ({ label: `Dependent (${RELATIONSHIPS[d.relationship]})`, text: [d.first_name, d.last_name].filter(Boolean).join(" ") })),
+                  ]}
+                />
+              )}
+
+              {methods && <ContactMethods owner={{ kind: "client", id }} primary={methods.primary} extras={methods.extras} back={back} />}
 
               <section className="monarch-panel cl-card">
                 <div className="cl-card-head"><h2>Tags</h2></div>
@@ -279,7 +339,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 {returns.length === 0 ? <p className="monarch-muted cl-empty">None</p> : (
                   <ul className="cl-list">{newestFirst.slice(0, FIVE).map((r) => (
                     <li key={r.id} id={`return-${r.id}`}><span><b>{returnLabel(r)}</b><small className="monarch-subcell">{stageName(r.stage_id)}</small></span>
-                      <span className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ? `due ${r.due_on}` : ""}</span></li>
+                      <span className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ? `due ${r.due_on}` : ""}</span>{editorFor(r, "Edit")}</li>
                   ))}</ul>
                 )}
               </section>
@@ -305,7 +365,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 {openTasks.length === 0 ? <p className="monarch-muted cl-empty">None open</p> : (
                   <ul className="cl-list">{openTasks.slice(0, FIVE).map((x) => (
                     <li key={x.id}><span><b>{x.title}</b>{x.due_on && <small className={`monarch-subcell${x.due_on < today ? " wb-late" : ""}`}>due {x.due_on}</small>}</span>
-                      <form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} />{x.source && <input type="hidden" name="source" value={x.source} />}<input type="hidden" name="back" value={back} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form></li>
+                      <form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} />{x.source && <input type="hidden" name="source" value={x.source} />}<input type="hidden" name="back" value={back} /><input type="hidden" name="done" value="yes" /><button className="monarch-link">Done</button></form>{x.source ? null : <TaskEditor task={x} returns={newestFirst.map((r) => ({ id: r.id, label: returnLabel(r) }))} back={back} />}</li>
                   ))}</ul>
                 )}
               </section>
@@ -314,7 +374,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 <div className="cl-card-head"><h2>Notes</h2>{notes.length > 0 && <Link className="monarch-link" href={`/workspace/clients/${id}?tab=notes`}>See all ({notes.length})</Link>}</div>
                 {quickAdd(addNoteAction, "body", "Add a note", false)}
                 {notes.length === 0 ? <p className="monarch-muted cl-empty">None</p> : (
-                  <ul className="cl-list">{notes.slice(0, FIVE).map((n) => <li key={n.id}><span style={{ whiteSpace: "pre-wrap" }}>{n.body}<small className="monarch-subcell">{when(n.created_at)}</small></span></li>)}</ul>
+                  <ul className="cl-list">{notes.slice(0, FIVE).map((n) => <li key={n.id}><span style={{ whiteSpace: "pre-wrap" }}>{n.body}<small className="monarch-subcell">{when(n.created_at)}</small></span><NoteEditor note={n} back={back} /></li>)}</ul>
                 )}
               </section>
 
@@ -325,12 +385,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 )}
               </section>
 
-              <form action={archiveClientAction} className="monarch-inline-form cl-archive">
-                <input type="hidden" name="id" value={client.id} />
-                <input type="hidden" name="confirm" value="yes" />
-                {client.archived_at && <input type="hidden" name="restore" value="yes" />}
-                <button className="monarch-secondary">{client.archived_at ? "Restore client" : "Archive client"}</button>
-              </form>
             </div>
           </div>
         </>
@@ -457,10 +511,10 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Returns</h2></div><Link className="mt-card-link" href="/workspace/work">Open the board</Link></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>RETURN</th><th>STAGE</th><th>DUE</th><th>FILED</th></tr></thead>
+              <thead><tr><th>RETURN</th><th>FORM</th><th>STAGE</th><th>E-FILE</th><th>PREPARER</th><th>DUE</th><th>SUBMITTED</th><th /></tr></thead>
               <tbody>
-                {newestFirst.length === 0 ? <EmptyRow colSpan={4}>No returns yet.</EmptyRow> : newestFirst.map((r) => (
-                  <tr key={r.id} id={`return-${r.id}`}><td><b>{returnLabel(r)}</b></td><td>{stageName(r.stage_id)}</td><td className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ?? "—"}</td><td>{r.filed_on ?? "—"}</td></tr>
+                {newestFirst.length === 0 ? <EmptyRow colSpan={8}>No returns yet.</EmptyRow> : newestFirst.map((r) => (
+                  <tr key={r.id} id={`return-${r.id}`}><td><b>{returnLabel(r)}</b></td><td>{r.form_type ?? "—"}</td><td>{stageName(r.stage_id)}</td><td>{EFILE_STATUSES[r.efile_status ?? "not_sent"]}</td><td>{r.assignee_id ? staffLabel(staff, r.assignee_id) ?? "—" : "—"}</td><td className={r.due_on && r.due_on < today && r.stage_id !== stages[stages.length - 1].id ? "wb-late" : undefined}>{r.due_on ?? "—"}</td><td>{r.submitted_on ?? "—"}</td><td>{editorFor(r)}</td></tr>
                 ))}
               </tbody>
             </table></div>
@@ -476,20 +530,21 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               <input name="title" required maxLength={200} placeholder="Task" aria-label="Task" />
               <input name="due_on" type="date" aria-label="Due" />
               <select name="return_id" defaultValue="" aria-label="Which return is this for?"><option value="">No specific return</option>{newestFirst.map((r) => <option key={r.id} value={r.id}>{returnLabel(r)}</option>)}</select>
-              <button className="monarch-secondary">Add</button>
+              <SubmitOnce className="monarch-secondary">Add</SubmitOnce>
             </form>
           </section>
           <section className="monarch-panel">
             <div className="monarch-panel-head"><div><h2>Tasks</h2></div></div>
             <div className="monarch-table-wrap"><table>
-              <thead><tr><th>TASK</th><th>DUE</th><th>RETURN</th><th></th></tr></thead>
+              <thead><tr><th>TASK</th><th>DUE</th><th>RETURN</th><th></th><th></th></tr></thead>
               <tbody>
-                {tasks.length === 0 ? <EmptyRow colSpan={4}>No tasks yet.</EmptyRow> : tasks.map((x) => (
+                {tasks.length === 0 ? <EmptyRow colSpan={5}>No tasks yet.</EmptyRow> : tasks.map((x) => (
                   <tr key={x.id} style={x.done_at ? { opacity: 0.55 } : undefined}>
                     <td style={x.done_at ? { textDecoration: "line-through" } : undefined}><b>{x.title}</b></td>
                     <td className={!x.done_at && x.due_on && x.due_on < today ? "wb-late" : undefined}>{x.due_on ?? "—"}</td>
                     <td>{x.return_id ? (() => { const r = returns.find((y) => y.id === x.return_id); return r ? returnLabel(r) : "—"; })() : "—"}</td>
                     <td><form action={toggleTaskAction}><input type="hidden" name="id" value={x.id} />{x.source && <input type="hidden" name="source" value={x.source} />}<input type="hidden" name="back" value={back} /><input type="hidden" name="done" value={x.done_at ? "no" : "yes"} /><button className="monarch-link">{x.done_at ? "Reopen" : "Done"}</button></form></td>
+                    <td>{x.source ? null : <TaskEditor task={x} returns={newestFirst.map((r) => ({ id: r.id, label: returnLabel(r) }))} back={back} />}</td>
                   </tr>
                 ))}
               </tbody>
@@ -503,7 +558,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <section className="monarch-panel cl-card"><h2 style={{ marginTop: 0 }}>Add a note</h2>{quickAdd(addNoteAction, "body", "Note", false)}</section>
           <section className="monarch-panel">
             <div className="monarch-table-wrap"><table><tbody>
-              {notes.length === 0 ? <EmptyRow colSpan={2}>No notes yet.</EmptyRow> : notes.map((n) => <tr key={n.id}><td style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>{when(n.created_at)}</td><td style={{ whiteSpace: "pre-wrap" }}>{n.body}</td></tr>)}
+              {notes.length === 0 ? <EmptyRow colSpan={3}>No notes yet.</EmptyRow> : notes.map((n) => <tr key={n.id}><td style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>{when(n.created_at)}</td><td style={{ whiteSpace: "pre-wrap" }}>{n.body}</td><td><NoteEditor note={n} back={back} /></td></tr>)}
             </tbody></table></div>
           </section>
         </>

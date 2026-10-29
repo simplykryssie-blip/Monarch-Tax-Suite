@@ -8,8 +8,8 @@
 
 export type ContactKind = "lead" | "client" | "customer";
 
-export type LeadRec = { id: string; full_name: string; email: string; phone: string | null; status: string; source: string; tags: string[]; last_contacted_at: string | null; updated_at: string };
-export type ClientRec = { id: string; full_name: string; email: string | null; phone: string | null; archived_at: string | null; tags?: string[] | null; updated_at: string };
+export type LeadRec = { id: string; full_name: string; email: string; phone: string | null; status: string; source: string; tags: string[]; last_contacted_at: string | null; updated_at: string; assigned_to?: string | null };
+export type ClientRec = { id: string; full_name: string; email: string | null; phone: string | null; archived_at: string | null; tags?: string[] | null; updated_at: string; owner_id?: string | null };
 export type CustomerRec = { id: string; full_name: string | null; email: string; status: string; updated_at: string };
 
 export type Chip = { kind: ContactKind; label: string; active: boolean };
@@ -27,6 +27,10 @@ export type Contact = {
   tags: string[];
   refs: { leadId: string | null; clientId: string | null; customerIds: string[] };
   lastActivity: string | null;
+  /** The teammate responsible: the client's owner, else the lead's assignee. */
+  assignedTo: string | null;
+  /** The lead's stage (new, contacted, interested, lost), when this contact is a lead. */
+  leadStatus: string | null;
 };
 
 const ORDER: ContactKind[] = ["client", "lead", "customer"];
@@ -43,11 +47,23 @@ export const normalizePhone = (v: string | null | undefined): string | null => {
   return d.length === 10 ? d : null;
 };
 
+const nameParts = (v: string | null | undefined): string[] => (v ?? "").toLowerCase().replace(/[^\p{L}\s'-]/gu, " ").split(/\s+/).filter(Boolean);
+
 /** Lower-cased first and last name only when there are at least two words (a single word is too common to compare). */
 export const nameKey = (v: string | null | undefined): string | null => {
-  const parts = (v ?? "").toLowerCase().replace(/[^\p{L}\s'-]/gu, " ").split(/\s+/).filter(Boolean);
+  const parts = nameParts(v);
   return parts.length >= 2 ? `${parts[0]} ${parts[parts.length - 1]}` : null;
 };
+
+/** Whether two names are likely the same person: the same first and last name, and any middle names that both have start with the same letter ("Ana Ruiz" and "Ana Maria Ruiz" match; "Merge Entry Person" and "Merge Pair Person" do not). */
+export function sameName(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = nameParts(a), y = nameParts(b);
+  if (x.length < 2 || y.length < 2) return false;
+  if (x[0] !== y[0] || x[x.length - 1] !== y[y.length - 1]) return false;
+  const mx = x.slice(1, -1), my = y.slice(1, -1);
+  if (!mx.length || !my.length) return true;
+  return mx.every((m, i) => (my[i] ? m[0] === my[i][0] : true));
+}
 
 const newest = (...dates: (string | null | undefined)[]) => dates.filter((d): d is string => Boolean(d)).sort().pop() ?? null;
 const leadCurrent = (s: string) => s !== "converted" && s !== "lost";
@@ -61,11 +77,12 @@ function build(g: Group): Contact {
   const anchor = client ? `client-${client.id}` : lead ? `lead-${lead.id}` : `customer-${customer!.id}`;
   const chips: Chip[] = [];
   for (const kind of ORDER) {
-    if (kind === "client" && client) chips.push({ kind, label: client.archived_at ? "Client (archived)" : "Client", active: !client.archived_at });
-    if (kind === "lead" && lead) chips.push({ kind, label: lead.status === "lost" ? "Lead (lost)" : lead.status === "converted" ? "Lead (converted)" : "Lead", active: leadCurrent(lead.status) });
+    if (kind === "client" && client) chips.push({ kind, label: "Client", active: !client.archived_at });
+    // Status is only who they are: Lead, Client, Customer, or a mix. A lead who became a client is just a Client.
+    if (kind === "lead" && lead && !(client && lead.status === "converted")) chips.push({ kind, label: "Lead", active: leadCurrent(lead.status) });
     if (kind === "customer" && customer) {
       const live = g.customers.some((c) => c.status === "active");
-      chips.push({ kind, label: live ? "Customer" : "Customer (archived)", active: live });
+      chips.push({ kind, label: "Customer", active: live });
     }
   }
   const tags = [...new Set([...(client?.tags ?? []), ...(lead?.tags ?? [])])].sort();
@@ -79,6 +96,8 @@ function build(g: Group): Contact {
     active: chips.some((c) => c.active),
     tags,
     refs: { leadId: lead?.id ?? null, clientId: client?.id ?? null, customerIds: g.customers.map((c) => c.id) },
+    assignedTo: client?.owner_id ?? lead?.assigned_to ?? null,
+    leadStatus: lead ? lead.status : null,
     lastActivity: newest(client?.updated_at, lead?.last_contacted_at, lead?.updated_at, ...g.customers.map((c) => c.updated_at)),
   };
 }
@@ -131,8 +150,9 @@ export const DUPLICATE_REASON: Record<DuplicateReason, string> = {
   same_name: "Same first and last name",
 };
 
-/** Pairs of different contacts that might be the same person. Never merged automatically. */
-export function possibleDuplicates(contacts: Contact[]): PossibleDuplicate[] {
+/** Pairs of different contacts that might be the same person. Never merged automatically. A record that is archived, lost or converted (a merged one is) is no longer a candidate. */
+export function possibleDuplicates(all: Contact[]): PossibleDuplicate[] {
+  const contacts = all.filter((c) => c.active);
   const seen = new Set<string>();
   const out: PossibleDuplicate[] = [];
   const add = (x: Contact, y: Contact, reason: DuplicateReason) => {
@@ -153,13 +173,13 @@ export function possibleDuplicates(contacts: Contact[]): PossibleDuplicate[] {
   };
   for (const list of index((c) => c.email)) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) add(list[i], list[j], "shared_email");
   for (const list of index((c) => normalizePhone(c.phone))) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) add(list[i], list[j], "same_phone");
-  for (const list of index((c) => nameKey(c.name))) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) add(list[i], list[j], "same_name");
+  for (const list of index((c) => nameKey(c.name))) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) if (sameName(list[i].name, list[j].name)) add(list[i], list[j], "same_name");
   return out;
 }
 
 // --------------------------------------------------------------------------- the list: filters, counts, order
 
-export type ContactFilter = { q?: string; kind?: ContactKind | "inactive" | ""; /** Only contacts with this tag. */ tag?: string };
+export type ContactFilter = { q?: string; kind?: ContactKind | "inactive" | ""; /** Only contacts with this tag. */ tag?: string; /** A teammate's id, or "none" for nobody. */ assigned?: string; /** A lead stage, for leads. */ stage?: string };
 
 export function filterContacts(contacts: Contact[], f: ContactFilter): Contact[] {
   const term = (f.q ?? "").trim().toLowerCase();
@@ -169,6 +189,8 @@ export function filterContacts(contacts: Contact[], f: ContactFilter): Contact[]
     else if (f.kind && !c.kinds.includes(f.kind)) return false;
     else if (!f.kind && !c.active) return false;
     if (f.tag && !c.tags.includes(f.tag)) return false;
+    if (f.assigned === "none" ? c.assignedTo : f.assigned && c.assignedTo !== f.assigned) return false;
+    if (f.stage && c.leadStatus !== f.stage) return false;
     if (!term) return true;
     return c.name.toLowerCase().includes(term) || (c.email ?? "").includes(term) || (digits.length >= 4 && (normalizePhone(c.phone) ?? "").includes(digits)) || c.tags.some((t) => t.toLowerCase().includes(term));
   });
@@ -195,4 +217,13 @@ const KEY = /^(client|lead|customer)-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 export function parseContactKey(key: unknown): { kind: ContactKind; id: string } | null {
   const m = typeof key === "string" ? KEY.exec(key) : null;
   return m ? { kind: m[1].toLowerCase() as ContactKind, id: m[2].toLowerCase() } : null;
+}
+
+/** The contact a page address points at. A lead (or customer) who has been combined under a client's key is found by its own id, so an older link still works. */
+export function contactForKey(contacts: Contact[], key: string): Contact | null {
+  const direct = contacts.find((c) => c.key === key);
+  if (direct) return direct;
+  const parsed = parseContactKey(key);
+  if (!parsed) return null;
+  return contacts.find((c) => (parsed.kind === "lead" ? c.refs.leadId === parsed.id : parsed.kind === "customer" ? c.refs.customerIds.includes(parsed.id) : c.refs.clientId === parsed.id)) ?? null;
 }

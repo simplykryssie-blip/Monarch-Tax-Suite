@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
-import { parseMoney } from "../fees/engine.ts";
+import { resolveState } from "./states.ts";
+import { dollars, parseMoney } from "../fees/engine.ts";
 import { parseTags, TAG_MAX } from "../leads/tags.ts";
 import { changedFields, type FieldChange } from "./activity.ts";
-import { balance, checkBillingSettings, checkBusiness, checkClient, checkFeeProduct, checkWork, taxOn, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
+import { balance, checkBillingSettings, checkBusiness, checkClient, checkFeeProduct, checkWork, taxOn, checkDependent, checkLines, checkSpouse, checkReturn, checkTask, formatResult, parseSignedMoney, defaultInvoiceLines, invoiceTotal, isDay, planImport, readBankCsv } from "./rules.ts";
 import { checkPlan, type Installment } from "./plan.ts";
 import { RECEIPT_METHODS, type InvoiceReceipt, type ReceiptMethod } from "./types.ts";
+import { EFILE_STATUSES, FILING_STATUSES, FORM_TYPES, PREP_STATUSES, STATE_FILING_STATUSES, type EfileStatus, type FilingStatus, type FormType, type PrepStatus, type ReturnDetails, type StateFilingStatus } from "./types.ts";
 import type { BillingSettings, ClientWork, FeeProduct, Payer, Client, ClientReturn, Invoice, InvoiceLine, InvoiceStatus, PaymentImport, PaymentRow, WorkspaceRepo } from "./types.ts";
 
 // My Workspace orchestration: each function checks its input with the rules, then uses the repository. Nothing here
@@ -50,6 +52,16 @@ export async function saveClientWithChanges(repo: WorkspaceRepo, id: string, raw
   return { client, changes };
 }
 
+/** Assigns a client to a teammate (their "owner"), or to no one. The person must already be on the team (checked by the caller). */
+export async function assignClient(repo: WorkspaceRepo, id: string, assignee: { id: string; label: string } | null, actor?: Actor): Promise<Client> {
+  const before = await repo.getClient(uuid(id, "That client"));
+  if (!before) throw new ValidationError("That client wasn't found.");
+  if ((before.owner_id ?? null) === (assignee?.id ?? null)) return before;
+  const client = await repo.updateClient(id, { owner_id: assignee?.id ?? null });
+  await record(repo, id, actor ?? null, "client.assigned", { name: assignee?.label ?? "No one" });
+  return client;
+}
+
 /** Replaces a contact's tags. Returns the tags as saved and what was added or removed, for automations and the activity record. */
 export async function saveClientTags(repo: WorkspaceRepo, id: string, raw: unknown, actor?: Actor): Promise<{ before: string[]; after: string[] }> {
   const before = await repo.getClient(uuid(id, "That client"));
@@ -92,6 +104,101 @@ export async function moveReturn(repo: WorkspaceRepo, id: string, stageId: strin
   return repo.updateReturn(r.id, { stage_id: stageId, ...(stageId === stageIds[stageIds.length - 1] && !r.filed_on ? { filed_on: now.toISOString().slice(0, 10) } : {}) });
 }
 
+/** Preparation statuses a person can set by hand. "Handed to ERO" is set by the hand-off itself, so it is never picked here. */
+export const EDITABLE_PREP: PrepStatus[] = ["not_started", "in_prep", "ready_for_review"];
+const returnLabelOf = (r: Pick<ClientReturn, "tax_year" | "kind">) => `${r.tax_year} ${r.kind === "original" ? "return" : r.kind}`;
+const isoDay = (v: unknown, label: string): string | null => {
+  const t = typeof v === "string" ? v.trim() : "";
+  if (!t) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || Number.isNaN(Date.parse(`${t}T12:00:00Z`))) throw new ValidationError(`${label} isn't a valid date.`);
+  return t;
+};
+
+/**
+ * Edits a return: stage, who prepares it, where preparation stands, due and filed dates, and notes. Only what changed is
+ * saved, and it is written to the client's activity. The caller has already checked that the preparer is on the team.
+ */
+export async function editReturn(
+  repo: WorkspaceRepo, id: string, raw: Record<string, unknown>, stageIds: string[], stageName: (id: string) => string,
+  who: { assignee: (id: string | null) => string }, actor?: Actor, now = new Date(), today?: string,
+): Promise<{ ret: ClientReturn; changes: string[] }> {
+  const dayNow = today ?? now.toISOString().slice(0, 10);
+  const before = await repo.getReturn(uuid(id, "That return"));
+  if (!before || before.archived_at) throw new ValidationError("That return wasn't found.");
+  const patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "assignee_id" | "prep_status">> & ReturnDetails = {};
+  const changes: string[] = [];
+  const stage = typeof raw.stage_id === "string" && raw.stage_id ? raw.stage_id : before.stage_id;
+  if (!stageIds.includes(stage)) throw new ValidationError("That stage isn't in the pipeline.");
+  if (stage !== before.stage_id) { patch.stage_id = stage; changes.push(`Stage from ${stageName(before.stage_id)} to ${stageName(stage)}`); }
+  const due = isoDay(raw.due_on, "The due date");
+  if (due !== before.due_on) { patch.due_on = due; changes.push(`Due date from ${before.due_on ?? "blank"} to ${due ?? "blank"}`); }
+  // The filed date is set by moving the return to the last stage, as dragging it on the board does. It isn't typed here.
+  if (patch.stage_id === stageIds[stageIds.length - 1] && !before.filed_on) patch.filed_on = dayNow;
+  const prep = typeof raw.prep_status === "string" && raw.prep_status ? (raw.prep_status as PrepStatus) : before.prep_status;
+  if (prep !== before.prep_status) {
+    if (!EDITABLE_PREP.includes(prep) || before.prep_status === "handed_off") throw new ValidationError("A return handed to an ERO is changed by the hand-off, not here.");
+    patch.prep_status = prep;
+    changes.push(`Preparation from ${PREP_STATUSES[before.prep_status]} to ${PREP_STATUSES[prep]}`);
+  }
+  const assignee = typeof raw.assignee_id === "string" && raw.assignee_id ? raw.assignee_id : null;
+  if (assignee !== (before.assignee_id ?? null)) { patch.assignee_id = assignee; changes.push(`Preparer from ${who.assignee(before.assignee_id)} to ${who.assignee(assignee)}`); }
+  const notes = typeof raw.notes === "string" ? raw.notes.replace(/\r\n/g, "\n").trim().slice(0, 2000) : "";
+  if ((notes || null) !== (before.notes ?? null)) { patch.notes = notes || null; changes.push("Notes edited"); }
+  // The details an office tracks. A field the form didn't send is left alone.
+  const details: ReturnDetails = {};
+  if ("submitted_on" in raw) {
+    const d = isoDay(raw.submitted_on, "The submission date");
+    if (d !== (before.submitted_on ?? null)) { details.submitted_on = d; changes.push(`Submission date from ${before.submitted_on ?? "blank"} to ${d ?? "blank"}`); }
+  }
+  const pick = <T extends string>(key: string, allowed: Record<string, string>, current: T | null | undefined, label: string, set: (v: T | null) => void) => {
+    if (!(key in raw)) return;
+    const v = typeof raw[key] === "string" && raw[key] ? (raw[key] as T) : null;
+    if (v !== null && !(v in allowed)) throw new ValidationError(`${label} isn't one of the choices.`);
+    if (v !== (current ?? null)) { set(v); changes.push(`${label} from ${current ? allowed[current] : "blank"} to ${v ? allowed[v] : "blank"}`); }
+  };
+  pick<FormType>("form_type", FORM_TYPES, before.form_type, "Form", (v) => { details.form_type = v; });
+  pick<FilingStatus>("filing_status", FILING_STATUSES, before.filing_status, "Filing status", (v) => { details.filing_status = v; });
+  const efile = typeof raw.efile_status === "string" && raw.efile_status ? (raw.efile_status as EfileStatus) : (before.efile_status ?? "not_sent");
+  if (!(efile in EFILE_STATUSES)) throw new ValidationError("E-file status isn't one of the choices.");
+  if (efile !== (before.efile_status ?? "not_sent")) {
+    details.efile_status = efile;
+    changes.push(`E-file from ${EFILE_STATUSES[before.efile_status ?? "not_sent"]} to ${EFILE_STATUSES[efile]}`);
+    // A new e-file status without a date is dated today.
+    if (!("efile_on" in raw) || !raw.efile_on) details.efile_on = efile === "not_sent" ? null : dayNow;
+  }
+  if ("efile_on" in raw && raw.efile_on) { const d = isoDay(raw.efile_on, "The e-file date"); if (d !== (before.efile_on ?? null)) { details.efile_on = d; if (!changes.some((c) => c.startsWith("E-file"))) changes.push(`E-file date to ${d}`); } }
+  if ("efile_reject_reason" in raw) {
+    const reason = typeof raw.efile_reject_reason === "string" ? raw.efile_reject_reason.replace(/\s+/g, " ").trim().slice(0, 500) : "";
+    if ((reason || null) !== (before.efile_reject_reason ?? null)) { details.efile_reject_reason = reason || null; changes.push("Rejection reason edited"); }
+  }
+  const money = (key: string, label: string, set: (c: number | null) => void, current: number | null | undefined) => {
+    if (!(key in raw)) return;
+    const t = typeof raw[key] === "string" ? (raw[key] as string).trim() : "";
+    const cents = t ? parseMoney(t) : null;
+    if (t && cents === null) throw new ValidationError(`${label} isn't a valid amount.`);
+    if (cents !== (current ?? null)) { set(cents); changes.push(`${label} from ${current != null ? dollars(current) : "blank"} to ${cents != null ? dollars(cents) : "blank"}`); }
+  };
+  money("fee", "Fee amount", (c) => { details.fee_cents = c; }, before.fee_cents);
+  if ("federal_result" in raw) {
+    const cents = parseSignedMoney(raw.federal_result);
+    if (cents !== (before.federal_result_cents ?? null)) { details.federal_result_cents = cents; changes.push(`Federal result from ${before.federal_result_cents == null ? "blank" : formatResult(before.federal_result_cents)} to ${cents == null ? "blank" : formatResult(cents)}`); }
+  }
+  if (!changes.length) return { ret: before, changes };
+  Object.assign(patch, details);
+  const ret = await repo.updateReturn(before.id, patch);
+  await record(repo, before.client_id, actor ?? null, "return.updated", { return_id: before.id, label: returnLabelOf(before), changes });
+  return { ret, changes };
+}
+
+/** Archives a return added by mistake. Its history stays in the client's activity. */
+export async function archiveReturn(repo: WorkspaceRepo, id: string, actor?: Actor): Promise<ClientReturn> {
+  const r = await repo.getReturn(uuid(id, "That return"));
+  if (!r || r.archived_at) throw new ValidationError("That return wasn't found.");
+  const ret = await repo.updateReturn(r.id, { archived_at: new Date().toISOString() });
+  await record(repo, r.client_id, actor ?? null, "return.archived", { return_id: r.id, label: returnLabelOf(r) });
+  return ret;
+}
+
 /** Starts a piece of work (planning, bookkeeping, payroll...) for a client in one of the office's pipelines, in its first stage. */
 export async function addWork(repo: WorkspaceRepo, raw: Record<string, unknown>, pipeline: { id: string; stages: { id: string }[] }, actorId: string): Promise<ClientWork> {
   const w = checkWork(raw);
@@ -108,7 +215,11 @@ export async function moveWork(repo: WorkspaceRepo, id: string, stageId: string,
   return repo.updateWork(w.id, { stage_id: stageId });
 }
 
-export async function addTask(repo: WorkspaceRepo, clientId: string, raw: Record<string, unknown>, actorId: string) {
+/** The same thing saved twice within a few seconds (a double click) is saved once. */
+const JUST_NOW_MS = 20_000;
+const justNow = (iso: string, now: Date) => now.getTime() - Date.parse(iso) < JUST_NOW_MS;
+
+export async function addTask(repo: WorkspaceRepo, clientId: string, raw: Record<string, unknown>, actorId: string, now = new Date()) {
   const id = uuid(clientId, "That client");
   if (!(await repo.getClient(id))) throw new ValidationError("That client wasn't found.");
   const t = checkTask(raw);
@@ -116,19 +227,63 @@ export async function addTask(repo: WorkspaceRepo, clientId: string, raw: Record
     const r = await repo.getReturn(uuid(t.return_id, "That return"));
     if (!r || r.client_id !== id) throw new ValidationError("That return isn't this client's.");
   }
+  const twin = (await repo.listTasks({ clientId: id })).find((x) => x.title === t.title && (x.due_on ?? null) === t.due_on && (x.return_id ?? null) === t.return_id && justNow(x.created_at, now));
+  if (twin) return twin;
   return repo.insertTask({ client_id: id, ...t, created_by: actorId });
+}
+
+/** Changes a task's wording, due date or return. */
+export async function editTask(repo: WorkspaceRepo, taskId: string, raw: Record<string, unknown>, actor?: Actor) {
+  const before = await repo.getTask(uuid(taskId, "That task"));
+  if (!before) throw new ValidationError("That task wasn't found.");
+  const t = checkTask(raw);
+  if (t.return_id) {
+    const r = await repo.getReturn(uuid(t.return_id, "That return"));
+    if (!r || r.client_id !== before.client_id) throw new ValidationError("That return isn't this client's.");
+  }
+  if (t.title === before.title && t.due_on === (before.due_on ?? null) && t.return_id === (before.return_id ?? null)) return before;
+  const after = await repo.updateTask(before.id, t);
+  await record(repo, before.client_id, actor ?? null, "task.edited", { name: before.title === t.title ? t.title : `${before.title} to ${t.title}` });
+  return after;
+}
+
+export async function deleteTask(repo: WorkspaceRepo, taskId: string, actor?: Actor): Promise<void> {
+  const t = await repo.getTask(uuid(taskId, "That task"));
+  if (!t) throw new ValidationError("That task wasn't found.");
+  await repo.deleteTask(t.id);
+  await record(repo, t.client_id, actor ?? null, "task.deleted", { name: t.title });
 }
 
 export async function setTaskDone(repo: WorkspaceRepo, taskId: string, done: boolean, now = new Date()) {
   return repo.updateTask(uuid(taskId, "That task"), { done_at: done ? now.toISOString() : null });
 }
 
-export async function addNote(repo: WorkspaceRepo, clientId: string, body: unknown, actorId: string) {
+export async function addNote(repo: WorkspaceRepo, clientId: string, body: unknown, actorId: string, now = new Date()) {
   const id = uuid(clientId, "That client");
   if (!(await repo.getClient(id))) throw new ValidationError("That client wasn't found.");
   const text = clean(body, 4000);
   if (!text) throw new ValidationError("Write the note.");
+  const twin = (await repo.listNotes(id)).find((n) => n.body === text && justNow(n.created_at, now));
+  if (twin) return twin;
   return repo.insertNote({ client_id: id, body: text, created_by: actorId });
+}
+
+export async function editNote(repo: WorkspaceRepo, noteId: string, body: unknown, actor?: Actor) {
+  const before = await repo.getNote(uuid(noteId, "That note"));
+  if (!before) throw new ValidationError("That note wasn't found.");
+  const text = clean(body, 4000);
+  if (!text) throw new ValidationError("Write the note, or delete it.");
+  if (text === before.body) return before;
+  const after = await repo.updateNote(before.id, { body: text });
+  await record(repo, before.client_id, actor ?? null, "note.edited", {});
+  return after;
+}
+
+export async function deleteNote(repo: WorkspaceRepo, noteId: string, actor?: Actor): Promise<void> {
+  const n = await repo.getNote(uuid(noteId, "That note"));
+  if (!n) throw new ValidationError("That note wasn't found.");
+  await repo.deleteNote(n.id);
+  await record(repo, n.client_id, actor ?? null, "note.deleted", {});
 }
 
 export async function logMessage(repo: WorkspaceRepo, clientId: string, raw: Record<string, unknown>, actorId: string, now = new Date()) {
@@ -500,5 +655,50 @@ export async function mergeClients(repo: WorkspaceRepo, keepId: string, dropId: 
   if (!keep || !drop) throw new ValidationError("That client wasn't found.");
   if (keep.id === drop.id) throw new ValidationError("Choose two different clients.");
   if (keep.archived_at) throw new ValidationError("The client to keep is archived. Restore them first.");
-  return repo.mergeClients(keep.id, drop.id, actor?.id ?? null);
+  const moved = await repo.mergeClients(keep.id, drop.id, actor?.id ?? null);
+  // The merge fills only what the kept client was missing. Anything that differs is written into a note, and tags and the owner carry over.
+  try {
+    const digits = (v: string | null) => (v ?? "").replace(/\D+/g, "");
+    const left: string[] = [];
+    if (drop.full_name.trim().toLowerCase() !== keep.full_name.trim().toLowerCase()) left.push(`Name: ${drop.full_name}`);
+    if (drop.email && drop.email.toLowerCase() !== (keep.email ?? "").toLowerCase() && keep.email) left.push(`Other email: ${drop.email}`);
+    if (drop.phone && keep.phone && digits(drop.phone) !== digits(keep.phone)) left.push(`Other phone: ${drop.phone}`);
+    const addr = (c: typeof keep) => [c.address_line1 ?? c.address, c.city, c.state, c.zip].filter(Boolean).join(", ");
+    if (addr(drop) && addr(keep) && addr(drop).toLowerCase() !== addr(keep).toLowerCase()) left.push(`Other address: ${addr(drop)}`);
+    if (left.length) await repo.insertNote({ client_id: keep.id, body: `Merged from ${drop.full_name}. Details that differed:\n${left.join("\n")}`.slice(0, 4000), created_by: actor?.id ?? null });
+    const tags = [...new Set([...(keep.tags ?? []), ...(drop.tags ?? [])])].sort();
+    const patch: { tags?: string[]; owner_id?: string | null } = {};
+    if (tags.length > (keep.tags ?? []).length) patch.tags = tags;
+    if (!keep.owner_id && drop.owner_id) patch.owner_id = drop.owner_id;
+    if (patch.tags || "owner_id" in patch) await repo.updateClient(keep.id, patch);
+  } catch { /* the merge itself is done and stands */ }
+  return moved;
+}
+
+
+/** Adds a state return to a return, or updates its status and filed date. */
+export async function saveStateFiling(repo: WorkspaceRepo, returnId: string, raw: { state: unknown; status: unknown; filed_on?: unknown; result?: unknown }, actor?: Actor) {
+  const r = await repo.getReturn(uuid(returnId, "That return"));
+  if (!r || r.archived_at) throw new ValidationError("That return wasn't found.");
+  const state = resolveState(raw.state);
+  if (!state) throw new ValidationError(`${typeof raw.state === "string" && raw.state.trim() ? `"${raw.state.trim().slice(0, 30)}" isn't a state abbreviation` : "Choose a state"}. Pick one from the list, like LA for Louisiana.`);
+  const existing = (await repo.listStateFilings(r.id)).find((x) => x.state === state);
+  // Adding a state that is already there updates it; whatever the form leaves blank keeps its current value.
+  const status = (typeof raw.status === "string" && raw.status ? raw.status : existing?.status ?? "not_started") as StateFilingStatus;
+  if (!(status in STATE_FILING_STATUSES)) throw new ValidationError("Choose a status for the state return.");
+  const typedDate = isoDay(raw.filed_on, "The filed date");
+  const filedOn = typedDate ?? existing?.filed_on ?? null;
+  const typedResult = parseSignedMoney(raw.result);
+  const resultCents = typedResult ?? existing?.result_cents ?? null;
+  const saved = await repo.saveStateFiling(r.id, state, status, filedOn, resultCents);
+  await record(repo, r.client_id, actor ?? null, "return.updated", { return_id: r.id, label: returnLabelOf(r), changes: [`${state} state return: ${STATE_FILING_STATUSES[status]}${resultCents != null ? `, ${formatResult(resultCents)}` : ""}`] });
+  return saved;
+}
+
+export async function removeStateFiling(repo: WorkspaceRepo, returnId: string, filingId: string, actor?: Actor): Promise<void> {
+  const r = await repo.getReturn(uuid(returnId, "That return"));
+  const filing = r ? (await repo.listStateFilings(r.id)).find((x) => x.id === filingId) : null;
+  if (!r || !filing) throw new ValidationError("That state return wasn't found.");
+  await repo.removeStateFiling(filing.id);
+  await record(repo, r.client_id, actor ?? null, "return.updated", { return_id: r.id, label: returnLabelOf(r), changes: [`${filing.state} state return removed`] });
 }

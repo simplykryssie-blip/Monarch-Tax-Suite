@@ -33,6 +33,10 @@ import { currentTenantId } from "@/lib/tenants.ts";
 import { checkSsn, copySsn, hasStoredSsn, revealSsn, storeSsn } from "@/lib/ssn/service.ts";
 import { revealGate, ssnDeps } from "@/lib/ssn/server";
 import type { Invoice } from "@/lib/workspace/types";
+import { archiveReturn, deleteNote, deleteTask, editNote, editReturn, editTask, removeStateFiling, saveStateFiling } from "@/lib/workspace/service.ts";
+import { staffLabel } from "@/lib/staff/assign.ts";
+import { appointmentDeps } from "@/lib/appointments/server";
+import { listStaff } from "@/lib/staff/server";
 
 // My Workspace actions. Each re-checks administrator access and acts only on the current tenant's rows.
 
@@ -201,6 +205,59 @@ export async function moveWorkAction(workId: string, stageId: string): Promise<{
   }
 }
 
+/** Today's date in the office's own time zone (not UTC, which is already tomorrow in the evening). */
+async function officeToday(): Promise<string> {
+  try {
+    const tz = (await appointmentDeps().calendar()).timeZone;
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+/** Saves a return's stage, preparer, preparation status, dates and notes, and writes what changed to the client's activity. */
+export async function editReturnAction(form: FormData) {
+  const returnId = str(form, "id");
+  const clientId = str(form, "client_id");
+  await act(clientPage(clientId, "returns"), async () => {
+    const stages = await firstStage();
+    const team = await listStaff();
+    const assignee = str(form, "assignee_id");
+    if (assignee && !team.some((m) => m.id === assignee)) throw new ValidationError("That person isn't on your team.");
+    const before = await workspaceRepo().getReturn(returnId);
+    const { changes, ret } = await editReturn(
+      workspaceRepo(), returnId, raw(form), stages.map((x) => x.id), (sid) => stages.find((x) => x.id === sid)?.name ?? "Intake",
+      { assignee: (uid) => (uid ? staffLabel(team, uid) ?? "someone" : "no one") }, await whoIs(), new Date(), await officeToday(),
+    );
+    if (before && ret.stage_id !== before.stage_id) await emitReturnStage(ret.id, ret.stage_id);
+    return { notice: changes.length ? `Return saved. ${changes.length} ${changes.length === 1 ? "change" : "changes"}.` : "Nothing was changed." };
+  });
+}
+
+export async function saveStateFilingAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(clientPage(clientId, "returns"), async () => {
+    const f = await saveStateFiling(workspaceRepo(), str(form, "return_id"), { state: form.get("state"), status: form.get("status"), filed_on: form.get("filed_on"), result: form.get("result") }, await whoIs());
+    return { notice: `${f.state} state return saved.` };
+  });
+}
+
+export async function removeStateFilingAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(clientPage(clientId, "returns"), async () => {
+    await removeStateFiling(workspaceRepo(), str(form, "return_id"), str(form, "id"), await whoIs());
+    return { notice: "State return removed." };
+  });
+}
+
+export async function archiveReturnAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(clientPage(clientId, "returns"), async () => {
+    await archiveReturn(workspaceRepo(), str(form, "id"), await whoIs());
+    return { notice: "Return archived." };
+  });
+}
+
 /** Called by the board when a card is dropped on another stage. */
 export async function moveReturnAction(returnId: string, stageId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
@@ -245,6 +302,40 @@ export async function addNoteAction(form: FormData) {
   await act(clientPage(id, "notes"), async (adminId) => {
     await addNote(workspaceRepo(), id, str(form, "body"), adminId);
     return { notice: "Note added." };
+  });
+}
+
+const tabBack = (form: FormData, clientId: string, tab: string) => (str(form, "back").startsWith("/workspace/clients/") ? str(form, "back") : clientPage(clientId, tab));
+
+export async function editTaskAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(tabBack(form, clientId, "tasks"), async () => {
+    await editTask(workspaceRepo(), str(form, "id"), raw(form), await whoIs());
+    return { notice: "Task saved." };
+  });
+}
+
+export async function deleteTaskAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(tabBack(form, clientId, "tasks"), async () => {
+    await deleteTask(workspaceRepo(), str(form, "id"), await whoIs());
+    return { notice: "Task deleted." };
+  });
+}
+
+export async function editNoteAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(tabBack(form, clientId, "notes"), async () => {
+    await editNote(workspaceRepo(), str(form, "id"), str(form, "body"), await whoIs());
+    return { notice: "Note saved." };
+  });
+}
+
+export async function deleteNoteAction(form: FormData) {
+  const clientId = str(form, "client_id");
+  await act(tabBack(form, clientId, "notes"), async () => {
+    await deleteNote(workspaceRepo(), str(form, "id"), await whoIs());
+    return { notice: "Note deleted." };
   });
 }
 

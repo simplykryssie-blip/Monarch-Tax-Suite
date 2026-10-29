@@ -155,7 +155,9 @@ test("merging moves everything to the kept client, keeps what it already had, an
   const moved = await mergeClients(repo, keep.id, dup.id, { id: "u" });
   assert.equal(moved.dependents, 1);
   assert.equal((await repo.listDependents(keep.id)).length, 1);
-  assert.equal((await repo.listNotes(keep.id)).length, 1);
+  const notes = await repo.listNotes(keep.id);
+  assert.equal(notes.length, 2, "the moved note, plus a note of the details that differed");
+  assert.ok(notes.some((n) => /Other email: other@example.com/.test(n.body)), "the email that was not kept is written down");
   const k = (await repo.getClient(keep.id))!;
   assert.equal(k.email, "ada@example.com", "what the kept client had is not overwritten");
   assert.equal(k.phone, "(555) 123-4567", "what it was missing is filled in");

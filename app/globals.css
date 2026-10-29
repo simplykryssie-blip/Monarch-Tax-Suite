@@ -529,3 +529,31 @@ a.hm-row:hover{background:#fcfbf8}
 .ni-line input[inputmode="decimal"] { width: 130px; flex: none; }
 .ni-charges, .ni-standard { width: 100%; box-sizing: border-box; min-width: 0; }
 .ni-standard ul { width: 100%; }
+.dup-card { border: 1px solid var(--monarch-line, #e5e7eb); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; background: #fff; }
+.dup-why { margin: 0 0 8px; font-weight: 600; }
+.dup-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.dup-table th, .dup-table td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--monarch-line, #e5e7eb); vertical-align: top; overflow-wrap: anywhere; }
+.dup-table thead th { border-top: 0; }
+.dup-table tbody th { width: 110px; font-weight: 500; color: #77746b; }
+.dup-table tr.is-match td { background: #e8f6ec; }
+.dup-same { color: #1a7f3c; font-weight: 600; }
+.dup-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.ct-bulk { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--monarch-line, #e5e7eb); }
+.ct-bulk input[name="tag"] { min-width: 120px; }
+.cl-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+/* Small menus: opaque, above the page, closing when the mouse leaves. */
+.hm { position: relative; display: inline-block; margin: 0 0 12px; }
+.ct-bulk .hm { margin: 0; }
+.hm-panel { position: absolute; z-index: 1000; top: 100%; left: 0; padding-top: 4px; min-width: 230px; }
+.hm-list { margin: 0; padding: 6px; list-style: none; background: #ffffff; color: #211f19; border: 1px solid #d9d4c7; border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18); }
+.hm-list a, .hm-list button { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 6px; cursor: pointer; font: inherit; color: inherit; text-decoration: none; }
+.hm-list a:hover, .hm-list button:hover:not(:disabled), .hm-list a:focus-visible, .hm-list button:focus-visible { background: #f1eee6; }
+.hm-list button:disabled { opacity: 0.5; cursor: not-allowed; }
+.hm-panel.is-right { left: auto; right: 0; }
+.cl-actions-right { display: flex; justify-content: flex-end; position: relative; z-index: 40; }
+.ct-bulk { justify-content: space-between; }
+.item-actions { display: inline-flex; gap: 12px; align-items: center; white-space: nowrap; }
+.item-actions form { display: inline; margin: 0; }
+.cl-strip > a.cl-card-link { border: 1px solid var(--line, #d9d4c7); border-radius: 10px; padding: 10px 12px; background: var(--surface, #fff); display: grid; gap: 2px; color: inherit; text-decoration: none; }
+.cl-strip > a.cl-card-link:hover, .cl-strip > a.cl-card-link:focus-visible { border-color: #214d82; box-shadow: 0 2px 8px rgba(33, 77, 130, 0.15); }
+.cl-strip > a.cl-card-link small { color: var(--muted, #6b665a); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }

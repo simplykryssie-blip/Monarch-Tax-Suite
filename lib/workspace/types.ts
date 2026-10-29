@@ -43,7 +43,19 @@ export const RETURN_KINDS = { original: "Original", extension: "Extension", amen
 export type ReturnKind = keyof typeof RETURN_KINDS;
 export const PREP_STATUSES = { not_started: "Not started", in_prep: "In prep", ready_for_review: "Ready for review", handed_off: "Handed to ERO" } as const;
 export type PrepStatus = keyof typeof PREP_STATUSES;
-export type ClientReturn = {
+export const FORM_TYPES = { "1040": "1040", "1040-SR": "1040-SR", "1040-NR": "1040-NR", "1120": "1120", "1120-S": "1120-S", "1065": "1065", "990": "990", "941": "941", "940": "940", other: "Other" } as const;
+export type FormType = keyof typeof FORM_TYPES;
+export const FILING_STATUSES = { single: "Single", married_joint: "Married filing jointly", married_separate: "Married filing separately", head_of_household: "Head of household", qualifying_surviving_spouse: "Qualifying surviving spouse" } as const;
+export type FilingStatus = keyof typeof FILING_STATUSES;
+export const EFILE_STATUSES = { not_sent: "Not sent", transmitted: "Transmitted", accepted: "Accepted", rejected: "Rejected" } as const;
+export type EfileStatus = keyof typeof EFILE_STATUSES;
+export const STATE_FILING_STATUSES = { not_started: "Not started", in_prep: "In prep", filed: "Filed", accepted: "Accepted", rejected: "Rejected" } as const;
+export type StateFilingStatus = keyof typeof STATE_FILING_STATUSES;
+/** result_cents: positive = refund to the client, negative = amount owed. */
+export type StateFiling = { id: string; tenant_id: string; return_id: string; state: string; status: StateFilingStatus; filed_on: string | null; result_cents?: number | null; created_at: string };
+/** The details an office tracks beyond stage and dates. Optional: a return made before they existed has none. */
+export type ReturnDetails = { /** The day the client submitted their intake form. */ submitted_on?: string | null; form_type?: FormType | null; filing_status?: FilingStatus | null; efile_status?: EfileStatus; efile_on?: string | null; efile_reject_reason?: string | null; /** Positive = refund to the client, negative = amount owed. */ federal_result_cents?: number | null; fee_cents?: number | null };
+export type ClientReturn = ReturnDetails & {
   id: string; tenant_id: string; client_id: string; tax_year: number; kind: ReturnKind; parent_id: string | null; stage_id: string;
   due_on: string | null; filed_on: string | null; notes: string | null; archived_at: string | null; created_at: string; updated_at: string;
   /** Who works the return, where it stands in preparation, and its office (null = the account's own). */
@@ -111,7 +123,7 @@ export interface WorkspaceRepo {
   listClients(f?: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string }): Promise<Client[]>;
   getClient(id: string): Promise<Client | null>;
   insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null; tags?: string[] }): Promise<Client>;
-  updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[] }): Promise<Client>;
+  updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[]; owner_id?: string | null }): Promise<Client>;
   listDependents(clientId: string): Promise<Dependent[]>;
   insertDependent(input: DependentInput): Promise<Dependent>;
   deleteDependent(id: string): Promise<void>;
@@ -139,6 +151,9 @@ export interface WorkspaceRepo {
   /** Moves everything on `drop` to `keep` in one step and archives `drop`. Returns how much of each kind moved. */
   mergeClients(keep: string, drop: string, actorId: string | null): Promise<Record<string, number>>;
 
+  listStateFilings(returnId: string): Promise<StateFiling[]>;
+  saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null, resultCents: number | null): Promise<StateFiling>;
+  removeStateFiling(id: string): Promise<void>;
   listReturns(f?: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string }): Promise<ClientReturn[]>;
   getReturn(id: string): Promise<ClientReturn | null>;
   listWork(f?: { clientId?: string; pipelineId?: string }): Promise<ClientWork[]>;
@@ -146,7 +161,7 @@ export interface WorkspaceRepo {
   insertWork(input: WorkInput & { created_by: string | null; assignee_id?: string | null }): Promise<ClientWork>;
   updateWork(id: string, patch: Partial<Pick<ClientWork, "stage_id" | "title" | "due_on" | "notes" | "assignee_id" | "archived_at">>): Promise<ClientWork>;
   insertReturn(input: ReturnInput & { assignee_id?: string | null; organization_id?: string | null }): Promise<ClientReturn>;
-  updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>): Promise<ClientReturn>;
+  updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">> & ReturnDetails): Promise<ClientReturn>;
 
   listDocs(clientId: string): Promise<ClientDoc[]>;
   getDoc(id: string): Promise<ClientDoc | null>;
@@ -160,7 +175,12 @@ export interface WorkspaceRepo {
   insertMessage(input: NewClientMessage): Promise<ClientMessage>;
   listTasks(f?: { clientId?: string; openOnly?: boolean }): Promise<ClientTask[]>;
   insertTask(input: Pick<ClientTask, "client_id" | "return_id" | "title" | "due_on" | "created_by">): Promise<ClientTask>;
-  updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at">>): Promise<ClientTask>;
+  getTask(id: string): Promise<ClientTask | null>;
+  updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at" | "title" | "due_on" | "return_id">>): Promise<ClientTask>;
+  deleteTask(id: string): Promise<void>;
+  getNote(id: string): Promise<ClientNote | null>;
+  updateNote(id: string, patch: Pick<ClientNote, "body">): Promise<ClientNote>;
+  deleteNote(id: string): Promise<void>;
   listNotes(clientId: string): Promise<ClientNote[]>;
   insertNote(input: Pick<ClientNote, "client_id" | "body" | "created_by">): Promise<ClientNote>;
 

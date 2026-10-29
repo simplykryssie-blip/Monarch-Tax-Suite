@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/admin";
 import { Flash, PageTitle, when } from "@/components/admin/ui";
 import { UUID } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
+import { convertLeadAction } from "../../contacts/convert-actions";
 import { deleteLeadAction, markContactedAction, updateLeadAction } from "../actions";
 import { LeadFields } from "../fields";
 import { dateValue, day, leadsLoad, LeadsSetupRequired, sourceLabel, StatusBadge } from "../parts";
@@ -37,6 +38,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
         {lead.audit_score !== null && <span className="monarch-muted">WISP audit score: <b>{lead.audit_score}</b>/100</span>}
         <form action={markContactedAction}><input type="hidden" name="id" value={lead.id} /><button className="monarch-secondary">Contacted today</button></form>
         <a className="monarch-secondary" href={`mailto:${lead.email}`}>Email</a>
+        <form action={convertLeadAction}><input type="hidden" name="id" value={lead.id} /><input type="hidden" name="back" value={`/leads/${lead.id}`} /><button className="monarch-primary" title="Makes a client record from this lead">Convert to client</button></form>
       </section>
 
       <form action={updateLeadAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>

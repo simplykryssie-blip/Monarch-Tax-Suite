@@ -17,7 +17,7 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
   const b = brandOf(row, result.ok ? result.data.profile?.display_name : null);
   return (
     <>
-      <PageTitle title="Branding">Make {PLATFORM.name} look like your own firm. Your name, logo and colours go on everything your clients and customers see (emails, forms, documents). {PLATFORM.name} never appears to them unless you choose to show it.</PageTitle>
+      <PageTitle title="Branding">Make {PLATFORM.name} look like your own firm. Your name, logo and colors go on everything your clients and customers see (emails, forms, documents). Every form and email still ends with a small &ldquo;Powered by {PLATFORM.name}&rdquo; line.</PageTitle>
       <Flash notice={notice} error={error} />
       {!result.ok ? <SetupRequired message={result.message} /> : (
         <>

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Installment } from "../lib/workspace/plan.ts";
-import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ClientTask, ClientWork, BillingSettings, InvoiceReceipt, ReceiptInsert, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
+import type { Business, BusinessInput, Client, ClientDoc, ClientEvent, InvoiceLine, Spouse, SpouseInput, Dependent, DependentInput, ClientInput, ClientMessage, NewClientMessage, ClientNote, ClientReturn, ReturnDetails, StateFiling, StateFilingStatus, ClientTask, ClientWork, BillingSettings, InvoiceReceipt, ReceiptInsert, FeeProduct, FeeProductInput, WorkInput, Invoice, InvoiceInsert, PaymentImport, PaymentRow, PaymentRowInsert, ReturnInput, WorkspaceRepo } from "../lib/workspace/types.ts";
 
 // The workspace in memory, with the database rules that matter: one original and one extension per client per year,
 // unique invoice numbers. Returns copies.
@@ -10,7 +10,7 @@ export class MemoryWorkspace implements WorkspaceRepo {
   private c = <T>(v: T): T => structuredClone(v);
   private at = () => "2026-10-15T12:00:00.000Z";
 
-  async listClients(f: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string } = {}) { return this.c(this.clients.filter((x) => (f.includeArchived || !x.archived_at) && (!f.ownerId || x.owner_id === f.ownerId) && (!f.organizationId || x.organization_id === f.organizationId) && (!f.q || x.full_name.toLowerCase().includes(f.q.toLowerCase())))); }
+  async listClients(f: { q?: string; includeArchived?: boolean; ownerId?: string; organizationId?: string } = {}) { return this.c(this.clients.filter((x) => (f.includeArchived || !x.archived_at) && (!f.ownerId || x.owner_id === f.ownerId) && (!f.organizationId || x.organization_id === f.organizationId) && (!f.q || [x.full_name, x.email, x.phone].some((v) => (v ?? "").toLowerCase().includes(f.q!.toLowerCase()))))); }
   async getClient(id: string) { return this.c(this.clients.find((x) => x.id === id) ?? null); }
   async insertClient(input: ClientInput & { created_by: string | null; owner_id?: string | null; organization_id?: string | null }) { const x: Client = { owner_id: null, organization_id: null, ...this.c(input), id: randomUUID(), tenant_id: "t", archived_at: null, created_at: this.at(), updated_at: this.at() }; this.clients.push(x); return this.c(x); }
   dependents: Dependent[] = []; businesses: Business[] = []; spouses: Spouse[] = []; events: (ClientEvent & { client_id: string })[] = []; fees: InvoiceLine[] | null = null;
@@ -53,8 +53,18 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async listBusinesses(clientId: string) { return this.c(this.businesses.filter((b) => b.client_id === clientId)); }
   async insertBusiness(input: BusinessInput) { const rest: Record<string, unknown> = { ...input }; delete rest.created_by; const b = { ...this.c(rest) as unknown as Business, id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.businesses.push(b); return this.c(b); }
   async deleteBusiness(id: string) { this.businesses = this.businesses.filter((b) => b.id !== id); }
-  async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[] }) { const x = this.clients.find((y) => y.id === id)!; Object.assign(x, this.c(patch)); return this.c(x); }
+  async updateClient(id: string, patch: Partial<ClientInput> & { archived_at?: string | null; spouse_id?: string | null; tags?: string[]; owner_id?: string | null }) { const x = this.clients.find((y) => y.id === id)!; Object.assign(x, this.c(patch)); return this.c(x); }
 
+  stateFilings: StateFiling[] = [];
+  async listStateFilings(returnId: string) { return this.c(this.stateFilings.filter((x) => x.return_id === returnId).sort((a, b) => a.state.localeCompare(b.state))); }
+  async saveStateFiling(returnId: string, state: string, status: StateFilingStatus, filedOn: string | null, resultCents: number | null) {
+    const hit = this.stateFilings.find((x) => x.return_id === returnId && x.state === state);
+    if (hit) { hit.status = status; hit.filed_on = filedOn; hit.result_cents = resultCents; return this.c(hit); }
+    const x: StateFiling = { id: randomUUID(), tenant_id: "t", return_id: returnId, state, status, filed_on: filedOn, result_cents: resultCents, created_at: this.at() };
+    this.stateFilings.push(x);
+    return this.c(x);
+  }
+  async removeStateFiling(id: string) { this.stateFilings = this.stateFilings.filter((x) => x.id !== id); }
   async listReturns(f: { year?: number; clientId?: string; includeArchived?: boolean; assigneeId?: string; organizationId?: string } = {}) { return this.c(this.returns.filter((r) => (f.includeArchived || !r.archived_at) && (!f.assigneeId || r.assignee_id === f.assigneeId) && (!f.organizationId || r.organization_id === f.organizationId) && (!f.year || r.tax_year === f.year) && (!f.clientId || r.client_id === f.clientId))); }
   work: ClientWork[] = [];
   async listWork(f: { clientId?: string; pipelineId?: string } = {}) { return this.c(this.work.filter((w) => !w.archived_at && (!f.clientId || w.client_id === f.clientId) && (!f.pipelineId || w.pipeline_id === f.pipelineId))); }
@@ -67,7 +77,7 @@ export class MemoryWorkspace implements WorkspaceRepo {
     const r: ClientReturn = { assignee_id: null, organization_id: null, prep_status: "not_started", handed_off_at: null, ...this.c(input), id: randomUUID(), tenant_id: "t", filed_on: null, archived_at: null, created_at: this.at(), updated_at: this.at() };
     this.returns.push(r); return this.c(r);
   }
-  async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">>) { const r = this.returns.find((x) => x.id === id)!; Object.assign(r, this.c(patch)); return this.c(r); }
+  async updateReturn(id: string, patch: Partial<Pick<ClientReturn, "stage_id" | "due_on" | "filed_on" | "notes" | "archived_at" | "assignee_id" | "prep_status" | "handed_off_at">> & ReturnDetails) { const r = this.returns.find((x) => x.id === id)!; Object.assign(r, this.c(patch)); return this.c(r); }
 
   async listDocs(clientId: string) { return this.c(this.docs.filter((d) => d.client_id === clientId && d.status === "stored")); }
   async getDoc(id: string) { return this.c(this.docs.find((d) => d.id === id) ?? null); }
@@ -80,7 +90,12 @@ export class MemoryWorkspace implements WorkspaceRepo {
   async insertMessage(input: NewClientMessage) { const m: ClientMessage = { status: "logged", sent_to: null, provider_id: null, error: null, segments: null, ...this.c(input), id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.messages.push(m); return this.c(m); }
   async listTasks(f: { clientId?: string; openOnly?: boolean } = {}) { return this.c(this.tasks.filter((t) => (!f.clientId || t.client_id === f.clientId) && (!f.openOnly || !t.done_at))); }
   async insertTask(input: Pick<ClientTask, "client_id" | "return_id" | "title" | "due_on" | "created_by">) { const t: ClientTask = { ...this.c(input), id: randomUUID(), tenant_id: "t", done_at: null, created_at: this.at() }; this.tasks.push(t); return this.c(t); }
-  async updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at">>) { const t = this.tasks.find((x) => x.id === id)!; Object.assign(t, patch); return this.c(t); }
+  async getTask(id: string) { return this.c(this.tasks.find((t) => t.id === id) ?? null); }
+  async deleteTask(id: string) { this.tasks = this.tasks.filter((t) => t.id !== id); }
+  async getNote(id: string) { return this.c(this.notes.find((n) => n.id === id) ?? null); }
+  async updateNote(id: string, patch: Pick<ClientNote, "body">) { const n = this.notes.find((x) => x.id === id)!; Object.assign(n, patch); return this.c(n); }
+  async deleteNote(id: string) { this.notes = this.notes.filter((n) => n.id !== id); }
+  async updateTask(id: string, patch: Partial<Pick<ClientTask, "done_at" | "title" | "due_on" | "return_id">>) { const t = this.tasks.find((x) => x.id === id)!; Object.assign(t, patch); return this.c(t); }
   async listNotes(clientId: string) { return this.c(this.notes.filter((n) => n.client_id === clientId)); }
   async insertNote(input: Pick<ClientNote, "client_id" | "body" | "created_by">) { const n: ClientNote = { ...this.c(input), id: randomUUID(), tenant_id: "t", created_at: this.at() }; this.notes.push(n); return this.c(n); }
 

@@ -31,7 +31,17 @@ export function changedFields(before: Client, after: Client): FieldChange[] {
 
 const LABELS: Record<string, string> = {
   "client.created": "Client added",
+  "contact.method_added": "Email or phone added",
+  "contact.method_removed": "Email or phone removed",
+  "contact.primary_changed": "Main email or phone changed",
+  "relationship.added": "Relationship added",
+  "relationship.removed": "Relationship removed",
+  "task.edited": "Task edited",
+  "task.deleted": "Task deleted",
+  "note.edited": "Note edited",
+  "note.deleted": "Note deleted",
   "client.tags_changed": "Tags changed",
+  "client.assigned": "Assigned to a teammate",
   "client.merged": "Merged another client into this one",
   "client.spouse_linked": "Spouse linked",
   "client.spouse_unlinked": "Spouse unlinked",
@@ -51,6 +61,11 @@ const LABELS: Record<string, string> = {
 
 /** One sentence for one event. Null for events this list doesn't show. */
 export function describeEvent(e: Pick<ClientEvent, "action" | "detail">): string | null {
+  if (e.action === "return.updated") {
+    const changes = Array.isArray(e.detail.changes) ? (e.detail.changes as unknown[]).filter((c): c is string => typeof c === "string") : [];
+    return `${typeof e.detail.label === "string" ? e.detail.label.replace(/^./, (c) => c.toUpperCase()) : "Return"}: ${changes.join("; ") || "edited"}`;
+  }
+  if (e.action === "return.archived") return `${typeof e.detail.label === "string" ? e.detail.label.replace(/^./, (c) => c.toUpperCase()) : "Return"} archived`;
   if (e.action === "client.updated") {
     const changes = Array.isArray(e.detail.changes) ? (e.detail.changes as FieldChange[]) : [];
     if (!changes.length) return null;
