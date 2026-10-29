@@ -35,7 +35,7 @@ function Chips({ c }: { c: Contact }) {
   );
 }
 
-export default async function ContactsPage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string; tag?: string; view?: string; notice?: string; error?: string }> }) {
+export default async function ContactsPage({ searchParams }: { searchParams: Promise<{ q?: string; kind?: string; tag?: string; assigned?: string; stage?: string; view?: string; notice?: string; error?: string }> }) {
   await requireAdmin();
   const sp = await searchParams;
   const kind = ((KINDS as readonly string[]).includes(sp.kind ?? "") ? (sp.kind === "archived" ? "inactive" : sp.kind ?? "") : "") as ContactFilter["kind"];
@@ -47,8 +47,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   // How much each side holds, for the first pairs only (each count is a few lookups).
   const pairCounts = new Map<string, Awaited<ReturnType<typeof recordCounts>>>();
   await Promise.all(data.duplicates.slice(0, 20).flatMap((d) => [d.a, d.b]).map(async (k) => { const c = byKey.get(k); if (c && !pairCounts.has(k)) pairCounts.set(k, await recordCounts(workspaceRepo(), c, leadsDeps().repo)); }));
-  const backHref = `/contacts${[sp.q ? `q=${encodeURIComponent(sp.q)}` : "", sp.kind ? `kind=${encodeURIComponent(sp.kind)}` : "", sp.tag ? `tag=${encodeURIComponent(sp.tag)}` : ""].filter(Boolean).length ? `?${[sp.q ? `q=${encodeURIComponent(sp.q)}` : "", sp.kind ? `kind=${encodeURIComponent(sp.kind)}` : "", sp.tag ? `tag=${encodeURIComponent(sp.tag)}` : ""].filter(Boolean).join("&")}` : ""}`;
-  const rows = filterContacts(data.contacts, { q: sp.q, kind, tag: sp.tag });
+  const backHref = `/contacts${[sp.q ? `q=${encodeURIComponent(sp.q)}` : "", sp.kind ? `kind=${encodeURIComponent(sp.kind)}` : "", sp.tag ? `tag=${encodeURIComponent(sp.tag)}` : "", sp.assigned ? `assigned=${encodeURIComponent(sp.assigned)}` : "", sp.stage ? `stage=${encodeURIComponent(sp.stage)}` : ""].filter(Boolean).length ? `?${[sp.q ? `q=${encodeURIComponent(sp.q)}` : "", sp.kind ? `kind=${encodeURIComponent(sp.kind)}` : "", sp.tag ? `tag=${encodeURIComponent(sp.tag)}` : "", sp.assigned ? `assigned=${encodeURIComponent(sp.assigned)}` : "", sp.stage ? `stage=${encodeURIComponent(sp.stage)}` : ""].filter(Boolean).join("&")}` : ""}`;
+  const rows = filterContacts(data.contacts, { q: sp.q, kind, tag: sp.tag, assigned: sp.assigned, stage: sp.stage });
   const allTags = [...new Set(data.contacts.flatMap((c) => c.tags))].sort();
   const tabs: [string, string, number][] = [["", "All", counts.all], ["lead", "Leads", counts.lead], ["client", "Clients", counts.client], ["customer", "Customers", counts.customer], ["inactive", "Archived", counts.inactive]];
 
@@ -104,6 +104,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             <label htmlFor="q" style={{ position: "absolute", left: -9999 }}>Search contacts</label>
             <input id="q" name="q" type="search" defaultValue={sp.q ?? ""} placeholder="Search by name, email, phone or tag" />
             <AutoSelect name="kind" label="Show" defaultValue={kind ?? ""} options={tabs.map(([k, name, n]) => ({ value: k, label: `${name} (${n})` }))} />
+            <AutoSelect name="assigned" label="Assigned to" defaultValue={sp.assigned ?? ""} options={[{ value: "", label: "Anyone" }, { value: "none", label: "No one" }, ...staff.map((m) => ({ value: m.id, label: m.label }))]} />
+            <AutoSelect name="stage" label="Lead stage" defaultValue={sp.stage ?? ""} options={[{ value: "", label: "Any lead stage" }, ...SETTABLE_STATUSES.map((st) => ({ value: st, label: LEAD_STATUSES[st] }))]} />
             <AutoSelect name="tag" label="Tag" defaultValue={sp.tag ?? ""} options={[{ value: "", label: "Any tag" }, ...allTags.map((t) => ({ value: t, label: t }))]} />
             <button type="submit" className="monarch-primary">Search</button>
           </form>
