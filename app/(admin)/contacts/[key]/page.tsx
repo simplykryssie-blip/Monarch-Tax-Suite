@@ -14,6 +14,9 @@ import { workspaceRepo } from "@/lib/workspace/server";
 import { TagInput } from "../../leads/tag-input";
 import { leadsDeps } from "@/lib/leads/server";
 import { convertLeadAction } from "../convert-actions";
+import { RelationshipsCard } from "@/components/contacts/relationships-card";
+import { relationshipsFor } from "@/lib/contacts/relationships.ts";
+import { relationshipsDeps } from "@/lib/contacts/relationships-server";
 import { ContactMethods } from "@/components/contacts/contact-methods";
 import { methodsFor } from "@/lib/contacts/methods.ts";
 import { methodsDeps } from "@/lib/contacts/methods-server";
@@ -51,6 +54,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
   const leadFull = lead ? await leadsDeps().repo.getLead(lead.id).catch(() => null) : null;
   const leadEvents = leadFull ? await leadsDeps().repo.listEvents(leadFull.id).catch(() => []) : [];
   const methods = leadFull ? await methodsFor(methodsDeps(), { kind: "lead", id: leadFull.id }).catch(() => null) : null;
+  const relationships = leadFull ? await relationshipsFor(relationshipsDeps(), { kind: "lead", id: leadFull.id }).catch(() => null) : null;
   const tagOptions = leadFull ? (await leadsDeps().repo.tagCounts().catch(() => [])).map((t) => t.tag) : [];
   const staff = lead ? await listStaff().catch(() => []) : [];
 
@@ -112,6 +116,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
         </div>
       </section>
 
+      {leadFull && relationships && <div style={{ marginBottom: 14 }}><RelationshipsCard me={{ kind: "lead", id: leadFull.id }} items={relationships} back={`/contacts/${key}`} /></div>}
       {leadFull && methods && <div style={{ marginBottom: 14 }}><ContactMethods owner={{ kind: "lead", id: leadFull.id }} primary={methods.primary} extras={methods.extras} back={`/contacts/${key}`} /></div>}
       {leadFull && (
         <form action={saveLeadNotesAction} className="monarch-panel monarch-form" style={{ padding: 20, marginBottom: 14 }}>
