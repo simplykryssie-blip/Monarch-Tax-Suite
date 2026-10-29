@@ -14,6 +14,9 @@ import { workspaceRepo } from "@/lib/workspace/server";
 import { TagInput } from "../../leads/tag-input";
 import { leadsDeps } from "@/lib/leads/server";
 import { convertLeadAction } from "../convert-actions";
+import { ContactMethods } from "@/components/contacts/contact-methods";
+import { methodsFor } from "@/lib/contacts/methods.ts";
+import { methodsDeps } from "@/lib/contacts/methods-server";
 import { saveLeadNotesAction, setLeadStatusAction } from "../lead-notes-actions";
 import { DuplicateCompare } from "@/components/contacts/duplicate-compare";
 import { contactForKey, DUPLICATE_REASON, parseContactKey, type Contact } from "@/lib/contacts/combine.ts";
@@ -47,6 +50,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
   const counts = new Map(await Promise.all([contact, ...related.map((d) => byKey.get(d.a === key ? d.b : d.a)).filter((c): c is Contact => !!c)].map(async (c) => [c.key, await recordCounts(workspaceRepo(), c, leadsDeps().repo)] as const)));
   const leadFull = lead ? await leadsDeps().repo.getLead(lead.id).catch(() => null) : null;
   const leadEvents = leadFull ? await leadsDeps().repo.listEvents(leadFull.id).catch(() => []) : [];
+  const methods = leadFull ? await methodsFor(methodsDeps(), { kind: "lead", id: leadFull.id }).catch(() => null) : null;
   const tagOptions = leadFull ? (await leadsDeps().repo.tagCounts().catch(() => [])).map((t) => t.tag) : [];
   const staff = lead ? await listStaff().catch(() => []) : [];
 
@@ -108,6 +112,7 @@ export default async function ContactPage({ params }: { params: Promise<{ key: s
         </div>
       </section>
 
+      {leadFull && methods && <div style={{ marginBottom: 14 }}><ContactMethods owner={{ kind: "lead", id: leadFull.id }} primary={methods.primary} extras={methods.extras} back={`/contacts/${key}`} /></div>}
       {leadFull && (
         <form action={saveLeadNotesAction} className="monarch-panel monarch-form" style={{ padding: 20, marginBottom: 14 }}>
           <h2 className="is-wide">Notes and tags</h2>

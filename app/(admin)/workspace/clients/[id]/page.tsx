@@ -17,6 +17,9 @@ import { Modal } from "@/components/ui/modal";
 import { HoverMenu } from "@/components/ui/hover-menu";
 import { staffLabel } from "@/lib/staff/assign.ts";
 import { EFILE_STATUSES } from "@/lib/workspace/types.ts";
+import { ContactMethods } from "@/components/contacts/contact-methods";
+import { methodsFor } from "@/lib/contacts/methods.ts";
+import { methodsDeps } from "@/lib/contacts/methods-server";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { NoteEditor, TaskEditor } from "@/components/workspace/item-editors";
 import { ReturnEditor } from "@/components/workspace/return-editor";
@@ -135,6 +138,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const staff = await listStaff().catch(() => []);
   const portalLabel = !member ? "Not invited" : member.status === "active" ? "Active" : member.status === "invited" ? (inviteExpired(member) ? "Invite expired" : "Invited") : "Off";
   const hiddenTab = (HIDDEN as readonly string[]).includes(tab);
+  // The extra emails and phones. Left out (not an error) where the table isn't installed yet.
+  const methods = tab === "overview" ? await methodsFor(methodsDeps(), { kind: "client", id }).catch(() => null) : null;
   const stateFilings = new Map<string, Awaited<ReturnType<ReturnType<typeof workspaceRepo>["listStateFilings"]>>>();
   if (tab === "overview" || tab === "returns") await Promise.all(returns.map(async (x) => { stateFilings.set(x.id, await workspaceRepo().listStateFilings(x.id).catch(() => [])); }));
   const editorFor = (r: (typeof returns)[number], openLabel = "Open") => (
@@ -218,6 +223,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           <div className="grid2 cl-cols">
             <div className="cl-col">
               <DetailsCard d={details} />
+
+              {methods && <ContactMethods owner={{ kind: "client", id }} primary={methods.primary} extras={methods.extras} back={back} />}
 
               <section className="monarch-panel cl-card">
                 <div className="cl-card-head"><h2>Tags</h2></div>
