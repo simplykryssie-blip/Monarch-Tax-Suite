@@ -41,3 +41,9 @@ function safeHost(url: string | undefined): string | null {
     return null;
   }
 }
+
+/** A public booking address such as book.yourfirm.com: its front page is the booking page. */
+export function isBookingHost(rawHost: string | null | undefined): boolean {
+  const host = cleanRequestHost(rawHost);
+  return Boolean(host) && /^book\.[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host!);
+}

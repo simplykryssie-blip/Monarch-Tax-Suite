@@ -3,7 +3,7 @@ import { updateSession } from "@/lib/supabase/proxy";
 import { adminRouteVerdict } from "@/lib/admin-host.ts";
 import { frameAncestors, hostFromHeader } from "@/lib/commerce/embed.ts";
 import { loadEmbedDecision } from "@/lib/embed-server";
-import { classifyHost, cleanRequestHost } from "@/lib/sites/host.ts";
+import { classifyHost, cleanRequestHost, isBookingHost } from "@/lib/sites/host.ts";
 import { hostHasSite } from "@/lib/sites/server";
 
 // On an office's website address only the website and the parts it embeds are served: its pages, booking pages, public
@@ -37,6 +37,12 @@ export async function proxy(request: NextRequest) {
     headers.set("x-site-host", host);
     headers.set("x-site-base", "");
     return NextResponse.rewrite(url, { request: { headers } });
+  }
+  // A booking address (book.<firm domain>) opens the booking page at its front door, so the printed link is just the address.
+  if (hostKind.kind === "other" && path === "/" && isBookingHost(hostKind.host)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/book";
+    return NextResponse.rewrite(url, { request: { headers: new Headers(request.headers) } });
   }
   if (request.nextUrl.pathname.startsWith("/embed/")) {
     // Embeds have no admin session; the browser enforces where they may render.
