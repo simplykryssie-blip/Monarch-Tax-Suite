@@ -531,3 +531,86 @@ describe("filtering the Contacts list by teammate and lead stage", () => {
     assert.deepEqual(filterContacts(list, { kind: "client", assigned: "u1" }).map((c) => c.key), ["d"]);
   });
 });
+
+import { randomUUID } from "node:crypto";
+import { addMethod, cleanMethod, makePrimary, methodsFor, removeMethod, type ContactMethod, type MethodsDeps, type MethodsRepo } from "../lib/contacts/methods.ts";
+
+describe("more than one email and phone per person", () => {
+  const memoryMethods = (): MethodsRepo & { rows: ContactMethod[] } => {
+    const rows: ContactMethod[] = [];
+    return {
+      rows,
+      async list(o) { return rows.filter((r) => (o.kind === "client" ? r.client_id === o.id : r.lead_id === o.id)); },
+      async get(id) { return rows.find((r) => r.id === id) ?? null; },
+      async add(o, input) { const r: ContactMethod = { id: randomUUID(), client_id: o.kind === "client" ? o.id : null, lead_id: o.kind === "lead" ? o.id : null, created_at: "2026-10-29T00:00:00Z", ...input }; rows.push(r); return r; },
+      async remove(id) { const i = rows.findIndex((r) => r.id === id); if (i >= 0) rows.splice(i, 1); },
+    };
+  };
+  const seed = async () => {
+    const clients = new MemoryWorkspace();
+    const leads = new MemoryLeads();
+    const client = await clients.insertClient({ full_name: "Ana Ruiz", email: "ana@home.com", phone: "(337) 555-0100", created_by: null } as never);
+    const lead = await leads.insertLead({ tags: [], notes: null, phone: "(337) 555-0111", firm_name: null, status: "new", source: "manual", last_contacted_at: null, audit_id: null, audit_score: null, wisp_plan_id: null, customer_id: null, order_id: null, organization_id: null, converted_at: null, full_name: "Bo Lee", email: "bo@example.com" } as never);
+    const methods = memoryMethods();
+    const deps: MethodsDeps = { methods, clients, leads };
+    return { deps, methods, clients, leads, client, lead };
+  };
+
+  test("values are cleaned: email in lower case, phone in (555) 123-4567 form, and anything else is refused", () => {
+    assert.deepEqual(cleanMethod("email", "work", " Ana@Work.COM "), { kind: "email", label: "work", value: "ana@work.com" });
+    assert.deepEqual(cleanMethod("phone", "mobile", "337-555-0199"), { kind: "phone", label: "mobile", value: "(337) 555-0199" });
+    assert.equal(cleanMethod("email", "nonsense", "a@b.co").label, "other");
+    assert.throws(() => cleanMethod("email", "work", "not an email"), /valid email/);
+    assert.throws(() => cleanMethod("phone", "work", "12345"), /10-digit/);
+    assert.throws(() => cleanMethod("fax", "work", "x"), /email or phone/);
+  });
+
+  test("extras are added to a client, never repeat the main one or each other, and are capped", async () => {
+    const { deps, client } = await seed();
+    const owner = { kind: "client" as const, id: client.id };
+    await addMethod(deps, owner, { kind: "email", label: "work", value: "ana@work.com" }, "u1");
+    await assert.rejects(() => addMethod(deps, owner, { kind: "email", label: "work", value: "ANA@home.com" }, "u1"), /already .* main email/);
+    await assert.rejects(() => addMethod(deps, owner, { kind: "email", label: "other", value: "ana@work.com" }, "u1"), /already on this person/);
+    await assert.rejects(() => addMethod(deps, owner, { kind: "phone", label: "home", value: "(337) 555-0100" }, "u1"), /already .* main phone/);
+    for (let i = 0; i < 9; i++) await addMethod(deps, owner, { kind: "email", label: "other", value: `x${i}@example.com` }, "u1");
+    await assert.rejects(() => addMethod(deps, owner, { kind: "email", label: "other", value: "one-too-many@example.com" }, "u1"), /Up to 10/);
+    const view = await methodsFor(deps, owner);
+    assert.equal(view.primary.email, "ana@home.com");
+    assert.equal(view.extras.length, 10);
+  });
+
+  test("making an extra the main one swaps it with the old main one, and nothing is lost", async () => {
+    const { deps, methods, clients, client } = await seed();
+    const owner = { kind: "client" as const, id: client.id };
+    const work = await addMethod(deps, owner, { kind: "email", label: "work", value: "ana@work.com" }, "u1");
+    await makePrimary(deps, owner, work.id, "u1");
+    assert.equal((await clients.getClient(client.id))!.email, "ana@work.com");
+    assert.deepEqual(methods.rows.map((r) => r.value), ["ana@home.com"], "the old main email is kept as an extra");
+    const phone = await addMethod(deps, owner, { kind: "phone", label: "mobile", value: "337-555-0199" }, "u1");
+    await makePrimary(deps, owner, phone.id, "u1");
+    assert.equal((await clients.getClient(client.id))!.phone, "(337) 555-0199");
+    assert.ok(methods.rows.some((r) => r.value === "(337) 555-0100"));
+    const events = (await clients.listClientEvents(client.id, 10)).map((e) => e.action);
+    assert.ok(events.includes("contact.method_added") && events.includes("contact.primary_changed"));
+  });
+
+  test("a lead works the same way, but cannot take another lead's email as its main one", async () => {
+    const { deps, leads, lead } = await seed();
+    const owner = { kind: "lead" as const, id: lead.id };
+    await leads.insertLead({ tags: [], notes: null, phone: null, firm_name: null, status: "new", source: "manual", last_contacted_at: null, audit_id: null, audit_score: null, wisp_plan_id: null, customer_id: null, order_id: null, organization_id: null, converted_at: null, full_name: "Cy Dee", email: "cy@example.com" } as never);
+    const ok = await addMethod(deps, owner, { kind: "email", label: "work", value: "bo@work.com" }, "u1");
+    await makePrimary(deps, owner, ok.id, "u1");
+    assert.equal((await leads.getLead(lead.id))!.email, "bo@work.com");
+    const taken = await addMethod(deps, owner, { kind: "email", label: "other", value: "cy@example.com" }, "u1");
+    await assert.rejects(() => makePrimary(deps, owner, taken.id, "u1"), /another lead/);
+    assert.equal((await leads.getLead(lead.id))!.email, "bo@work.com", "nothing changed");
+  });
+
+  test("an extra can be removed, but only from its own person", async () => {
+    const { deps, methods, client, lead } = await seed();
+    const m = await addMethod(deps, { kind: "client", id: client.id }, { kind: "email", label: "work", value: "ana@work.com" }, "u1");
+    await assert.rejects(() => removeMethod(deps, { kind: "lead", id: lead.id }, m.id, "u1"), ValidationError);
+    await removeMethod(deps, { kind: "client", id: client.id }, m.id, "u1");
+    assert.equal(methods.rows.length, 0);
+  });
+});
