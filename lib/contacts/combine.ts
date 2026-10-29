@@ -75,11 +75,12 @@ function build(g: Group): Contact {
   const anchor = client ? `client-${client.id}` : lead ? `lead-${lead.id}` : `customer-${customer!.id}`;
   const chips: Chip[] = [];
   for (const kind of ORDER) {
-    if (kind === "client" && client) chips.push({ kind, label: client.archived_at ? "Client (archived)" : "Client", active: !client.archived_at });
-    if (kind === "lead" && lead) chips.push({ kind, label: lead.status === "lost" ? "Lead (lost)" : lead.status === "converted" ? "Lead (converted)" : "Lead", active: leadCurrent(lead.status) });
+    if (kind === "client" && client) chips.push({ kind, label: "Client", active: !client.archived_at });
+    // Status is only who they are: Lead, Client, Customer, or a mix. A lead who became a client is just a Client.
+    if (kind === "lead" && lead && !(client && lead.status === "converted")) chips.push({ kind, label: "Lead", active: leadCurrent(lead.status) });
     if (kind === "customer" && customer) {
       const live = g.customers.some((c) => c.status === "active");
-      chips.push({ kind, label: live ? "Customer" : "Customer (archived)", active: live });
+      chips.push({ kind, label: "Customer", active: live });
     }
   }
   const tags = [...new Set([...(client?.tags ?? []), ...(lead?.tags ?? [])])].sort();
