@@ -100,7 +100,7 @@ export function HomeGrid({ data, storageKey }: { data: HomeData; storageKey: str
     const max = Math.max(...data.pipeline.map((s) => s.count), 1);
     list.push({ id: "pipeline", title: "Returns by stage", size: "f", graph: true, body: (view) => (
       <div className="hm-pipe">
-        <div className="hm-head"><b>Returns by stage</b><span className="hm-muted">Trends and charts live in Reports.</span></div>
+        <div className="hm-head"><b>Returns by stage</b></div>
         {view === "graph" ? (
           <div className="hm-cols" role="img" aria-label={`Returns by stage: ${data.pipeline.map((s) => `${s.label} ${s.count}`).join(", ")}`}>
             {data.pipeline.map((s) => <div key={s.id}><b>{s.count}</b><span style={{ height: `${Math.max(4, Math.round((s.count / max) * 100))}%`, background: s.color }} /><small className="hm-muted">{s.label}</small></div>)}

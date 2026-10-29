@@ -14,7 +14,7 @@ type ViewKey = InvoiceView | "all" | "archived";
 const VIEWS: [ViewKey, string][] = [["all", "All"], ["draft", "Draft"], ["sent", "Sent"], ["overdue", "Overdue"], ["paid", "Paid"], ["void", "Void"], ["archived", "Archived"]];
 
 /** Billing: every invoice, filterable by status, with revenue totals and the bank-statement import. */
-export default async function BillingPage({ searchParams }: { searchParams: Promise<{ status?: string; year?: string; payer?: string; notice?: string; error?: string }> }) {
+export default async function BillingPage({ searchParams }: { searchParams: Promise<{ status?: string; year?: string; payer?: string; add?: string; notice?: string; error?: string }> }) {
   const sp = await searchParams;
   const today = todayIso();
   const sheetCtx = await loadSheetContext();
@@ -48,7 +48,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         const active = clients.filter((c) => !c.archived_at);
         return (
           <>
-            <div className="cl-head-actions"><NewInvoice back="/workspace/billing" year={new Date().getUTCFullYear() - 1} clients={active.map((c) => ({ id: c.id, name: c.full_name }))} disabled={active.length === 0} /></div>
+            <div className="cl-head-actions"><NewInvoice open={sp.add === "1"} back="/workspace/billing" year={new Date().getUTCFullYear() - 1} clients={active.map((c) => ({ id: c.id, name: c.full_name }))} disabled={active.length === 0} /></div>
+            <p className="monarch-muted">Paying online? Connect it under <Link href="/settings/payments">Settings → Payments</Link>. &ldquo;Bank product&rdquo; means the fee is paid out of the client&apos;s refund by their bank; &ldquo;Out of pocket&rdquo; means the client pays you directly.</p>
             <div className="monarch-metrics">
               {[["Invoiced", dollars(t.invoiced)], ["Collected", dollars(t.collected)], ["Outstanding", dollars(t.outstanding)], ["Overdue", dollars(t.overdue)]].map(([l, v]) => <div className="monarch-metric" key={l}><div>{l}</div><strong>{v}</strong></div>)}
             </div>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { clientFolderName } from "@/lib/documents/folders.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
 
-/** The Clients folder: one folder per client, named with their name and the last four of their SSN. */
+/** The Clients folder: one folder per client. */
 export async function ClientsList({ q }: { q: string }) {
   const clients = (await workspaceRepo().listClients({ includeArchived: false, q: q || undefined })).slice(0, 300);
   return (

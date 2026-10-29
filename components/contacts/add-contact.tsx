@@ -12,7 +12,7 @@ const LABEL: Record<NewContactKind, string> = { client: "Client", lead: "Lead", 
 /** The one Add button: pick Client, Lead or Customer, fill in what that kind needs, and land on the new contact. */
 export function AddContact({ kinds, className = "monarch-primary" }: { kinds: NewContactKind[]; className?: string }) {
   return (
-    <Modal label="Add" title="Add a contact" className={className}>
+    <Modal label="Add contact" title="Add a contact" className={className}>
       <AddForm kinds={kinds} />
     </Modal>
   );

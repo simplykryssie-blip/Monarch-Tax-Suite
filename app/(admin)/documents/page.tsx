@@ -52,7 +52,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         <ClientsList q={q} />
       ) : where === "root" ? (
         <div className="pl-grid">
-          <section className="monarch-panel pl-card pl-folder"><Link className="pl-name" href="/documents?clients=1">Clients</Link><small className="monarch-muted">A folder for each client, named with their name and the last four of their SSN. What clients upload lands here too.</small></section>
+          <section className="monarch-panel pl-card pl-folder"><Link className="pl-name" href="/documents?clients=1">Clients</Link><small className="monarch-muted">A folder for each client. What clients upload lands here too.</small></section>
           <section className="monarch-panel pl-card pl-folder"><Link className="pl-name" href="/documents?internal=1">Internal docs</Link><small className="monarch-muted">Your office&apos;s own files and folders.</small></section>
         </div>
       ) : (

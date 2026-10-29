@@ -59,8 +59,8 @@ export default async function Home() {
       <PageTitle title={greeting}>What needs you today. Open a card to go to its list, or press Edit layout to arrange Home your way.</PageTitle>
       <div className="hm-quick">
         <AddContact kinds={contactKinds(tier)} className="monarch-secondary" />
-        <Link className="monarch-secondary" href="/workspace/work">Add return</Link>
-        <Link className="monarch-primary" href="/workspace/billing">New invoice</Link>
+        <Link className="monarch-secondary" href="/workspace/work?add=1">Add return</Link>
+        <Link className="monarch-primary" href="/workspace/billing?add=1">New invoice</Link>
       </div>
       {!result.ok ? <SetupRequired message={result.message} /> : (
         <HomeGrid
