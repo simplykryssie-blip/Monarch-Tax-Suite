@@ -149,12 +149,33 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       <PageTitle title={client.full_name} back={{ href: "/contacts", label: "Contacts" }}>
         {[client.email, client.phone].filter(Boolean).join(" · ") || "No contact details yet"}{client.archived_at ? " · Archived" : ""}
       </PageTitle>
-      {(!member || member.status === "invited" || (member.status === "suspended" && !member.user_id)) && (
-        <form action={invitePortalAction} className="cl-head-actions">
-          <input type="hidden" name="area" value="admin" /><input type="hidden" name="client_id" value={client.id} />
-          <button className="monarch-secondary" disabled={!client.email} title={client.email ? undefined : "Add an email address first"}>{member?.status === "invited" ? "Resend invite" : "Send invite"}</button>
-        </form>
-      )}
+      <details className="cl-menu">
+        <summary className="monarch-secondary">Actions ▾</summary>
+        <ul className="cl-menu-list">
+          <li><Link href={`/workspace/clients/${id}?tab=messages`}>Send a message</Link></li>
+          <li><Link href={`/workspace/clients/${id}?tab=documents`}>Upload a document</Link></li>
+          <li><Link href={`/workspace/clients/${id}?tab=billing`}>Create an invoice</Link></li>
+          <li><Link href={`/workspace/clients/${id}?tab=notes`}>Add a note</Link></li>
+          <li><Link href={`/workspace/clients/${id}?tab=tasks`}>Add a task</Link></li>
+          <li><Link href="/forms">Send a form</Link></li>
+          {(!member || member.status === "invited" || (member.status === "suspended" && !member.user_id)) && (
+            <li>
+              <form action={invitePortalAction}>
+                <input type="hidden" name="area" value="admin" /><input type="hidden" name="client_id" value={client.id} />
+                <button disabled={!client.email} title={client.email ? undefined : "Add an email address first"}>{member?.status === "invited" ? "Resend portal invite" : "Send portal invite"}</button>
+              </form>
+            </li>
+          )}
+          <li>
+            <form action={archiveClientAction}>
+              <input type="hidden" name="id" value={client.id} />
+              <input type="hidden" name="confirm" value="yes" />
+              {client.archived_at && <input type="hidden" name="restore" value="yes" />}
+              <button>{client.archived_at ? "Restore client" : "Archive client"}</button>
+            </form>
+          </li>
+        </ul>
+      </details>
       <Flash notice={sp.notice} error={sp.error} />
       {duplicates.length > 0 && (
         <div className="cl-dupe" role="note">
@@ -182,14 +203,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             <div><small>Last message</small><b>{lastMessage ? `${CHANNELS[lastMessage.channel]} · ${when(lastMessage.occurred_at)}` : "None"}</b></div>
             <div><small>Portal</small><b>{portalLabel}</b></div>
           </section>
-          <nav className="cl-actions" aria-label="Quick actions">
-            <Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=messages`}>Send message</Link>
-            <Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=documents`}>Upload document</Link>
-            <Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=billing`}>Create invoice</Link>
-            <Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=notes`}>Add note</Link>
-            <Link className="monarch-secondary" href={`/workspace/clients/${id}?tab=tasks`}>Add task</Link>
-            <Link className="monarch-secondary" href="/forms">Send a form</Link>
-          </nav>
           <AssignTo kind="client" id={id} current={client.owner_id ?? null} staff={staff} back={back} />
           <div className="grid2 cl-cols">
             <div className="cl-col">
@@ -338,12 +351,6 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                 )}
               </section>
 
-              <form action={archiveClientAction} className="monarch-inline-form cl-archive">
-                <input type="hidden" name="id" value={client.id} />
-                <input type="hidden" name="confirm" value="yes" />
-                {client.archived_at && <input type="hidden" name="restore" value="yes" />}
-                <button className="monarch-secondary">{client.archived_at ? "Restore client" : "Archive client"}</button>
-              </form>
             </div>
           </div>
         </>
