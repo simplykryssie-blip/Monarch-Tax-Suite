@@ -3,7 +3,7 @@ import { emitEvent, senderFor, type AutomationDeps } from "../automation/engine.
 import { sanitizeError } from "../automation/sanitize.ts";
 import { formatInZone } from "../documents/signing.ts";
 import { firmSubmissionEmail, respondentConfirmationEmail, resumeEmail } from "./emails.ts";
-import { brandFor, linkCustomer, linkFirm, makePdfSafe, openAnswers, type FormDeps, type PublicForm } from "./service.ts";
+import { brandFor, linkCustomer, linkFirm, makePdfSafe, openAnswers, respondentCopyPdf, type FormDeps, type PublicForm } from "./service.ts";
 import { readSettings, respondentKeys, type FormSettings } from "./settings.ts";
 import type { Submission } from "./types.ts";
 
@@ -17,7 +17,7 @@ const allowedTo = (auto: AutomationDeps, to: string) => auto.config.env === "pro
 export const heldBack = (auto: AutomationDeps, to: string) =>
   `Not sent: this ${auto.config.env === "preview" ? "Preview" : auto.config.env} deployment only emails addresses listed in AUTOMATION_TEST_RECIPIENTS, and ${to} isn't one of them. Production emails everyone.`;
 
-async function send(auto: AutomationDeps, senderId: string | null, to: string, mail: { subject: string; html: string; text: string }, key: string): Promise<string | null> {
+async function send(auto: AutomationDeps, senderId: string | null, to: string, mail: { subject: string; html: string; text: string }, key: string, attachments: { filename: string; content: Uint8Array }[] = []): Promise<string | null> {
   if (!allowedTo(auto, to)) return heldBack(auto, to);
   let sender;
   try {
@@ -25,7 +25,7 @@ async function send(auto: AutomationDeps, senderId: string | null, to: string, m
   } catch (e) {
     return sanitizeError(e, 200);
   }
-  const result = await auto.email.send({ ...sender, to, subject: mail.subject, html: mail.html, text: mail.text, idempotencyKey: key });
+  const result = await auto.email.send({ ...sender, to, subject: mail.subject, html: mail.html, text: mail.text, idempotencyKey: key, ...(attachments.length ? { attachments } : {}) });
   return result.ok ? null : sanitizeError(result.message, 200);
 }
 
@@ -81,6 +81,8 @@ export async function notifyFirm(auto: AutomationDeps, deps: FormDeps, sub: Subm
   await deps.repo.addEvent({ form_id: sub.form_id, submission_id: sub.id, type: "notified", actor_id: null, detail: { recipients: recipients.length } });
 }
 
+const MAX_EMAIL_PDF_BYTES = 10 * 1024 * 1024;
+
 async function confirmRespondent(auto: AutomationDeps, deps: FormDeps, sub: Submission) {
   if (sub.confirmation_sent_at || sub.is_test || sub.status === "spam" || !sub.respondent_email) return;
   const form = await deps.repo.getForm(sub.form_id);
@@ -94,11 +96,21 @@ async function confirmRespondent(auto: AutomationDeps, deps: FormDeps, sub: Subm
   };
   const from = await formSender(auto, deps, settings);
   if (from.blocked) return notSent(from.blocked);
+  // The PDF copy of their answers. If it can't be made or is too big for email, the confirmation still goes out without it.
+  let attachments: { filename: string; content: Uint8Array }[] = [];
+  try {
+    const bytes = await respondentCopyPdf(deps, sub.id);
+    if (bytes.byteLength <= MAX_EMAIL_PDF_BYTES) attachments = [{ filename: `${form.name.replace(/[^A-Za-z0-9 _-]/g, "").trim().slice(0, 80) || "Form"} - submission ${sub.number}.pdf`, content: bytes }];
+    else console.error(`forms: PDF copy for ${sub.id} is too large to email (${bytes.byteLength} bytes)`);
+  } catch (e) {
+    console.error(`forms: PDF copy for ${sub.id} could not be made: ${sanitizeError(e, 160)}`);
+  }
   const mail = respondentConfirmationEmail({
     firmName: from.name ?? profile?.display_name ?? "Your tax office", formName: form.name, number: sub.number ?? 0, name: sub.respondent_name,
     submittedAt: formatInZone(new Date(sub.submitted_at ?? sub.created_at), profile?.time_zone ?? "America/New_York"), message: settings.confirmation_email_text,
+    pdfAttached: attachments.length > 0,
   });
-  const problem = await send(auto, from.senderId, sub.respondent_email, mail, `form-confirm:${sub.id}`);
+  const problem = await send(auto, from.senderId, sub.respondent_email, mail, `form-confirm:${sub.id}`, attachments);
   if (!problem) {
     await deps.repo.updateSubmission(sub.id, { confirmation_sent_at: new Date().toISOString() });
     await deps.repo.addEvent({ form_id: sub.form_id, submission_id: sub.id, type: "confirmation_sent", actor_id: null, detail: {} });
@@ -129,7 +141,16 @@ export async function afterSubmit(auto: AutomationDeps, deps: FormDeps, submissi
     await deps.addLead?.({ formName: pf.form.name, name: submission.respondent_name, email: submission.respondent_email, phone: typeof phone === "string" ? phone : null, textConsent: submission.text_consent });
   });
   const fresh = (await deps.repo.getSubmission(submission.id).catch(() => null)) ?? submission;
-  await step("client files", async () => { if (fresh.client_id) await deps.saveToClient?.(fresh, pf.form); });
+  // The PDF goes into the person's Documents. Through a client's personal link that is certain. Otherwise it is filed only
+  // when exactly one client has the respondent's email, and then only staff see it (the email was typed by the respondent).
+  // A respondent who is not a client yet (a lead or a new person) has no Documents to file into; that is left as an event.
+  await step("client files", async () => {
+    if (fresh.client_id) return deps.saveToClient?.(fresh, pf.form);
+    if (fresh.is_test || !fresh.respondent_email || !deps.clientIdsByEmail || !deps.saveToClient) return;
+    const ids = await deps.clientIdsByEmail(fresh.respondent_email);
+    if (ids.length === 1) return deps.saveToClient({ ...fresh, client_id: ids[0] }, pf.form, { share: false });
+    await deps.repo.addEvent({ form_id: fresh.form_id, submission_id: fresh.id, type: "client_file_skipped", actor_id: null, detail: { reason: ids.length ? "more than one client has this email" : "not a client yet" } });
+  });
   await step("bell", async () => { await deps.told?.(formSubmittedNotice(pf.form, fresh)); });
   await step("notify", () => notifyFirm(auto, deps, fresh));
   await step("confirm", () => confirmRespondent(auto, deps, fresh));

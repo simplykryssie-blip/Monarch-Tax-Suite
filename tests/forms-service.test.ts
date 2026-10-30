@@ -294,6 +294,32 @@ describe("the submission PDF", () => {
   });
 });
 
+describe("filing the PDF in the person's Documents", () => {
+  async function filing(clientIds: string[]) {
+    const s = await setup();
+    const saved: { clientId: string | null | undefined; share: boolean | undefined }[] = [];
+    s.deps.clientIdsByEmail = async () => clientIds;
+    s.deps.saveToClient = async (sub, _form, opts) => { saved.push({ clientId: sub.client_id, share: opts?.share }); };
+    const { submission, pf } = await submitEro(s);
+    await afterSubmit(s.auto, s.deps, submission, pf);
+    return { s, saved, submission };
+  }
+
+  test("one client with the respondent's email: the PDF is filed under them, staff-only", async () => {
+    const { saved } = await filing(["c-1"]);
+    assert.deepEqual(saved, [{ clientId: "c-1", share: false }]);
+  });
+
+  test("no client with that email (a lead or a new person) or more than one: nothing is filed, and the reason is recorded", async () => {
+    const none = await filing([]);
+    assert.deepEqual(none.saved, []);
+    assert.deepEqual(none.s.repo.events.filter((e) => e.type === "client_file_skipped").map((e) => e.detail), [{ reason: "not a client yet" }]);
+    const two = await filing(["c-1", "c-2"]);
+    assert.deepEqual(two.saved, []);
+    assert.deepEqual(two.s.repo.events.filter((e) => e.type === "client_file_skipped").map((e) => e.detail), [{ reason: "more than one client has this email" }]);
+  });
+});
+
 describe("after a submission", () => {
   test("links the purchase customer, creates the firm, notifies without answers, confirms, and raises form.submitted once", async () => {
     const s = await setup();
@@ -319,6 +345,12 @@ describe("after a submission", () => {
     assert.ok(!/123456|P01234567|Lake Charles/.test(notice.text + notice.html), "no answers in the notice");
     const confirm = s.email.sent.find((m) => m.to === "anh@example.com")!;
     assert.match(confirm.subject, /We received your submission/);
+    assert.equal(confirm.attachments?.length, 1, "the respondent gets a PDF copy");
+    assert.match(confirm.attachments![0].filename, /^ERO application - submission 1\.pdf$/);
+    assert.match(confirm.text, /PDF copy of your answers is attached/);
+    assert.ok(!/123456|P01234567/.test(confirm.text + confirm.html), "no answers in the email body");
+    const full = await s.deps.stores.pdfs.download(after.pdf_path!);
+    assert.ok(confirm.attachments![0].content.byteLength < full!.byteLength, "the copy leaves out the uploaded ID and EFIN letter");
     assert.ok(after.notified_at && after.confirmation_sent_at);
     const events = s.autoRepo.events.filter((e) => e.event_type === "form.submitted");
     assert.equal(events.length, 1);

@@ -43,7 +43,12 @@ export function formDeps(tenantId: string = currentTenantId()): FormDeps {
     linkKey: createHmac("sha256", master).update("monarch:form-links:v1").digest(),
     profile: () => docs.getProfile().catch(() => null),
     told: (n) => notify(tenantId, n),
-    saveToClient: (submission, form) => saveFormToClient(db, self, submission, form),
+    saveToClient: (submission, form, opts) => saveFormToClient(db, self, submission, form, opts),
+    clientIdsByEmail: async (email) => {
+      const { data, error } = await db.from("clients").select("id").eq("email", email.trim().toLowerCase()).is("archived_at", null).limit(3);
+      if (error) throw new Error(`client lookup failed: ${error.message}`);
+      return ((data ?? []) as { id: string }[]).map((r) => r.id);
+    },
     clientFor: async (clientId) => {
       const { data } = await db.from("clients").select("full_name, email, phone, address").eq("id", clientId).maybeSingle();
       return (data as { full_name: string; email: string | null; phone: string | null; address: string | null } | null) ?? null;

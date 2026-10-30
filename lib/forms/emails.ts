@@ -1,7 +1,8 @@
 import { layout, oneLine, type BuiltEmail } from "../documents/emails.ts";
 
-// Emails about form submissions. None of them contains answers or files: forms collect IDs and banking documents,
-// and email is not a safe place for those. Plain, escaped text only.
+// Emails about form submissions. The firm's notice contains no answers or files: forms collect IDs and banking documents,
+// and email is not a safe place for those. The respondent's confirmation carries a PDF copy of their own answers (sensitive
+// numbers masked to the last four, uploaded files left out). Plain, escaped text only.
 
 export function firmSubmissionEmail(input: { firmName: string; formName: string; number: number; submittedAt: string; respondent: string | null; adminUrl: string }): BuiltEmail {
   const body = layout(
@@ -18,14 +19,16 @@ export function firmSubmissionEmail(input: { firmName: string; formName: string;
   return { ...body, subject: oneLine(`New submission #${input.number}: ${input.formName}${input.respondent ? ` (${input.respondent})` : ""}`) };
 }
 
-export function respondentConfirmationEmail(input: { firmName: string; formName: string; number: number; submittedAt: string; name: string | null; message: string }): BuiltEmail {
+export function respondentConfirmationEmail(input: { firmName: string; formName: string; number: number; submittedAt: string; name: string | null; message: string; pdfAttached?: boolean }): BuiltEmail {
   const body = layout(
     input.firmName,
     [
       input.name ? `Hello ${input.name.split(/\s+/)[0]},` : "Hello,",
       `We received your "${input.formName}" submission (#${input.number}) on ${input.submittedAt}.`,
       ...(input.message.trim() ? [input.message] : []),
-      "For your security, this email doesn't include your answers or files.",
+      input.pdfAttached
+        ? "A PDF copy of your answers is attached. Sensitive numbers, like a Social Security number, show only their last four digits, and files you uploaded are not included."
+        : "For your security, this email doesn't include your answers or files.",
     ],
     null,
     `Sent by ${input.firmName}. If you did not fill in this form, contact them.`,

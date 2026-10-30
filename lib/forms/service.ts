@@ -38,8 +38,10 @@ export type FormDeps = {
   addLead?: (input: { formName: string; name: string | null; email: string; phone?: string | null; textConsent?: boolean }) => Promise<unknown>;
   /** Told when a form is submitted, for the bell. Wired on the server; absent in tests. */
   told?: (n: NewNotification) => Promise<void>;
-  /** Saves a finished form's PDF in the client's files, when it came through a client's personal link. Wired on the server. */
-  saveToClient?: (submission: Submission, form: FormRow) => Promise<void>;
+  /** Saves a finished form's PDF in a client's files: through their personal link, or when the respondent's email matches one client. Wired on the server. */
+  saveToClient?: (submission: Submission, form: FormRow, opts?: { share?: boolean }) => Promise<void>;
+  /** The ids of the active clients with this email address. Wired on the server. */
+  clientIdsByEmail?: (email: string) => Promise<string[]>;
   /** The details of one client, for a personal link. Wired on the server. */
   clientFor?: (clientId: string) => Promise<{ full_name: string; email: string | null; phone: string | null; address: string | null } | null>;
   now?: () => Date;
@@ -625,8 +627,11 @@ export function answerSections(def: FormDefinition, answers: StoredAnswers, uplo
   return out;
 }
 
-/** Makes (or remakes) the submission PDF and files it in the tenant's document storage. */
-export async function makePdf(deps: FormDeps, submissionId: string): Promise<Submission> {
+/**
+ * Draws the submission PDF. `withUploadedFiles` false leaves out the files the respondent uploaded (IDs, bank papers):
+ * that is the copy emailed to them. Sensitive answers are masked to their last four characters either way.
+ */
+async function renderSubmissionPdf(deps: FormDeps, submissionId: string, withUploadedFiles: boolean): Promise<{ sub: Submission; bytes: Uint8Array }> {
   const sub = await deps.repo.getSubmission(submissionId);
   if (!sub || sub.status === "draft" || !sub.number || !sub.submitted_at) throw new ValidationError("Submission not found.");
   const form = await deps.repo.getForm(sub.form_id);
@@ -636,7 +641,7 @@ export async function makePdf(deps: FormDeps, submissionId: string): Promise<Sub
   const uploads = (await deps.repo.listUploads(sub.id)).filter((u) => u.status === "attached");
   const fields = new Map(inputFields(version.definition).map((f) => [f.key, f]));
   const attachments: PdfAttachment[] = [];
-  for (const f of inputFields(version.definition).filter((x) => x.type === "file")) {
+  for (const f of withUploadedFiles ? inputFields(version.definition).filter((x) => x.type === "file") : []) {
     const ids = sub.answers[f.key];
     if (!Array.isArray(ids)) continue;
     for (const id of ids) {
@@ -670,6 +675,12 @@ export async function makePdf(deps: FormDeps, submissionId: string): Promise<Sub
       ? { method: sub.signature.method, typed: sub.signature.typed, png, signedName: sub.signature.signed_name, consentText: sub.consent_text ?? "", consentedAt: new Date(sub.consented_at ?? sub.submitted_at), ipHash: sub.ip_hash, userAgent: sub.user_agent }
       : null,
   });
+  return { sub, bytes };
+}
+
+/** Makes (or remakes) the submission PDF and files it in the tenant's document storage. */
+export async function makePdf(deps: FormDeps, submissionId: string): Promise<Submission> {
+  const { sub, bytes } = await renderSubmissionPdf(deps, submissionId, true);
   const path = pdfPath(deps, sub.id);
   await deps.stores.pdfs.remove([ownPath(deps, path)]).catch(() => undefined);
   await deps.stores.pdfs.upload(ownPath(deps, path), bytes, "application/pdf");
@@ -677,6 +688,11 @@ export async function makePdf(deps: FormDeps, submissionId: string): Promise<Sub
   const done = await deps.repo.updateSubmission(sub.id, { pdf_path: path, pdf_sha256: sha, pdf_generated_at: iso(deps), pdf_error: null, pdf_attempts: sub.pdf_attempts + 1 });
   await event(deps, sub.form_id, sub.id, sub.pdf_sha256 ? "pdf_remade" : "pdf_made", null, { sha256: sha, ...(sub.pdf_sha256 ? { previous_sha256: sub.pdf_sha256 } : {}) });
   return done;
+}
+
+/** The PDF emailed to the person who filled the form in: their answers and signature, without the files they uploaded. Not stored. */
+export async function respondentCopyPdf(deps: FormDeps, submissionId: string): Promise<Uint8Array> {
+  return (await renderSubmissionPdf(deps, submissionId, false)).bytes;
 }
 
 /** makePdf that records a failure instead of throwing; the scheduled job retries. */
