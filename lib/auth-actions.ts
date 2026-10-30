@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { needsTwoStepCode, passwordUpdateMessage, TWO_STEP_NEEDED, TWO_STEP_WRONG } from "./password-reset.ts";
 import { isTokenHash, RESET_LINK_EXPIRED, RESET_LINK_INVALID } from "./auth-links.ts";
 import { clientAddress, hashClient, windowStart } from "./commerce/rate-limit.ts";
 import { rateLimitStore } from "./rate-limit-server";
@@ -80,8 +81,17 @@ export async function updatePassword(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/forgot-password?error=" + encodeURIComponent("Your reset link expired. Request a new one."));
+  // An account with an authenticator app must use it before its password can change: the reset link alone is not enough.
+  const [{ data: factors }, { data: aal }] = await Promise.all([supabase.auth.mfa.listFactors(), supabase.auth.mfa.getAuthenticatorAssuranceLevel()]);
+  const factor = factors?.totp.find((f) => f.status === "verified");
+  if (needsTwoStepCode({ hasVerifiedFactor: !!factor, level: aal?.currentLevel })) {
+    const code = String(formData.get("code") ?? "").replace(/\s/g, "");
+    if (!/^\d{6}$/.test(code)) back(TWO_STEP_NEEDED);
+    const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor!.id, code });
+    if (verifyError) back(TWO_STEP_WRONG);
+  }
   const { error } = await supabase.auth.updateUser({ password });
-  if (error) back(error.message.includes("same") ? "Choose a password you have not used before." : "The password could not be updated. Try a longer or less common password.");
+  if (error) back(passwordUpdateMessage(error));
   redirect("/?notice=" + encodeURIComponent("Your password was updated."));
 }
 
