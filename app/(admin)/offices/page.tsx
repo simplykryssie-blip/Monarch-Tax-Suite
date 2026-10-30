@@ -14,7 +14,7 @@ export default async function OfficeAccessPage({ searchParams }: { searchParams:
   const result = await load(async () => ({ offices: (await deps.repo.listOffices()).filter((o) => !o.archived), members: await deps.repo.listMembers() }));
   return (
     <>
-      <PageTitle title="Office access">Each firm in My Service Bureau is an office. Invite its ERO here; the ERO then invites their preparers and chooses what each one can reach. Everyone signs in at the same address and must turn on two-step sign-in.</PageTitle>
+      <PageTitle title="Office access">Each firm in My Service Bureau is an office. Invite its ERO here; the ERO then invites their preparers and chooses what each one can reach. Everyone signs in at the same address, and two-step sign-in is recommended but their choice.</PageTitle>
       <Flash notice={sp.notice} error={sp.error} />
       {!result.ok ? <SetupRequired message={result.message} /> : (
         <div className="efin-flow">

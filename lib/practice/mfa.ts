@@ -1,6 +1,6 @@
 // Two-step sign-in for an independent PTIN holder's workspace is the holder's choice. The platform provides it and
 // recommends it; it doesn't enforce it. Once a holder turns it on it is enforced at their every sign-in, until they
-// turn it off. (The office area is different: it still requires two-step sign-in.)
+// turn it off. (The office area works the same way.)
 
 export type MfaState = { level: string; hasFactor: boolean };
 

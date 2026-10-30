@@ -16,7 +16,7 @@ import type { OfficeDeps, OfficeMember } from "./service.ts";
 import { SupabaseOfficeRepo } from "./supabase-repo.ts";
 
 // Server wiring for the office area. Each request finds who is signed in, which office they belong to (one logged
-// platform lookup, since the tenant isn't known until then), and requires two-step sign-in before anything is shown.
+// platform lookup, since the tenant isn't known until then), and asks for a two-step code if the person has turned it on.
 // From there everything acts as that tenant, and the pages keep each member to their own office.
 
 export const OFFICE_COOKIE = "monarch_office";
@@ -69,7 +69,8 @@ export async function requireOffice(requestedOffice?: string): Promise<OfficeCon
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/office");
   const mfa = await mfaState();
-  if (mfa.level !== "aal2") redirect("/office/mfa");
+  // Two-step sign-in is the person's choice: a code is asked for only once they have turned it on.
+  if (mfa.hasFactor && mfa.level !== "aal2") redirect("/office/mfa");
 
   if (await isBureauAdmin(user.id)) {
     const tenantId = currentTenantId();

@@ -152,7 +152,7 @@ export function inviteEmail(input: { brand: string; office: string; name: string
       `Accept the invite and set your password here (the link works for ${INVITE_DAYS} days and only once):`,
       input.link,
       "",
-      "You'll also turn on two-step sign-in with an authenticator app. It's required for every account that can reach client data.",
+      "We recommend turning on two-step sign-in with an authenticator app. It keeps client information safe even if a password is stolen, and it's your choice.",
       "",
       "If you weren't expecting this, you can ignore this email.",
     ].join("\n"),
