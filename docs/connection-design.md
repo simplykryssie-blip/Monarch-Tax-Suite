@@ -26,3 +26,14 @@ documents move to the client and live under the client only, never under both. B
 
 ## Build rule
 Every part of this is tenant-wide platform code, with the same tenant separation as the rest of the system (Message 139).
+
+## Review flow (decided, Message 145; not built)
+- A PTIN can send a client to their connected ERO or Service Bureau **for review**. Clicking share sends it **immediately**: the
+  client's information, documents and notes become visible to the reviewer at that moment.
+- It lands in a **dedicated review queue** in the reviewer's workspace: the ERO Dashboard for EROs, the Service Bureau area for
+  bureaus. Each entry shows **which PTIN sent it, the client, when it was sent, and its status**.
+- **Notification is the in-app bell only. No email.**
+- The reviewer can **mark it reviewed**, with a note back to the PTIN. That completes it and it leaves the pending list.
+- Or the reviewer marks it **sent back**, also with a note. It **stays in the review queue**, marked sent back, so the reviewer can
+  see they are still waiting on a change from the PTIN. When the PTIN updates and resends, it returns to waiting.
+- A client sitting in review when a connection ends follows the **finish-what's-started rule** (Message 144, above).
