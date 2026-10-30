@@ -80,7 +80,7 @@ export async function requireOffice(requestedOffice?: string): Promise<OfficeCon
     const offices = (await officeDeps(tenantId).repo.listOffices()).filter((o) => !o.archived);
     const wanted = requestedOffice ?? (await cookies()).get(OFFICE_COOKIE)?.value;
     const office = offices.find((o) => o.id === wanted) ?? offices[0];
-    if (!office) redirect("/efin/list?error=" + encodeURIComponent("Add a firm in My Service Bureau first; each firm is an office."));
+    if (!office) redirect("/efin/new?error=" + encodeURIComponent("Add a firm first; each firm is an office."));
     return { userId: user.id, email: user.email ?? "", tenantId, role: "bureau", bureau: true, member: null, office, offices, permissions: {}, features: featuresFor("bureau", {}) };
   }
 

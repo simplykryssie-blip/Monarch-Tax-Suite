@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/admin";
+import { requireSection } from "@/lib/tier-server";
 import { Badge, EmptyRow, Flash, label, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 import { Donut } from "@/components/admin/charts";
 import { Icon } from "@/components/admin/icons";
@@ -13,7 +13,7 @@ import { Kpi, orgName, Verified } from "./parts";
 const COLOR: Record<StatusBucket, string> = { active: "#111111", expiring: "#4782cb", review: "#194d8d", pending: "#9fbfe5", inactive: "#bdbdbd" };
 
 export default async function EfinDashboard({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
-  await requireAdmin();
+  await requireSection("bureau"); // the downline-wide views are the Service Bureau's; an ERO manages its own firm
   const sp = await searchParams;
   const result = await load(async () => ({ snap: await loadSnapshot(), activity: await loadAudit({ limit: 6 }) }));
   const today = todayIso();

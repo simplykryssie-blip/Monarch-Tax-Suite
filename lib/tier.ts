@@ -22,7 +22,8 @@ export const allows = (tier: Tier, section: Section) => section !== "platform" &
 const ROUTES: [string, Section][] = [
   ["/workspace", "workspace"], ["/documents", "workspace"], ["/reports", "workspace"], ["/contacts", "workspace"],
   ["/ero", "ero"],
-  ["/efin", "bureau"], ["/fees", "bureau"], ["/offices", "bureau"], ["/compliance", "bureau"], ["/bureau", "bureau"],
+  ["/efin/new", "ero"], ["/efin/add", "ero"], ["/efin/org", "ero"], ["/offices", "ero"],
+  ["/efin", "bureau"], ["/fees", "bureau"], ["/compliance", "bureau"], ["/bureau", "bureau"],
   ["/leads", "leads"],
   ["/store", "store"], ["/customers", "store"], ["/orders", "store"], ["/products", "store"], ["/licenses", "store"], ["/installations", "store"], ["/service-orders", "store"],
   ["/automation", "workspace"], ["/forms", "workspace"], ["/calendar", "workspace"], ["/sites", "workspace"], ["/campaigns", "workspace"],

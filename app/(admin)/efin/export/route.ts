@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin";
+import { requireSection } from "@/lib/tier-server";
 import { loadSnapshot, uuid } from "@/lib/efin/service";
 import { maskEfin } from "@/lib/efin/rules.ts";
 
@@ -10,7 +10,7 @@ const cell = (v: unknown) => {
 };
 
 export async function GET(request: Request) {
-  await requireAdmin();
+  await requireSection("bureau"); // the downline-wide views are the Service Bureau's; an ERO manages its own firm
   const raw = new URL(request.url).searchParams.get("ids") ?? "";
   const ids = raw.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 500);
   const snap = await loadSnapshot();

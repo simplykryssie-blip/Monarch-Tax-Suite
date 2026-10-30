@@ -11,8 +11,12 @@ export const brandRepo = (tenantId: string = currentTenantId()) => new SupabaseB
 
 /** The brand for a tenant. Never throws: before the migration, or on any error, it falls back to the firm name. */
 export async function loadBrand(tenantId: string = currentTenantId()): Promise<Brand> {
-  const [row, profile] = await Promise.all([brandRepo(tenantId).get().catch(() => null), documentDeps(tenantId).repo.getProfile().catch(() => null)]);
-  return brandOf(row, profile?.display_name);
+  const [row, profile, tenant] = await Promise.all([
+    brandRepo(tenantId).get().catch(() => null), documentDeps(tenantId).repo.getProfile().catch(() => null),
+    // A workspace that has set no brand and no firm profile yet is still called by its own name.
+    tenantClient(tenantId).from("tenants").select("name").limit(1).maybeSingle().then((r) => (r.data as { name?: string } | null)?.name ?? null, () => null),
+  ]);
+  return brandOf(row, profile?.display_name || tenant);
 }
 
 /**
