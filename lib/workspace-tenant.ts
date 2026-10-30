@@ -8,10 +8,11 @@ export type Membership = { tenant_id: string; role: string };
 export type WorkspaceChoice = { tenantId: string; role: string };
 
 /**
- * Today only Monarch's own people can open the workspace. Turning this on (with TENANT_STRICT in lib/tenants.ts) opens the
- * real workspace to every tenant's owners and admins. Both switch together, in the same change.
+ * Whether every tenant's owners and admins can open the real workspace, not only Monarch's people. Step 2 of the real-workspace
+ * plan turns this on for **Preview only**, so a real PTIN tenant can be walked there; production stays closed until the
+ * remaining batches (the tenant-aware daily features, the store, background jobs) have been walked and Krystal says go.
  */
-export const WORKSPACES_OPEN_TO_ALL_TENANTS = false;
+export const workspacesOpenToAll = (env: Record<string, string | undefined> = process.env): boolean => env.VERCEL_ENV === "preview";
 
 /**
  * The workspace a person opens: one of their memberships whose role opens a workspace (owner or admin; staff don't yet).
@@ -20,7 +21,7 @@ export const WORKSPACES_OPEN_TO_ALL_TENANTS = false;
  * never depends on the order the rows came back in. Null: this person has no workspace to open.
  */
 export function chooseWorkspace(input: { platformAdmin: boolean; memberships: Membership[]; openToAll?: boolean }): WorkspaceChoice | null {
-  const open = input.openToAll ?? WORKSPACES_OPEN_TO_ALL_TENANTS;
+  const open = input.openToAll ?? workspacesOpenToAll();
   const usable = input.memberships.filter((m) => roleOpensWorkspace(m.role) && (open || m.tenant_id === MONARCH_TENANT_ID));
   if (usable.length === 0) return input.platformAdmin ? { tenantId: MONARCH_TENANT_ID, role: "admin" } : null;
   const monarch = usable.find((m) => m.tenant_id === MONARCH_TENANT_ID);
