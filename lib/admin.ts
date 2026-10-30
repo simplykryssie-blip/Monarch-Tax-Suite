@@ -8,7 +8,7 @@ import { platformClient, tenantClient } from "./supabase/service";
 import { currentTenantId, MONARCH_TENANT_ID } from "./tenants.ts";
 import { rememberWorkspaceTenant, WORKSPACE_COOKIE, workspaceMemberships } from "./workspace-session.ts";
 import { chooseWorkspace } from "./workspace-tenant.ts";
-import { adminSeparationOn, isAdminHost, roleOpensWorkspace } from "./admin-host.ts";
+import { adminSeparationOn, isAdminHost } from "./admin-host.ts";
 import { ADMIN_TWO_STEP_PATH, adminTwoStepGate, workspaceNeedsCode } from "./admin-two-step.ts";
 import { decideAdmin } from "./commerce/authz.ts";
 import { SupabaseCommerceRepo, SupabaseImageStore } from "./commerce/supabase-repo.ts";
@@ -61,18 +61,22 @@ export async function isAdminUser(userId: string): Promise<boolean> {
 }
 
 /**
- * Whether this account runs the bureau: an owner or admin of the Monarch workspace, or an account still on the platform
- * administrator list. The office area uses this to let the bureau open any of its offices.
+ * The workspace this account runs as a bureau or ERO, or null. Same choice as the workspace gate (a platform administrator or a
+ * Monarch owner/admin opens Monarch; on Preview an owner or admin of any workspace opens theirs), and the workspace's plan must
+ * include the Office area (ERO or Service Bureau). The office area uses this to let the owner open any of the workspace's offices.
  */
-export async function isBureauAdmin(userId: string): Promise<boolean> {
-  return (await isAdminUser(userId)) || (await isMonarchMember(userId));
+export async function bureauWorkspace(userId: string): Promise<string | null> {
+  const choice = chooseWorkspace({ platformAdmin: await isAdminUser(userId), memberships: await workspaceMemberships(userId), preferred: (await cookies()).get(WORKSPACE_COOKIE)?.value ?? null });
+  if (!choice) return null;
+  if (choice.tenantId === MONARCH_TENANT_ID) return choice.tenantId;
+  const { data } = await tenantClient(choice.tenantId).from("tenants").select("tier").limit(1).maybeSingle();
+  const tier = (data as { tier: string | null } | null)?.tier;
+  return tier === "ero" || tier === "bureau" ? choice.tenantId : null;
 }
 
-/** Whether this account is an owner or admin of the Monarch workspace (a tenant member, not a platform administrator). */
-async function isMonarchMember(userId: string): Promise<boolean> {
-  const { data, error } = await platformClient("workspace_member").from("tenant_members").select("role").eq("tenant_id", MONARCH_TENANT_ID).eq("user_id", userId).maybeSingle();
-  if (error) return false;
-  return roleOpensWorkspace((data as { role?: string } | null)?.role);
+/** Whether this account runs a bureau or ERO workspace (see bureauWorkspace). */
+export async function isBureauAdmin(userId: string): Promise<boolean> {
+  return (await bureauWorkspace(userId)) !== null;
 }
 
 /** Whether this request arrived on the platform admin's own address. False whenever the separation is not switched on. */
