@@ -12,3 +12,6 @@ their plan includes. `/practice` is not the customer-facing product. Scoped, **n
 ## Rules for every part of this work
 - Platform code serves every tenant; Monarch-only pieces are named and chosen by Krystal (Message 139).
 - The tenant comes from the signed-in person's membership, never from anything the browser sends; unresolved means an error, never Monarch.
+
+## Plan mapping
+What each plan sees and does is set by **`tier-capabilities-spec.md`** (approved, Message 154). Nothing in the plan mapping or the public copy goes beyond it.
