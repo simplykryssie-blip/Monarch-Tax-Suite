@@ -15,7 +15,7 @@ export default async function SwitchWorkspacePage() {
   const names = new Map(((data ?? []) as { id: string; name: string; tier: string }[]).map((t) => [t.id, t]));
   return (
     <>
-      <PageTitle title="Choose a workspace">You belong to more than one workspace. The one marked Current is open now.</PageTitle>
+      <PageTitle title="Choose a workspace">{memberships.length > 1 ? "You belong to more than one workspace. The one marked Current is open now." : "You belong to one workspace, and it is open now."}</PageTitle>
       <section className="monarch-panel" style={{ padding: 20 }}>
         {memberships.map((m) => {
           const t = names.get(m.tenant_id);
