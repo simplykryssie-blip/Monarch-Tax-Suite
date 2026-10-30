@@ -54,6 +54,27 @@ describe("which workspace a person opens", () => {
   });
 });
 
+describe("choosing among several workspaces (Preview)", () => {
+  const both = [{ tenant_id: MONARCH_TENANT_ID, role: "admin" }, { tenant_id: A, role: "owner" }];
+  test("a chosen workspace wins when it is one of the person's own usable memberships", () => {
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: both, openToAll: true, preferred: A })!.tenantId, A);
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: both, openToAll: true, preferred: null })!.tenantId, MONARCH_TENANT_ID, "no choice: Monarch first, as before");
+  });
+  test("a workspace that is not theirs is ignored, whatever was asked for", () => {
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: both, openToAll: true, preferred: B })!.tenantId, MONARCH_TENANT_ID);
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: [{ tenant_id: MONARCH_TENANT_ID, role: "admin" }], openToAll: true, preferred: A })!.tenantId, MONARCH_TENANT_ID);
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: [{ tenant_id: A, role: "staff" }, { tenant_id: MONARCH_TENANT_ID, role: "admin" }], openToAll: true, preferred: A })!.tenantId, MONARCH_TENANT_ID, "a role that does not open a workspace cannot be chosen");
+  });
+  test("in production the choice changes nothing", () => {
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: both, openToAll: false, preferred: A })!.tenantId, MONARCH_TENANT_ID);
+  });
+  test("the chooser page and action exist only on Preview and re-check membership on the server", () => {
+    const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+    assert.match(read("app/(admin)/switch-workspace/page.tsx"), /if \(!workspacesOpenToAll\(\)\) notFound\(\)/);
+    assert.match(read("app/(admin)/switch-workspace/actions.ts"), /ok\.tenantId === wanted/);
+  });
+});
+
 describe("the gate and the session", () => {
   const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
   test("the workspace is never opened to other tenants in production", () => {

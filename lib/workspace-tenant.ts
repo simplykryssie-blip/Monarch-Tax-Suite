@@ -18,12 +18,16 @@ export const workspacesOpenToAll = (env: Record<string, string | undefined> = pr
  * The workspace a person opens: one of their memberships whose role opens a workspace (owner or admin; staff don't yet).
  * A platform administrator with no membership of their own keeps opening Monarch's, as before. With more than one usable
  * membership Monarch's comes first (nothing changes for the people who have it), then the lowest tenant id, so the answer
- * never depends on the order the rows came back in. Null: this person has no workspace to open.
+ * never depends on the order the rows came back in. A chosen workspace (`preferred`) wins when it is one of their usable memberships.
+ * Null: this person has no workspace to open.
  */
-export function chooseWorkspace(input: { platformAdmin: boolean; memberships: Membership[]; openToAll?: boolean }): WorkspaceChoice | null {
+export function chooseWorkspace(input: { platformAdmin: boolean; memberships: Membership[]; openToAll?: boolean; preferred?: string | null }): WorkspaceChoice | null {
   const open = input.openToAll ?? workspacesOpenToAll();
   const usable = input.memberships.filter((m) => roleOpensWorkspace(m.role) && (open || m.tenant_id === MONARCH_TENANT_ID));
   if (usable.length === 0) return input.platformAdmin ? { tenantId: MONARCH_TENANT_ID, role: "admin" } : null;
+  // A person who belongs to more than one workspace (Preview only) may have chosen one of them; it counts only if it is one of theirs.
+  const preferred = input.preferred ? usable.find((m) => m.tenant_id === input.preferred) : undefined;
+  if (preferred) return { tenantId: preferred.tenant_id, role: preferred.role };
   const monarch = usable.find((m) => m.tenant_id === MONARCH_TENANT_ID);
   const chosen = monarch ?? [...usable].sort((a, b) => a.tenant_id.localeCompare(b.tenant_id))[0];
   return { tenantId: chosen.tenant_id, role: chosen.role };
