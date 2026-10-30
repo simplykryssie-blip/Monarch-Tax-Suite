@@ -14,3 +14,10 @@ test("every workspace page that reads tenant data proves the workspace first", (
   const bare = walk("app/(admin)").filter((f) => f.endsWith("/page.tsx")).filter((f) => { const s = readFileSync(f, "utf8"); return READS.test(s) && !GATE.test(s); });
   assert.deepEqual(bare, []);
 });
+
+test("the booking index is public: a visitor to a booking address is not sent to the admin sign-in", () => {
+  const proxy = readFileSync("lib/supabase/proxy.ts", "utf8");
+  assert.match(proxy, /PUBLIC_EXACT: string\[\] = \["\/book"\]/);
+  assert.match(proxy, /PUBLIC_EXACT\.includes\(request\.nextUrl\.pathname\)/);
+  assert.match(proxy, /"\/book\/"/, "the booking sub-pages stay public");
+});
