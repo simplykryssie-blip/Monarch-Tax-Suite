@@ -30,11 +30,12 @@ account for taking payments; own verified email domain; two-step sign-in optiona
   send clients for review and receive them back with notes; a client shared down to them becomes their own client; both sides can end a connection;
   a mid-season ending finishes what's started.
 - **Billing:** manage their Verexa subscription.
-- **No Team page.**
+- **No Team page, and no staff members at all.** A PTIN account cannot add anyone to the workspace (Messages 154 and 156).
 
 ## Added at ERO, $199/mo (everything above, plus)
 - **ERO Dashboard:** My EFIN, their firms and EFINs, openable (includes the Message 138 fix for ERO-tier links).
-- **Team and office:** staff seats inside one workspace; roles (ERO / Preparer); office access.
+- **Team: exactly ONE staff seat per workspace (owner + 1)** (Message 156, supersedes the earlier "staff seats; roles ERO / Preparer"). The staff member's title defaults to **"Administrative Assistant"** and the owner can rename it. **The owner chooses what the staff member can do** (permissions). This seat is the office-helper seat inside the workspace; it is distinct from connected PTINs and preparers, who keep their own workspaces under the connection design.
+- **Office access** (wording carried over from the approved list; its meaning alongside the one-seat rule is to be confirmed, see "Message 156 flags" below).
 - **Workload view** across their preparers; assigned returns.
 - **Connections downward:** independent PTINs connect to them and keep their own workspaces; receive shared clients.
 - **Review queue:** in-app bell only; reviewed-with-note completes it; sent-back-with-note stays in the queue until the PTIN resends.
@@ -84,3 +85,17 @@ lists above, in the same change as the plan mapping. Any public website or prici
 - Plan mapping: the store section moves from Service Bureau-only to **ERO and up**; PTIN keeps none of it (menu, `/shop`-side pages, store settings such as Store payments).
 - Step 9 (the tenant-aware store) now serves **ERO and Service Bureau** tenants.
 - Questions for Krystal, not decided here: is the ERO store the same full store as the bureau's (assumed yes), and, with the store at ERO, what remains as Service Bureau's own additions beyond My Service Bureau, downline at scale and bureau reporting (the value rule, Message 153).
+
+## Message 156: staff seat rule (Krystal, 2026-10-30, folded into the current build)
+- **PTIN:** no staff members; cannot add anyone; no Team function.
+- **ERO and Service Bureau:** exactly one staff seat per workspace (owner + 1), default title "Administrative Assistant" (renamable), permissions chosen by the owner.
+- Applies to the Monarch workspace too (it is a Service Bureau-tier tenant).
+
+### Message 156 flags (conflicts with the build as it stands; to settle before working around any of them)
+1. **Staff cannot open a workspace today.** The workspace gate admits owners and admins only (`roleOpensWorkspace`; my step 1 `chooseWorkspace` follows it). A staff seat needs a role-aware gate: owner and admin see everything; staff see only what the owner allowed.
+2. **No permission system exists for the workspace.** Permissions exist only in the Office area (`lib/office/permissions.ts`). The workspace needs its own permission list, applied to menus, pages **and server actions**. Today the actions behind bureau pages are not plan-checked; permission-limited access cannot rely on hiding.
+3. **The Office area allows many preparers per office** (`office_members`, ERO-invited, unlimited) and the Service Bureau's offices are seats inside the bureau's own tenant. That conflicts with one staff seat per workspace, and with the connection design where EROs under a bureau are connected workspaces. Decision needed: retire that model for new tenants (replaced by one seat plus connections), keep it only for Monarch's existing offices, or something else.
+4. **Spec wording that is now stale:** "Workload view across their preparers" and "roles (ERO / Preparer)". With one seat, "preparers" can only mean connected PTINs. Confirm the workload view is across connected PTINs plus the one staff seat.
+5. **The seat limit must be enforced where it can't be bypassed:** a partial unique index (one `staff` row per tenant, pending invites counted) and a plan check (none at PTIN). Both are database changes that need production approval.
+6. **Needs storing:** a title (default "Administrative Assistant") and the permission choices on the seat (new columns on `tenant_members`). Production database change, separate approval.
+7. **Roles:** `tenant_members` allows owner, admin and staff. Customers need owner plus one staff only; I would stop issuing "admin" to customers (test accounts aside).
