@@ -77,7 +77,7 @@ function setup(over: { now?: Date; captcha?: boolean; exists?: boolean } = {}) {
     captcha: async () => over.captcha !== false,
     termsVersion: "draft-test", now: () => now,
   };
-  return { deps, subs, mails, prices, members, stripeState, changes, tick: (ms: number) => { now = new Date(now.getTime() + ms); }, set: (d: Date) => { now = d; } };
+  return { deps, tenants, subs, mails, prices, members, stripeState, changes, tick: (ms: number) => { now = new Date(now.getTime() + ms); }, set: (d: Date) => { now = d; } };
 }
 
 const completed = (id: string, subId = "sub_1", plan = "ptin") => ({
@@ -184,6 +184,22 @@ test("a paid signup makes the workspace once, even if Stripe repeats the event",
   assert.equal(s.subs.size, 1);
   assert.equal(s.mails.length, 1);
   assert.equal((await handleBillingEvent(s.deps, { id: "evt_3", type: "charge.refunded", data: { object: {} } })).status, "ignored");
+});
+
+test("a new workspace gets its own name as its address; a second one with the same name gets a mark, and a retry finds its own", async () => {
+  const s = setup();
+  const first = await handleBillingEvent(s.deps, completed("evt_a", "sub_1"));
+  assert.deepEqual([...s.tenants.keys()], ["pat-tax"]);
+  // Another customer with the same workspace name: never the same address, and never the first one's workspace.
+  const second = await handleBillingEvent(s.deps, completed("evt_b", "sub_2"));
+  assert.notEqual(second.tenantId, first.tenantId);
+  const marked = [...s.tenants.keys()].filter((k) => k !== "pat-tax");
+  assert.equal(marked.length, 1);
+  assert.match(marked[0], /^pat-tax-[0-9a-f]{6}$/);
+  // The second payment repeated (a retry after a crash) finds its own workspace, not a third.
+  const again = await handleBillingEvent(s.deps, completed("evt_c", "sub_2"));
+  assert.equal(again.tenantId, second.tenantId);
+  assert.equal(s.tenants.size, 2);
 });
 
 test("a renewal that fails makes the workspace read-only at once; payment restores; the first payment is ignored", async () => {

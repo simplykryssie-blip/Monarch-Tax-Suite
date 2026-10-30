@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
+import { cleanLabel, labelFromName } from "../sites/domains.ts";
 import { cleanToken, EMAIL, hashToken, INVITE_DAYS, newToken } from "../office/service.ts";
 
 // An independent PTIN holder's own workspace: the platform administrator creates the ptin-tier tenant and invites its
@@ -32,6 +33,18 @@ const fail = (m: string): never => { throw new ValidationError(m); };
 
 export const slugFor = (name: string, rand: () => string = () => randomBytes(3).toString("hex")) =>
   `ptin-${name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "workspace"}-${rand()}`;
+
+/**
+ * The addresses a signed-up workspace may take, best first. The workspace's own name, with no extras, when it is free and
+ * allowed; otherwise the name plus a short mark taken from its payment. The mark is the same on every retry, so a repeated
+ * delivery lands on the same workspace, and two workspaces with the same name can never share an address.
+ */
+export function signupSlugs(name: string, mark: string): string[] {
+  const raw = labelFromName(name);
+  const base = (() => { try { return cleanLabel(raw); } catch { return null; } })();
+  const marked = `${raw.slice(0, 39 - mark.length - 1).replace(/-+$/g, "")}-${mark}`;
+  return base ? [base, marked] : [marked];
+}
 
 function cleanInput(input: { workspaceName: string; email: string; fullName: string }) {
   const email = input.email.trim().toLowerCase();

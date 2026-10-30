@@ -66,3 +66,13 @@ test("the default address is the workspace name under the platform site domain, 
   assert.equal(labelOfDefaultHost("www.sites.verexahq.com", d, new Set(["www"])), null);
   assert.equal(labelOfDefaultHost("example.com", d), null);
 });
+
+import { signupSlugs } from "../lib/practice/service.ts";
+
+test("sign-up addresses: the name itself first, a payment mark only as the fallback, always a valid address", () => {
+  assert.deepEqual(signupSlugs("Smith & Sons Tax, LLC", "ab12cd"), ["smith-sons-tax-llc", "smith-sons-tax-llc-ab12cd"]);
+  // A name the platform keeps, or that is too short to be an address, still gets one.
+  assert.deepEqual(signupSlugs("Admin", "ab12cd"), ["admin-ab12cd"]);
+  assert.match(signupSlugs("A", "ab12cd")[0], /^[a-z0-9-]{3,40}$/);
+  for (const n of ["x".repeat(80), "Ünïcode Tax", "!!!"]) for (const s of signupSlugs(n, "ab12cd")) assert.match(s, /^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])$/);
+});

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import { hashToken, INVITE_DAYS, newToken } from "../office/service.ts";
-import { slugFor, type PracticeRepo } from "../practice/service.ts";
+import { signupSlugs, type PracticeRepo } from "../practice/service.ts";
 import { deleteAfter, lateReminderDue, LATE_DAYS, nextStep, precheckDue, RETENTION_DAYS, type SubStatus, type Subscription } from "./access.ts";
 import { PAUSE_PLAN, PLANS, dollars, isPlanKey, switchablePlans, type PlanKey } from "./plans.ts";
 import { cleanSignup, existingAccountEmail, signSignup, readSignup, verificationEmail, type SignupClaims } from "./signup.ts";
@@ -161,17 +161,22 @@ async function onCheckoutCompleted(deps: BillingDeps, o: Record<string, unknown>
   const email = (str(meta.email) ?? str(obj(o.customer_details).email) ?? "").toLowerCase();
   const name = str(meta.name) ?? email;
   const workspace = str(meta.workspace) ?? name;
-  // The address label comes from the payment, so a repeated delivery finds the workspace it already made.
+  // The address is the workspace's own name when it is free. Otherwise a short mark taken from the payment is added, the same
+  // on every retry, so a repeated delivery finds the workspace it already made and two workspaces never share an address.
   const stamp = createHash("sha256").update(subscriptionId).digest("hex").slice(0, 6);
-  const slug = slugFor(workspace, () => stamp);
-  let tenantId: string;
-  try {
-    tenantId = (await deps.provision.createTenant({ slug, name: workspace, tier: "ptin" })).id;
-  } catch (e) {
-    const found = await deps.provision.tenantBySlug(slug);
-    if (!found) throw e;
-    tenantId = found.id;
+  let tenantId: string | null = null;
+  for (const slug of signupSlugs(workspace, stamp)) {
+    try {
+      tenantId = (await deps.provision.createTenant({ slug, name: workspace, tier: "ptin" })).id;
+      break;
+    } catch (e) {
+      const found = await deps.provision.tenantBySlug(slug);
+      if (!found) throw e;
+      // Taken: it is ours only if this same payment already made it; otherwise it is another workspace's and we move on.
+      if ((await deps.repo.byTenant(found.id))?.stripe_subscription_id === subscriptionId) { tenantId = found.id; break; }
+    }
   }
+  if (!tenantId) throw new Error("A workspace address could not be chosen for this payment.");
   const facts = await deps.stripe.subscriptionFacts(subscriptionId).catch(() => null);
   if (!(await deps.repo.byTenant(tenantId))) {
     await deps.repo.insert({
