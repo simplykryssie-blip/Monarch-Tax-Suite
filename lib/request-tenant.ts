@@ -1,6 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
 import { hostFromHeaders } from "./brands.ts";
+import { tenantForDefaultHost } from "./default-host";
 import { platformClient } from "./supabase/service";
 import { MONARCH_TENANT_ID } from "./tenants.ts";
 
@@ -15,7 +16,9 @@ export async function tenantForHost(host: string | null): Promise<string> {
   if (data?.tenant_id) return data.tenant_id as string;
   // An office's website address also names the office, so booking pages and forms embedded in its site work on it.
   const site = await platformClient("site_host").from("site_domains").select("tenant_id").eq("hostname", bare).maybeSingle();
-  return (site.data?.tenant_id as string | undefined) ?? MONARCH_TENANT_ID;
+  if (site.data?.tenant_id) return site.data.tenant_id as string;
+  // A workspace with no website is still reached on its default address (its name under the platform site domain).
+  return (await tenantForDefaultHost(bare)) ?? MONARCH_TENANT_ID;
 }
 
 export async function requestTenant(): Promise<string> {

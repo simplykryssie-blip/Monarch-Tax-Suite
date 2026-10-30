@@ -2,6 +2,7 @@ import "server-only";
 import { appOrigin } from "./admin";
 import { SupabaseSendersRepo } from "./automation/supabase-senders.ts";
 import { brandsOf } from "./brands.ts";
+import { defaultHostOf } from "./default-host";
 import { pickPublicOrigin, type SiteHost } from "./public-origin-pick.ts";
 import { tenantClient } from "./supabase/service";
 import { MONARCH_TENANT_ID } from "./tenants.ts";
@@ -15,5 +16,5 @@ export async function publicOriginFor(tenantId: string): Promise<string | null> 
   ]);
   const brands = brandsOf(domains);
   const only = brands.length === 1 ? brands[0] : null;
-  return pickPublicOrigin({ production: process.env.VERCEL_ENV === "production", brandLinkHost: only?.linkHost ?? null, siteHosts: hosts, isMonarch: tenantId === MONARCH_TENANT_ID, appOrigin: await appOrigin() });
+  return pickPublicOrigin({ production: process.env.VERCEL_ENV === "production", brandLinkHost: only?.linkHost ?? null, siteHosts: hosts, defaultHost: tenantId === MONARCH_TENANT_ID ? null : await defaultHostOf(tenantId), isMonarch: tenantId === MONARCH_TENANT_ID, appOrigin: await appOrigin() });
 }

@@ -44,3 +44,25 @@ describe("workspace pages carry the resolved tenant, not Monarch's id", () => {
     assert.doesNotMatch(sections, /href="\/book"/);
   });
 });
+
+import { defaultHostFor, labelOfDefaultHost } from "../lib/default-host-pick.ts";
+
+test("a workspace with no website still has an address of its own", () => {
+  const base = { production: false, brandLinkHost: null, siteHosts: [], isMonarch: false, appOrigin: "https://app.example" };
+  assert.equal(pickPublicOrigin({ ...base, defaultHost: "ptin-walk-test.sites.verexahq.com" }), "https://ptin-walk-test.sites.verexahq.com");
+  assert.equal(pickPublicOrigin({ ...base }), null);
+  // A website's address still wins over the default one, and Monarch keeps the app's own address.
+  assert.equal(pickPublicOrigin({ ...base, defaultHost: "x.sites.verexahq.com", siteHosts: [{ hostname: "site.sites.verexahq.com", kind: "subdomain", status: "active" }] }), "https://site.sites.verexahq.com");
+  assert.equal(pickPublicOrigin({ ...base, isMonarch: true, defaultHost: "monarch.sites.verexahq.com" }), "https://app.example");
+});
+
+test("the default address is the workspace name under the platform site domain, both ways", () => {
+  const d = "sites.verexahq.com";
+  assert.equal(defaultHostFor("ptin-walk-test", d), "ptin-walk-test.sites.verexahq.com");
+  assert.equal(defaultHostFor("Smith Tax", d), null);
+  assert.equal(defaultHostFor("admin", d, new Set(["admin"])), null);
+  assert.equal(labelOfDefaultHost("ptin-walk-test.sites.verexahq.com", d), "ptin-walk-test");
+  assert.equal(labelOfDefaultHost("a.b.sites.verexahq.com", d), null);
+  assert.equal(labelOfDefaultHost("www.sites.verexahq.com", d, new Set(["www"])), null);
+  assert.equal(labelOfDefaultHost("example.com", d), null);
+});

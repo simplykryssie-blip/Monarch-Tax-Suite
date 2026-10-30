@@ -6,6 +6,7 @@ import { isTier } from "../tier.ts";
 import { SupabaseSitesRepo } from "./supabase-repo.ts";
 import { cleanRequestHost } from "./host.ts";
 import { MONARCH_TENANT_ID } from "../tenants.ts";
+import { isDefaultHost } from "../default-host";
 
 // Server wiring for websites. The editor acts as the signed-in office (tenant client). The public renderer finds which
 // office a hostname belongs to with one logged platform lookup of site_domains, and from then on acts as that office.
@@ -14,7 +15,8 @@ import { MONARCH_TENANT_ID } from "../tenants.ts";
 async function hostnameTaken(host: string): Promise<boolean> {
   const { data, error } = await platformClient("site_host").from("site_domains").select("id").eq("hostname", host).maybeSingle();
   if (error) throw new Error(error.message);
-  return Boolean(data);
+  // A workspace's default address (its name under the platform site domain) is already someone's.
+  return Boolean(data) || (await isDefaultHost(host));
 }
 
 /** How many domains this account's plan allows. An account with no tier is treated as a Service Bureau, like everywhere else. */
