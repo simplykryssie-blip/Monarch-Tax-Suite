@@ -1,7 +1,8 @@
 // Three purchase tiers, three experiences. A tier decides which parts of the app an account sees:
-//   ptin   : the daily work (Home, Contacts, Returns, Billing, Calendar, Documents), Grow (Websites, Forms, Automation, Campaigns) and Settings
+//   ptin   : the daily work (Home, Contacts, Returns, Billing, Calendar, Documents), Grow (Websites, Forms, Automation, Campaigns, Leads) and Settings
 //   ero    : all of that + the ERO Dashboard (their own EFIN and PTINs)
-//   bureau : everything, including My Service Bureau, the store and Leads
+//   bureau : everything, including My Service Bureau and the store
+// What each plan sees is set by docs/tier-capabilities-spec.md (approved, Message 154); this file follows it.
 // The tier is stored on the tenant (tenants.tier); an account without one is treated as bureau, so nothing disappears.
 
 export const TIERS = ["ptin", "ero", "bureau"] as const;
@@ -12,7 +13,7 @@ export const isTier = (v: unknown): v is Tier => typeof v === "string" && (TIERS
 export type Section = "workspace" | "ero" | "bureau" | "leads" | "store" | "settings" | "platform";
 
 /** The lowest tier that includes each section. The platform Admin area is in no tier. */
-const FROM: Record<Exclude<Section, "platform">, Tier> = { workspace: "ptin", settings: "ptin", ero: "ero", bureau: "bureau", leads: "bureau", store: "bureau" };
+const FROM: Record<Exclude<Section, "platform">, Tier> = { workspace: "ptin", settings: "ptin", ero: "ero", bureau: "bureau", leads: "ptin", store: "bureau" };
 
 const RANK: Record<Tier, number> = { ptin: 0, ero: 1, bureau: 2 };
 export const allows = (tier: Tier, section: Section) => section !== "platform" && RANK[tier] >= RANK[FROM[section]];

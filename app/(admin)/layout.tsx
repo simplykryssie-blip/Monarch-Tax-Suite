@@ -10,11 +10,15 @@ import { currentTier } from "@/lib/tier-server";
 import { loadBrand } from "@/lib/branding/server";
 import { PLATFORM } from "@/lib/platform-brand";
 import type { Metadata } from "next";
-import { currentTenantId, MONARCH_TENANT_ID } from "@/lib/tenants.ts";
+import { MONARCH_TENANT_ID } from "@/lib/tenants.ts";
 
 /** Tab title and icon: the platform's, or the account's own when it white-labels its admin. */
 export async function generateMetadata(): Promise<Metadata> {
-  const brand = await loadBrand(currentTenantId());
+  // Verexa HQ's own pages carry the platform's tab title; a workspace's carry its own brand, from the tenant the gate resolved.
+  const path = (await headers()).get("x-pathname") ?? "";
+  if (path === "/admin" || path.startsWith("/admin/")) return {};
+  const { tenantId } = await requireAdmin();
+  const brand = await loadBrand(tenantId);
   if (!brand.whiteLabelAdmin) return {};
   return {
     title: { default: `${brand.name} | Admin Workspace`, template: `%s | ${brand.name}` },
@@ -35,7 +39,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
   const admin = await requireAdmin();
   const tier = await currentTier();
-  const brand = await loadBrand(currentTenantId());
+  const brand = await loadBrand(admin.tenantId);
   // Alerts about parts of the app this tier doesn't have would lead nowhere.
   const alerts = (await onAdminHost() ? [] : await loadAlerts().catch(() => [])).filter((a) => { const section = sectionOf(a.href.split(/[?#]/)[0]); return !section || allows(tier, section); });
   const bell = await onAdminHost() ? { items: [], unread: 0 } : await loadBell(admin.userId);
@@ -43,6 +47,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const adminHost = await onAdminHost();
   const platformAdmin = adminSeparationOn() ? adminHost && (await isPlatformAdmin()) : await isPlatformAdmin();
   // Inside the Monarch workspace the Admin entry is a link to the platform admin's own address (when that address is set up).
-  const adminLink = !adminHost && currentTenantId() === MONARCH_TENANT_ID && adminHosts().length > 0 ? `https://${adminHosts()[0]}` : null;
+  const adminLink = !adminHost && admin.tenantId === MONARCH_TENANT_ID && adminHosts().length > 0 ? `https://${adminHosts()[0]}` : null;
   return <AdminShell email={admin.email} tier={tier} platformAdmin={platformAdmin} adminOnly={adminHost} adminLink={adminLink} alerts={alerts} bell={bell} brand={brand} today={new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "America/Chicago" }).format(new Date())}>{children}</AdminShell>;
 }

@@ -10,16 +10,16 @@ const labels = (entries: Entry[]): string[] => entries.flatMap((e) => (isBranch(
 const hrefs = (entries: Entry[]): string[] => entries.flatMap((e) => [...(e.href ? [e.href] : []), ...(isBranch(e) ? hrefs(e.items) : [])]);
 
 describe("tiers", () => {
-  test("every plan has the daily work, Calendar and Grow; ERO adds the ERO group; Service Bureau adds My Service Bureau, My Store and Leads", () => {
-    const daily = ["Every day", "Home", "Contacts", "Work", "Billing", "Calendar", "Documents", "Grow", "Websites", "Forms", "Automation", "Pipelines", "Campaigns", "Settings"];
+  test("every plan has the daily work, Calendar, Grow and Leads (approved spec); ERO adds the ERO group; Service Bureau adds My Service Bureau and My Store", () => {
+    const daily = ["Every day", "Home", "Contacts", "Work", "Billing", "Calendar", "Documents", "Grow", "Websites", "Forms", "Automation", "Pipelines", "Campaigns", "Leads", "Settings"];
     const ptin = labels(navFor("ptin"));
     for (const shown of daily) assert.ok(ptin.includes(shown), `${shown} should show for PTIN`);
-    for (const hidden of ["ERO Dashboard", "My Service Bureau", "My Store", "Leads"]) assert.ok(!ptin.includes(hidden), `${hidden} should be hidden from PTIN`);
+    for (const hidden of ["ERO Dashboard", "My Service Bureau", "My Store", "Team"]) assert.ok(!ptin.includes(hidden), `${hidden} should be hidden from PTIN`);
     const ero = labels(navFor("ero"));
     for (const shown of [...daily, "ERO Dashboard"]) assert.ok(ero.includes(shown), `${shown} should show for ERO`);
-    for (const hidden of ["My Service Bureau", "My Store", "Leads"]) assert.ok(!ero.includes(hidden), `${hidden} should be hidden from ERO`);
+    for (const hidden of ["My Service Bureau", "My Store"]) assert.ok(!ero.includes(hidden), `${hidden} should be hidden from ERO`);
     const bureau = labels(navFor("bureau"));
-    for (const shown of [...daily, "ERO Dashboard", "My Service Bureau", "My Store", "Leads"]) assert.ok(bureau.includes(shown), `${shown} should show for Service Bureau`);
+    for (const shown of [...daily, "ERO Dashboard", "My Service Bureau", "My Store"]) assert.ok(bureau.includes(shown), `${shown} should show for Service Bureau`);
   });
 
   test("the Team page is not part of the PTIN plan: hidden from its menu and blocked by address, still there for ERO and above", () => {

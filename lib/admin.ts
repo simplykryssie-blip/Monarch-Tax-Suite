@@ -82,12 +82,14 @@ export async function onAdminHost(): Promise<boolean> {
   return isAdminHost(h.get("x-forwarded-host") ?? h.get("host"));
 }
 
-export type AdminSession = { userId: string; email: string };
+/** The signed-in person and the workspace (tenant) they are acting in, worked out from their own memberships. */
+export type AdminSession = { userId: string; email: string; tenantId: string };
 
 /**
- * Verifies the signed-in user may use the Monarch workspace: an owner or admin of the Monarch tenant, or (until the
- * cutover to separate platform-admin sign-ins) an account still on the platform-admin list. Use in every workspace page
- * and server action. The platform's own pages use requirePlatformAdmin below.
+ * Verifies the signed-in user may use a workspace: an owner or admin of the tenant they belong to (on Preview, any tenant;
+ * in production, Monarch only for now), or (until the cutover to separate platform-admin sign-ins) an account still on the
+ * platform-admin list, which opens Monarch's. The session carries the tenant, and currentTenantId() answers it for the rest of
+ * the request. Use in every workspace page and server action. The platform's own pages use requirePlatformAdmin below.
  */
 export const requireAdmin = cache(async (): Promise<AdminSession> => {
   const supabase = await createClient();
@@ -96,7 +98,8 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
   const decision = await decideAdmin(user, async (id) => {
     const result = await lookupAdmin(id);
     setupMissing = result === "setup_missing";
-    return result === "yes" || (result === "no" && (await isMonarchMember(id)));
+    if (result === "yes") return true;
+    return result === "no" && chooseWorkspace({ platformAdmin: false, memberships: await workspaceMemberships(id) }) !== null;
   });
   if (!decision.allowed) {
     if (decision.reason === "unauthenticated") redirect("/login");
@@ -121,12 +124,13 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
   }
   // Which workspace this person opens, from their own memberships; remembered for this request so currentTenantId() answers it.
   const workspace = chooseWorkspace({ platformAdmin: (await lookupAdmin(decision.userId)) === "yes", memberships: await workspaceMemberships(decision.userId) });
-  if (workspace) rememberWorkspaceTenant(workspace.tenantId);
+  const tenantId = workspace?.tenantId ?? MONARCH_TENANT_ID;
+  rememberWorkspaceTenant(tenantId);
   // Two-step sign-in, once the person has turned it on in Settings → Security: a code is asked for at each sign-in.
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   // On the platform admin's own address only /admin and the sign-in pages exist, so the code screen there is the admin one.
   if (workspaceNeedsCode(aal)) redirect((await onAdminHost()) ? ADMIN_TWO_STEP_PATH : "/two-step");
-  return { userId: decision.userId, email: user?.email ?? "" };
+  return { userId: decision.userId, email: user?.email ?? "", tenantId };
 });
 
 /**
