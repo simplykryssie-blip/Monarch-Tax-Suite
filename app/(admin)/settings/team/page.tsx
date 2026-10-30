@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin";
+import { requireSection } from "@/lib/tier-server";
 import { load, PageTitle, SetupRequired } from "@/components/admin/ui";
 import { listStaff } from "@/lib/staff/server";
 
@@ -6,7 +6,8 @@ const ROLE_LABELS: Record<string, string> = { owner: "Owner", admin: "Admin", st
 
 /** The people who work in this workspace. Anyone listed here can be chosen as "Assigned to" on a client. */
 export default async function TeamPage() {
-  await requireAdmin();
+  // Team is its own page and is not part of the PTIN plan (see lib/tier.ts).
+  await requireSection("ero");
   const result = await load(() => listStaff());
   return (
     <>

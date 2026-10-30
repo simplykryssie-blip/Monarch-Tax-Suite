@@ -22,6 +22,15 @@ describe("tiers", () => {
     for (const shown of [...daily, "ERO Dashboard", "My Service Bureau", "My Store", "Leads"]) assert.ok(bureau.includes(shown), `${shown} should show for Service Bureau`);
   });
 
+  test("the Team page is not part of the PTIN plan: hidden from its menu and blocked by address, still there for ERO and above", () => {
+    assert.ok(!hrefs(navFor("ptin")).includes("/settings/team"));
+    assert.ok(hrefs(navFor("ero")).includes("/settings/team"));
+    assert.ok(hrefs(navFor("bureau")).includes("/settings/team"));
+    assert.equal(sectionOf("/settings/team"), "ero");
+    assert.equal(allows("ptin", sectionOf("/settings/team")!), false);
+    assert.equal(sectionOf("/settings/firm"), "settings", "the rest of Settings stays on every plan");
+  });
+
   test("every tier keeps Settings, without the bureau-only pages", () => {
     assert.ok(hrefs(navFor("ptin")).includes("/settings/firm"));
     assert.ok(!hrefs(navFor("ero")).includes("/bureau/settings"));

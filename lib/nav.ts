@@ -78,7 +78,7 @@ export const NAV: Entry[] = [
     items: [
       { label: "Firm profile", icon: "office", href: "/settings/firm" },
       { label: "Branding", icon: "office", href: "/settings/branding" },
-      { label: "Team", icon: "office", href: "/settings/team" },
+      { label: "Team", icon: "office", href: "/settings/team", section: "ero" },
       { label: "Security", icon: "shield", href: "/settings/security" },
       { label: "Email and text", icon: "bell", href: "/settings/email" },
       { label: "Booking and hours", icon: "calendar", href: "/settings/calendar" },
