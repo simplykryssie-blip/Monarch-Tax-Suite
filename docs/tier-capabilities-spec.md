@@ -35,8 +35,8 @@ account for taking payments; own verified email domain; two-step sign-in optiona
 ## Added at ERO, $199/mo (everything above, plus)
 - **ERO Dashboard:** My EFIN, their firms and EFINs, openable (includes the Message 138 fix for ERO-tier links).
 - **Team: exactly ONE staff seat per workspace (owner + 1)** (Message 156, supersedes the earlier "staff seats; roles ERO / Preparer"). The staff member's title defaults to **"Administrative Assistant"** and the owner can rename it. **The owner chooses what the staff member can do** (permissions). This seat is the office-helper seat inside the workspace; it is distinct from connected PTINs and preparers, who keep their own workspaces under the connection design.
-- **Office access** (wording carried over from the approved list; its meaning alongside the one-seat rule is to be confirmed, see "Message 156 flags" below).
-- **Workload view** across their preparers; assigned returns.
+- **Office access:** the Office area inside the workspace, as it works today (Message 158). Preparers invited into an office are the existing Office mechanism (roles ERO / Preparer, permissions chosen per person); they are **not** staff seats and do **not** count against the one staff seat. Offices and connections coexist: offices inside a workspace are for a firm's own preparers, connections are for independent PTINs who keep their own workspaces.
+- **Workload view** across **connected PTINs, office preparers, and the one staff seat** (Message 158); assigned returns.
 - **Connections downward:** independent PTINs connect to them and keep their own workspaces; receive shared clients.
 - **Review queue:** in-app bell only; reviewed-with-note completes it; sent-back-with-note stays in the queue until the PTIN resends.
 - **A dedicated Documents section** for connected PTINs' client documents.
@@ -99,3 +99,20 @@ lists above, in the same change as the plan mapping. Any public website or prici
 5. **The seat limit must be enforced where it can't be bypassed:** a partial unique index (one `staff` row per tenant, pending invites counted) and a plan check (none at PTIN). Both are database changes that need production approval.
 6. **Needs storing:** a title (default "Administrative Assistant") and the permission choices on the seat (new columns on `tenant_members`). Production database change, separate approval.
 7. **Roles:** `tenant_members` allows owner, admin and staff. Customers need owner plus one staff only; I would stop issuing "admin" to customers (test accounts aside).
+
+## Messages 158 and 154-155 answers, recorded (Krystal, 2026-10-30)
+1. **The Office model is KEPT for everyone:** all ERO and Service Bureau tenants, not Monarch-only.
+   - The one staff seat ("Administrative Assistant") stays its own rule, separate from office preparers.
+   - The connection design stands unchanged; both models coexist.
+   - Workload view covers connected PTINs, office preparers and the one staff seat.
+   - "Office access" keeps its current meaning: the Office area inside the workspace.
+   - PTIN is unchanged: no staff, no Team function, no Office area.
+   - **Resolves flags 3 and 4 above.** Flag 3 (retire the Office model) is closed the other way: it stays.
+2. **Service Bureau scope is complete as written.** It adds exactly: the My Service Bureau suite, downline at scale, the full store (included from the ERO tier up), and bureau reporting. Nothing further to invent.
+3. **The public homepage is mine to update.** `verexahq.com` is served by this same app; today it lands visitors on the login page instead of a public homepage (launch Step 3). The homepage and pricing copy are drawn only from this spec, at the step where the build reaches them.
+4. **STILL OPEN, do not decide:** whether the ERO store is the same full store as the bureau's.
+
+### Build notes that follow from item 1
+- The Office area becomes **tenant-aware** (today its bureau branch and the Message 138 bureau-admin check resolve to Monarch). It joins the real-workspace plan as its own batch.
+- Office access (`/offices`) is Service Bureau-only in code today; the spec gives it to ERO as well, so the plan mapping moves it down.
+- Two permission systems then coexist on purpose: the Office area's per-person feature permissions (office preparers) and the workspace permission list for the one staff seat (flag 2).
