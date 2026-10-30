@@ -1,5 +1,5 @@
 import { notify } from "../notifications/server";
-import { saveFormToClient } from "./client-files.ts";
+import { saveFormToClient, saveFormToLead } from "./client-files.ts";
 import { SupabaseCampaignRepo } from "../campaigns/supabase-repo.ts";
 import { captureFormLead } from "../leads/service.ts";
 import { leadsDeps } from "../leads/server";
@@ -44,6 +44,8 @@ export function formDeps(tenantId: string = currentTenantId()): FormDeps {
     profile: () => docs.getProfile().catch(() => null),
     told: (n) => notify(tenantId, n),
     saveToClient: (submission, form, opts) => saveFormToClient(db, self, submission, form, opts),
+    saveToLead: (submission, form, leadId) => saveFormToLead(db, self, submission, form, leadId),
+    leadIdByEmail: async (email) => (await leadsDeps(tenantId).repo.findByEmail(email.trim().toLowerCase()))?.id ?? null,
     clientIdsByEmail: async (email) => {
       const { data, error } = await db.from("clients").select("id").eq("email", email.trim().toLowerCase()).is("archived_at", null).limit(3);
       if (error) throw new Error(`client lookup failed: ${error.message}`);

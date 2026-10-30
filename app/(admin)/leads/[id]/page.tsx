@@ -5,6 +5,7 @@ import { UUID } from "@/lib/leads/service.ts";
 import { leadsDeps } from "@/lib/leads/server";
 import { convertLeadAction } from "../../contacts/convert-actions";
 import { deleteLeadAction, markContactedAction, updateLeadAction } from "../actions";
+import { LeadDocs } from "../lead-docs";
 import { LeadFields } from "../fields";
 import { dateValue, day, leadsLoad, LeadsSetupRequired, sourceLabel, StatusBadge } from "../parts";
 
@@ -40,6 +41,8 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
         <a className="monarch-secondary" href={`mailto:${lead.email}`}>Email</a>
         {lead.status !== "converted" && <form action={convertLeadAction}><input type="hidden" name="id" value={lead.id} /><input type="hidden" name="back" value={`/leads/${lead.id}`} /><button className="monarch-primary" title="Makes a client record from this lead">Convert to client</button></form>}
       </section>
+
+      <LeadDocs leadId={lead.id} back={`/leads/${lead.id}`} />
 
       <form action={updateLeadAction} className="monarch-panel monarch-form" style={{ padding: 20 }}>
         <h2 className="is-wide">Details</h2>

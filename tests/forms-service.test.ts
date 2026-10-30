@@ -310,10 +310,34 @@ describe("filing the PDF in the person's Documents", () => {
     assert.deepEqual(saved, [{ clientId: "c-1", share: false }]);
   });
 
-  test("no client with that email (a lead or a new person) or more than one: nothing is filed, and the reason is recorded", async () => {
+  test("no client but a lead with that email: the PDF goes to the lead's documents", async () => {
+    const s = await setup();
+    const filed: string[] = [];
+    s.deps.clientIdsByEmail = async () => [];
+    s.deps.leadIdByEmail = async () => "lead-1";
+    s.deps.saveToLead = async (_sub, _form, leadId) => { filed.push(leadId); };
+    const { submission, pf } = await submitEro(s);
+    await afterSubmit(s.auto, s.deps, submission, pf);
+    assert.deepEqual(filed, ["lead-1"]);
+    assert.deepEqual(s.repo.events.filter((e) => e.type === "client_file_skipped"), []);
+  });
+
+  test("a client wins over a lead with the same email: the PDF is filed under the client only", async () => {
+    const s = await setup();
+    const toClient: string[] = []; const toLead: string[] = [];
+    s.deps.clientIdsByEmail = async () => ["c-1"];
+    s.deps.leadIdByEmail = async () => "lead-1";
+    s.deps.saveToClient = async (sub) => { toClient.push(sub.client_id ?? ""); };
+    s.deps.saveToLead = async (_sub, _form, leadId) => { toLead.push(leadId); };
+    const { submission, pf } = await submitEro(s);
+    await afterSubmit(s.auto, s.deps, submission, pf);
+    assert.deepEqual([toClient, toLead], [["c-1"], []]);
+  });
+
+  test("no client and no lead with that email, or more than one client: nothing is filed, and the reason is recorded", async () => {
     const none = await filing([]);
     assert.deepEqual(none.saved, []);
-    assert.deepEqual(none.s.repo.events.filter((e) => e.type === "client_file_skipped").map((e) => e.detail), [{ reason: "not a client yet" }]);
+    assert.deepEqual(none.s.repo.events.filter((e) => e.type === "client_file_skipped").map((e) => e.detail), [{ reason: "not a client or lead yet" }]);
     const two = await filing(["c-1", "c-2"]);
     assert.deepEqual(two.saved, []);
     assert.deepEqual(two.s.repo.events.filter((e) => e.type === "client_file_skipped").map((e) => e.detail), [{ reason: "more than one client has this email" }]);
@@ -348,6 +372,7 @@ describe("after a submission", () => {
     assert.equal(confirm.attachments?.length, 1, "the respondent gets a PDF copy");
     assert.match(confirm.attachments![0].filename, /^ERO application - submission 1\.pdf$/);
     assert.match(confirm.text, /PDF copy of your answers is attached/);
+    assert.equal(s.email.sent.filter((m) => m.to === "anh@example.com").length, 1, "one email to the respondent: the thank-you carries the PDF");
     assert.ok(!/123456|P01234567/.test(confirm.text + confirm.html), "no answers in the email body");
     const full = await s.deps.stores.pdfs.download(after.pdf_path!);
     assert.ok(confirm.attachments![0].content.byteLength < full!.byteLength, "the copy leaves out the uploaded ID and EFIN letter");

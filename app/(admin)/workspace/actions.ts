@@ -13,6 +13,7 @@ import { emitInvoicePaid, emitReturnStage, emitTagChanges, emitWorkStage } from 
 import { yesNo } from "@/lib/workspace/rules.ts";
 import { addBusiness, addClient, addWork, moveWork, addDependent, linkSpouse, mergeClients, removeBusiness, removeDependent, removeSpouse, saveClientTags, saveClientWithChanges, saveSpouse, saveBillingSettings, editInvoice, archiveInvoice, setPaymentPlan, removePaymentPlan, addFeeProduct, saveFeeProduct, archiveFeeProduct, unlinkSpouse, type Actor, addNote, addReturn, addTask, applyImport, createInvoice, discardImport, logMessage, moveReturn, recordPayment, saveReview, sendInvoice, setTaskDone, startImport, voidInvoice, type RowEdit } from "@/lib/workspace/service.ts";
 import { docDeps, sendDeps, workspaceRepo } from "@/lib/workspace/server";
+import { moveLeadDocs } from "@/lib/leads/docs-server";
 import { documentDeps } from "@/lib/documents/server";
 import { moveFile } from "@/lib/documents/folders.ts";
 import { clientScope, driveBack } from "@/lib/workspace/doc-folders.ts";
@@ -467,6 +468,7 @@ export async function mergeLeadIntoClientAction(form: FormData) {
     const detail = [`Merged from lead ${lead.full_name}`, lead.email, lead.phone, lead.source ? `Source: ${lead.source}` : "", lead.notes ?? ""].filter(Boolean).join("\n");
     await repo.insertNote({ client_id: clientId, body: detail.slice(0, 4000), created_by: adminId });
     await leads.updateLead(leadId, { status: "converted" });
+    await moveLeadDocs(leadId, clientId);
     return { notice: `Lead ${lead.full_name} merged into this client and marked converted.` };
   });
 }

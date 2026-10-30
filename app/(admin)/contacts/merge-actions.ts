@@ -7,6 +7,7 @@ import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { parseContactKey } from "@/lib/contacts/combine.ts";
 import { addDismissal, removeDismissal } from "@/lib/contacts/dismissals-server";
+import { moveLeadDocs } from "@/lib/leads/docs-server";
 import { leadsDeps } from "@/lib/leads/server";
 import { mergeLeads } from "@/lib/leads/service.ts";
 import { copySsn, hasStoredSsn } from "@/lib/ssn/service.ts";
@@ -48,6 +49,7 @@ export async function mergeContactsAction(form: FormData) {
       const detail = [`Merged from lead ${lead.full_name}`, lead.email, lead.phone, lead.source ? `Source: ${lead.source}` : "", lead.notes ?? ""].filter(Boolean).join("\n");
       await repo.insertNote({ client_id: keep, body: detail.slice(0, 4000), created_by: admin.userId });
       await leads.updateLead(drop, { status: "converted" });
+      await moveLeadDocs(drop, keep);
       target = to(back, "notice", `Lead ${lead.full_name} merged into the client and marked converted.`);
     } else throw new ValidationError("That pair can't be merged here.");
   } catch (e) {

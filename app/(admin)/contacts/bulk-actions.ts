@@ -9,6 +9,7 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { BULK_MAX, changeTags, planBulk, type BulkOp } from "@/lib/contacts/bulk.ts";
 import { parseContactKey } from "@/lib/contacts/combine.ts";
 import { convertLeadToClient } from "@/lib/contacts/convert.ts";
+import { moveLeadDocs } from "@/lib/leads/docs-server";
 import { loadContacts } from "@/lib/contacts/server";
 import { leadsDeps } from "@/lib/leads/server";
 import { assignLead, setLeadStatus } from "@/lib/leads/service.ts";
@@ -64,7 +65,7 @@ export async function bulkContactsAction(form: FormData) {
     } else if (op === "convert") {
       let last: { id: string } | null = null;
       for (const c of targets) {
-        const r = await convertLeadToClient(repo, leads, c.refs.leadId!, actor);
+        const r = await convertLeadToClient(repo, leads, c.refs.leadId!, actor, moveLeadDocs);
         last = r.client;
         done++;
       }

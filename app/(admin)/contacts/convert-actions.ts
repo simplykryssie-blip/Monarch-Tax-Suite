@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/admin";
 import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { convertLeadToClient } from "@/lib/contacts/convert.ts";
+import { moveLeadDocs } from "@/lib/leads/docs-server";
 import { leadsDeps } from "@/lib/leads/server";
 import { UUID } from "@/lib/leads/service.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
@@ -22,7 +23,7 @@ export async function convertLeadAction(form: FormData) {
   let target: string;
   try {
     if (!UUID.test(id)) throw new ValidationError("That lead wasn't found.");
-    const { client, alreadyClient } = await convertLeadToClient(workspaceRepo(), leadsDeps(), id, { id: admin.userId, email: admin.email });
+    const { client, alreadyClient } = await convertLeadToClient(workspaceRepo(), leadsDeps(), id, { id: admin.userId, email: admin.email }, moveLeadDocs);
     target = to(`/workspace/clients/${client.id}`, "notice", alreadyClient ? `${client.full_name} was already a client. The lead is marked converted.` : `${client.full_name} is now a client. The lead is marked converted.`);
   } catch (e) {
     unstable_rethrow(e);

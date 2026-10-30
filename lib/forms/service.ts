@@ -40,6 +40,10 @@ export type FormDeps = {
   told?: (n: NewNotification) => Promise<void>;
   /** Saves a finished form's PDF in a client's files: through their personal link, or when the respondent's email matches one client. Wired on the server. */
   saveToClient?: (submission: Submission, form: FormRow, opts?: { share?: boolean }) => Promise<void>;
+  /** Saves a finished form's PDF in a lead's documents (the respondent is a lead and not a client). Wired on the server. */
+  saveToLead?: (submission: Submission, form: FormRow, leadId: string) => Promise<void>;
+  /** The id of the lead with this email address, if any. Wired on the server. */
+  leadIdByEmail?: (email: string) => Promise<string | null>;
   /** The ids of the active clients with this email address. Wired on the server. */
   clientIdsByEmail?: (email: string) => Promise<string[]>;
   /** The details of one client, for a personal link. Wired on the server. */

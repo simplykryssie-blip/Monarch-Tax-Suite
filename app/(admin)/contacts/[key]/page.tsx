@@ -11,6 +11,7 @@ import { SETTABLE_STATUSES } from "@/lib/leads/service.ts";
 import { LEAD_STATUSES, sourceName } from "@/lib/leads/types.ts";
 import { recordCounts } from "@/lib/contacts/record-counts.ts";
 import { workspaceRepo } from "@/lib/workspace/server";
+import { LeadDocs } from "../../leads/lead-docs";
 import { TagInput } from "../../leads/tag-input";
 import { leadsDeps } from "@/lib/leads/server";
 import { convertLeadAction } from "../convert-actions";
@@ -118,6 +119,7 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
         </div>
       </section>
 
+      {leadFull && !contact.refs.clientId && <div style={{ marginBottom: 14 }}><LeadDocs leadId={leadFull.id} back={`/contacts/${key}`} /></div>}
       {leadFull && relationships && <div style={{ marginBottom: 14 }}><RelationshipsCard me={{ kind: "lead", id: leadFull.id }} items={relationships} back={`/contacts/${key}`} /></div>}
       {leadFull && methods && <div style={{ marginBottom: 14 }}><ContactMethods owner={{ kind: "lead", id: leadFull.id }} primary={methods.primary} extras={methods.extras} back={`/contacts/${key}`} /></div>}
       {leadFull && (

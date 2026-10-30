@@ -27,3 +27,25 @@ export async function saveFormToClient(db: SupabaseClient, deps: FormDeps, submi
     throw new Error(`client file failed: ${error.message}`);
   }
 }
+
+/**
+ * A finished form's PDF copied into a lead's documents (the respondent is a lead, not yet a client). Done once per submission.
+ * When the lead becomes a client the documents move to the client and no longer live here (lib/leads/docs.ts).
+ */
+export async function saveFormToLead(db: SupabaseClient, deps: FormDeps, submission: Submission, form: FormRow, leadId: string): Promise<void> {
+  if (!submission.pdf_path || submission.is_test) return;
+  const { data: existing, error: lookup } = await db.from("lead_docs").select("id").eq("form_submission_id", submission.id).maybeSingle();
+  if (lookup) throw new Error(`lead file lookup failed: ${lookup.message}`);
+  if (existing) return;
+  const bytes = await deps.stores.pdfs.download(submission.pdf_path);
+  if (!bytes) throw new Error("The form's PDF is not there yet.");
+  const path = `${deps.tenantId}/leads/${leadId}/${randomUUID()}.pdf`;
+  await deps.stores.pdfs.upload(path, bytes, "application/pdf");
+  const { error } = await db.from("lead_docs").insert({
+    lead_id: leadId, title: `${form.name} (completed)`.slice(0, 200), file_path: path, file_type: "pdf", size_bytes: bytes.byteLength, status: "stored", form_submission_id: submission.id,
+  });
+  if (error) {
+    await deps.stores.pdfs.remove([path]).catch(() => undefined);
+    throw new Error(`lead file failed: ${error.message}`);
+  }
+}

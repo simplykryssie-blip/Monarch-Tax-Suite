@@ -6,9 +6,10 @@ import type { Client, WorkspaceRepo } from "../workspace/types.ts";
 /**
  * Turns a lead into a client: the client is made with the lead's name, email, phone, tags and teammate, the lead's other
  * details are written into a note, and the lead is marked Converted. The lead and the client share an email address, so
- * Contacts shows them as one person. A person who is already a client is not made twice.
+ * Contacts shows them as one person. A person who is already a client is not made twice. The lead's documents move to the client
+ * (`moveDocs`), so afterwards they are under the client only.
  */
-export async function convertLeadToClient(repo: WorkspaceRepo, leads: LeadsDeps, leadId: string, actor: { id: string; email?: string | null }): Promise<{ client: Client; alreadyClient: boolean }> {
+export async function convertLeadToClient(repo: WorkspaceRepo, leads: LeadsDeps, leadId: string, actor: { id: string; email?: string | null }, moveDocs?: (leadId: string, clientId: string) => Promise<unknown>): Promise<{ client: Client; alreadyClient: boolean }> {
   const lead = await leads.repo.getLead(leadId);
   if (!lead) throw new ValidationError("That lead wasn't found.");
   const email = lead.email.trim().toLowerCase();
@@ -16,6 +17,7 @@ export async function convertLeadToClient(repo: WorkspaceRepo, leads: LeadsDeps,
   if (existing) {
     if (existing.archived_at) throw new ValidationError(`${existing.full_name} is already a client, but archived. Restore them from their client page instead.`);
     if (lead.status !== "converted") await leads.repo.updateLead(lead.id, { status: "converted", converted_at: new Date().toISOString() });
+    await moveDocs?.(lead.id, existing.id);
     return { client: existing, alreadyClient: true };
   }
   const client = await addClient(repo, { full_name: lead.full_name, email: lead.email, phone: lead.phone ?? undefined }, actor.id, null, actor);
@@ -27,5 +29,7 @@ export async function convertLeadToClient(repo: WorkspaceRepo, leads: LeadsDeps,
   await repo.insertNote({ client_id: client.id, body: detail.slice(0, 4000), created_by: actor.id });
   await leads.repo.updateLead(lead.id, { status: "converted", converted_at: new Date().toISOString() });
   await leads.repo.addEvent({ lead_id: lead.id, action: "converted_to_client", detail: { client_id: client.id }, actor_id: actor.id });
+  // The lead's documents move to the client and live there only.
+  await moveDocs?.(lead.id, client.id);
   return { client: saved, alreadyClient: false };
 }

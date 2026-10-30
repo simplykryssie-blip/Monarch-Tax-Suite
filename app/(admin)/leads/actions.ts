@@ -8,6 +8,8 @@ import { ValidationError } from "@/lib/commerce/validation.ts";
 import { emitTagChanges } from "@/lib/automation/emit";
 import { campaignRepo } from "@/lib/campaigns/server";
 import { createLead, deleteLead, importCsv, markContacted, updateLead, UUID, type ImportResult } from "@/lib/leads/service.ts";
+import { deleteLeadDocs } from "@/lib/leads/docs.ts";
+import { leadDocsDeps } from "@/lib/leads/docs-server";
 import { leadsDeps } from "@/lib/leads/server";
 
 // Leads actions. Every action re-checks administrator access and acts only on the current tenant's rows (the
@@ -84,6 +86,7 @@ export async function markContactedAction(form: FormData) {
 export async function deleteLeadAction(form: FormData) {
   await act("/leads", async () => {
     if (str(form, "confirm") !== "yes") throw new ValidationError("Tick the box to confirm, then delete.");
+    await deleteLeadDocs(leadDocsDeps(), idOf(form));
     await deleteLead(leadsDeps(), idOf(form));
     return { to: "/leads", notice: "Lead deleted." };
   });

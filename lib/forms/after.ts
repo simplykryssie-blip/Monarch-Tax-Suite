@@ -143,13 +143,20 @@ export async function afterSubmit(auto: AutomationDeps, deps: FormDeps, submissi
   const fresh = (await deps.repo.getSubmission(submission.id).catch(() => null)) ?? submission;
   // The PDF goes into the person's Documents. Through a client's personal link that is certain. Otherwise it is filed only
   // when exactly one client has the respondent's email, and then only staff see it (the email was typed by the respondent).
-  // A respondent who is not a client yet (a lead or a new person) has no Documents to file into; that is left as an event.
+  // A respondent who is a lead has the PDF filed in the lead's documents; someone who is neither is left as an event.
   await step("client files", async () => {
     if (fresh.client_id) return deps.saveToClient?.(fresh, pf.form);
-    if (fresh.is_test || !fresh.respondent_email || !deps.clientIdsByEmail || !deps.saveToClient) return;
+    if (fresh.is_test || !fresh.respondent_email || !deps.clientIdsByEmail) return;
     const ids = await deps.clientIdsByEmail(fresh.respondent_email);
-    if (ids.length === 1) return deps.saveToClient({ ...fresh, client_id: ids[0] }, pf.form, { share: false });
-    await deps.repo.addEvent({ form_id: fresh.form_id, submission_id: fresh.id, type: "client_file_skipped", actor_id: null, detail: { reason: ids.length ? "more than one client has this email" : "not a client yet" } });
+    if (ids.length === 1) return deps.saveToClient?.({ ...fresh, client_id: ids[0] }, pf.form, { share: false });
+    if (ids.length > 1) {
+      await deps.repo.addEvent({ form_id: fresh.form_id, submission_id: fresh.id, type: "client_file_skipped", actor_id: null, detail: { reason: "more than one client has this email" } });
+      return;
+    }
+    // Not a client: if they are a lead, the PDF goes to the lead's documents (and moves to the client if they become one).
+    const leadId = deps.saveToLead && deps.leadIdByEmail ? await deps.leadIdByEmail(fresh.respondent_email) : null;
+    if (leadId) return deps.saveToLead!(fresh, pf.form, leadId);
+    await deps.repo.addEvent({ form_id: fresh.form_id, submission_id: fresh.id, type: "client_file_skipped", actor_id: null, detail: { reason: "not a client or lead yet" } });
   });
   await step("bell", async () => { await deps.told?.(formSubmittedNotice(pf.form, fresh)); });
   await step("notify", () => notifyFirm(auto, deps, fresh));
