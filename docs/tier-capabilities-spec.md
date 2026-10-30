@@ -9,7 +9,8 @@ and front end match everything."* So:
 - Luna verifies tier by tier against this list. A test compares the built mapping to it (to be added with the plan mapping).
 - Gate nothing by habit. Each tier stands on its own value, and the next tier's additions are worth the extra $100 a month.
 
-**OPEN, do not decide:** whether **My Store** is included at the **PTIN** and **ERO** tiers. (Service Bureau is decided: full store.)
+**CLOSED (Message 155, Krystal, 2026-10-30):** *"I don't think a PTIN should have a store. Let's just keep it at the ERO and the service bureau level."*
+So **PTIN has no store**: no store menus, storefront or store pages in a PTIN-tier workspace. **My Store is at the ERO and Service Bureau tiers.**
 
 ## At every level
 The real workspace (same shell as Monarch's); own branding on their website and booking pages; own data, fully separated; own Stripe
@@ -40,11 +41,12 @@ account for taking payments; own verified email domain; two-step sign-in optiona
 - **A dedicated Documents section** for connected PTINs' client documents.
 - **Share clients down** to a connected PTIN (becomes the PTIN's own client).
 - **Software and banking assignment** for a connected PTIN (software and bank fees, locked on the PTIN's side).
+- **My Store:** products, orders, licences, downloads, from their own shop address, paid to their own Stripe. (Decided Message 155. The Service Bureau tier keeps it, as the full store, per Message 151.)
 
 ## Added at Service Bureau, $299/mo (everything above, plus)
 - **My Service Bureau:** Dashboard, EROs & EFINs across the whole downline, Renewals, Fees & statements, Office access, Compliance.
 - **Downline at scale:** many connected EROs and PTINs; review queues from all of them; dedicated documents for the downline's shared clients.
-- **Full My Store:** products, orders, licences, downloads, from their own shop address, paid to their own Stripe.
+- **Full My Store** (included from the ERO tier up; see above).
 - **Bureau reporting:** production and fees across every office in the downline.
 
 ---
@@ -71,9 +73,14 @@ account for taking payments; own verified email domain; two-step sign-in optiona
 | Workload view; assigned returns | Assigned returns exist in `/practice`; a workload view is not built |
 | Software and banking assignment for a connected PTIN | A Service Bureau settings page exists; the connected-PTIN version is not built |
 | My Service Bureau pages | Built for Monarch; downline at scale and bureau reporting not built |
-| Full My Store from their own shop address, own Stripe | Built for Monarch only; step 9 of the plan |
+| My Store (ERO and Service Bureau; none at PTIN) from their own shop address, own Stripe | Built for Monarch only; step 9 of the plan. In code the store is Service Bureau-only today, so the plan mapping moves it down to ERO |
 
 ## Copy that must change to match (public website / pricing / signup)
 `lib/billing/plans.ts` summaries today: ERO says "Adds the ERO tools: preparers, e-file and compliance." That promises **e-file** (the platform
 does not transmit returns) and **compliance** (Service Bureau only in this spec). Replace all three summaries with wording drawn only from the
 lists above, in the same change as the plan mapping. Any public website or pricing page outside this repository needs the same check.
+
+## Message 155 effects on the build
+- Plan mapping: the store section moves from Service Bureau-only to **ERO and up**; PTIN keeps none of it (menu, `/shop`-side pages, store settings such as Store payments).
+- Step 9 (the tenant-aware store) now serves **ERO and Service Bureau** tenants.
+- Questions for Krystal, not decided here: is the ERO store the same full store as the bureau's (assumed yes), and, with the store at ERO, what remains as Service Bureau's own additions beyond My Service Bureau, downline at scale and bureau reporting (the value rule, Message 153).
