@@ -3,7 +3,7 @@ import { renderEmailHtml, type EmailAction } from "./email-html.ts";
 import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { appOrigin, isAdminUser } from "../admin";
+import { appOrigin, isBureauAdmin } from "../admin";
 import { senderFor } from "../automation/engine.ts";
 import { sanitizeError } from "../automation/sanitize.ts";
 import { automationDeps } from "../automation/server";
@@ -71,7 +71,7 @@ export async function requireOffice(requestedOffice?: string): Promise<OfficeCon
   const mfa = await mfaState();
   if (mfa.level !== "aal2") redirect("/office/mfa");
 
-  if (await isAdminUser(user.id)) {
+  if (await isBureauAdmin(user.id)) {
     const tenantId = currentTenantId();
     const offices = (await officeDeps(tenantId).repo.listOffices()).filter((o) => !o.archived);
     const wanted = requestedOffice ?? (await cookies()).get(OFFICE_COOKIE)?.value;

@@ -60,6 +60,14 @@ export async function isAdminUser(userId: string): Promise<boolean> {
   return (await lookupAdmin(userId)) === "yes";
 }
 
+/**
+ * Whether this account runs the bureau: an owner or admin of the Monarch workspace, or an account still on the platform
+ * administrator list. The office area uses this to let the bureau open any of its offices.
+ */
+export async function isBureauAdmin(userId: string): Promise<boolean> {
+  return (await isAdminUser(userId)) || (await isMonarchMember(userId));
+}
+
 /** Whether this account is an owner or admin of the Monarch workspace (a tenant member, not a platform administrator). */
 async function isMonarchMember(userId: string): Promise<boolean> {
   const { data, error } = await platformClient("workspace_member").from("tenant_members").select("role").eq("tenant_id", MONARCH_TENANT_ID).eq("user_id", userId).maybeSingle();
