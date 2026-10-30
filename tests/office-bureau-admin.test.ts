@@ -9,12 +9,12 @@ describe("office area bureau access", () => {
   const admin = readFileSync(new URL("../lib/admin.ts", import.meta.url), "utf8");
 
   test("requireOffice lets a workspace owner or admin open any office", () => {
-    assert.match(office, /if \(await isBureauAdmin\(user\.id\)\)/);
+    assert.match(office, /const bureauTenant = await bureauWorkspace\(user\.id\);\s+if \(bureauTenant\)/);
     assert.doesNotMatch(office, /if \(await isAdminUser\(user\.id\)\)/);
   });
 
   test("a bureau administrator is a platform administrator or a workspace owner/admin, and nobody else", () => {
-    assert.match(admin, /export async function isBureauAdmin[\s\S]{0,200}isAdminUser\(userId\)\) \|\| \(await isMonarchMember\(userId\)/);
-    assert.match(admin, /return roleOpensWorkspace\(/, "staff-role members still do not open the workspace");
+    assert.match(admin, /export async function bureauWorkspace[\s\S]{0,400}chooseWorkspace\(\{ platformAdmin: await isAdminUser\(userId\)/);
+    assert.match(admin, /tier === "ero" \|\| tier === "bureau"/, "only an ERO or Service Bureau workspace has an office area");
   });
 });

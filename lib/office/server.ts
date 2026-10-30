@@ -3,14 +3,14 @@ import { renderEmailHtml, type EmailAction } from "./email-html.ts";
 import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { appOrigin, isBureauAdmin } from "../admin";
+import { appOrigin, bureauWorkspace } from "../admin";
 import { senderFor } from "../automation/engine.ts";
 import { sanitizeError } from "../automation/sanitize.ts";
 import { automationDeps } from "../automation/server";
 import { heldBack } from "../forms/after.ts";
 import { createClient } from "../supabase/server";
 import { platformClient, tenantClient } from "../supabase/service";
-import { currentTenantId } from "../tenants.ts";
+import { rememberWorkspaceTenant } from "../workspace-session.ts";
 import { featuresFor, type Permissions, type Role } from "./permissions.ts";
 import type { OfficeDeps, OfficeMember } from "./service.ts";
 import { SupabaseOfficeRepo } from "./supabase-repo.ts";
@@ -72,8 +72,11 @@ export async function requireOffice(requestedOffice?: string): Promise<OfficeCon
   // Two-step sign-in is the person's choice: a code is asked for only once they have turned it on.
   if (mfa.hasFactor && mfa.level !== "aal2") redirect("/office/mfa");
 
-  if (await isBureauAdmin(user.id)) {
-    const tenantId = currentTenantId();
+  const bureauTenant = await bureauWorkspace(user.id);
+  if (bureauTenant) {
+    // The office area does not pass the workspace gate, so it tells the rest of the request which workspace this is.
+    rememberWorkspaceTenant(bureauTenant);
+    const tenantId = bureauTenant;
     const offices = (await officeDeps(tenantId).repo.listOffices()).filter((o) => !o.archived);
     const wanted = requestedOffice ?? (await cookies()).get(OFFICE_COOKIE)?.value;
     const office = offices.find((o) => o.id === wanted) ?? offices[0];
