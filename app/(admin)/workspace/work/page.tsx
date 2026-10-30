@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin";
 import Link from "next/link";
 import { Flash, PageTitle } from "@/components/admin/ui";
 import { Modal } from "@/components/ui/modal";
@@ -13,6 +14,8 @@ import { WorkspaceSetup } from "../setup";
 
 /** Work: a board for each pipeline the office runs. Tax returns is the default; any other pipeline shows its own work. */
 export default async function MyWork({ searchParams }: { searchParams: Promise<{ year?: string; pipeline?: string; q?: string; add?: string; notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const sp = await searchParams;
   const result = await workspaceLoad(async () => {
     const repo = workspaceRepo();

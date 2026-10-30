@@ -1,4 +1,4 @@
-import { appOrigin, imageStore, tenantDb } from "@/lib/admin";
+import { appOrigin, imageStore, tenantDb, requireAdmin } from "@/lib/admin";
 import { EmptyRow, Flash, load, PageTitle, when } from "@/components/admin/ui";
 import { SubmitOnce } from "@/components/admin/submit-once";
 import { emailMarkdown } from "@/lib/images/service.ts";
@@ -9,6 +9,8 @@ const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} M
 
 /** Pictures for emails, kept in this account's own private storage. */
 export default async function ImagesPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const { notice, error } = await searchParams;
   const result = await load(() => new SupabaseImagesRepo(tenantDb()).list(200));
   const store = imageStore(await appOrigin());
