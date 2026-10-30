@@ -62,7 +62,7 @@ export default async function WispDonePage({ searchParams }: { searchParams: Pro
             {!plan ? (
               <div className="delivery-status">
                 <h3>We couldn&apos;t find your WISP in this browser</h3>
-                <p>If you paid, your WISP is on its way to your email, with a download link. Open it from the browser you paid in, or use the link in the email.</p>
+                <p>If you paid, a notice with your license key is on its way to your email. Enter the key on the downloads page to open your plan, or come back to this page from the browser you paid in.</p>
               </div>
             ) : waiting ? (
               <div className="delivery-status">
@@ -78,14 +78,14 @@ export default async function WispDonePage({ searchParams }: { searchParams: Pro
                 {error && <p className="alert" role="alert">{error}</p>}
                 {resent === "sent" && <p className="notice">Sent again to {plan.email}.</p>}
                 {emailFailed ? (
-                  <p className="alert" role="alert">We couldn&apos;t email it to {plan.email} just now. Download it below, and try sending it again.</p>
+                  <p className="alert" role="alert">We couldn&apos;t email your license key to {plan.email} just now. Download your plan below, and try the email again.</p>
                 ) : plan.emailed_at ? (
-                  <p>A copy was emailed to <strong style={{ color: "#FCF6BA" }}>{plan.email}</strong>, with a link that works for a year.</p>
+                  <p>We emailed <strong style={{ color: "#FCF6BA" }}>{plan.email}</strong> a notice with your license key. Your plan is filed on that license: open <a href="/downloads">the downloads page</a> and enter the key to view or download it again any time.</p>
                 ) : null}
                 {problem && !plan.pdf_path && <p className="alert" role="alert">Your WISP is taking longer than usual to prepare. Refresh this page in a minute.</p>}
                 <div className="delivery-actions">
                   {plan.pdf_path && <a className="btn btn-gold btn-lg" href="/wisp/download">Download My WISP (PDF)</a>}
-                  <form action={resendWispAction}><button className="btn btn-outline">{emailFailed ? "Try emailing it again" : "Email it to me again"}</button></form>
+                  <form action={resendWispAction}><button className="btn btn-outline">{emailFailed ? "Try the email again" : "Email my license notice again"}</button></form>
                 </div>
                 <p className="done-disclaimer">{DONE_DISCLAIMER}</p>
                 <p className="fine-print">{DISCLAIMER}</p>

@@ -1,5 +1,5 @@
 import "server-only";
-import { appOrigin } from "../admin";
+import { appOrigin, commerceRepo } from "../admin";
 import { senderFor } from "../automation/engine.ts";
 import { sanitizeError } from "../automation/sanitize.ts";
 import { automationDeps } from "../automation/server";
@@ -9,6 +9,7 @@ import { CrmSecrets } from "../crm/crypto.ts";
 import { SupabaseDocumentStore, SupabaseDocumentsRepo } from "../documents/supabase-repo.ts";
 import { heldBack } from "../forms/after.ts";
 import { tenantClient } from "../supabase/service";
+import { issueLicenseKey } from "../commerce/fulfillment.ts";
 import { convertFromPurchase } from "../leads/service.ts";
 import { leadsDeps } from "../leads/server";
 import type { WispDeps } from "./service.ts";
@@ -39,6 +40,13 @@ export function wispDeps(tenantId: string): WispDeps {
     onPaid: (plan) => plan.customer_id && plan.order_id
       ? convertFromPurchase(leadsDeps(tenantId), { auditId: plan.audit_id, email: plan.email, planId: plan.id, customerId: plan.customer_id, orderId: plan.order_id })
       : Promise.resolve(null),
+    issueKey: async (plan) => {
+      if (!plan.order_id) return null;
+      const commerce = commerceRepo();
+      const license = await commerce.findLicenseByOrder(plan.order_id);
+      if (!license || license.status === "revoked" || license.status === "suspended") return null;
+      return (await issueLicenseKey(commerce, license.id, null)).key;
+    },
     send: async (mail) => {
       const auto = automationDeps(tenantId);
       if (auto.config.env !== "production" && !auto.config.testRecipients.map((r) => r.toLowerCase()).includes(mail.to.toLowerCase())) return heldBack(auto, mail.to);

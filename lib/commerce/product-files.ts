@@ -119,7 +119,7 @@ export async function removeFile(deps: { files: ProductFilesRepo; store: FileSto
 const NOT_FOUND = "That license key was not found, or it does not include downloads.";
 
 /** The license behind a key, when it may download this product's files: active license, paid order. */
-async function entitledLicense(commerce: CommerceRepo, rawKey: string): Promise<{ license: License; product: Product }> {
+export async function entitledLicense(commerce: CommerceRepo, rawKey: string): Promise<{ license: License; product: Product }> {
   const key = rawKey.trim().toUpperCase();
   if (!isWellFormedLicenseKey(key)) throw new ValidationError("Enter your license key (MTS-XXXXX-XXXXX-XXXXX-XXXXX).");
   const license = await commerce.findLicenseByKeyHash(hashLicenseKey(key));

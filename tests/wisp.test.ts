@@ -5,7 +5,8 @@ import { PDFDocument } from "pdf-lib";
 import { MemoryRepo, published, seedCheckout } from "./memory-repo.ts";
 import { MemoryDocumentStore } from "./documents-memory.ts";
 import { createProduct } from "../lib/commerce/catalog.ts";
-import { handleStripeEvent, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
+import { entitledLicense } from "../lib/commerce/product-files.ts";
+import { handleStripeEvent, issueLicenseKey, setLicenseStatus, type FulfillmentDeps } from "../lib/commerce/fulfillment.ts";
 import { publishBlockers } from "../lib/commerce/validation.ts";
 import type { NewProduct } from "../lib/commerce/types.ts";
 import { CrmSecrets } from "../lib/crm/crypto.ts";
@@ -13,7 +14,7 @@ import { captureAuditLead, convertFromPurchase } from "../lib/leads/service.ts";
 import { MemoryLeads } from "./leads-memory.ts";
 import { calculateScore, checkAnswers, checkAudit, comparisonFee, feeComparison, numberDraft, numberInput, QUESTIONS, scoreVerdict } from "../lib/wisp/content.ts";
 import {
-  downloadUrl, fulfilPaidPlan, LINK_DAYS, planForBuyer, planForLink, recordAudit, resendForBuyer, startPlan,
+  downloadUrl, fulfilPaidPlan, hashToken, LINK_DAYS, planForBuyer, planForLink, recordAudit, resendForBuyer, startPlan,
   type WispAudit, type WispDelivery, type WispDeps, type WispMailer, type WispPlan, type WispRepo,
 } from "../lib/wisp/service.ts";
 
@@ -37,6 +38,7 @@ class MemoryWisp implements WispRepo {
   async getPlan(id: string) { return this.c(this.plans.find((p) => p.id === id) ?? null); }
   async findPlanBySession(s: string) { return this.c(this.plans.find((p) => p.stripe_session_id === s) ?? null); }
   async findPlanByLinkHash(h: string) { return this.c(this.plans.find((p) => p.link_token_hash === h) ?? null); }
+  async findPlanByOrder(o: string) { return this.c(this.plans.find((p) => p.order_id === o) ?? null); }
   async updatePlan(id: string, patch: Partial<WispPlan>) { const p = this.plans.find((x) => x.id === id)!; Object.assign(p, this.c(patch)); return this.c(p); }
   async listPlans(opts: { customerId?: string; limit: number }) { return this.c(this.plans.filter((p) => !opts.customerId || p.customer_id === opts.customerId)); }
   async listAudits() { return this.c(this.audits); }
@@ -57,11 +59,13 @@ function setup(opts: { mail?: WispMailer } = {}) {
   const repo = new MemoryWisp();
   const store = new MemoryDocumentStore();
   let clock = new Date("2026-10-13T15:00:00Z");
+  let issued = 0;
   repo.clock = () => clock;
   const sent: Parameters<WispMailer>[0][] = [];
   const deps: WispDeps = {
     tenantId: TENANT, repo, store, secrets: new CrmSecrets(randomBytes(32)),
     send: opts.mail ?? (async (m) => { sent.push(m); return null; }),
+    issueKey: async () => { issued += 1; return `MTS-TEST${issued}-AAAAA-BBBBB-CCCCC`; },
     brand: async () => ({ name: "Monarch Tax Suite", origin: "https://app.monarchtaxsuite.test" }),
     now: () => clock,
   };
@@ -148,7 +152,7 @@ describe("after payment", () => {
     return { plan: after!, accessToken };
   }
 
-  test("the PDF is made, filed in the tenant's folder, and emailed with the file attached and a year-long link", async () => {
+  test("the PDF is made and filed in the tenant's folder; the email is a notice with the license key, nothing attached", async () => {
     const s = setup();
     const { plan } = await paid(s);
     assert.equal(plan.status, "generated");
@@ -159,8 +163,9 @@ describe("after payment", () => {
     assert.match(pdf.getTitle() ?? "", /Ánh Tax Services LLC/);
     assert.equal(s.sent.length, 1);
     assert.equal(s.sent[0].to, "anh@example.com");
-    assert.equal(s.sent[0].attachments[0].filename, "WISP-Anh-Tax-Services-LLC.pdf");
-    assert.match(s.sent[0].text, /https:\/\/app\.monarchtaxsuite\.test\/wisp\/d\/[A-Za-z0-9_-]{43}/);
+    assert.deepEqual(s.sent[0].attachments, [], "the plan lives on the license, not in the email");
+    assert.match(s.sent[0].text, /https:\/\/app\.monarchtaxsuite\.test\/downloads/);
+    assert.match(s.sent[0].text, /Your license key: MTS-TEST1-AAAAA-BBBBB-CCCCC/);
     assert.match(s.sent[0].text, /not attorney-approved/);
     assert.ok(plan.emailed_at);
     assert.deepEqual(s.repo.deliveries.map((d) => [d.kind, d.status, d.actor]), [["email", "sent", "system"]]);
@@ -216,18 +221,44 @@ describe("after payment", () => {
     assert.equal(s.repo.deliveries[0].status, "held_back");
   });
 
-  test("downloads: the emailed link works for a year, each download is logged, and nothing outside the tenant's folder", async () => {
+  test("downloads: the plan is found from its order, each download is logged, and nothing outside the tenant's folder", async () => {
     const s = setup();
     const { plan } = await paid(s);
-    const token = /\/wisp\/d\/([A-Za-z0-9_-]+)/.exec(s.sent[0].text)![1];
-    const byLink = (await planForLink(s.deps, token))!;
-    assert.equal(byLink.id, plan.id);
-    assert.match(await downloadUrl(s.deps, byLink, "buyer"), /signed\//);
+    const byOrder = (await s.deps.repo.findPlanByOrder("order-1"))!;
+    assert.equal(byOrder.id, plan.id);
+    assert.equal(await s.deps.repo.findPlanByOrder("order-nope"), null);
+    assert.match(await downloadUrl(s.deps, byOrder, "buyer"), /signed\//);
     assert.equal(s.repo.deliveries[0].status, "downloaded");
-    s.advance((LINK_DAYS + 1) * 86_400);
-    assert.equal(await planForLink(s.deps, token), null, "expired after a year");
     await s.repo.updatePlan(plan.id, { pdf_path: `00000000-0000-4000-8000-0000000000b2/wisp/${plan.id}.pdf` });
     await assert.rejects(downloadUrl(s.deps, (await s.repo.getPlan(plan.id))!, "buyer"), /Refused/);
+  });
+
+  test("old emailed links keep working for a year (earlier buyers)", async () => {
+    const s = setup();
+    const { plan } = await paid(s);
+    const token = "t".repeat(43);
+    await s.repo.updatePlan(plan.id, { link_token_hash: hashToken(token), link_expires_at: new Date(Date.parse("2026-10-13T15:00:00Z") + LINK_DAYS * 86_400_000).toISOString() });
+    assert.equal((await planForLink(s.deps, token))!.id, plan.id);
+    s.advance((LINK_DAYS + 1) * 86_400);
+    assert.equal(await planForLink(s.deps, token), null, "expired after a year");
+  });
+
+  test("the key is issued with the first notice only; a failed first email issues a new key, a resend keeps the buyer's key", async () => {
+    let fail = true;
+    const s = setup({ mail: async () => (fail ? "The email provider is busy or unavailable (503)." : null) });
+    const sent: string[] = [];
+    const { plan } = await paid(s);
+    assert.equal(plan.emailed_at, null);
+    fail = false;
+    s.deps.send = async (m) => { sent.push(m.text); return null; };
+    s.advance(121);
+    const after = await resendForBuyer(s.deps, plan);
+    assert.ok(after.emailed_at);
+    assert.match(sent[0], /Your license key: MTS-TEST2-/, "a failed first email rotates to a fresh key the next attempt");
+    s.advance(121);
+    await resendForBuyer(s.deps, after);
+    assert.doesNotMatch(sent[1], /Your license key: MTS-/, "a later notice never shows (or changes) the key");
+    assert.match(sent[1], /first WISP email/);
   });
 
   test("unpaid plans can't be downloaded or sent", async () => {
@@ -256,14 +287,35 @@ describe("the WISP product in the store", () => {
     const product = await published(commerce, await createProduct(commerce, WISP));
     await seedCheckout(commerce, "cs_wisp_9", product.id, 2500);
     const calls: unknown[] = [];
-    const fulfil: FulfillmentDeps = { repo: commerce, listCheckoutProductIds: async () => ["prod_TESTWISP"], wisp: async (i) => { calls.push(i); } };
+    const emitted: string[] = [];
+    const fulfil: FulfillmentDeps = { repo: commerce, listCheckoutProductIds: async () => ["prod_TESTWISP"], wisp: async (i) => { calls.push(i); }, emit: async (e) => { emitted.push(e.type); } };
     const evt = { id: "evt_w", type: "checkout.session.completed", data: { object: { id: "cs_wisp_9", payment_status: "paid", payment_intent: "pi_w", amount_total: 2500, currency: "usd", customer_details: { email: "anh@example.com", name: "Anh" }, metadata: { wisp_plan_id: "plan-9" } } } };
     await handleStripeEvent(fulfil, evt);
     await handleStripeEvent(fulfil, evt);
     assert.equal(calls.length, 1);
     assert.deepEqual(Object.keys(calls[0] as object).sort(), ["customerId", "orderId", "planId", "sessionId"]);
     assert.equal((calls[0] as { planId: string }).planId, "plan-9");
-    assert.equal(commerce.licenses.length, 0, "no license for a WISP");
+    assert.equal(commerce.licenses.length, 1, "the buyer gets a license, once, that the plan is filed on");
+    assert.equal(commerce.licenses[0].status, "pending", "its key is issued with the first notice email");
+    assert.equal(commerce.installations.length, 0, "a WISP has nothing to install");
+    assert.deepEqual(emitted, [], "the calculator's onboarding automation does not run for a WISP");
+  });
+});
+
+describe("the plan on the buyer's license", () => {
+  test("the key issued after payment opens the plan for that order; a revoked or refunded license no longer does", async () => {
+    const commerce = new MemoryRepo();
+    const product = await published(commerce, await createProduct(commerce, { slug: "wisp-assisted-build", name: "WISP Assisted Build", description: "x", product_type: "digital_download", access_type: "instant_download", installation_options: [], price_cents: 2500, currency: "usd", stripe_product_id: "prod_TESTWISP", stripe_price_id: null, status: "draft", metadata: { delivery: "wisp_generator" } }));
+    await seedCheckout(commerce, "cs_wisp_8", product.id, 2500);
+    const fulfil: FulfillmentDeps = { repo: commerce, listCheckoutProductIds: async () => ["prod_TESTWISP"] };
+    await handleStripeEvent(fulfil, { id: "evt_k", type: "checkout.session.completed", data: { object: { id: "cs_wisp_8", payment_status: "paid", payment_intent: "pi_k", amount_total: 2500, currency: "usd", customer_details: { email: "anh@example.com", name: "Anh" }, metadata: {} } } });
+    const license = commerce.licenses[0];
+    const { key } = await issueLicenseKey(commerce, license.id, null);
+    const opened = await entitledLicense(commerce, key);
+    assert.equal(opened.license.order_id, license.order_id);
+    assert.equal(opened.product.metadata?.delivery, "wisp_generator");
+    await setLicenseStatus(commerce, license.id, "revoked", "refunded", "admin-1");
+    await assert.rejects(entitledLicense(commerce, key), /revoked/);
   });
 });
 

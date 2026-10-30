@@ -31,7 +31,7 @@ export function DownloadsForm() {
                     <input type="hidden" name="file_id" value={f.id} />
                     <button className="monarch-primary" type="submit">Download {f.name}</button>
                   </form>{" "}
-                  <small>{size(f.size)}</small>
+                  {f.size > 0 && <small>{size(f.size)}</small>}
                 </li>
               ))}
             </ul>

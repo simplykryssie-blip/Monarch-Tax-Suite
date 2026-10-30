@@ -17,6 +17,7 @@ export class SupabaseWispRepo implements WispRepo {
   async getPlan(id: string) { return unwrap(await this.db.from("wisp_plans").select("*").eq("id", id).maybeSingle()) as WispPlan | null; }
   async findPlanBySession(sessionId: string) { return unwrap(await this.db.from("wisp_plans").select("*").eq("stripe_session_id", sessionId).maybeSingle()) as WispPlan | null; }
   async findPlanByLinkHash(hash: string) { return unwrap(await this.db.from("wisp_plans").select("*").eq("link_token_hash", hash).maybeSingle()) as WispPlan | null; }
+  async findPlanByOrder(orderId: string) { return unwrap(await this.db.from("wisp_plans").select("*").eq("order_id", orderId).maybeSingle()) as WispPlan | null; }
   async updatePlan(id: string, patch: Partial<WispPlan>) { return unwrap(await this.db.from("wisp_plans").update(patch).eq("id", id).select("*").single()) as WispPlan; }
   async listPlans(opts: { customerId?: string; limit: number }) {
     let q = this.db.from("wisp_plans").select("*").order("created_at", { ascending: false }).limit(opts.limit);

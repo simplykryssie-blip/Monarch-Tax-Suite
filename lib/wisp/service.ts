@@ -28,6 +28,7 @@ export interface WispRepo {
   getPlan(id: string): Promise<WispPlan | null>;
   findPlanBySession(sessionId: string): Promise<WispPlan | null>;
   findPlanByLinkHash(hash: string): Promise<WispPlan | null>;
+  findPlanByOrder(orderId: string): Promise<WispPlan | null>;
   updatePlan(id: string, patch: Partial<WispPlan>): Promise<WispPlan>;
   listPlans(opts: { customerId?: string; limit: number }): Promise<WispPlan[]>;
   listAudits(limit: number): Promise<WispAudit[]>;
@@ -48,6 +49,12 @@ export type WispDeps = {
   brand: () => Promise<{ name: string; origin: string }>;
   /** Runs once a plan is paid (and again on Stripe's retries): links the buyer's lead to the order. Never blocks delivery. */
   onPaid?: (plan: WispPlan) => Promise<unknown>;
+  /**
+   * Issues the license key for the license this plan's order created, and returns it (it is shown once, in the "plan is
+   * ready" email). Null when there is no usable license. Called only while no email has gone out yet, so a plan that is
+   * emailed again never changes the buyer's key.
+   */
+  issueKey?: (plan: WispPlan) => Promise<string | null>;
   now?: () => Date;
 };
 
@@ -147,20 +154,30 @@ export async function ensureGenerated(deps: WispDeps, plan: WispPlan): Promise<W
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 export const pdfFileName = (plan: Pick<WispPlan, "firm_name">) => `WISP-${plan.firm_name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 60) || "plan"}.pdf`;
 
-/** Emails the PDF (attached) with a download link valid for a year. Every attempt is logged. */
+/** Where a license holder opens their plan again, with the license key. */
+export const downloadsUrl = (origin: string) => `${origin.replace(/\/$/, "")}/downloads`;
+
+/**
+ * Emails the "your plan is ready" notice. The plan itself is not attached: it is filed on the buyer's license, and the
+ * notice carries the license key and the page that opens it. The first notice carries the key; a later one does not
+ * (the key would change), and points the buyer back to the first. Every attempt is logged.
+ */
 export async function sendPlanEmail(deps: WispDeps, plan: WispPlan, actor: WispActor): Promise<WispPlan> {
   const current = await ensureGenerated(deps, plan);
   const brand = await deps.brand();
-  const bytes = await deps.store.download(current.pdf_path!);
-  if (!bytes) throw new Error("The WISP file is missing from storage.");
-  const token = newToken();
-  const expires = new Date(nowOf(deps).getTime() + LINK_DAYS * 86_400_000);
-  const link = `${brand.origin.replace(/\/$/, "")}/wisp/d/${token}`;
-  const until = new Intl.DateTimeFormat("en-US", { dateStyle: "long", timeZone: "America/New_York" }).format(expires);
+  const first = !current.emailed_at;
+  const key = first && deps.issueKey ? await deps.issueKey(current).catch((e: unknown) => { console.error(`wisp: issuing the license key failed: ${e instanceof Error ? e.message.slice(0, 160) : "unknown"}`); return null; }) : null;
+  const link = downloadsUrl(brand.origin);
+  const keyText = key
+    ? `Your license key: ${key}\nKeep this email. The key opens your plan, and it is only shown here.`
+    : first
+      ? "Your license key will follow from our team. Reply to this email if you do not hear from us."
+      : "Use the license key from your first WISP email. If you have lost it, reply to this email and we will issue a new one.";
   const text = [
-    `Your Written Information Security Plan for ${current.firm_name} is ready. The PDF is attached.`,
+    `Your Written Information Security Plan for ${current.firm_name} is ready. It is not attached to this email: it is filed on your license, and you can view or download it again at any time.`,
     "",
-    `You can also download it here until ${until}: ${link}`,
+    `Open it here: ${link}`,
+    keyText,
     "",
     "Keep it somewhere safe, review it every year, and update it when your systems, staff or risks change.",
     "",
@@ -168,19 +185,23 @@ export async function sendPlanEmail(deps: WispDeps, plan: WispPlan, actor: WispA
     "",
     brand.name,
   ].join("\n");
-  const html = `<p>Your Written Information Security Plan for <b>${esc(current.firm_name)}</b> is ready. The PDF is attached.</p>
-<p><a href="${esc(link)}">Download your WISP</a> (this link works until ${esc(until)}).</p>
+  const keyHtml = key
+    ? `<p>Your license key: <b style="font-family:monospace">${esc(key)}</b><br>Keep this email. The key opens your plan, and it is only shown here.</p>`
+    : `<p>${esc(keyText)}</p>`;
+  const html = `<p>Your Written Information Security Plan for <b>${esc(current.firm_name)}</b> is ready. It is not attached to this email: it is filed on your license, and you can view or download it again at any time.</p>
+<p><a href="${esc(link)}">Open your plan</a></p>
+${keyHtml}
 <p>Keep it somewhere safe, review it every year, and update it when your systems, staff or risks change.</p>
 <p style="color:#666;font-size:12px">${esc(DISCLAIMER)}</p><p>${esc(brand.name)}</p>`;
   const problem = await deps.send({
-    to: current.email, subject: `Your WISP for ${current.firm_name}`, html, text,
-    idempotencyKey: `wisp:${current.id}:${hashToken(token).slice(0, 16)}`,
-    attachments: [{ filename: pdfFileName(current), content: bytes }],
+    to: current.email, subject: `Your WISP for ${current.firm_name} is ready`, html, text,
+    idempotencyKey: `wisp:${current.id}:${key ? hashToken(key).slice(0, 16) : randomUUID().slice(0, 8)}`,
+    attachments: [],
   }).catch((e: unknown) => (e instanceof Error ? e.message : "The email could not be sent.").slice(0, 300));
   const heldBack = !!problem && problem.startsWith("Not sent");
-  await deps.repo.addDelivery({ plan_id: current.id, kind: "email", status: problem ? (heldBack ? "held_back" : "failed") : "sent", actor, detail: problem ? problem.slice(0, 480) : `to ${current.email}` });
+  await deps.repo.addDelivery({ plan_id: current.id, kind: "email", status: problem ? (heldBack ? "held_back" : "failed") : "sent", actor, detail: problem ? problem.slice(0, 480) : `to ${current.email}${key ? ", with the license key" : ""}` });
   if (problem) return deps.repo.updatePlan(current.id, { email_error: problem.slice(0, 480) });
-  return deps.repo.updatePlan(current.id, { emailed_at: nowOf(deps).toISOString(), email_error: null, link_token_hash: hashToken(token), link_expires_at: expires.toISOString() });
+  return deps.repo.updatePlan(current.id, { emailed_at: nowOf(deps).toISOString(), email_error: null });
 }
 
 /** The buyer's "send it again" button: not more than once every two minutes. */

@@ -143,7 +143,8 @@ export async function ensureFulfillment(repo: CommerceRepo, order: Order, produc
   if (order.payment_status !== "paid") throw new ValidationError("Only paid orders can be fulfilled.");
   if (order.order_type !== "purchase") throw new ValidationError("Annual updates upgrade an existing license; they are not fulfilled as new purchases.");
   let license: License | null = null;
-  if (product.access_type === "license") {
+  // The WISP is delivered on a license too: the buyer's plan is filed on it and opened with its key (see lib/wisp).
+  if (product.access_type === "license" || isWispProduct(product)) {
     // The license covers the tax-year version on sale when the purchase was made.
     const currentYear = latestAvailable(await repo.listVersions(product.id))?.tax_year ?? null;
     const result = await repo.createLicense({
@@ -290,7 +291,8 @@ async function handleCheckoutSession(deps: FulfillmentDeps, session: CheckoutSes
     }
     // Only reached for a signature-verified, paid order. The event key is per order, so Stripe retries or a second
     // event for the same payment cannot start the onboarding workflow twice.
-    if (license && deps.emit) {
+    // The WISP's license is not software: the calculator's onboarding email must not run for it.
+    if (license && deps.emit && !isWispProduct(product)) {
       try {
         await deps.emit({ type: "license.paid_created", key: `order:${current.id}:paid_license`, licenseId: license.id, customerId: customer.id, orderId: current.id, data: { origin: "stripe" } });
       } catch {
@@ -653,7 +655,7 @@ export async function createInternalLicense(repo: CommerceRepo, input: InternalL
 // ---------------------------------------------------------------------------
 
 /** Issues (or rotates) a license key. The plaintext key is returned once and never stored. */
-export async function issueLicenseKey(repo: CommerceRepo, licenseId: string, actorId: string, now?: () => string) {
+export async function issueLicenseKey(repo: CommerceRepo, licenseId: string, actorId: string | null, now?: () => string) {
   const license = await repo.getLicense(licenseId);
   if (!license) throw new ValidationError("License not found.");
   if (license.status === "revoked") throw new ValidationError("Revoked licenses cannot receive a key.");
