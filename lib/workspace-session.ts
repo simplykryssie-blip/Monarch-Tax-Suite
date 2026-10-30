@@ -36,3 +36,6 @@ export const workspaceMemberships = cache(async (userId: string): Promise<Member
   if (error) return [];
   return (data ?? []) as Membership[];
 });
+
+/** The workspace a person with more than one membership chose (Preview only). A name, never a trusted value: it counts only if it is one of their own memberships. */
+export const WORKSPACE_COOKIE = "monarch_workspace";
