@@ -16,10 +16,35 @@ export function tenantHeaders(tenantId: string): Record<string, string> {
 }
 
 /**
- * The tenant the current request acts for. Only Monarch sells today, so every storefront, admin and webhook request
- * is Monarch's; Phase 2 replaces this with the signed-in member's tenant and, for payments, the tenant of the
- * Stripe account the event came from.
+ * Un-hardwiring Monarch (Messages 148-151). The workspace asks "which tenant is this request for?" through currentTenantId().
+ * The answer comes from the signed-in person's own membership (lib/workspace-session.ts registers the resolver and the
+ * workspace gate fills it in); it never comes from anything the browser sends.
+ *
+ * While TENANT_STRICT is false (today: only Monarch's own people can open the workspace) a request with no resolved tenant
+ * still acts for Monarch, exactly as before. When the workspace opens to other tenants TENANT_STRICT turns on and an
+ * unresolved request is an error, never Monarch's data. Code that is deliberately Monarch's own (its store, WISP, Tax Lab,
+ * webhooks) names MONARCH_TENANT_ID itself instead of calling this.
  */
-export function currentTenantId(): string {
+export const TENANT_STRICT = false;
+
+type Resolver = () => string | null;
+let resolver: Resolver | null = null;
+
+/** Registered once by the server session module: reads the tenant the workspace gate resolved for this request. */
+export function setTenantResolver(fn: Resolver | null) {
+  resolver = fn;
+}
+
+/** The decision itself, pure so it can be tested: a resolved tenant wins; otherwise Monarch (loose) or an error (strict). */
+export function pickTenant(resolved: string | null | undefined, strict: boolean): string {
+  if (resolved) {
+    if (!UUID.test(resolved)) throw new Error("A tenant id is required for tenant data access.");
+    return resolved;
+  }
+  if (strict) throw new Error("No workspace is resolved for this request, so it cannot act for any tenant.");
   return MONARCH_TENANT_ID;
+}
+
+export function currentTenantId(): string {
+  return pickTenant(resolver ? resolver() : null, TENANT_STRICT);
 }
