@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireOffice, officeDeps } from "@/lib/office/server";
+import { mfaState, requireOffice, officeDeps } from "@/lib/office/server";
 import { can, FEATURES } from "@/lib/office/permissions.ts";
 import { dollars, yearParam } from "@/lib/fees/engine.ts";
 import { feesDeps } from "@/lib/fees/server";
@@ -11,6 +11,7 @@ import { Alerts } from "./compliance/parts";
 
 export default async function OfficeHome() {
   const ctx = await requireOffice();
+  const mfa = await mfaState();
   const year = yearParam(undefined);
   const showFees = can(ctx.role, ctx.permissions, "fees.view");
   const showTeam = can(ctx.role, ctx.permissions, "team.manage");
@@ -24,6 +25,9 @@ export default async function OfficeHome() {
   const soon = FEATURES.filter((f) => f.status === "soon" && can(ctx.role, ctx.permissions, f.key));
   return (
     <>
+      {!mfa.hasFactor && (
+        <p className="monarch-notice" role="note"><b>RECOMMENDED</b> Turn on two-step sign-in to protect your clients&apos; information. <Link href="/office/mfa">Turn it on</Link></p>
+      )}
       <h1 className="office-h1">{can(ctx.role, ctx.permissions, "office.dashboard") ? "Office dashboard" : "Home"}</h1>
       {statement && (
         <div className="monarch-metrics">
