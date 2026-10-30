@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { clientAddress, hashClient } from "../commerce/rate-limit.ts";
 import { ValidationError } from "../commerce/validation.ts";
 import { rateLimitStore } from "../rate-limit-server";
-import { requestTenant } from "../wisp/server";
+import { requestTenant } from "../request-tenant";
 import { appointmentDeps } from "./server";
 
 /** The office whose web address the booking page was opened on, and its calendar. */

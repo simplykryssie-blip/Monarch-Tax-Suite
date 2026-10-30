@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { downloadUrl, planForBuyer } from "@/lib/wisp/service.ts";
-import { requestTenant, wispDeps } from "@/lib/wisp/server";
+import { requestTenant } from "@/lib/request-tenant";
+import { wispDeps } from "@/lib/wisp/server";
 import { WISP_COOKIE } from "@/lib/wisp/cookie.ts";
 
 /** The buyer's download, from the browser that paid: a 60-second link to their PDF. */
