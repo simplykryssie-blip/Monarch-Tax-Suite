@@ -7,7 +7,7 @@ import { clearFieldErrors, showFieldError } from "@/lib/field-error.ts";
 /**
  * A form that calls a server action WITHOUT resetting itself. If the action returns a problem (for example a mistyped EIN),
  * the message is shown, the offending field is marked, and everything else stays exactly as typed. On success the server
- * action redirects, so there is nothing to reset. With `confirm`, an in-page dialog asks first (no blocking browser prompt).
+ * action redirects, so there is nothing to reset. With `confirm`, an in-page dialog asks first (no blocking browser prompt); saying yes there is the confirmation the server asks for, so a form never needs a second tick box on top of it.
  */
 export function ActionForm({ action, children, className, confirm }: { action: (form: FormData) => Promise<FormResult>; children: React.ReactNode; className?: string; confirm?: string }) {
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +62,7 @@ export function ActionForm({ action, children, className, confirm }: { action: (
               <p>{confirm}</p>
               <div className="efin-actions" style={{ justifyContent: "flex-end" }}>
                 <button type="button" className="monarch-secondary efin-small" onClick={() => { held.current = null; setAsk(false); }}>Cancel</button>
-                <button type="button" className="monarch-primary efin-small" onClick={() => { const d = held.current; held.current = null; setAsk(false); if (d) run(d); }}>Yes, continue</button>
+                <button type="button" className="monarch-primary efin-small" onClick={() => { const d = held.current; held.current = null; setAsk(false); if (d) { d.set("confirm", "on"); run(d); } }}>Yes, continue</button>
               </div>
             </div>
           )}
