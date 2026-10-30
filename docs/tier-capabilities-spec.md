@@ -84,7 +84,7 @@ lists above, in the same change as the plan mapping. Any public website or prici
 ## Message 155 effects on the build
 - Plan mapping: the store section moves from Service Bureau-only to **ERO and up**; PTIN keeps none of it (menu, `/shop`-side pages, store settings such as Store payments).
 - Step 9 (the tenant-aware store) now serves **ERO and Service Bureau** tenants.
-- Questions for Krystal, not decided here: is the ERO store the same full store as the bureau's (assumed yes), and, with the store at ERO, what remains as Service Bureau's own additions beyond My Service Bureau, downline at scale and bureau reporting (the value rule, Message 153).
+- Both questions raised here are now answered: the ERO store is the same full store (Message 159), and Service Bureau scope is complete as written (Message 158).
 
 ## Message 156: staff seat rule (Krystal, 2026-10-30, folded into the current build)
 - **PTIN:** no staff members; cannot add anyone; no Team function.
@@ -110,9 +110,14 @@ lists above, in the same change as the plan mapping. Any public website or prici
    - **Resolves flags 3 and 4 above.** Flag 3 (retire the Office model) is closed the other way: it stays.
 2. **Service Bureau scope is complete as written.** It adds exactly: the My Service Bureau suite, downline at scale, the full store (included from the ERO tier up), and bureau reporting. Nothing further to invent.
 3. **The public homepage is mine to update.** `verexahq.com` is served by this same app; today it lands visitors on the login page instead of a public homepage (launch Step 3). The homepage and pricing copy are drawn only from this spec, at the step where the build reaches them.
-4. **STILL OPEN, do not decide:** whether the ERO store is the same full store as the bureau's.
+4. **DECIDED (Message 159, Krystal, 2026-10-30):** the **ERO store is the SAME full store as the bureau's**: products, orders, licences, downloads, from their own shop address, paid to their own Stripe. No smaller ERO version.
 
 ### Build notes that follow from item 1
 - The Office area becomes **tenant-aware** (today its bureau branch and the Message 138 bureau-admin check resolve to Monarch). It joins the real-workspace plan as its own batch.
 - Office access (`/offices`) is Service Bureau-only in code today; the spec gives it to ERO as well, so the plan mapping moves it down.
 - Two permission systems then coexist on purpose: the Office area's per-person feature permissions (office preparers) and the workspace permission list for the one staff seat (flag 2).
+
+## Status: no open items (Message 159)
+Every question raised in Messages 153 to 156 is answered and recorded: the store decision (155), the Office model (158), the Service Bureau scope
+(158), the homepage (158), and the ERO store (159). **The spec has no open items.** The plan mapping, the public homepage and pricing copy, and
+Luna's tier-by-tier verification are all built against this document as written.
