@@ -32,7 +32,7 @@ describe("tiers", () => {
     const sb = NAV.find((e) => e.label === "My Service Bureau");
     assert.ok(sb && isBranch(sb));
     assert.equal(sb.href, undefined);
-    assert.deepEqual(sb.items.map((i) => i.label), ["Dashboard", "EROs & EFINs", "Renewals", "Fees & statements", "Office access", "Compliance"]);
+    assert.deepEqual(sb.items.map((i) => i.label), ["Dashboard", "EROs & EFINs", "Renewals", "Fees & statements", "Compliance"]);
     assert.equal(sb.items[0].href, "/efin");
   });
 
@@ -79,6 +79,15 @@ describe("tiers", () => {
       assert.ok(existsSync(file), `${file} is missing`);
       assert.match(readFileSync(file, "utf8"), /requireSection\("/, `${file} does not check the tier`);
     }
+  });
+
+  test("an ERO can add and manage its own firm and open Office access; the downline-wide views stay Service Bureau", () => {
+    for (const href of ["/efin/new", "/efin/add", "/efin/org/x", "/offices", "/ero"]) assert.ok(allows("ero", sectionOf(href)!), `${href} should open for an ERO`);
+    for (const href of ["/efin", "/efin/list", "/efin/renewals", "/fees", "/compliance"]) assert.ok(!allows("ero", sectionOf(href)!), `${href} stays Service Bureau`);
+    assert.match(readFileSync("app/(admin)/efin/layout.tsx", "utf8"), /requireSection\("ero"\)/);
+    for (const f of ["page.tsx", "list/page.tsx", "renewals/page.tsx", "export/route.ts"]) assert.match(readFileSync(`app/(admin)/efin/${f}`, "utf8"), /requireSection\("bureau"\)/, `${f} must keep the Service Bureau check`);
+    const nav = navFor("ero").flatMap((e) => ("items" in e && e.items ? e.items : [e])).map((i) => i.href);
+    assert.ok(nav.includes("/offices") && nav.includes("/ero"));
   });
 
   test("a missing tier column never hides anything: the account is treated as Service Bureau", () => {
