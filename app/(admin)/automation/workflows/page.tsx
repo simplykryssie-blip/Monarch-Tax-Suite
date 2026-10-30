@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin";
 import Link from "next/link";
 import { Badge, EmptyRow, Flash, load, PageTitle, when } from "@/components/admin/ui";
 import { EVENTS } from "@/lib/automation/events.ts";
@@ -11,6 +12,8 @@ import { ArchiveRowButton, ArchiveTabs } from "@/components/admin/archive";
 import { inView, viewCounts, viewOf } from "@/lib/archive.ts";
 
 export default async function WorkflowsPage({ searchParams }: { searchParams: Promise<{ view?: string; notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const { notice, error, view: rawView } = await searchParams;
   const view = viewOf(rawView);
   const deps = automationDeps();

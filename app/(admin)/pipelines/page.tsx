@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin";
 import Link from "next/link";
 import { Flash, load, PageTitle, when } from "@/components/admin/ui";
 import { Modal } from "@/components/ui/modal";
@@ -43,6 +44,8 @@ function Swatches({ name = "color" }: { name?: string }) {
 }
 
 export default async function PipelinesPage({ searchParams }: { searchParams: Promise<{ folder?: string; notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const sp = await searchParams;
   const result = await load(async () => {
     const repo = pipelinesRepo();

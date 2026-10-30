@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin";
 import Link from "next/link";
 import { EmptyRow, Flash, PageTitle, when } from "@/components/admin/ui";
 import { workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
@@ -5,6 +6,8 @@ import { importPaymentsAction } from "../../actions";
 import { WorkspaceSetup } from "../../setup";
 
 export default async function ImportPaymentsPage({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const sp = await searchParams;
   const result = await workspaceLoad(() => workspaceRepo().listImports(15));
   return (

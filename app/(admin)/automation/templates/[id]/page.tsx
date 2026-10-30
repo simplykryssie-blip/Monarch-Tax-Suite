@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin";
 import { notFound } from "next/navigation";
 import { Badge, Flash, PageTitle } from "@/components/admin/ui";
 import { workflowsUsing } from "@/lib/automation/admin.ts";
@@ -9,6 +10,8 @@ import { saveTemplateAction, templateActiveAction, testTemplateAction, uploadEma
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function TemplateEditor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const { id } = await params;
   const { notice, error } = await searchParams;
   const isNew = id === "new";

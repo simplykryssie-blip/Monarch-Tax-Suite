@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin";
 import { AssignTo } from "@/components/contacts/assign-to";
 import { listStaff } from "@/lib/staff/server";
 import { FormattedInput } from "@/components/forms/formatted-input";
@@ -74,6 +75,8 @@ function portalProblem(member: { status: string; invite_expires_at: string | nul
 }
 
 export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; sign?: string; folder?: string; notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const { id } = await params;
   const sp = await searchParams;
   if (!UUID.test(id)) notFound();
