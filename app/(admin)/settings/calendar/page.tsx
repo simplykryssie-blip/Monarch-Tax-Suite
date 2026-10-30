@@ -1,4 +1,5 @@
-import { appOrigin, requireAdmin } from "@/lib/admin";
+import { requireAdmin } from "@/lib/admin";
+import { publicOriginFor } from "@/lib/public-origin";
 import { Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
 import { formDeps } from "@/lib/forms/server";
 import { appointmentDeps } from "@/lib/appointments/server";
@@ -10,7 +11,7 @@ export default async function CalendarSettingsPage({ searchParams }: { searchPar
   const sp = await searchParams;
   const who = sp.who === "me" ? "me" : "office";
   const deps = appointmentDeps();
-  const result = await load(async () => ({ types: await deps.repo.listTypes(), origin: await appOrigin(), messages: await deps.repo.getMessages().catch(() => null), forms: (await formDeps().repo.listForms().catch(() => [])).filter((f) => f.status === "published").map((f) => ({ id: f.id, name: f.name })) }));
+  const result = await load(async () => ({ types: await deps.repo.listTypes(), origin: await publicOriginFor(admin.tenantId), messages: await deps.repo.getMessages().catch(() => null), forms: (await formDeps().repo.listForms().catch(() => [])).filter((f) => f.status === "published").map((f) => ({ id: f.id, name: f.name })) }));
   return (
     <>
       <PageTitle title="Calendar">Appointment types, booking links, availability and the messages clients get.</PageTitle>

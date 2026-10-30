@@ -48,15 +48,24 @@ function TypeForm({ t, forms }: { t?: AppointmentType; forms: FormOption[] }) {
 
 
 /** One link for everything, and one for each appointment type. */
-export function BookingLinks({ origin, types }: { origin: string; types: AppointmentType[] }) {
+export function BookingLinks({ origin, types }: { origin: string | null; types: AppointmentType[] }) {
   const open = types.filter((t) => t.active);
+  // Booking pages are found by the web address they are opened on, so a link needs the office's own public address.
+  if (!origin) {
+    return (
+      <section className="monarch-panel" style={{ padding: 20 }}>
+        <h2 style={{ marginTop: 0 }}>Booking links</h2>
+        <p className="monarch-muted">Your booking link needs your public web address. Create your website first (Websites in the menu); your address is made with it, and your booking links appear here.</p>
+      </section>
+    );
+  }
   return (
     <section className="monarch-panel" style={{ padding: 20 }}>
       <h2 style={{ marginTop: 0 }}>Booking links</h2>
       <ul className="cl-list">
-        <li><span><b>All appointment types</b><small className="monarch-subcell">{origin}/book</small></span><span className="cl-card-actions"><CopyLink href="/book" label="Copy" className="monarch-link" /><Link className="monarch-link" href="/book" target="_blank">Open</Link></span></li>
+        <li><span><b>All appointment types</b><small className="monarch-subcell">{origin}/book</small></span><span className="cl-card-actions"><CopyLink href={`${origin}/book`} label="Copy" className="monarch-link" /><a className="monarch-link" href={`${origin}/book`} target="_blank" rel="noreferrer">Open</a></span></li>
         {open.map((t) => (
-          <li key={t.id}><span><b>{t.name}</b><small className="monarch-subcell">{origin}/book/{t.slug}</small></span><span className="cl-card-actions"><CopyLink href={`/book/${t.slug}`} label="Copy" className="monarch-link" /><Link className="monarch-link" href={`/book/${t.slug}`} target="_blank">Open</Link></span></li>
+          <li key={t.id}><span><b>{t.name}</b><small className="monarch-subcell">{origin}/book/{t.slug}</small></span><span className="cl-card-actions"><CopyLink href={`${origin}/book/${t.slug}`} label="Copy" className="monarch-link" /><a className="monarch-link" href={`${origin}/book/${t.slug}`} target="_blank" rel="noreferrer">Open</a></span></li>
         ))}
       </ul>
     </section>

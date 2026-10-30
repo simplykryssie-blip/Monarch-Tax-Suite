@@ -21,3 +21,12 @@ What each plan sees and does is set by **`tier-capabilities-spec.md`** (approved
 - **Step 2 (done, Preview only):** the workspace gate admits an owner or admin of **any** tenant on Preview (production stays closed to everyone but Monarch's people); the layout, tab title, brand and Admin link use the tenant the gate resolved; Leads move into the PTIN plan per the approved spec.
   - Known limit, to be proven by the Preview walk: any code that asks for the tenant **before** the gate has run in the same request would still get Monarch's. Pages and actions all start with the gate, but the walk (a real PTIN tenant must see none of Monarch's data) is the proof, and the isolation test with two real tenants follows.
   - Not yet converted: route handlers and background jobs (they do not pass the gate), the store's public side, the client portal's staff side, the Office area, and the lines that name Monarch's id directly (listed in the 47-use audit).
+- **Step 3, first batch (done, Preview): Calendar and the first audit of the daily features.**
+  - Audit result: the daily features (Contacts, Work, Billing, Calendar, Documents, Reports, Websites, Forms, Automation, Pipelines, Campaigns, Settings) all
+    read the tenant the gate resolved. The public side of most of them already finds the workspace by itself (forms by their public id, websites and
+    booking by the address, tokens in document, signing, portal and campaign links). The booking links were the exception: they were built on the app's
+    own address, which opens Monarch's pages. They now use the workspace's own public address (its domain, else the default website address); a workspace
+    with none yet is told how to get one.
+  - The service orders page no longer names Monarch's id.
+  - Still to do in step 3: a default public address made when a workspace is created (so the booking link exists from day one), the Office area,
+    the client portal's staff side, route handlers and background jobs (step 7), and the live walk of every area.

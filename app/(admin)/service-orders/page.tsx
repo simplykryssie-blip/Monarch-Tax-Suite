@@ -1,17 +1,16 @@
 import Link from "next/link";
 import { commerceRepo, requireAdmin, serviceOrdersRepo } from "@/lib/admin";
 import { SERVICE_STATUS_LABELS, serviceNextStep } from "@/lib/commerce/service-orders.ts";
-import { MONARCH_TENANT_ID } from "@/lib/tenants";
 import { EmptyRow, Flash, load, PageTitle, SetupRequired, when } from "@/components/admin/ui";
 import { ArchiveRowButton, ArchiveTabs } from "@/components/admin/archive";
 import { inView, viewCounts, viewOf } from "@/lib/archive.ts";
 
 export default async function ServiceOrdersPage({ searchParams }: { searchParams: Promise<{ view?: string; notice?: string; error?: string }> }) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const sp = await searchParams;
   const view = viewOf(sp.view);
   const result = await load(async () => {
-    const [serviceOrders, customers, products, orders] = await Promise.all([serviceOrdersRepo().listServiceOrders(MONARCH_TENANT_ID), commerceRepo().listCustomers(), commerceRepo().listProducts(), commerceRepo().listOrders()]);
+    const [serviceOrders, customers, products, orders] = await Promise.all([serviceOrdersRepo().listServiceOrders(admin.tenantId), commerceRepo().listCustomers(), commerceRepo().listProducts(), commerceRepo().listOrders()]);
     return { serviceOrders, customers: new Map(customers.map((c) => [c.id, c])), products: new Map(products.map((p) => [p.id, p])), orders: new Map(orders.map((o) => [o.id, o])) };
   });
   return (

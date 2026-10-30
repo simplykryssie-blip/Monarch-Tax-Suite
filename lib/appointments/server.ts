@@ -5,8 +5,6 @@ import { automationDeps, safeEmit } from "../automation/server";
 import { senderFor } from "../automation/engine.ts";
 import { sanitizeError } from "../automation/sanitize.ts";
 import { segmentCount, toE164 } from "../automation/twilio.ts";
-import { SupabaseSendersRepo } from "../automation/supabase-senders.ts";
-import { brandsOf } from "../brands.ts";
 import { businessDeps } from "../calendar/server";
 import { loadCalendar } from "../calendar/service.ts";
 import { CrmSecrets } from "../crm/crypto.ts";
@@ -16,6 +14,7 @@ import { readSettings } from "../forms/settings.ts";
 import { formLink } from "../forms/link";
 import { heldBack } from "../forms/after.ts";
 import { peopleDeps } from "../people/server";
+import { publicOriginFor } from "../public-origin";
 import { tenantSms } from "../sms/server";
 import { tenantClient } from "../supabase/service";
 import { currentTenantId } from "../tenants.ts";
@@ -38,13 +37,9 @@ function secrets(): CrmSecrets {
 export function appointmentDeps(tenantId: string = currentTenantId()): AppointmentDeps {
   const db = tenantClient(tenantId);
   const auto = automationDeps(tenantId);
-  const senders = new SupabaseSendersRepo(db);
   const docs = new SupabaseDocumentsRepo(db);
-  const origin = async () => {
-    const domains = await senders.listDomains().catch(() => []);
-    const only = brandsOf(domains).length === 1 ? brandsOf(domains)[0] : null;
-    return process.env.VERCEL_ENV === "production" && only?.linkHost ? `https://${only.linkHost}` : await appOrigin();
-  };
+  // A client's link must carry the office's own public address: opened on the app's address it would find Monarch's pages.
+  const origin = async () => (await publicOriginFor(tenantId)) ?? (await appOrigin());
   const testList = auto.config.testRecipients.map((r) => r.toLowerCase());
   const notify: Notifier = {
     async email(to, subject, text) {
