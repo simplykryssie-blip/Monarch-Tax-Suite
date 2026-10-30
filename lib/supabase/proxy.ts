@@ -38,6 +38,10 @@ const PUBLIC_PATHS: string[] = ["/login", "/basic-calculator", "/api/stripe/webh
   ...(PLATFORM_LEGAL_APPROVED ? PLATFORM_LEGAL_PATHS : []),
 ];
 
+// Pages that are public at exactly this path (their sub-pages are listed above with a trailing slash). The booking index is the
+// front door of a booking address (book.<firm domain>) and the "all appointment types" link, so it must open without signing in.
+const PUBLIC_EXACT: string[] = ["/book"];
+
 /**
  * A deployment without its database settings cannot authenticate anyone, so
  * every route (public ones included) gets an explicit 503 instead of a crash.
@@ -89,7 +93,7 @@ export async function updateSession(request: NextRequest) {
 
   const isPublicPath = PUBLIC_PATHS.some((path) =>
     request.nextUrl.pathname.startsWith(path)
-  );
+  ) || PUBLIC_EXACT.includes(request.nextUrl.pathname);
 
   if (!user && !isPublicPath) {
     const loginUrl = new URL("/login", request.url);
