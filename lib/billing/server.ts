@@ -1,3 +1,5 @@
+import { registerAddress } from "../sites/address.ts";
+import { vercelDomains } from "../sites/vercel.ts";
 import "server-only";
 import { appOrigin } from "../admin";
 import { hashClient } from "../commerce/rate-limit.ts";
@@ -42,6 +44,7 @@ export function billingDeps(): BillingDeps | null {
       tenantBySlug: (slug) => practicePlatform().tenantBySlug(slug),
       practiceRepo,
       inviteLink: practiceInviteLink,
+      registerAddress: (host) => registerAddress(vercelDomains(), host, process.env.VERCEL_ENV === "production"),
     },
     accountExists: async (email) => {
       const [holder, office] = await Promise.all([

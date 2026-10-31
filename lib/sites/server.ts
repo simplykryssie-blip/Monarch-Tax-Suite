@@ -26,7 +26,7 @@ async function domainLimit(tenantId: string): Promise<number> {
   return isTier(tier) ? CUSTOM_DOMAINS_BY_TIER[tier] : CUSTOM_DOMAINS_BY_TIER.bureau;
 }
 
-export const sitesDeps = (tenantId: string): SitesDeps => ({ repo: new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken), domains: vercelDomains(), adoptOwn: tenantId === MONARCH_TENANT_ID, maxCustomDomains: () => domainLimit(tenantId) });
+export const sitesDeps = (tenantId: string): SitesDeps => ({ repo: new SupabaseSitesRepo(tenantClient(tenantId), hostnameTaken), domains: vercelDomains(), adoptOwn: tenantId === MONARCH_TENANT_ID, registerAddresses: process.env.VERCEL_ENV === "production", maxCustomDomains: () => domainLimit(tenantId) });
 
 export type PublicSite = {
   tenantId: string; site: Site; pages: SitePage[]; domain: Pick<SiteDomain, "hostname" | "kind" | "status">;

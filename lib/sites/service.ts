@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import { type Block, isEmptyPage, sanitizeBlocks } from "./blocks.ts";
 import { cleanPageSeo, cleanSiteSettings, SEO_LIMITS } from "./settings.ts";
+import { registerAddress, releaseAddress } from "./address.ts";
 import { cleanCustomHost, cleanLabel, labelFromName, platformDomain, subdomainHost } from "./domains.ts";
 
 // A website for one office. Everything acts on the tenant the repository is built for; nothing here can name another.
@@ -50,7 +51,7 @@ export interface DomainsPort {
  * hand (their firm's domain, for example) can then be connected to a website without being added again. Other offices never get
  * this: it would let them put a site on a domain the platform owner controls.
  */
-export type SitesDeps = { repo: SitesRepo; domains: DomainsPort | null; platform?: string; now?: () => Date; newId?: () => string; adoptOwn?: boolean; /** Custom domains the whole account may connect, across all its websites. */ maxCustomDomains?: number | (() => Promise<number>) };
+export type SitesDeps = { repo: SitesRepo; domains: DomainsPort | null; platform?: string; now?: () => Date; newId?: () => string; adoptOwn?: boolean; /** True on the live deployment only: each new address is put on the hosting project so it gets its own certificate. */ registerAddresses?: boolean; /** Custom domains the whole account may connect, across all its websites. */ maxCustomDomains?: number | (() => Promise<number>) };
 
 /** Addresses the platform itself answers on; never connectable to a website. */
 const PLATFORM_HOSTS = ["verexahq.com", "monarchtaxsuite.com"];
@@ -89,7 +90,9 @@ export async function createSite(deps: SitesDeps, input: { name: string; userId:
     }
   }
   const made = site!;
-  await deps.repo.insertDomain({ site_id: made.id, hostname: subdomainHost(made.slug, platformOf(deps)), kind: "subdomain", status: "active", detail: {}, created_by: input.userId });
+  const address = subdomainHost(made.slug, platformOf(deps));
+  await deps.repo.insertDomain({ site_id: made.id, hostname: address, kind: "subdomain", status: "active", detail: {}, created_by: input.userId });
+  await registerAddress(deps.domains, address, deps.registerAddresses === true);
   await deps.repo.insertPage({ site_id: made.id, slug: "", title: "Home", is_home: true, position: 0 });
   return made;
 }
@@ -192,12 +195,20 @@ export async function setSubdomain(deps: SitesDeps, site: Site, domains: SiteDom
   if (label === site.slug) {
     // Same name, but the stored address may be on an older platform domain: bring it up to date.
     const want = subdomainHost(label, platformOf(deps));
-    if (sub && sub.hostname !== want) await deps.repo.updateDomain(sub.id, { hostname: want });
+    if (sub && sub.hostname !== want) {
+      await deps.repo.updateDomain(sub.id, { hostname: want });
+      await registerAddress(deps.domains, want, deps.registerAddresses === true);
+    }
     return site;
   }
   try {
     const updated = await deps.repo.updateSite(site.id, { slug: label });
-    if (sub) await deps.repo.updateDomain(sub.id, { hostname: subdomainHost(label, platformOf(deps)) });
+    if (sub) {
+      const next = subdomainHost(label, platformOf(deps));
+      await deps.repo.updateDomain(sub.id, { hostname: next });
+      await registerAddress(deps.domains, next, deps.registerAddresses === true);
+      await releaseAddress(deps.domains, sub.hostname, deps.registerAddresses === true);
+    }
     return updated;
   } catch (e) {
     if (isDuplicate(e)) fail("That address is taken. Choose another.");

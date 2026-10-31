@@ -202,6 +202,18 @@ test("a new workspace gets its own name as its address; a second one with the sa
   assert.equal(s.tenants.size, 2);
 });
 
+test("a new signed-up workspace has its default address put on the hosting project, and a hosting problem never blocks signup", async () => {
+  const s = setup();
+  const hosts: (string | null)[] = [];
+  s.deps.provision.registerAddress = async (h) => { hosts.push(h); };
+  const r = await handleBillingEvent(s.deps, completed("evt_r1", "sub_9"));
+  assert.equal(r.status, "processed");
+  assert.deepEqual(hosts, ["pat-tax.sites.verexahq.com"]);
+  const s2 = setup();
+  s2.deps.provision.registerAddress = async () => { throw new Error("hosting down"); };
+  assert.equal((await handleBillingEvent(s2.deps, completed("evt_r2", "sub_9"))).status, "processed");
+});
+
 test("a renewal that fails makes the workspace read-only at once; payment restores; the first payment is ignored", async () => {
   const s = setup();
   const { tenantId } = await handleBillingEvent(s.deps, completed("evt_1"));

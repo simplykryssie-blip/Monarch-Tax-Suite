@@ -1,3 +1,5 @@
+import { defaultHostFor } from "../default-host-pick.ts";
+import { platformDomain, RESERVED_LABELS } from "../sites/domains.ts";
 import { createHash } from "node:crypto";
 import { ValidationError } from "../commerce/validation.ts";
 import { hashToken, INVITE_DAYS, newToken } from "../office/service.ts";
@@ -54,6 +56,8 @@ export type BillingDeps = {
     tenantBySlug(slug: string): Promise<{ id: string } | null>;
     practiceRepo(tenantId: string): PracticeRepo;
     inviteLink(token: string): Promise<string>;
+    /** Puts the new workspace's default address on the hosting project (so it gets its own certificate). Never blocks signup. */
+    registerAddress?(host: string | null): Promise<unknown>;
   };
   accountExists(email: string): Promise<boolean>;
   ownerEmail(tenantId: string): Promise<{ email: string; name: string } | null>;
@@ -165,18 +169,21 @@ async function onCheckoutCompleted(deps: BillingDeps, o: Record<string, unknown>
   // on every retry, so a repeated delivery finds the workspace it already made and two workspaces never share an address.
   const stamp = createHash("sha256").update(subscriptionId).digest("hex").slice(0, 6);
   let tenantId: string | null = null;
+  let usedSlug = "";
   for (const slug of signupSlugs(workspace, stamp)) {
     try {
       tenantId = (await deps.provision.createTenant({ slug, name: workspace, tier: "ptin" })).id;
+      usedSlug = slug;
       break;
     } catch (e) {
       const found = await deps.provision.tenantBySlug(slug);
       if (!found) throw e;
       // Taken: it is ours only if this same payment already made it; otherwise it is another workspace's and we move on.
-      if ((await deps.repo.byTenant(found.id))?.stripe_subscription_id === subscriptionId) { tenantId = found.id; break; }
+      if ((await deps.repo.byTenant(found.id))?.stripe_subscription_id === subscriptionId) { tenantId = found.id; usedSlug = slug; break; }
     }
   }
   if (!tenantId) throw new Error("A workspace address could not be chosen for this payment.");
+  await deps.provision.registerAddress?.(defaultHostFor(usedSlug, platformDomain(), RESERVED_LABELS)).catch(() => undefined);
   const facts = await deps.stripe.subscriptionFacts(subscriptionId).catch(() => null);
   if (!(await deps.repo.byTenant(tenantId))) {
     await deps.repo.insert({
