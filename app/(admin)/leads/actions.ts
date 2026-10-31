@@ -7,7 +7,7 @@ import { sanitizeError } from "@/lib/automation/sanitize.ts";
 import { ValidationError } from "@/lib/commerce/validation.ts";
 import { emitTagChanges } from "@/lib/automation/emit";
 import { campaignRepo } from "@/lib/campaigns/server";
-import { createLead, deleteLead, importCsv, markContacted, updateLead, UUID, type ImportResult } from "@/lib/leads/service.ts";
+import { createLead, deleteLead, importCsv, updateLead, UUID, type ImportResult } from "@/lib/leads/service.ts";
 import { deleteLeadDocs } from "@/lib/leads/docs.ts";
 import { leadDocsDeps } from "@/lib/leads/docs-server";
 import { leadsDeps } from "@/lib/leads/server";
@@ -71,15 +71,6 @@ export async function updateLeadAction(form: FormData) {
     const lead = await updateLead(leads, idOf(form), fieldsOf(form), adminId);
     await emitTagChanges({ type: "lead", id: lead.id }, before, lead.tags);
     return { notice: "Saved." };
-  });
-}
-
-export async function markContactedAction(form: FormData) {
-  const id = str(form, "id");
-  const back = str(form, "back").startsWith("/leads") ? str(form, "back") : `/leads/${UUID.test(id) ? id : ""}`;
-  await act(back, async (adminId) => {
-    const lead = await markContacted(leadsDeps(), idOf(form), adminId);
-    return { notice: `Marked ${lead.full_name} as contacted today.` };
   });
 }
 

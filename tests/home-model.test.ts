@@ -57,7 +57,7 @@ describe("money cards", () => {
 describe("work cards and plans", () => {
   test("the leads card appears only when the plan has leads", () => {
     assert.equal(buildHome(base()).stats.some((s) => s.id === "leads-waiting"), false);
-    const d = buildHome(base({ leads: [{ id: "l1", full_name: "Lead One", source: "form", status: "new", created_at: "2026-10-21T00:00:00Z", last_contacted_at: null }, { id: "l2", full_name: "Lead Two", source: "form", status: "contacted", created_at: "2026-10-21T00:00:00Z", last_contacted_at: "2026-10-22T00:00:00Z" }] }));
+    const d = buildHome(base({ leads: [{ id: "l1", full_name: "Lead One", source: "form", status: "new", created_at: "2026-10-21T00:00:00Z", last_contacted_at: null }, { id: "l2", full_name: "Lead Two", source: "form", status: "interested", created_at: "2026-10-21T00:00:00Z", last_contacted_at: "2026-10-22T00:00:00Z" }] }));
     assert.equal(stat(d, "leads-waiting").value, 1);
     assert.ok(d.panels.some((p) => p.id === "leads"));
   });

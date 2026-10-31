@@ -28,7 +28,6 @@ export const sourceName = (s: string) => LEAD_SOURCES[s] ?? s;
 
 export const LEAD_STATUSES = {
   new: "New",
-  contacted: "Contacted",
   interested: "Interested",
   converted: "Converted",
   lost: "Lost",

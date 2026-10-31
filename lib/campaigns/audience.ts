@@ -33,7 +33,7 @@ export type AudienceFilter = {
 export const EMPTY_FILTER: AudienceFilter = { mode: "filter", kinds: ["lead", "client"], tagsAny: [], tagsNone: [], leadStatus: [], picked: [] };
 export const MAX_PICKED = 5000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const LEAD_STATUSES = ["new", "contacted", "interested", "converted", "lost"] as const;
+export const LEAD_STATUSES = ["new", "interested", "converted", "lost"] as const;
 
 /** Turns whatever the form sent into a clean filter. */
 export function sanitizeFilter(raw: unknown): AudienceFilter {

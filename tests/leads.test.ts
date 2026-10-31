@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { captureAuditLead, captureAuditStart, checkPhone, convertFromPurchase, createLead, dayStart, exportCsv, filterFrom, importCsv, markContacted, updateLead } from "../lib/leads/service.ts";
+import { captureAuditLead, captureAuditStart, checkPhone, convertFromPurchase, createLead, dayStart, exportCsv, filterFrom, importCsv, updateLead } from "../lib/leads/service.ts";
 import { parseCsv } from "../lib/leads/csv.ts";
 import { parseTags } from "../lib/leads/tags.ts";
 import { MemoryLeads } from "./leads-memory.ts";
@@ -110,16 +110,13 @@ describe("working leads", () => {
     await assert.rejects(createLead(s.deps, { full_name: "X", email: "x@example.com", source: "manual", last_contacted_at: "10/45/2026" }, ADMIN), /valid date/);
   });
 
-  test("edits, status changes, contacted today and the firm link are all in the history", async () => {
+  test("edits and status changes are all in the history", async () => {
     const s = setup();
     const lead = await createLead(s.deps, { full_name: "Kim", email: "kim@example.com", source: "manual" }, ADMIN);
-    const c = await markContacted(s.deps, lead.id, ADMIN);
-    assert.equal(c.status, "contacted");
-    assert.ok(c.last_contacted_at);
     const u = await updateLead(s.deps, lead.id, { full_name: "Kim Lee", email: "kim@example.com", source: "manual", status: "converted", notes: "Signed up" }, ADMIN);
     assert.equal(u.status, "converted");
     assert.ok(u.converted_at);
-    assert.deepEqual(s.repo.events.map((e) => e.action), ["created", "contacted", "status_changed", "edited"]);
+    assert.deepEqual(s.repo.events.map((e) => e.action), ["created", "status_changed", "edited"]);
   });
 
   test("search and filters by source, status and date", async () => {
@@ -276,5 +273,26 @@ describe("lead source is assigned by how the lead arrived", () => {
     assert.equal((await s.repo.getLead(lead.id))!.source, "Referral from Bo");
     assert.deepEqual(await s.repo.sourceCounts(), [{ source: "Referral from Bo", count: 1 }]);
     assert.deepEqual((await s.repo.listLeads(filterFrom({ source: "Referral from Bo" }))).map((l) => l.full_name), ["Ann"]);
+  });
+});
+
+describe("lead statuses", () => {
+  test("Contacted is gone: nobody can set it, and no button marks a lead contacted", async () => {
+    const { LEAD_STATUSES } = await import("../lib/leads/types.ts");
+    const { SETTABLE_STATUSES } = await import("../lib/leads/service.ts");
+    assert.deepEqual(Object.keys(LEAD_STATUSES), ["new", "interested", "converted", "lost"]);
+    assert.deepEqual(SETTABLE_STATUSES, ["new", "interested", "lost"]);
+    const { readFileSync } = await import("node:fs");
+    assert.doesNotMatch(readFileSync("app/(admin)/leads/[id]/page.tsx", "utf8"), /Contacted today|markContacted/);
+  });
+  test("old history lines that mention Contacted still read sensibly", async () => {
+    const { describeLeadEvent } = await import("../lib/leads/history.ts");
+    assert.equal(describeLeadEvent({ action: "status_changed", detail: { from: "new", to: "contacted" } }), "Status changed from New to Contacted");
+  });
+  test("the migration moves existing Contacted leads to New before narrowing the rule", async () => {
+    const { readFileSync } = await import("node:fs");
+    const sql = readFileSync("supabase/migrations/20261210090000_lead_status_no_contacted.sql", "utf8");
+    assert.ok(sql.indexOf("set status = 'new'") < sql.indexOf("add constraint"));
+    assert.match(sql, /check \(status in \('new', 'interested', 'converted', 'lost'\)\)/);
   });
 });

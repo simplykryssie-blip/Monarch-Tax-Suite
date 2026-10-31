@@ -36,7 +36,7 @@ const blank = (kind: string): Draft => {
     case "branch": return { type: kind, conditions: [{ field: "contact.tags", op: "contains", value: "" }], then: [], else: [] };
     case "create_task": return { type: kind, title: "", due_days: "" };
     case "add_tag": case "remove_tag": return { type: kind, tag: "" };
-    case "update_contact": return { type: kind, field: "lead_status", value: "contacted" };
+    case "update_contact": return { type: kind, field: "lead_status", value: "interested" };
     default: return { type: kind, body: "" };
   }
 };
@@ -137,7 +137,7 @@ function Editor({ step, onChange, cat, depth, eventFields, budget }: { step: Dra
     case "create_task": return <div className="monarch-form">{text("title", "Task", { maxLength: 200, placeholder: "Call about their return" })}{text("due_days", "Due in (days, blank = no date)", { type: "number", min: 0, max: 365 })}</div>;
     case "add_tag": case "remove_tag": return <div className="monarch-form">{text("tag", "Tag", { maxLength: 40, placeholder: "warm lead" })}<small className="monarch-muted is-wide">Applies to the person&apos;s lead and client records.</small></div>;
     case "update_contact":
-      return <div className="monarch-form"><label>Set the lead&apos;s status to<select value={String(step.value ?? "contacted")} onChange={(e) => set({ value: e.target.value })}>{Object.entries(LEAD_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label></div>;
+      return <div className="monarch-form"><label>Set the lead&apos;s status to<select value={String(step.value ?? "interested")} onChange={(e) => set({ value: e.target.value })}>{Object.entries(LEAD_STATUSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label></div>;
     case "send_text":
       return (
         <div className="monarch-form">

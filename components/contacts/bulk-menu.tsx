@@ -83,7 +83,7 @@ export function BulkMenu({ staff, tags, statuses }: { staff: { id: string; label
               {op === "set_status" && (
                 <>
                   <label className="is-wide">New status
-                    <select name="status" defaultValue="contacted">{statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select>
+                    <select name="status" defaultValue="interested">{statuses.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select>
                   </label>
                   <p className="is-wide monarch-muted">Applies to ticked leads. Clients are skipped.</p>
                 </>

@@ -1,6 +1,7 @@
 import { LEAD_STATUSES, type LeadEvent, type LeadStatus } from "./types.ts";
 
-const status = (v: unknown) => (typeof v === "string" && v in LEAD_STATUSES ? LEAD_STATUSES[v as LeadStatus] : String(v ?? ""));
+// "contacted" was a status until it was removed; earlier history lines still say it.
+const status = (v: unknown) => (typeof v === "string" && v in LEAD_STATUSES ? LEAD_STATUSES[v as LeadStatus] : v === "contacted" ? "Contacted" : String(v ?? ""));
 
 /** One plain line for an entry in a lead's history. Unknown kinds still read sensibly. */
 export function describeLeadEvent(e: Pick<LeadEvent, "action" | "detail">): string {

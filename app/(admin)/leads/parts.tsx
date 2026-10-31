@@ -2,7 +2,7 @@ import { LEAD_STATUSES, sourceName, type LeadSource, type LeadStatus } from "@/l
 
 // Small pieces shared by the Leads pages.
 
-const STATUS_CLASS: Record<LeadStatus, string> = { new: "pending", contacted: "active", interested: "active", converted: "paid", lost: "inactive" };
+const STATUS_CLASS: Record<LeadStatus, string> = { new: "pending", interested: "active", converted: "paid", lost: "inactive" };
 
 export function StatusBadge({ status }: { status: LeadStatus }) {
   return <span className={`monarch-badge ${STATUS_CLASS[status]}`}>{LEAD_STATUSES[status]}</span>;

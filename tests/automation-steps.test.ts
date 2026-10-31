@@ -133,7 +133,7 @@ test("tags, lead status, tasks and texts act on the person, once", async () => {
   const s = await setup();
   await s.make([
     { type: "add_tag", tag: "booked" }, { type: "add_tag", tag: "booked" }, { type: "remove_tag", tag: "cold" },
-    { type: "update_contact", field: "lead_status", value: "contacted" },
+    { type: "update_contact", field: "lead_status", value: "interested" },
     { type: "create_task", title: "Call Ana", due_days: 2 },
     { type: "send_text", body: "See you soon" },
   ]);
@@ -143,7 +143,7 @@ test("tags, lead status, tasks and texts act on the person, once", async () => {
   assert.deepEqual(s.person.tags, ["booked"]);
   assert.match(x.action_log[1].detail, /already had/);
   assert.match(x.action_log[2].detail, /didn't have/);
-  assert.equal(s.person.leadStatus, "contacted");
+  assert.equal(s.person.leadStatus, "interested");
   assert.deepEqual(s.contacts.tasks.map((t) => [t.title, t.dueOn]), [["Call Ana", "2026-10-14"]]);
   assert.deepEqual(s.contacts.texts, [{ to: "+13375550100", body: "See you soon" }]);
 });

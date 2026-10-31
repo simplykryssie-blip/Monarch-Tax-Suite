@@ -116,15 +116,6 @@ export async function updateLead(deps: LeadsDeps, id: string, raw: Record<string
   return after;
 }
 
-/** "Contacted today": records the date, and moves a new lead to Contacted. */
-export async function markContacted(deps: LeadsDeps, id: string, actorId: string): Promise<Lead> {
-  const lead = await deps.repo.getLead(id);
-  if (!lead) throw new ValidationError("That lead wasn't found.");
-  const after = await deps.repo.updateLead(id, { last_contacted_at: nowOf(deps).toISOString(), ...(lead.status === "new" ? { status: "contacted" as const } : {}) });
-  await deps.repo.addEvent({ lead_id: id, action: "contacted", detail: lead.status === after.status ? {} : { from: lead.status, to: after.status }, actor_id: actorId });
-  return after;
-}
-
 export async function deleteLead(deps: LeadsDeps, id: string): Promise<void> {
   if (!(await deps.repo.getLead(id))) throw new ValidationError("That lead wasn't found.");
   await deps.repo.deleteLead(id);
@@ -408,12 +399,12 @@ export async function saveLeadNotesAndTags(deps: LeadsDeps, id: string, raw: { n
 }
 
 /** The statuses a person can set by hand. Converted is made by Convert to client, so the label never says a client exists when none does. */
-export const SETTABLE_STATUSES: LeadStatus[] = ["new", "contacted", "interested", "lost"];
+export const SETTABLE_STATUSES: LeadStatus[] = ["new", "interested", "lost"];
 
 /** Sets a lead's status and records it. */
 export async function setLeadStatus(deps: LeadsDeps, id: string, raw: unknown, actorId: string): Promise<Lead> {
   const next = typeof raw === "string" ? (raw as LeadStatus) : null;
-  if (!next || !SETTABLE_STATUSES.includes(next)) throw new ValidationError("Choose a status: New, Contacted, Interested or Lost. Use Convert to client to make a client.");
+  if (!next || !SETTABLE_STATUSES.includes(next)) throw new ValidationError("Choose a status: New, Interested or Lost. Use Convert to client to make a client.");
   const lead = await deps.repo.getLead(id);
   if (!lead) throw new ValidationError("That lead wasn't found.");
   if (lead.status === next) return lead;
