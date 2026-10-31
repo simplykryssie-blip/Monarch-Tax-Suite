@@ -188,6 +188,16 @@ export async function startMfaEnrollAction(): Promise<{ ok: true; factorId: stri
   return { ok: true, factorId: data.id, qr: data.totp.qr_code, secret: data.totp.secret };
 }
 
+/** "Skip for now": two-step sign-in is recommended, not required. Recorded for an office member, then straight into the office. */
+export async function skipMfaAction(): Promise<void> {
+  const { supabase } = await mfaState();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login?next=/office");
+  const member = await memberForUser(user.id);
+  if (member) await officeDeps(member.tenant_id).repo.addEvent({ organization_id: member.organization_id, member_id: member.id, action: "mfa_skipped", actor_id: user.id, detail: {} }).catch(() => undefined);
+  redirect("/office");
+}
+
 export async function verifyMfaAction(input: { factorId?: string; code: string }): Promise<{ ok: false; error: string } | undefined> {
   const code = String(input.code ?? "").replace(/\s/g, "");
   if (!/^\d{6}$/.test(code)) return { ok: false, error: "Enter the 6-digit code from your authenticator app." };

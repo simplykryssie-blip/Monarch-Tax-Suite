@@ -31,8 +31,11 @@ export function rememberWorkspaceTenant(tenantId: string) {
 setTenantResolver(() => holder().tenantId);
 
 /** Every tenant this account is a member of, with its role. Reads only the signed-in person's own rows. */
-export async function workspaceMemberships(userId: string): Promise<Membership[]> {
+export const workspaceMemberships = cache(async (userId: string): Promise<Membership[]> => {
   const { data, error } = await platformClient("workspace_member").from("tenant_members").select("tenant_id, role").eq("user_id", userId);
   if (error) return [];
   return (data ?? []) as Membership[];
-}
+});
+
+/** The workspace a person with more than one membership chose (Preview only). A name, never a trusted value: it counts only if it is one of their own memberships. */
+export const WORKSPACE_COOKIE = "monarch_workspace";

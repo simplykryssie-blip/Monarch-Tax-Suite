@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import { startMfaEnrollAction, verifyMfaAction } from "@/app/office/actions";
 
-// Two-step sign-in with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…). Required
-// for every account in the office area, as the FTC Safeguards Rule requires for systems that reach client data.
+// Two-step sign-in with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…). Recommended
+// for every account that reaches client data, and the person's choice: a screen that passes `skip` lets them go on without it.
 
 type MfaActions = { start: typeof startMfaEnrollAction; verify: typeof verifyMfaAction; /** When given, the setup can be skipped: a "Skip for now" button runs this. */ skip?: () => Promise<void> };
 

@@ -1,6 +1,6 @@
 import { ActionForm } from "../action-form";
 import Link from "next/link";
-import { requireAdmin } from "@/lib/admin";
+import { requireSection } from "@/lib/tier-server";
 import { Badge, EmptyRow, Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
 import { complianceExceptions, EXCEPTION_LABEL, groupExceptions, uniqueBy } from "@/lib/efin/exceptions.ts";
 import { daysUntil, todayIso } from "@/lib/efin/rules.ts";
@@ -8,7 +8,7 @@ import { loadSnapshot } from "@/lib/efin/service";
 import { completeRenewalAction } from "../actions";
 
 export default async function Renewals({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
-  await requireAdmin();
+  await requireSection("bureau"); // the downline-wide views are the Service Bureau's; an ERO manages its own firm
   const sp = await searchParams;
   const result = await load(loadSnapshot);
   const today = todayIso();

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/admin";
+import { requireSection } from "@/lib/tier-server";
 import { Badge, EmptyRow, Flash, load, PageTitle, SetupRequired } from "@/components/admin/ui";
 import { Icon } from "@/components/admin/icons";
 import { maskEfin, tracksTeam } from "@/lib/efin/rules.ts";
@@ -13,7 +13,7 @@ type Params = { q?: string; status?: string; org?: string; review?: string; rel?
 
 
 export default async function EfinRegistry({ searchParams }: { searchParams: Promise<Params> }) {
-  await requireAdmin();
+  await requireSection("bureau"); // the downline-wide views are the Service Bureau's; an ERO manages its own firm
   const sp = await searchParams;
   const result = await load(loadSnapshot);
   return (

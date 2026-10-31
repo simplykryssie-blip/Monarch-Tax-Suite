@@ -49,8 +49,8 @@ describe("a holder who turns it on", () => {
   });
 });
 
-describe("the office area is unchanged", () => {
-  test("it still requires two-step sign-in", () => {
-    assert.match(src("lib/office/server.ts"), /if \(mfa\.level !== "aal2"\) redirect\("\/office\/mfa"\)/);
+describe("the office area follows the same rule", () => {
+  test("two-step is the person's choice there too: a code is asked for only once they have it on (see office-mfa-optional.test.ts)", () => {
+    assert.match(src("lib/office/server.ts"), /if \(mfa\.hasFactor && mfa\.level !== "aal2"\) redirect\("\/office\/mfa"\)/);
   });
 });

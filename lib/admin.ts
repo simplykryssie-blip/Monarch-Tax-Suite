@@ -1,14 +1,14 @@
 import "server-only";
 import { configuredOrigin } from "./origin.ts";
 import { cache } from "react";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "./supabase/server";
 import { platformClient, tenantClient } from "./supabase/service";
 import { currentTenantId, MONARCH_TENANT_ID } from "./tenants.ts";
-import { rememberWorkspaceTenant, workspaceMemberships } from "./workspace-session.ts";
+import { rememberWorkspaceTenant, WORKSPACE_COOKIE, workspaceMemberships } from "./workspace-session.ts";
 import { chooseWorkspace } from "./workspace-tenant.ts";
-import { adminSeparationOn, isAdminHost, roleOpensWorkspace } from "./admin-host.ts";
+import { adminSeparationOn, isAdminHost } from "./admin-host.ts";
 import { ADMIN_TWO_STEP_PATH, adminTwoStepGate, workspaceNeedsCode } from "./admin-two-step.ts";
 import { decideAdmin } from "./commerce/authz.ts";
 import { SupabaseCommerceRepo, SupabaseImageStore } from "./commerce/supabase-repo.ts";
@@ -60,11 +60,23 @@ export async function isAdminUser(userId: string): Promise<boolean> {
   return (await lookupAdmin(userId)) === "yes";
 }
 
-/** Whether this account is an owner or admin of the Monarch workspace (a tenant member, not a platform administrator). */
-async function isMonarchMember(userId: string): Promise<boolean> {
-  const { data, error } = await platformClient("workspace_member").from("tenant_members").select("role").eq("tenant_id", MONARCH_TENANT_ID).eq("user_id", userId).maybeSingle();
-  if (error) return false;
-  return roleOpensWorkspace((data as { role?: string } | null)?.role);
+/**
+ * The workspace this account runs as a bureau or ERO, or null. Same choice as the workspace gate (a platform administrator or a
+ * Monarch owner/admin opens Monarch; on Preview an owner or admin of any workspace opens theirs), and the workspace's plan must
+ * include the Office area (ERO or Service Bureau). The office area uses this to let the owner open any of the workspace's offices.
+ */
+export async function bureauWorkspace(userId: string): Promise<string | null> {
+  const choice = chooseWorkspace({ platformAdmin: await isAdminUser(userId), memberships: await workspaceMemberships(userId), preferred: (await cookies()).get(WORKSPACE_COOKIE)?.value ?? null });
+  if (!choice) return null;
+  if (choice.tenantId === MONARCH_TENANT_ID) return choice.tenantId;
+  const { data } = await tenantClient(choice.tenantId).from("tenants").select("tier").limit(1).maybeSingle();
+  const tier = (data as { tier: string | null } | null)?.tier;
+  return tier === "ero" || tier === "bureau" ? choice.tenantId : null;
+}
+
+/** Whether this account runs a bureau or ERO workspace (see bureauWorkspace). */
+export async function isBureauAdmin(userId: string): Promise<boolean> {
+  return (await bureauWorkspace(userId)) !== null;
 }
 
 /** Whether this request arrived on the platform admin's own address. False whenever the separation is not switched on. */
@@ -74,12 +86,14 @@ export async function onAdminHost(): Promise<boolean> {
   return isAdminHost(h.get("x-forwarded-host") ?? h.get("host"));
 }
 
-export type AdminSession = { userId: string; email: string };
+/** The signed-in person and the workspace (tenant) they are acting in, worked out from their own memberships. */
+export type AdminSession = { userId: string; email: string; tenantId: string };
 
 /**
- * Verifies the signed-in user may use the Monarch workspace: an owner or admin of the Monarch tenant, or (until the
- * cutover to separate platform-admin sign-ins) an account still on the platform-admin list. Use in every workspace page
- * and server action. The platform's own pages use requirePlatformAdmin below.
+ * Verifies the signed-in user may use a workspace: an owner or admin of the tenant they belong to (on Preview, any tenant;
+ * in production, Monarch only for now), or (until the cutover to separate platform-admin sign-ins) an account still on the
+ * platform-admin list, which opens Monarch's. The session carries the tenant, and currentTenantId() answers it for the rest of
+ * the request. Use in every workspace page and server action. The platform's own pages use requirePlatformAdmin below.
  */
 export const requireAdmin = cache(async (): Promise<AdminSession> => {
   const supabase = await createClient();
@@ -88,7 +102,8 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
   const decision = await decideAdmin(user, async (id) => {
     const result = await lookupAdmin(id);
     setupMissing = result === "setup_missing";
-    return result === "yes" || (result === "no" && (await isMonarchMember(id)));
+    if (result === "yes") return true;
+    return result === "no" && chooseWorkspace({ platformAdmin: false, memberships: await workspaceMemberships(id) }) !== null;
   });
   if (!decision.allowed) {
     if (decision.reason === "unauthenticated") redirect("/login");
@@ -109,13 +124,14 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
     redirect("/login?error=" + encodeURIComponent(message));
   }
   // Which workspace this person opens, from their own memberships; remembered for this request so currentTenantId() answers it.
-  const workspace = chooseWorkspace({ platformAdmin: (await lookupAdmin(decision.userId)) === "yes", memberships: await workspaceMemberships(decision.userId) });
-  if (workspace) rememberWorkspaceTenant(workspace.tenantId);
+  const workspace = chooseWorkspace({ platformAdmin: (await lookupAdmin(decision.userId)) === "yes", memberships: await workspaceMemberships(decision.userId), preferred: (await cookies()).get(WORKSPACE_COOKIE)?.value ?? null });
+  const tenantId = workspace?.tenantId ?? MONARCH_TENANT_ID;
+  rememberWorkspaceTenant(tenantId);
   // Two-step sign-in, once the person has turned it on in Settings → Security: a code is asked for at each sign-in.
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   // On the platform admin's own address only /admin and the sign-in pages exist, so the code screen there is the admin one.
   if (workspaceNeedsCode(aal)) redirect((await onAdminHost()) ? ADMIN_TWO_STEP_PATH : "/two-step");
-  return { userId: decision.userId, email: user?.email ?? "" };
+  return { userId: decision.userId, email: user?.email ?? "", tenantId };
 });
 
 /**

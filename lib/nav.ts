@@ -41,7 +41,10 @@ export const NAV: Entry[] = [
     label: "ERO",
     icon: "licenses",
     section: "ero",
-    items: [{ label: "ERO Dashboard", icon: "dashboard", href: "/ero" }],
+    items: [
+      { label: "ERO Dashboard", icon: "dashboard", href: "/ero" },
+      { label: "Office access", icon: "customers", href: "/offices" },
+    ],
   },
   {
     // A section header only: it opens and closes; the dashboard is the first item inside it.
@@ -53,7 +56,6 @@ export const NAV: Entry[] = [
       { label: "EROs & EFINs", icon: "firms", href: "/efin/list" },
       { label: "Renewals", icon: "bell", href: "/efin/renewals" },
       { label: "Fees & statements", icon: "reports", href: "/fees" },
-      { label: "Office access", icon: "customers", href: "/offices" },
       { label: "Compliance", icon: "shield", href: "/compliance" },
     ],
   },

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { MONARCH_TENANT_ID, pickTenant } from "../lib/tenants.ts";
-import { chooseWorkspace, WORKSPACES_OPEN_TO_ALL_TENANTS } from "../lib/workspace-tenant.ts";
+import { chooseWorkspace, workspacesOpenToAll } from "../lib/workspace-tenant.ts";
 
 // Un-hardwiring Monarch, step 1: the tenant comes from the signed-in person's memberships, and the foundation is in place
 // without changing what anyone sees today.
@@ -45,26 +45,56 @@ describe("which workspace a person opens", () => {
     assert.equal(chooseWorkspace({ platformAdmin: false, memberships: withMonarch, openToAll: true })!.tenantId, MONARCH_TENANT_ID);
   });
 
-  test("until the workspace is opened to every tenant, only Monarch's memberships count (nobody else gets in)", () => {
-    assert.equal(WORKSPACES_OPEN_TO_ALL_TENANTS, false);
-    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: [{ tenant_id: A, role: "owner" }] }), null);
-    assert.deepEqual(chooseWorkspace({ platformAdmin: false, memberships: [{ tenant_id: A, role: "owner" }, { tenant_id: MONARCH_TENANT_ID, role: "admin" }] }), { tenantId: MONARCH_TENANT_ID, role: "admin" });
+  test("production stays closed: only Monarch's memberships count there (nobody else gets in); Preview opens to every tenant", () => {
+    assert.equal(workspacesOpenToAll({ VERCEL_ENV: "production" }), false);
+    assert.equal(workspacesOpenToAll({}), false);
+    assert.equal(workspacesOpenToAll({ VERCEL_ENV: "preview" }), true);
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: [{ tenant_id: A, role: "owner" }], openToAll: false }), null);
+    assert.deepEqual(chooseWorkspace({ platformAdmin: false, memberships: [{ tenant_id: A, role: "owner" }, { tenant_id: MONARCH_TENANT_ID, role: "admin" }], openToAll: false }), { tenantId: MONARCH_TENANT_ID, role: "admin" });
   });
 });
 
-describe("the two switches move together", () => {
+describe("choosing among several workspaces (Preview)", () => {
+  const both = [{ tenant_id: MONARCH_TENANT_ID, role: "admin" }, { tenant_id: A, role: "owner" }];
+  test("a chosen workspace wins when it is one of the person's own usable memberships", () => {
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: both, openToAll: true, preferred: A })!.tenantId, A);
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: both, openToAll: true, preferred: null })!.tenantId, MONARCH_TENANT_ID, "no choice: Monarch first, as before");
+  });
+  test("a workspace that is not theirs is ignored, whatever was asked for", () => {
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: both, openToAll: true, preferred: B })!.tenantId, MONARCH_TENANT_ID);
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: [{ tenant_id: MONARCH_TENANT_ID, role: "admin" }], openToAll: true, preferred: A })!.tenantId, MONARCH_TENANT_ID);
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: [{ tenant_id: A, role: "staff" }, { tenant_id: MONARCH_TENANT_ID, role: "admin" }], openToAll: true, preferred: A })!.tenantId, MONARCH_TENANT_ID, "a role that does not open a workspace cannot be chosen");
+  });
+  test("in production the choice changes nothing", () => {
+    assert.equal(chooseWorkspace({ platformAdmin: false, memberships: both, openToAll: false, preferred: A })!.tenantId, MONARCH_TENANT_ID);
+  });
+  test("the chooser page and action exist only on Preview and re-check membership on the server", () => {
+    const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+    assert.match(read("app/(admin)/switch-workspace/page.tsx"), /if \(!workspacesOpenToAll\(\)\) notFound\(\)/);
+    assert.match(read("app/(admin)/switch-workspace/actions.ts"), /ok\.tenantId === wanted/);
+  });
+});
+
+describe("the gate and the session", () => {
   const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
-  test("the workspace is not opened to other tenants unless unresolved requests are errors, not Monarch", () => {
-    const open = /WORKSPACES_OPEN_TO_ALL_TENANTS = true/.test(read("lib/workspace-tenant.ts"));
-    const strict = /TENANT_STRICT = true/.test(read("lib/tenants.ts"));
-    assert.equal(open && !strict, false, "opening the workspace needs TENANT_STRICT on in the same change");
+  test("the workspace is never opened to other tenants in production", () => {
+    assert.match(read("lib/workspace-tenant.ts"), /env\.VERCEL_ENV === "preview"/);
+    assert.doesNotMatch(read("lib/workspace-tenant.ts"), /VERCEL_ENV === "production"|=> true;/);
   });
 
-  test("requireAdmin remembers the tenant it worked out from the person's memberships, for this request only", () => {
+  test("requireAdmin admits by membership, remembers the tenant for this request, and returns it in the session", () => {
     const admin = read("lib/admin.ts");
-    assert.match(admin, /chooseWorkspace\(\{ platformAdmin:/);
-    assert.match(admin, /rememberWorkspaceTenant\(workspace\.tenantId\)/);
+    assert.match(admin, /chooseWorkspace\(\{ platformAdmin: false, memberships: await workspaceMemberships\(id\) \}\) !== null/);
+    assert.match(admin, /rememberWorkspaceTenant\(tenantId\)/);
+    assert.match(admin, /return \{ userId: decision\.userId, email: user\?\.email \?\? "", tenantId \}/);
     assert.match(read("lib/workspace-session.ts"), /cache\(\(\) => \(\{ tenantId: null/);
+  });
+
+  test("the workspace frame (layout, tab title, brand, Admin link) uses the tenant the gate resolved, never the Monarch default", () => {
+    const layout = read("app/(admin)/layout.tsx");
+    assert.match(layout, /loadBrand\(admin\.tenantId\)/);
+    assert.match(layout, /loadBrand\(tenantId\)/);
+    assert.doesNotMatch(layout, /currentTenantId/);
   });
 });
 

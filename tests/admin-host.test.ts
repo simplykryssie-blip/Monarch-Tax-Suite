@@ -77,8 +77,10 @@ describe("admin address", () => {
 describe("access wiring", () => {
   const admin = readFileSync(new URL("../lib/admin.ts", import.meta.url), "utf8");
 
-  test("the workspace gate looks only at the Monarch tenant's own members", () => {
-    assert.match(admin, /from\("tenant_members"\)[\s\S]{0,120}\.eq\("tenant_id", MONARCH_TENANT_ID\)/);
+  test("the workspace gate opens only the workspaces the person is an owner or admin of", () => {
+    const tenant = readFileSync(new URL("../lib/workspace-tenant.ts", import.meta.url), "utf8");
+    assert.match(admin, /chooseWorkspace\(/);
+    assert.match(tenant, /roleOpensWorkspace\(m\.role\) && \(open \|\| m\.tenant_id === MONARCH_TENANT_ID\)/, "staff roles never open it, and outside Preview only Monarch does");
   });
 
   test("the platform area is still decided by the platform-admin list alone", () => {

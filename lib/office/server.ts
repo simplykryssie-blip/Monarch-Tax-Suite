@@ -3,20 +3,20 @@ import { renderEmailHtml, type EmailAction } from "./email-html.ts";
 import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { appOrigin, isAdminUser } from "../admin";
+import { appOrigin, bureauWorkspace } from "../admin";
 import { senderFor } from "../automation/engine.ts";
 import { sanitizeError } from "../automation/sanitize.ts";
 import { automationDeps } from "../automation/server";
 import { heldBack } from "../forms/after.ts";
 import { createClient } from "../supabase/server";
 import { platformClient, tenantClient } from "../supabase/service";
-import { currentTenantId } from "../tenants.ts";
+import { rememberWorkspaceTenant } from "../workspace-session.ts";
 import { featuresFor, type Permissions, type Role } from "./permissions.ts";
 import type { OfficeDeps, OfficeMember } from "./service.ts";
 import { SupabaseOfficeRepo } from "./supabase-repo.ts";
 
 // Server wiring for the office area. Each request finds who is signed in, which office they belong to (one logged
-// platform lookup, since the tenant isn't known until then), and requires two-step sign-in before anything is shown.
+// platform lookup, since the tenant isn't known until then), and asks for a two-step code if the person has turned it on.
 // From there everything acts as that tenant, and the pages keep each member to their own office.
 
 export const OFFICE_COOKIE = "monarch_office";
@@ -69,14 +69,18 @@ export async function requireOffice(requestedOffice?: string): Promise<OfficeCon
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/office");
   const mfa = await mfaState();
-  if (mfa.level !== "aal2") redirect("/office/mfa");
+  // Two-step sign-in is the person's choice: a code is asked for only once they have turned it on.
+  if (mfa.hasFactor && mfa.level !== "aal2") redirect("/office/mfa");
 
-  if (await isAdminUser(user.id)) {
-    const tenantId = currentTenantId();
+  const bureauTenant = await bureauWorkspace(user.id);
+  if (bureauTenant) {
+    // The office area does not pass the workspace gate, so it tells the rest of the request which workspace this is.
+    rememberWorkspaceTenant(bureauTenant);
+    const tenantId = bureauTenant;
     const offices = (await officeDeps(tenantId).repo.listOffices()).filter((o) => !o.archived);
     const wanted = requestedOffice ?? (await cookies()).get(OFFICE_COOKIE)?.value;
     const office = offices.find((o) => o.id === wanted) ?? offices[0];
-    if (!office) redirect("/efin/list?error=" + encodeURIComponent("Add a firm in My Service Bureau first; each firm is an office."));
+    if (!office) redirect("/efin/new?error=" + encodeURIComponent("Add a firm first; each firm is an office."));
     return { userId: user.id, email: user.email ?? "", tenantId, role: "bureau", bureau: true, member: null, office, offices, permissions: {}, features: featuresFor("bureau", {}) };
   }
 
