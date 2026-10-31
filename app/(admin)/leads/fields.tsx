@@ -16,11 +16,15 @@ export function LeadFields({ v, tagOptions = [], showSource = false }: { v: Lead
       <label>Firm name<input name="firm_name" maxLength={200} defaultValue={v.firm_name ?? ""} autoComplete="off" /></label>
       <div className="is-wide field-block"><span className="field-label">Tags</span><TagInput initial={(v.tags ?? "").split(",").filter(Boolean)} suggestions={tagOptions} /></div>
       {showSource ? <label>Source<input name="source" maxLength={120} defaultValue={v.source ?? ""} autoComplete="off" /><small className="monarch-muted">Set automatically; change it if it&apos;s wrong.</small></label> : <input type="hidden" name="source" value="manual" />}
-      <label>Status
-        <select name="status" defaultValue={v.status ?? "new"}>
-          {STATUS_KEYS.filter((s) => s !== "converted" || v.status === "converted").map((s) => <option key={s} value={s}>{LEAD_STATUSES[s]}</option>)}
-        </select>
-      </label>
+      {v.status === "converted" ? (
+        <div className="field-block"><span className="field-label">Status</span><b>{LEAD_STATUSES.converted}</b><input type="hidden" name="status" value="converted" /><small className="monarch-muted">Made by Convert to client. It can&apos;t be changed by hand.</small></div>
+      ) : (
+        <label>Status
+          <select name="status" defaultValue={v.status ?? "new"}>
+            {STATUS_KEYS.filter((s) => s !== "converted").map((s) => <option key={s} value={s}>{LEAD_STATUSES[s]}</option>)}
+          </select>
+        </label>
+      )}
       <label>Last contacted<input name="last_contacted_at" type="date" defaultValue={v.last_contacted_at ?? ""} /></label>
       <label className="is-wide">Notes<textarea name="notes" rows={5} maxLength={10000} defaultValue={v.notes ?? ""} /></label>
     </>

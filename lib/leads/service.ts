@@ -106,6 +106,10 @@ export async function updateLead(deps: LeadsDeps, id: string, raw: Record<string
     const other = await deps.repo.findByEmail(f.email);
     if (other && other.id !== id) throw new LeadInputError(`${f.email} is already a lead (${other.full_name}).`, "email");
   }
+  // Converted is made only by Convert to client, so a saved form can neither set it nor undo it.
+  if (f.status !== lead.status && (f.status === "converted" || lead.status === "converted")) {
+    throw new ValidationError(lead.status === "converted" ? "This lead is already a client, so its status can't be changed by hand." : "A lead becomes Converted only through Convert to client.");
+  }
   const patch: Partial<Lead> = { ...f };
   if (f.status === "converted" && !lead.converted_at) patch.converted_at = nowOf(deps).toISOString();
   const after = await deps.repo.updateLead(id, patch);

@@ -113,10 +113,20 @@ describe("working leads", () => {
   test("edits and status changes are all in the history", async () => {
     const s = setup();
     const lead = await createLead(s.deps, { full_name: "Kim", email: "kim@example.com", source: "manual" }, ADMIN);
-    const u = await updateLead(s.deps, lead.id, { full_name: "Kim Lee", email: "kim@example.com", source: "manual", status: "converted", notes: "Signed up" }, ADMIN);
-    assert.equal(u.status, "converted");
-    assert.ok(u.converted_at);
+    const u = await updateLead(s.deps, lead.id, { full_name: "Kim Lee", email: "kim@example.com", source: "manual", status: "interested", notes: "Signed up" }, ADMIN);
+    assert.equal(u.status, "interested");
     assert.deepEqual(s.repo.events.map((e) => e.action), ["created", "status_changed", "edited"]);
+  });
+
+  test("a saved form can neither set Converted nor undo it", async () => {
+    const s = setup();
+    const lead = await createLead(s.deps, { full_name: "Kim", email: "kim@example.com", source: "manual" }, ADMIN);
+    await assert.rejects(updateLead(s.deps, lead.id, { full_name: "Kim", email: "kim@example.com", source: "manual", status: "converted" }, ADMIN), /Convert to client/);
+    await s.repo.updateLead(lead.id, { status: "converted", converted_at: "2026-10-31T00:00:00Z" });
+    await assert.rejects(updateLead(s.deps, lead.id, { full_name: "Kim", email: "kim@example.com", source: "manual", status: "new" }, ADMIN), /already a client/);
+    const same = await updateLead(s.deps, lead.id, { full_name: "Kim Lee", email: "kim@example.com", source: "manual", status: "converted" }, ADMIN);
+    assert.equal(same.status, "converted");
+    assert.equal(same.full_name, "Kim Lee");
   });
 
   test("search and filters by source, status and date", async () => {
