@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin";
 import { notFound } from "next/navigation";
 import { Flash, PageTitle } from "@/components/admin/ui";
 import { balance, dollars } from "@/lib/workspace/rules.ts";
@@ -10,6 +11,8 @@ const MATCH = { exact: ["Exact match", "match-exact"], possible: ["Possible: con
 
 /** Review a bank import: every deposit, what was read from it, the invoice it matched, all editable before anything is applied. */
 export default async function ReviewImportPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const { id } = await params;
   const sp = await searchParams;
   if (!UUID.test(id)) notFound();

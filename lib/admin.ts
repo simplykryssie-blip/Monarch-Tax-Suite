@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "./supabase/server";
 import { platformClient, tenantClient } from "./supabase/service";
 import { currentTenantId, MONARCH_TENANT_ID } from "./tenants.ts";
+import { rememberWorkspaceTenant, workspaceMemberships } from "./workspace-session.ts";
+import { chooseWorkspace } from "./workspace-tenant.ts";
 import { adminSeparationOn, isAdminHost, roleOpensWorkspace } from "./admin-host.ts";
 import { ADMIN_TWO_STEP_PATH, adminTwoStepGate, workspaceNeedsCode } from "./admin-two-step.ts";
 import { decideAdmin } from "./commerce/authz.ts";
@@ -106,6 +108,9 @@ export const requireAdmin = cache(async (): Promise<AdminSession> => {
       : "This account is not a platform administrator.";
     redirect("/login?error=" + encodeURIComponent(message));
   }
+  // Which workspace this person opens, from their own memberships; remembered for this request so currentTenantId() answers it.
+  const workspace = chooseWorkspace({ platformAdmin: (await lookupAdmin(decision.userId)) === "yes", memberships: await workspaceMemberships(decision.userId) });
+  if (workspace) rememberWorkspaceTenant(workspace.tenantId);
   // Two-step sign-in, once the person has turned it on in Settings → Security: a code is asked for at each sign-in.
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   // On the platform admin's own address only /admin and the sign-in pages exist, so the code screen there is the admin one.

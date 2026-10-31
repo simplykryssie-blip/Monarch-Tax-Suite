@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin";
 import { AddContact } from "@/components/contacts/add-contact";
 import { contactKinds } from "@/lib/contacts/kinds.ts";
 import { currentTier } from "@/lib/tier-server";
@@ -8,6 +9,8 @@ import { workspaceLoad, workspaceRepo } from "@/lib/workspace/load";
 import { WorkspaceSetup } from "../setup";
 
 export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ q?: string; notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const sp = await searchParams;
   const kinds = contactKinds(await currentTier());
   const q = (sp.q ?? "").slice(0, 80);

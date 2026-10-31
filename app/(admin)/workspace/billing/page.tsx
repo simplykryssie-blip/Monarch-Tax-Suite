@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/admin";
 import Link from "next/link";
 import { Badge, EmptyRow, Flash, PageTitle } from "@/components/admin/ui";
 import { PAYERS } from "@/lib/workspace/types.ts";
@@ -15,6 +16,8 @@ const VIEWS: [ViewKey, string][] = [["all", "All"], ["draft", "Draft"], ["sent",
 
 /** Billing: every invoice, filterable by status, with revenue totals and the bank-statement import. */
 export default async function BillingPage({ searchParams }: { searchParams: Promise<{ status?: string; year?: string; payer?: string; notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const sp = await searchParams;
   const today = todayIso();
   const sheetCtx = await loadSheetContext();

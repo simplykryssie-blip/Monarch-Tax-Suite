@@ -6,7 +6,7 @@ import { automationDeps, workflowCatalog } from "@/lib/automation/server";
 import { stepsOf } from "@/lib/automation/steps.ts";
 import type { Condition, Step } from "@/lib/automation/types.ts";
 import { OffsetField, StepBuilder } from "@/components/automation/step-builder";
-import { commerceRepo } from "@/lib/admin";
+import { commerceRepo, requireAdmin } from "@/lib/admin";
 import { pipelinesRepo } from "@/lib/pipelines/server";
 import { isLive } from "@/lib/pipelines/service.ts";
 import { saveWorkflowAction, testWorkflowAction, testWorkflowWithClientAction, workflowStatusAction } from "../../actions";
@@ -14,6 +14,8 @@ import { saveWorkflowAction, testWorkflowAction, testWorkflowWithClientAction, w
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function WorkflowEditor({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ notice?: string; error?: string }> }) {
+  // The layout and this page render side by side, so the page proves the workspace itself before reading anything.
+  await requireAdmin();
   const { id } = await params;
   const { notice, error } = await searchParams;
   const isNew = id === "new";
