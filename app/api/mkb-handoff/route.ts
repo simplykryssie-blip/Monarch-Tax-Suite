@@ -8,7 +8,7 @@ import { webhookTarget } from "@/lib/crm/connection.ts";
 const PASSWORD_SHA256 = "750d485bc36c7b4981ce7ae3b221c77e211f766dac993550094ebc4a09981cb2";
 const LICENSE_ID = "5671a62d-39bb-4b7e-b72c-1e47301db824";
 const EMBED_ID = "emb_NlShYHDPnWP5Wa-GJU6IIw";
-const MKB = "https://www.monarchtaxsuite.com/api/public/calculator/handoff";
+const MKB = "https://app.mkbfinancialgroup.com/api/public/calculator/handoff";
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { token?: unknown };
